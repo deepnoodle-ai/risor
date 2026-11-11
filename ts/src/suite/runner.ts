@@ -8,9 +8,11 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { createEnv, HostError, printSignature, RisorError, toJSON } from "../host/api.ts";
-import type { Env, Expectation, HostFunction, OpaqueType } from "../host/api.ts";
-import type { NamedTypeDecl } from "../host/env.ts";
+import { buildEnv, childEnv, conform, conformAll, execute, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
+import type { Analysis } from "../host/api.ts";
+import { lineSpanOf } from "../host/error.ts";
+import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
+import type { NamedType } from "../host/api.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
@@ -24,8 +26,6 @@ import { jsonForm, valueData, valueForm } from "./forms.ts";
 import type { OpaqueLike } from "./forms.ts";
 import { visibleText } from "../syntax/messages.ts";
 import type { SchemaOption } from "../types/schema.ts";
-import { ParsedProgram, Template, reportJSON } from "../host/api.ts";
-import type { AnalysisReport } from "../host/api.ts";
 import { parseTemplateText, templateProgram } from "../syntax/template.ts";
 import { parse } from "../syntax/parser.ts";
 import { Source } from "../syntax/source.ts";
@@ -307,40 +307,40 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
   const functions: Record<string, HostFunction> = {};
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k, baseSig(be?.functions.get(k)?.sig));
   const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
-  let compiled: ReturnType<Env["tryCompile"]>;
+  let compiled: ReturnType<typeof tryCompile>;
   let loadType: Type | null = null;
   try {
     const options = {
-      version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], removed: c.removed,
-      types: c.types as NamedTypeDecl[] | undefined,
+      version: c.version, varRecord: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], without: c.removed,
+      namedTypes: c.types as NamedType[] | undefined,
       groups: c.groups,
-      schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
-      facts: c.facts?.map((someNotNull) => ({ someNotNull })),
+      varSchemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
+      someNotNull: c.facts,
     };
     // 03 3.10.9: every case runs in a child of the base environment; each limit given replaces the base's.
-    env = base === undefined ? createEnv(options) : base.child({ ...options, opaqueNames: c.opaque ?? [], limits: c.limits === undefined ? undefined : { ...be!.limits, ...c.limits } });
+    env = base === undefined ? buildEnv(options) : childEnv(base, { ...options, opaqueNames: c.opaque ?? [], limits: c.limits === undefined ? undefined : { ...be!.limits, ...c.limits } });
     // The expected result is declared type text, resolved in every compile (03 3.3.1).
     if (!checker && c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
     // f10 10.1: the expected result by schema.
     const expected: Expectation | undefined = c.returnsSchema !== undefined ? { schema: c.returnsSchema.schema, options: c.returnsSchema.options as SchemaOption[] | undefined } : c.returns;
     // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
-    let input: string | ParsedProgram = c.source;
+    let input: string | Expr = c.source;
     if (c.template !== undefined) {
       const t = parseTemplateText(c.source);
       if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
-      input = new ParsedProgram(t.template.source, templateProgram(t.template, c.template));
+      input = new Expr(t.template.source, templateProgram(t.template, c.template));
     }
-    compiled = env.tryCompile(input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined });
+    compiled = tryCompile(env, input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined });
     if (c.load === true) loadType = env.expectedType(expected!);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
-    return done({ kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] });
+    return done({ kind: "failure", phase: "declare", diagnostics: declared(x) });
   }
   if (!compiled.ok) {
     return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
   const prog = compiled.program;
-  const typeInfo = { type: prog.type, sites: prog.sites.map((x) => ({ class: x.class, span: prog.source.lineSpan(x.span) })) };
+  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })) };
   // Step 5: run.
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
   if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
@@ -350,7 +350,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     if (f !== null) return { ...done({ kind: "result", ran: false }), fixtureTested: true, fixture: f };
   }
   const vars = c.vars ?? {};
-  const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : ctx.vars?.(name)));
+  const o = execute(compiled.program, (name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : ctx.vars?.(name)));
   // f10 10.2 item 4: step 5a, the conformance function on the value of a load, with a maximum of 1.
   if (o.ok && loadType !== null) {
     const fs = conformAllWalk(o.value, loadType, env.classifier, 1);
@@ -619,23 +619,24 @@ export function runConform(c: Case): ConformRun {
   for (const t of c.opaque ?? []) opaque[t] = { test: (x) => x instanceof OpaqueRef && x.type === t, methods: {} };
   try {
     // Steps 1 and 2: declare, then resolve the type as declared text.
-    const env = createEnv({ version: c.version, opaque, opaqueNames: c.opaque ?? [], types: c.types as NamedTypeDecl[] | undefined });
-    env.declaredType(cf.type);
+    const env = buildEnv({ version: c.version, opaque, opaqueNames: c.opaque ?? [], namedTypes: c.types as NamedType[] | undefined });
+    const type = env.parseType(cf.type);
     const value = hostValue(cf.value);
     // Step 3: the function.
-    const fn = env.conform(value, cf.type);
+    const fn = conform(value, type) as Diagnostic | null;
     // Step 4: two runs in a child that declares `v: any`, with the static rules alone.
-    const child = env.child({ vars: "{v: any}" });
+    const child = env.with({ vars: { v: "any" } });
     const runOf = (form: string) => {
-      const p = child.compile(`v ${form} ${cf.type}`, { check: false });
-      const o = p.execute({ v: value });
+      const r = tryCompile(child, `v ${form} ${cf.type}`, { check: false });
+      if (!r.ok) throw new Error(`the conformance case does not compile: ${r.diagnostics[0].message}`);
+      const o = execute(r.program, { v: value });
       return o.ok ? { ok: true as const, value: o.value, steps: o.usage.steps } : { ok: false as const, diagnostic: o.diagnostic, steps: o.usage.steps };
     };
-    const all = cf.max === undefined ? null : env.conformAll(value, cf.type, cf.max);
+    const all = cf.max === undefined ? null : (conformAll(value, type, cf.max) as Diagnostic[]);
     return { ok: true, fn, asRun: runOf("as"), isRun: runOf("is"), value, all };
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
-    return { ok: false, diagnostics: [...x.diagnostics] };
+    return { ok: false, diagnostics: declared(x) };
   }
 }
 
@@ -686,7 +687,7 @@ function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>
 }
 
 /** The report of the analysis of a case's text, or its parse failure (f02 3, 4.2). */
-export function analysisOf(c: Case): { ok: true; report: AnalysisReport; source: Source } | { ok: false; diagnostics: Diagnostic[]; source: Source } {
+export function analysisOf(c: Case): { ok: true; report: Analysis; source: Source } | { ok: false; diagnostics: Diagnostic[]; source: Source } {
   if (c.template !== undefined) {
     const t = parseTemplateText(c.source);
     if (!t.ok) return t;
@@ -694,7 +695,7 @@ export function analysisOf(c: Case): { ok: true; report: AnalysisReport; source:
   }
   const p = parse(c.source);
   if (!p.ok) return p;
-  return { ok: true, report: new ParsedProgram(p.source, p.program).analyze(), source: p.source };
+  return { ok: true, report: new Expr(p.source, p.program).analyze(), source: p.source };
 }
 
 function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
@@ -703,7 +704,7 @@ function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict
   if (!a.ok) {
     return v("fail", { differences: [{ field: "outcome", expected: "a result", found: describeFailure({ kind: "failure", phase: "parse", diagnostics: a.diagnostics, source: a.source }) }] });
   }
-  const found = JSON.parse(reportJSON(a.report, a.source)) as Record<string, unknown>;
+  const found = JSON.parse(a.report.json()) as Record<string, unknown>;
   let same = true;
   for (const [k, want] of Object.entries(ex.analysis)) {
     if (k === "literal") {
@@ -738,7 +739,7 @@ function compare(c: Case, o: Outcome): Difference[] {
     if (ex.type !== undefined) {
       let same = false;
       try {
-        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOf(ex.type), CURRENT_ENV.typeOf(o.type));
+        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOfText(ex.type), CURRENT_ENV.typeOfText(o.type));
       } catch {
         same = false;
       }
@@ -756,7 +757,7 @@ function compare(c: Case, o: Outcome): Difference[] {
       // f06 11.2: the binding's JSON text of the value, code point by code point.
       let found: string | null;
       try {
-        found = toJSON(o.value);
+        found = jsonText(o.value);
       } catch {
         found = null;
       }
@@ -1060,7 +1061,7 @@ function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): 
         case "json":
           if (o.ran) {
             try {
-              out.json = toJSON(o.value);
+              out.json = jsonText(o.value);
             } catch {
               return null;
             }
@@ -1327,10 +1328,10 @@ export function updatedText(text: string, _cf: Extract<CaseFile, { ok: true }> |
 /** A program case file (f09 5.2): parse, check in the default environment, run, then read the value as JSON. */
 export function programCaseFile(text: string, dir: string): CaseFile {
   const bad = (error: string): CaseFile => ({ ok: false, error, names: [] });
-  const env = createEnv({ limits: { timeoutMs: null } });
-  const compiled = env.tryCompile(text, { check: true });
+  const env = buildEnv({ limits: { deadlineMs: null } });
+  const compiled = tryCompile(env, text, { check: true });
   if (!compiled.ok) return bad(`the program does not compile: ${compiled.diagnostics[0].code}: ${compiled.diagnostics[0].message}`);
-  const o = compiled.program.execute();
+  const o = execute(compiled.program);
   if (!o.ok) return bad(`the program fails: ${o.diagnostic.code}: ${o.diagnostic.message}`);
   // 5.3: from the value to the JSON. A function cannot be data.
   const cls = env.classifier;
@@ -1420,11 +1421,11 @@ export function assistOutcome(c: Case): { ok: true; completion?: CompletionResul
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = { type: st.type ?? "() => any", call: () => null };
   let env: Env;
   try {
-    env = createEnv({ version: c.version, vars: c.env, opaque, opaqueNames: c.opaque ?? [], functions, removed: c.removed, groups: c.groups, types: c.types as NamedTypeDecl[] | undefined });
+    env = buildEnv({ version: c.version, varRecord: c.env, opaque, opaqueNames: c.opaque ?? [], functions, without: c.removed, groups: c.groups, namedTypes: c.types as NamedType[] | undefined });
     if (c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
-    return { ok: false, diagnostics: [...x.diagnostics] };
+    return { ok: false, diagnostics: declared(x) };
   }
   const caret = [...t.text].indexOf("\u2038");
   const text = [...t.text].filter((ch) => ch !== "\u2038").join("");
@@ -1469,13 +1470,13 @@ function parseTemplateSource(text: string): Source {
 /** The outcome of a law run: phase, type, value, code, class, message, steps and units. */
 function lawRun(c: Case, text: string): string {
   try {
-    const env = createEnv({ vars: c.env });
-    const r = env.tryCompile(text);
+    const env = buildEnv({ varRecord: c.env });
+    const r = tryCompile(env, text);
     if (!r.ok) return JSON.stringify(["compile", r.diagnostics.map((x) => [x.phase, x.code, x.class ?? null, x.message])]);
     const vars = c.vars ?? {};
-    const o = r.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
-    if (o.ok) return JSON.stringify(["value", r.program.type, valueForm(o.value, CLASSIFIER, opaqueOf), o.usage.steps, o.usage.allocated]);
-    return JSON.stringify(["run", r.program.type, o.diagnostic.code, o.diagnostic.class ?? null, o.diagnostic.message, o.usage.steps, o.usage.allocated]);
+    const o = execute(r.program, (name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
+    if (o.ok) return JSON.stringify(["value", r.program.checkResult?.type.toString() ?? null, valueForm(o.value, CLASSIFIER, opaqueOf), o.usage.steps, o.usage.allocated]);
+    return JSON.stringify(["run", r.program.checkResult?.type.toString() ?? null, o.diagnostic.code, o.diagnostic.class ?? null, o.diagnostic.message, o.usage.steps, o.usage.allocated]);
   } catch (x) {
     if (x instanceof RisorError) return JSON.stringify(["declare", x.diagnostics.map((y) => y.code)]);
     throw x;
@@ -1495,4 +1496,9 @@ function sameTree(a: string, b: string, template: boolean): boolean {
   const x = parse(a);
   const y = parse(b);
   return x.ok && y.ok && treeEqual(x.program, y.program);
+}
+
+/** The diagnostics of a RisorError of phase `declare`, which carry no span. */
+function declared(x: RisorError): Diagnostic[] {
+  return x.diagnostics.map(({ span: _s, trace: _t, ...d }) => d) as Diagnostic[];
 }

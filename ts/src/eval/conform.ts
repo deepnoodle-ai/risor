@@ -201,6 +201,8 @@ export function freeCtx(cls: Classifier): WalkCtx {
 
 /** The walk of every failure (package F8, f08 6.2): failures in order, up to `max`. Charges nothing. */
 export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number): ConformFailure[] {
+  // F8 6.1: a maximum below 1 is read as 1.
+  if (!(max >= 1)) max = 1;
   const out: ConformFailure[] = [];
   const path: PathStep[] = [];
   const full = () => out.length >= max;

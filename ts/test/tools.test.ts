@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { caseFiles } from "../src/suite/runner.ts";
 import { formatProgram, treeEqual } from "../src/tools/format.ts";
-import { complete, hover } from "../src/tools/assist.ts";
 import { parse } from "../src/syntax/parser.ts";
 import { createEnv } from "../src/host/api.ts";
 
@@ -44,17 +43,17 @@ describe("the laws of the formatter over the suite's programs (f12 7.6 item 3)",
 });
 
 describe("the binding's calls (f12 1.2)", () => {
-  const env = createEnv({ vars: "{user: {name: string}}" });
+  const env = createEnv({ varRecord: "{user: {name: string}}" });
   test("completion and hover", () => {
-    const c = complete(env, "user.n", { line: 1, column: 7 });
+    const c = env.complete("user.n", { line: 1, column: 7 });
     assert.deepEqual(c.items.map((i) => i.label), ["name"]);
-    const h = hover(env, "user.name", { line: 1, column: 7 });
+    const h = env.hover("user.name", { line: 1, column: 7 });
     assert.equal(h?.kind, "field");
     assert.equal(h?.type, "string");
   });
   test("a position in no line gives nothing", () => {
-    assert.deepEqual(complete(env, "user", { line: 3, column: 1 }).items, []);
-    assert.equal(hover(env, "user", { line: 1, column: 9 }), null);
+    assert.deepEqual(env.complete("user", { line: 3, column: 1 }).items, []);
+    assert.equal(env.hover("user", { line: 1, column: 9 }), null);
   });
 });
 
@@ -62,12 +61,12 @@ describe("the clarifications of f12 3.2 and 3.12", () => {
   const env = createEnv({});
   test("a parameter's type takes the first check of a const lambda", () => {
     // Hover on the parameter's use in the body, and on its binding: both from the first use, f(1).
-    assert.equal(hover(env, 'const f = x => x;\n[f(1), f("a")]', { line: 1, column: 16 })?.type, "int");
-    assert.equal(hover(env, 'const f = x => x;\n[f(1), f("a")]', { line: 1, column: 11 })?.type, "int");
+    assert.equal(env.hover('const f = x => x;\n[f(1), f("a")]', { line: 1, column: 16 })?.type, "int");
+    assert.equal(env.hover('const f = x => x;\n[f(1), f("a")]', { line: 1, column: 11 })?.type, "int");
   });
   test("hover's cut takes a ( only when it is the very next character", () => {
-    const env2 = createEnv({ vars: "{user: {tags: string[]}}" });
-    assert.equal(hover(env2, "user.tags.first(", { line: 1, column: 12 })?.type, "string | null");
-    assert.equal(hover(env2, "user.tags.first (", { line: 1, column: 12 })?.kind, "field");
+    const env2 = createEnv({ varRecord: "{user: {tags: string[]}}" });
+    assert.equal(env2.hover("user.tags.first(", { line: 1, column: 12 })?.type, "string | null");
+    assert.equal(env2.hover("user.tags.first (", { line: 1, column: 12 })?.kind, "field");
   });
 });

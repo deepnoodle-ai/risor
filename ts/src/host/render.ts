@@ -55,7 +55,7 @@ function oneLine(d: RenderDiagnostic): string {
 }
 
 /** The one-line form (f08 5.2). */
-export function renderLine(ds: RenderDiagnostic[]): string {
+export function renderLine(ds: readonly RenderDiagnostic[]): string {
   return ds.map((d) => oneLine(d) + "\n").join("");
 }
 
@@ -85,7 +85,7 @@ function excerpt(source: string, span: LineSpan): [string, string] {
 }
 
 /** The detail form (f08 5.3). */
-export function renderDetail(ds: RenderDiagnostic[], source: string | null): string {
+export function renderDetail(ds: readonly RenderDiagnostic[], source: string | null): string {
   let out = "";
   for (const d of ds) {
     out += oneLine(d) + "\n";
@@ -169,7 +169,7 @@ function dataJSON(v: unknown, cls: Classifier): string {
 }
 
 /** The JSON form (f08 5.5): keys in code point order. */
-export function renderJSON(ds: RenderDiagnostic[], cls: Classifier = new Classifier()): string {
+export function renderJSON(ds: readonly RenderDiagnostic[], cls: Classifier = new Classifier()): string {
   return ds
     .map((d) => {
       const parts: string[] = [];

@@ -10,7 +10,8 @@ import {
 } from "../src/types/type.ts";
 import type { Type } from "../src/types/type.ts";
 import { parseType } from "../src/types/typetext.ts";
-import { createEnv } from "../src/host/api.ts";
+import { createEnv, execute, parse } from "../src/host/api.ts";
+import { tryCheck } from "./helpers.ts";
 
 const req = (type: Type) => ({ type, optional: false });
 const opt = (type: Type) => ({ type, optional: true });
@@ -113,9 +114,9 @@ describe("05 3.9: printing reads back as the same type", () => {
 });
 
 describe("05 section 20: the checker's limits", () => {
-  const env = createEnv({ vars: "{x: int}" });
+  const env = createEnv({ varRecord: "{x: int}" });
   const codes = (src: string) => {
-    const c = env.check(src);
+    const c = tryCheck(env, parse(src));
     return c.ok ? [] : c.diagnostics.map((d) => d.code);
   };
   test("20.2: the chain f0 to f100", () => {
@@ -134,7 +135,7 @@ describe("05 section 20: the checker's limits", () => {
   });
   test("20.4: a type the checker builds deeper than 64", () => {
     assert.deepEqual(codes("[".repeat(64) + "]".repeat(64)), []);
-    const c = env.check("[".repeat(65) + "]".repeat(65));
+    const c = tryCheck(env, parse("[".repeat(65) + "]".repeat(65)));
     assert.ok(!c.ok && c.diagnostics.some((d) => d.code === "check-limit"));
   });
   test("20.6: long flat programs are checked by loops", () => {
@@ -154,26 +155,26 @@ describe("05 section 20: the checker's limits", () => {
 });
 
 describe("the check stage of the host API (03 3.2)", () => {
-  const env = createEnv({ vars: "{report: {verdict: string} | null}" });
+  const env = createEnv({ varRecord: "{report: {verdict: string} | null}" });
   test("check alone gives the type and the sites", () => {
-    const c = env.check('report && report.verdict == "APPROVE"');
+    const c = tryCheck(env, parse('report && report.verdict == "APPROVE"'));
     assert.ok(c.ok);
     assert.equal(c.type, "bool | null");
   });
   test("an expected result", () => {
-    const c = env.check('report && report.verdict == "APPROVE"', "bool");
+    const c = tryCheck(env, parse('report && report.verdict == "APPROVE"'), "bool");
     assert.ok(!c.ok);
     assert.equal(c.diagnostics[0].code, "result-mismatch");
-    assert.ok(env.check('report && report.verdict == "APPROVE"', "condition").ok);
+    assert.ok(tryCheck(env, parse('report && report.verdict == "APPROVE"'), "condition").ok);
   });
   test("compile with a check fails on a type error; without one it runs", () => {
-    assert.throws(() => env.compile("report.verdict"));
-    assert.equal(env.compile("report.verdict", { check: false }).run({ report: { verdict: "x" } }), "x");
+    assert.throws(() => env.compile(parse("report.verdict")));
+    assert.equal(env.compile(parse("report.verdict"), { check: false }).run({ report: { verdict: "x" } }), "x");
   });
   test("a checked and an unchecked run of one program agree, but for the class (03 3.7.6)", () => {
-    const e2 = createEnv({ vars: "{o: {a: int}}" });
-    const checked = e2.compile("o.a + 1").execute({ o: {} });
-    const unchecked = e2.compile("o.a + 1", { check: false }).execute({ o: {} });
+    const e2 = createEnv({ varRecord: "{o: {a: int}}" });
+    const checked = execute(e2.compile(parse("o.a + 1")), { o: {} });
+    const unchecked = execute(e2.compile(parse("o.a + 1"), { check: false }), { o: {} });
     assert.ok(!checked.ok && !unchecked.ok);
     assert.deepEqual([checked.diagnostic.code, checked.diagnostic.span, checked.diagnostic.message], [unchecked.diagnostic.code, unchecked.diagnostic.span, unchecked.diagnostic.message]);
     assert.deepEqual(checked.usage, unchecked.usage);

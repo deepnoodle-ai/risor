@@ -17,13 +17,13 @@ test("the deepest programs run with a 700 KB stack", () => {
 });
 
 test("long flat programs need no stack (01 13.2 rule 6)", async () => {
-  const { createEnv } = await import("../src/host/api.ts");
+  const { createEnv, execute, parse } = await import("../src/host/api.ts");
   const n = 100000;
-  const env = createEnv({ vars: "{m: any}", limits: { steps: null, allocation: null } });
+  const env = createEnv({ varRecord: "{m: any}", limits: { steps: null, allocation: null } });
   const m: Record<string, unknown> = {};
   m.a = m;
   const run = (src: string) => {
-    const o = env.compile(src, { check: false }).execute({ m });
+    const o = execute(env.compile(parse(src), { check: false }), { m });
     assert.ok(o.ok, o.ok ? "" : o.diagnostic.code);
     return o.value;
   };

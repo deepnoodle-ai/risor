@@ -744,7 +744,7 @@ function listElems(t: Type): Type[] {
 
 function safeType(env: Env, text: string): Type | null {
   try {
-    return env.typeOf(text);
+    return env.typeOfText(text);
   } catch {
     return null;
   }

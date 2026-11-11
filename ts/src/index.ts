@@ -41,32 +41,33 @@
 //   - step: at most one 16-byte HeapNumber when a numeric result does not fit a
 //     Smi.
 
-export { parse, parseProgram, MAX_LEVELS } from "./syntax/parser.ts";
-export type { ParseResult } from "./syntax/parser.ts";
-export { Source } from "./syntax/source.ts";
-export type { Span, LineSpan, Position } from "./syntax/source.ts";
-export type { Diagnostic, Phase } from "./syntax/diagnostic.ts";
-export type * as ast from "./syntax/ast.ts";
-export { NODE_NUMBER } from "./syntax/ast.ts";
-export { parseType, parseSignature, parseMethod, parseReceiver, arity } from "./types/typetext.ts";
-export type { TypeNode, SigNode, MethodNode, FnNode } from "./types/typetext.ts";
-export { declare, DEFAULT_LIMITS, VERSION } from "./host/env.ts";
-export type { Declarations, Environment, Limits } from "./host/env.ts";
-export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "./host/api.ts";
-// Package F10: the load and the decode (f10 5, 6.6).
-export { decode, LoadError } from "./host/api.ts";
-export type { Expectation, LoadOptions, LoadOutcome } from "./host/api.ts";
-// Package F12: the formatter and the assist stage (f12 2, 3).
-export { formatProgram, formatTemplate } from "./tools/format.ts";
-export type { FormatResult } from "./tools/format.ts";
-export { complete, hover } from "./tools/assist.ts";
-export type { Candidate, CompletionResult, HoverResult } from "./tools/assist.ts";
-// Package F14: a host fact (f14 3.2).
-export type { HostFact } from "./host/api.ts";
-export { typeFromSchema, envFromDescription, descriptionText, printSignature } from "./host/api.ts";
-export type { Description } from "./host/api.ts";
-export { parseProgramText, parseTemplate, ParsedProgram, Template, reportJSON } from "./host/api.ts";
-export type { AnalysisReport, AnalysisCall } from "./host/api.ts";
-export type { TemplateMode, Segment } from "./syntax/template.ts";
-export type { SchemaOption } from "./types/schema.ts";
-export type { EnvOptions, HostFunction, OpaqueType, Limits as RunLimits, Usage, Vars, Outcome, CallHandle } from "./host/api.ts";
+// The public surface is exactly that of 05 Part E (ruling R200), in the
+// TypeScript column. Everything else in src/ is private. The case-file runner
+// is the separate entry point "risor/testing".
+
+// E.3 The environment.
+export { createEnv, Env, descriptionText } from "./host/api.ts";
+export type { EnvOptions, WithOptions, LibraryNames, ChildOpaqueType, NamedType, Limits, Description, HostFunction, OpaqueType } from "./host/api.ts";
+
+// E.4 Programs.
+export { parse, Expr, Analysis, Program } from "./host/api.ts";
+export type { CallSite, Ref, Expected, CheckResult, Site, CompileOptions, Usage, Vars } from "./host/api.ts";
+
+// E.5 Templates.
+export { parseTemplate, Template, formatTemplate } from "./host/api.ts";
+export type { TemplateMode, Segment } from "./host/api.ts";
+
+// E.6 Host functions and values.
+export { HostError, truthy, jsonText } from "./host/api.ts";
+export type { Call } from "./host/api.ts";
+
+// E.7 Types, conformance and config files.
+export { Type, typeNever, typeAny, typeNull, typeBool, typeInt, typeFloat, typeString, listType, mapType, nullable, literalType, recordType, exactRecordType, unionType, taggedUnionType, opaqueTypeNamed, join } from "./host/type.ts";
+export type { TypeKind, FieldType } from "./host/type.ts";
+export { typeFromSchema, conform, conformAll, loadValue, decode, LoadError } from "./host/api.ts";
+export type { LoadOptions, SchemaOption } from "./host/api.ts";
+
+// E.8 Diagnostics and tools.
+export { RisorError, renderLine, renderDetail, renderJSON, format } from "./host/api.ts";
+export type { Diagnostic, Phase, Span, Pos, TraceEntry } from "./host/error.ts";
+export type { Completion, Candidate, Hover } from "./host/api.ts";

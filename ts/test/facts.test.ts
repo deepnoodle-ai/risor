@@ -4,40 +4,41 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, envFromDescription, RisorError } from "../src/host/api.ts";
+import { createEnv, Env, parse, RisorError } from "../src/host/api.ts";
+import { tryCheck } from "./helpers.ts";
 
 const VARS = "{report: {v: string} | null, approve: {v: string} | null, third: {v: string} | null}";
 const READ = "(report ?? approve).v";
 
-const checks = (env: ReturnType<typeof createEnv>, src: string) => env.check(src).ok;
+const checks = (env: ReturnType<typeof createEnv>, src: string) => tryCheck(env, parse(src)).ok;
 
 describe("host facts in a child environment (f14 2.6)", () => {
-  const parent = createEnv({ vars: VARS, facts: [{ someNotNull: ["report", "approve"] }] });
+  const parent = createEnv({ varRecord: VARS, someNotNull: [["report", "approve"]] });
   test("a child keeps its parent's host facts", () => {
     assert.ok(checks(parent, READ));
     assert.ok(checks(parent.with({}), READ));
   });
   test("a host fact that names a variable the child replaces is dropped whole", () => {
-    const child = parent.with({ vars: "{approve: {v: string} | null}" });
+    const child = parent.with({ varRecord: "{approve: {v: string} | null}" });
     assert.ok(!checks(child, READ));
     assert.equal(child.describe().facts, undefined);
   });
   test("a child's own host fact may name the parent's variables and its own", () => {
-    const child = parent.with({ vars: "{approve: {v: string} | null}", facts: [{ someNotNull: ["approve", "report"] }] });
+    const child = parent.with({ varRecord: "{approve: {v: string} | null}", someNotNull: [["approve", "report"]] });
     assert.ok(checks(child, READ));
-    const c2 = parent.with({ facts: [{ someNotNull: ["third"] }] });
+    const c2 = parent.with({ someNotNull: [["third"]] });
     assert.ok(checks(c2, "third.v"));
     assert.ok(!checks(parent, "third.v"), "the parent is not changed");
   });
   test("a child's host fact is tested against its variables", () => {
-    assert.throws(() => parent.with({ facts: [{ someNotNull: ["nope"] }] }), (e) => e instanceof RisorError && e.diagnostics[0].code === "bad-name");
+    assert.throws(() => parent.with({ someNotNull: [["nope"]] }), (e) => e instanceof RisorError && e.diagnostics[0].code === "bad-name");
   });
 });
 
 describe("the errors of a declaration (f14 2.5, 3.2 item 2)", () => {
   const codes = (facts: { someNotNull: string[] }[]) => {
     try {
-      createEnv({ vars: VARS, functions: { f: { type: "() => int", call: () => 1 } }, facts });
+      createEnv({ varRecord: VARS, functions: { f: { type: "() => int", call: () => 1 } }, someNotNull: facts.map((f) => f.someNotNull) });
     } catch (e) {
       assert.ok(e instanceof RisorError && e.phase === "declare");
       return e.diagnostics.map((d) => d.code);
@@ -54,12 +55,12 @@ describe("the errors of a declaration (f14 2.5, 3.2 item 2)", () => {
 
 describe("the description (f14 9)", () => {
   test("distinct host facts, sorted, and the round trip", () => {
-    const env = createEnv({ vars: VARS, facts: [{ someNotNull: ["report", "approve"] }, { someNotNull: ["approve", "report"] }, { someNotNull: ["third"] }, { someNotNull: ["approve"] }] });
+    const env = createEnv({ varRecord: VARS, someNotNull: [["report", "approve"], ["approve", "report"], ["third"], ["approve"]] });
     const d = env.describe();
     assert.deepEqual(d.facts, [{ someNotNull: ["approve"] }, { someNotNull: ["approve", "report"] }, { someNotNull: ["third"] }]);
-    const back = envFromDescription(JSON.parse(JSON.stringify(d)));
+    const back = Env.fromDescription(JSON.parse(JSON.stringify(d)));
     assert.deepEqual(back.describe(), d);
-    assert.ok(back.check(READ).ok);
+    assert.ok(tryCheck(back, parse(READ)).ok);
   });
 });
 
