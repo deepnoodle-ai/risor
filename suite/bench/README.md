@@ -13,12 +13,12 @@ The three implementations agree on all of them; the `outcome` command of each
 
 | File | Programs | Data |
 | --- | --- | --- |
-| `workflow.json` | The eight workflow expressions of `bench_test.go` (`workflowCases`) | `workflowData`: a pull-request event, 50 test records, 10 findings. Every variable is declared `any`, as there |
-| `heavy.json` | The five compute-heavy programs of `bench_test.go` (`heavyCases`) | `heavyData`: 10,000 numbers, 1,000 names, 100 rows of 100 numbers. Declared `any`. The Go benchmark gives the numbers as `int64`; here they are JSON numbers, so a host reads them as floating values |
+| `workflow.json` | The eight workflow expressions of `go/bench_test.go` (`workflowCases`) | `workflowData`: a pull-request event, 50 test records, 10 findings. Every variable is declared `any`, as there |
+| `heavy.json` | The five compute-heavy programs of `go/bench_test.go` (`heavyCases`) | `heavyData`: 10,000 numbers, 1,000 names, 100 rows of 100 numbers. Declared `any`. The Go benchmark gives the numbers as `int64`; here they are JSON numbers, so a host reads them as floating values |
 | `typical.json` | Small typed programs: a field path, a comparison, `??`, a template, string building, a `match`, an order total with `[*]` and `reduce` | A typed pull-request event, a gate, an order of 8 lines |
 | `lists-50.json` | Five list programs: `filter` and `map`, `sortBy` with `slice`, a query with `[*]`, `countBy`, and a summary with a template | 50 test records |
 | `lists-10k.json` | The same five programs | 10,000 test records |
-| `mid.json` | The middle-sized program of `compile_bench_test.go` (`midProgram`), mostly a measure of compile time | An input with 50 items |
+| `mid.json` | The middle-sized program of `go/compile_bench_test.go` (`midProgram`), mostly a measure of compile time | An input with 50 items |
 
 Each file sets limits of 100,000,000 steps and units, so no program reaches a
 limit.

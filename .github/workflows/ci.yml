@@ -1,31 +1,23 @@
 name: ci
 
 # The three implementations of Risor v3, each run against the conformance
-# suite in suite/. The Go implementation is the module at the repository
-# root. Risor v2 is on the v2 branch, tested by its own ci.yml.
+# suite in suite/: Go in go/, TypeScript in ts/, Rust in rust/. Risor v2 is
+# on the v2 branch, tested by its own ci.yml.
 
 on:
   push:
-    branches: [main, v3]
+    branches: [main]
     paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - "cmd/**"
-      - "internal/**"
+      - "go/**"
       - "ts/**"
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
       - ".github/workflows/ci.yml"
   pull_request:
-    branches: [main, v3]
+    branches: [main]
     paths:
-      - "**.go"
-      - "go.mod"
-      - "go.sum"
-      - "cmd/**"
-      - "internal/**"
+      - "go/**"
       - "ts/**"
       - "rust/**"
       - "fuzz/**"
@@ -45,6 +37,9 @@ jobs:
     timeout-minutes: 15
     env:
       GOWORK: "off"
+    defaults:
+      run:
+        working-directory: go
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,7 +49,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: go.sum
+          cache-dependency-path: go/go.sum
 
       - name: Build
         run: go build ./...

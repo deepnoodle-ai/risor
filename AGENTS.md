@@ -14,8 +14,8 @@ v3 is a new language and a new code base. It is not a revision of v2.
 is written. The specification is in `spec/`: Core in `spec/core/`, and one
 chapter for each follow-on package in `spec/packages/`. The conformance suite
 is in `suite/`. All three implementations pass Core with the type checker:
-Go at the repository root, TypeScript in `ts/` and Rust in `rust/`. Each then builds the packages in a fixed order
-(`spec/core/03-host.md` 3.11); the Go implementation is the furthest along.
+Go in `go/`, TypeScript in `ts/` and Rust in `rust/`. Each then builds the
+packages in a fixed order (`spec/core/03-host.md` 3.11); the Go implementation is the furthest along.
 `experiments/v3/design/14-implementation-plan.md` is the plan: what Core is,
 what follows it, and the order.
 
@@ -107,7 +107,7 @@ rules and cite it.
 | `spec/core/` | The Core specification, five chapters: language, evaluation, host, library, types. Normative text only. |
 | `spec/packages/` | One chapter for each follow-on package. A package only adds: its chapter is the home of its rules, and the Core chapters point to it. |
 | `suite/` | Data every implementation shares: the library's records, the message templates, the case mapping, and case files in `suite/core-run/`, `suite/core-check/` and one directory for each package. `suite/README.md` lists them. `spec/core/03-host.md` 3.10 defines the case format. |
-| `/` | The Go implementation: the module `github.com/deepnoodle-ai/risor/v3` at the repository root, with `cmd/`, `internal/` and `risortest/`. |
+| `go/` | The Go implementation: the module `github.com/deepnoodle-ai/risor/go/v3`, with `cmd/`, `internal/` and `risortest/`. Its release tags carry the directory: `go/v3.x.y`. |
 | `ts/` | The TypeScript implementation. No run-time dependencies. |
 | `rust/` | The Rust implementation. No library dependencies. |
 | `fuzz/` | The fuzzers that compare the three implementations with one another and test the checker's promise. Its own Go module. |
@@ -196,8 +196,8 @@ tests on every push and pull request that touches Go code, `ts/`, `rust/`,
 
 ## Go code
 
-The Go implementation is the module at the repository root. `fuzz/` and
-`experiments/v3/` are modules of their own. There is no `go.work`.
+The Go implementation is the module in `go/`. `fuzz/` and `experiments/v3/`
+are modules of their own. There is no `go.work`. Run these in `go/`:
 
 ```bash
 go build ./...
@@ -220,5 +220,10 @@ Instead, describe the user-visible change in the PR title and description.
 
 ## Releasing
 
-v3 alpha releases are tagged `v3.0.0-alpha.N` on `main`. v2 releases are cut
+v3 alpha releases are tagged `go/v3.0.0-alpha.N` on `main`: the Go module in
+`go/` takes its versions from tags with that prefix (R200). **Never push a bare
+`v3.*` tag.** With no `go.mod` at the root, Go lists such a tag as a broken
+version of the old path `github.com/deepnoodle-ai/risor/v3`, and `go list -m
+-versions` and `@latest` fail there. The GitHub release is made from the
+`go/` tag. v2 releases are cut
 from the `v2` branch; see `docs/guides/releasing.md` there.

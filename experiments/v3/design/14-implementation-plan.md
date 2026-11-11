@@ -243,7 +243,7 @@ three sides.
 | 3 | The names of the run codes and the general parse codes (`02`, question 12) | As written | M1. Frozen at the Core gate |
 | 4 | The line of section 2, with `try` and the run messages in Core, and `as` and `is` as the first package | As written | M1 |
 | 5 | D27 and the release names: an alpha of the Go module at M6, a beta at M10, 3.0 when all three pass | Yes | M6 |
-| 6 | The repository layout: the Go module at the root; `ts/`, `rust/`, `spec/`, `suite/` beside it; the design moved out of `experiments/` | Yes | M1 |
+| 6 | The repository layout: the Go module at the root; `ts/`, `rust/`, `spec/`, `suite/` beside it; the design moved out of `experiments/` | Yes. Replaced by R200 (`15`): the Go module is in `go/` | M1 |
 | 7 | When v2's code leaves this branch | When M2 passes. Merges from `main` stop then | M2 |
 | 8 | D23: the Go core module has no dependencies, so its tests do not use `assert` | Yes | M2 |
 | 9 | The unconfirmed recommendations that shape Core: D8, D10 to D13, D15 to D17, D21, D25, D31 | As recommended. D15 and D31 are settled finally at the Core gate, on measurements | M1; the gate |

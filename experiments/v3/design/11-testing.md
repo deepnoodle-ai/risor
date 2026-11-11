@@ -248,7 +248,7 @@ when one failed, and 2 when a file is invalid. `--format json` writes each
 verdict as data.
 
 ```go
-package risortest // github.com/deepnoodle-ai/risor/v3/risortest
+package risortest // github.com/deepnoodle-ai/risor/go/v3/risortest
 
 // Run runs each case of the file at path as a subtest of t, named by the
 // case, in a child of base. A nil base is the default environment.

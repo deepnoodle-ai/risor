@@ -5,7 +5,9 @@ node_modules
 
 /proposals
 
-/cmd/risor/risor
+/go/cmd/risor/risor
+/go/risor
+/go/outcome
 
 cpu.out
 cover.out
@@ -29,3 +31,4 @@ unit-tests.xml
 # Test binaries that "go test -c" writes, and built commands.
 *.test
 /bin/
+/go/bin/

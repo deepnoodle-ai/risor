@@ -49,15 +49,18 @@ furthest along.
 
 | Implementation | Where | Package |
 | --- | --- | --- |
-| Go | repository root | `github.com/deepnoodle-ai/risor/v3` |
+| Go | [`go/`](go) | `github.com/deepnoodle-ai/risor/go/v3` |
 | TypeScript | [`ts/`](ts) | not yet on npm |
 | Rust | [`rust/`](rust) | not yet on crates.io |
 
 ## Go
 
 ```bash
-go get github.com/deepnoodle-ai/risor/v3
+go get github.com/deepnoodle-ai/risor/go/v3@latest
 ```
+
+The first alpha, `v3.0.0-alpha.1`, was published at
+`github.com/deepnoodle-ai/risor/v3`. Later releases use the path above.
 
 ```go
 env, err := risor.NewEnv(
@@ -75,12 +78,12 @@ out, err := prog.Run(ctx, risor.Map(map[string]any{"tests": tests}))
 ```
 
 A compiled program does not change and may be run by many goroutines at once.
-The full example is [`example_test.go`](example_test.go).
+The full example is [`go/example_test.go`](go/example_test.go).
 
 ## CLI
 
 ```bash
-go install github.com/deepnoodle-ai/risor/v3/cmd/risor@latest
+go install github.com/deepnoodle-ai/risor/go/v3/cmd/risor@latest
 
 risor eval program.risor --var 'n=int' --vars data.json
 risor check program.risor

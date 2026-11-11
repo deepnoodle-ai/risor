@@ -526,4 +526,22 @@ of `go/`.
 
 | # | Ruling |
 | --- | --- |
-| R199 | **The repository layout.** The Go implementation is the module at the repository root, path `github.com/deepnoodle-ai/risor/v3`, tagged `v3.x.y`. `ts/`, `rust/`, `fuzz/`, `spec/` and `suite/` stay where they are. v2's code is removed from this line; it lives on the `v2` branch. This replaces the layout row of section 1. |
+| R199 | **The repository layout.** The Go implementation is the module at the repository root, path `github.com/deepnoodle-ai/risor/v3`, tagged `v3.x.y`. `ts/`, `rust/`, `fuzz/`, `spec/` and `suite/` stay where they are. v2's code is removed from this line; it lives on the `v2` branch. This replaces the layout row of section 1. Replaced by R200. |
+
+## 19. The three implementations side by side
+
+The owner ruled that Go, TypeScript and Rust are laid out alike: no
+implementation sits at the repository root (C1). Go is the only one whose
+package path follows the repository's layout, and the owner chose a
+`github.com` path over a custom domain. A module in a subdirectory takes that
+directory into its path, and its version tags carry the directory as a
+prefix (the Go modules reference, "Mapping versions to commits"; checked
+in a scratch clone with Go 1.26 in direct mode). The same check found that a
+bare `v3.0.0-alpha.2` tag at the root breaks the old path: with no root
+`go.mod`, Go lists the tag as an invalid version of
+`github.com/deepnoodle-ai/risor/v3`, and `@latest` and `go list -m -versions`
+fail for it.
+
+| # | Ruling |
+| --- | --- |
+| R200 | **Each implementation in its own directory.** The Go implementation is the module in `go/`, path `github.com/deepnoodle-ai/risor/go/v3`, tagged `go/v3.x.y`; no bare `v3.*` tag is pushed again. `ts/` and `rust/` are unchanged. `v3.0.0-alpha.1`, tagged at the root path `github.com/deepnoodle-ai/risor/v3`, is the only release at that path; it is not retracted and gets no successor there. This replaces R199, and the layout answer of `14` section 7, question 6. |
