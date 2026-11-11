@@ -501,7 +501,7 @@ func (f *File) Cases() []*Case
 func (c *Case) Run(ctx context.Context) Verdict // in the base of the load
 func (f *File) Update(verdicts []Verdict) ([]byte, error) // the new text
 func Vars(v risor.Vars) Option
-func Sources(read func(ref string) (string, risor.Origin, error)) Option
+func Sources(read func(ref string) (string, Origin, error)) Option
 ```
 
 1. `Run` gives one subtest for each case with `t.Run(name, ...)`. Go's own
