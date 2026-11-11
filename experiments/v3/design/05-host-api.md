@@ -2444,6 +2444,179 @@ exact shape of `Vars` for values computed on demand, which must stay alive until
 the output is dropped; and how a derived struct exposes a field holding an
 integer above the safe range (as text, by an attribute).
 
+## 4b. Part E: one surface in three bindings
+
+Parts B, C and D were sketches, and each binding grew its own public API as it
+was built. In November 2026 the three surfaces had the same concepts under
+different names, different shapes for the same step, and different amounts of
+internals exported. The owner ruled (R201) that the bindings stay idiomatic and
+align in everything else. This part is the authority for the public surface of
+each binding. Where Parts B to D disagree with it, this part wins.
+
+### E.1 What may differ
+
+A binding may differ from the others only in these five ways.
+
+| # | What | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| 1 | Case of names | `PascalCase` exported | `camelCase`; types `PascalCase` | `snake_case`; types `PascalCase` |
+| 2 | How an environment is declared | Option values: `NewEnv(decls...)` | One options object: `createEnv({...})` | A builder: `Env::builder()...build()` |
+| 3 | How a failure reaches the host | A returned `error` | A thrown `RisorError` | A returned `Result` |
+| 4 | How a run is cancelled | `context.Context` | `AbortSignal` | `RunOptions` |
+| 5 | Conveniences for the host's own types | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11) | none | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
+
+Everything else is the same: the concepts, their names, which object a
+function belongs to, what it takes, and what it gives. A name in the tables
+below is the canonical name. Each binding writes it in its own case (row 1).
+
+### E.2 The boundary
+
+1. The root of each package exports exactly the surface of E.3 to E.8, and
+   nothing else.
+2. The case-file runner is a separate entry point: Go `risortest`, TypeScript
+   `risor/testing`, Rust `risor::testing`.
+3. Everything else is private: Go `internal/`; TypeScript not exported from
+   `index.ts`; Rust `pub(crate)`, or `#[doc(hidden)]` where a binary or an
+   integration test of the crate needs it.
+4. One concept has one way to reach it. An alias or a second spelling of the
+   same step is removed.
+
+### E.3 The environment
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| Build | (E.1 row 2) | `NewEnv(decls...)` | `createEnv(options)` | `Env::builder()...build()` |
+| Child environment | `with` | `env.With(decls...)` | `env.with(options)` | `env.with()...build()` |
+| Version | `version` | `Version(v)` | `version` | `.version(v)` |
+| One variable, by type text | `var` | `Var(name, text)` | `vars: {name: text}` | `.var(name, text)` |
+| All variables, as one record type | `varRecord` | `VarRecord(text)` | `varRecord: text` | `.var_record(text)` |
+| One variable, by JSON Schema | `varSchema` | `VarSchema(name, schema, opts...)` | `varSchemas: {name: {schema, options}}` | `.var_schema(name, schema, opts)` |
+| One variable, by a `Type` | `varType` | `VarType(name, t)` | `varTypes: {name: t}` | `.var_type(name, t)` |
+| Host function | `function` | `Function{Name, Type, Impl}` | `functions: {name: {type, call}}` | `.function(name, sig, impl)` |
+| Opaque type | `opaque` | `OpaqueType{...}` | `opaque: {Name: {test, methods}}` | `.opaque(name)` |
+| Method of an opaque type | `method` | `Method(type, name, f)` | `opaque.Name.methods` | `.method(type, name, sig, impl)` |
+| Named type, by type text | `namedType` | `NamedType(name, text)` | `namedTypes: [{name, type}]` | `.named_type(name, text)` |
+| Named type, by JSON Schema | `namedTypeSchema` | `NamedTypeSchema(name, schema, opts...)` | `namedTypes: [{name, schema, options}]` | `.named_type_schema(name, schema, opts)` |
+| Named type, by a `Type` | `namedTypeOf` | `NamedTypeOf(name, t)` | `namedTypes: [{name, typeOf: t}]` | `.named_type_of(name, t)` |
+| Opt-in groups | `groups` | `Groups(names...)` | `groups: [...]` | `.groups(&[...])` |
+| Library entries removed | `without` | `Without(names...)` | `without: [...]` | `.without(&[...])` |
+| Check classes rejected | `reject` | `Reject(classes...)` | `reject: [...]` | `.reject(&[...])` |
+| Host fact (F14) | `someNotNull` | `SomeNotNull(names...)` | `someNotNull: [[...]]` | `.some_not_null(&[...])` |
+| Limits | `limits` | `Limits{Steps, Allocation, Deadline, Depth}` | `limits: {steps, allocation, deadlineMs, depth}` | `.limits(Limits{steps, allocation, deadline, depth})` |
+| The description (F1 5) | `describe` | `env.Describe()` | `env.describe()` | `env.describe()` |
+| The description as text | `descriptionText` | (`Describe` gives bytes) | `descriptionText(d)` | `env.description_text()` |
+| An environment from a description | `fromDescription` | `FromDescription(data)`, a declaration | `Env.fromDescription(json)` | `Env::from_description(json)` |
+| A type from type text | `parseType` | `env.ParseType(text)` | `env.parseType(text)` | `env.parse_type(text)` |
+| The library's names | `libraryNames` | `env.LibraryNames()` | `env.libraryNames()` | `env.library_names()` |
+
+`Function` in Go keeps its struct form, which is the Go idiom for a declaration
+with three parts. A host function with no implementation is declared the same
+way with the implementation left out; it is not a second name.
+
+### E.4 Programs
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| A parsed program | `Expr` | `*Expr` | `Expr` | `Expr` |
+| Parse | `parse` | `Parse(text)` | `parse(text)` | `parse(text)` |
+| Its text | `text` | `x.Text()` | `x.text` | `x.text()` |
+| Analyze (F2) | `analyze` | `x.Analyze()` | `x.analyze()` | `x.analyze()` |
+| The report of an analysis | `Analysis` | `Analysis` | `Analysis` | `Analysis` |
+| An analysis as JSON text | `json` | `a.JSON()` | `a.json()` | `a.json()` |
+| What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, and `check: false` in `CompileOptions` |
+| Check | `check` | `env.Check(x, opts...)` | `env.check(x, expected)` | `env.check(&x, &expected)` |
+| The result of a check | `CheckResult` | `{Type, Sites}` | `{type, sites}` | `{ty, sites}` |
+| Compile | `compile` | `env.Compile(x, opts...)` | `env.compile(x, options)` | `env.compile(&x, options)` |
+| A compiled program | `Program` | `*Program` | `Program` | `Program` |
+| Its check result | `checkResult` | `p.CheckResult()` | `p.checkResult` | `p.check_result()` |
+| Run | `run` | `p.Run(ctx, vars)` | `p.run(vars, {signal})` | `p.run(&vars)`, `p.run_with(&vars, opts)` |
+| Run and report usage | `measure` | `p.Measure(ctx, vars)` | `p.measure(vars, {signal})` | `p.measure(&vars)`, `p.measure_with(&vars, opts)` |
+| What a run used | `Usage` | `{Steps, Allocated}` | `{steps, allocated}` | `{steps, allocated}` |
+| The variables of a run | `Vars` | `Vars`, `Map` | an object, a `Map` or a function | `Vars`, `NoVars` |
+
+1. `check` and `compile` take an `Expr`, never source text. A host parses first.
+2. A check result's type is a `Type` (E.7). Its printed form is the type's
+   text form.
+3. `run` gives the value or the failure. `measure` gives the usage as well,
+   whether the run succeeds or fails.
+4. Removed: TypeScript `execute`, `tryCompile`, `parseProgramText`,
+   `ParsedProgram`, `reportJSON`, and the AST-level `parse`; Rust the free
+   functions `compile`, `compile_unchecked`, `check` and `analyze`; Go
+   `CheckCompile`, `WalkCalls`, `Expr.Names`, `Expr.Refs`, `Expr.Calls`,
+   `Expr.Literal` and `Expr.Source`, each of which `Analyze` or `Text` gives.
+
+### E.5 Templates
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| Parse | `parseTemplate` | `ParseTemplate(text)` | `parseTemplate(text)` | `parse_template(text)` |
+| A parsed template | `Template` | `*Template` | `Template` | `Template` |
+| The mode | `TemplateMode` | `TemplateMode` | `TemplateMode` | `TemplateMode` |
+| Its segments | `segments` | `t.Segments()` | `t.segments` | `t.segments()` |
+| Exactly one part | `isSingle` | `t.IsSingle()` | `t.isSingle` | `t.is_single()` |
+| One part, as a program | `part` | `t.Part(i)` | `t.part(i)` | `t.part(i)` |
+| The whole, as a program | `program` | `t.Program(mode)` | `t.program(mode)` | `t.program(mode)` |
+| Analyze | `analyze` | `t.Analyze(mode)` | `t.analyze(mode)` | `t.analyze(mode)` |
+| Format | `formatTemplate` | `FormatTemplate(text)` | `formatTemplate(text)` | `format_template(text)` |
+
+### E.6 Host functions and values
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| The call handle | `Call` | `*Call` | `Call` | `Call` |
+| Charge steps | `charge` | `c.Charge(n)` | `c.charge(n)` | `c.charge(n)` |
+| Charge allocation units | `allocate` | `c.Allocate(n)` | `c.allocate(n)` | `c.allocate(n)` |
+| A host function's error | `HostError` | any `error` | `HostError` | `HostError` |
+| Truthiness | `truthy` | `Truthy(v)` | `truthy(v)` | `truthy(&v)` |
+| A value as JSON text | `jsonText` | `JSONText(v)` | `jsonText(v)` | `json_text(&v)` |
+
+### E.7 Types, conformance and config files
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| A type | `Type` | `Type` | `Type` | `Type` |
+| A type from JSON Schema | `typeFromSchema` | `TypeFromSchema(schema, opts...)` | `typeFromSchema(schema, options)` | `type_from_schema(schema, opts)` |
+| Building and reading a type (R179) | | constructors, accessors, `Join`, `Fits`, `Equal`, `String` | the same names | the same names |
+| Test a value against a type | `conform` | `Conform(v, t)` | `conform(v, t)` | `conform(&v, &t)` |
+| Every failure, up to a maximum | `conformAll` | `ConformAll(v, t, max)` | `conformAll(v, t, max)` | `conform_all(&v, &t, max)` |
+| Load a config file into a value | `loadValue` | `LoadValue(ctx, env, text, vars, opts...)` | `loadValue(env, text, options)` | `load_value(&env, text, &vars, opts)` |
+| Load into a host type | `load` | `Load[T](...)` | none (E.1 row 5) | `load::<T>(...)` |
+| Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)` | `decode::<T>(&v, max)` |
+| A failed load | `LoadError` | `*LoadError` | `LoadError` | `LoadError` |
+
+The structural type API of R179 is offered by all three, with the names of the
+Go binding cased per E.1 row 1: the `Type` constants, `ListType`, `MapType`,
+`Nullable`, `LiteralType`, `RecordType`, `ExactRecordType`, `UnionType`,
+`TaggedUnionType`, `OpaqueTypeNamed`, `Join`, and the methods `kind`,
+`elem`, `fields`, `field`, `rest`, `alternatives`, `variants`, `literals`,
+`tag`, `nonNull`, `isNullable`, `isExact`, `opaqueName`, `fits`, `equal` and
+the text form.
+
+### E.8 Diagnostics and tools
+
+| Concept | Canonical name | Go | TypeScript | Rust |
+| --- | --- | --- | --- | --- |
+| A diagnostic | `Diagnostic` | `Diagnostic` | `Diagnostic` | `Diagnostic` |
+| A failure with its diagnostics | `Error` | `Error` | `RisorError` | `Error` |
+| Phase, span, position | `Phase`, `Span`, `Pos` | the same | the same | the same |
+| One line | `renderLine` | `RenderLine(ds)` | `renderLine(ds)` | `render_line(&ds)` |
+| Detail, with source | `renderDetail` | `RenderDetail(ds, source)` | `renderDetail(ds, source)` | `render_detail(&ds, source)` |
+| JSON | `renderJSON` | `RenderJSON(ds)` | `renderJSON(ds)` | `render_json(&ds)` |
+| Format a program (F12) | `format` | `Format(text)` | `format(text)` | `format(text)` |
+| Completion (F12) | `complete` | `env.Complete(text, pos, opts...)` | `env.complete(text, pos, expected)` | `env.complete(text, pos, &expected)` |
+| Hover (F12) | `hover` | `env.Hover(text, pos, opts...)` | `env.hover(text, pos, expected)` | `env.hover(text, pos, &expected)` |
+| A completion | `Completion`, `Candidate` | the same | the same | the same |
+| A hover | `Hover` | `Hover` | `Hover` | `Hover` |
+
+A position is a line and a column (`spec/core/03-host.md` 3.7.7) in all three,
+not an offset. `RisorError` keeps its name because `Error` is a global of
+JavaScript.
+
+### E.9 What is not part of the surface
+
+The Go REPL's `Env.RunEntry` and `Held` serve `cmd/risor` alone. They move out
+of the root package, to a package under `internal/` that `cmd/risor` imports.
+
 ## 5. Alternatives rejected
 
 - **expr's shape: `Compile(src, opts)`, then `Program.Check(types)`.** Checking
