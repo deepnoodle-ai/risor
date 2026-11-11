@@ -99,14 +99,6 @@ pub struct FnType {
     pub result: Option<Type>,
 }
 
-/// `Recv "." Word ":" Sig`
-#[derive(Clone, Debug, PartialEq)]
-pub struct Method {
-    pub recv: Type,
-    pub name: String,
-    pub sig: Sig,
-}
-
 impl Sig {
     /// The parameters with no `?` and no `...` (22.3).
     pub fn required(&self) -> usize {
@@ -178,7 +170,17 @@ pub fn parse_sig(text: &str) -> R<Sig> {
     Ok(s)
 }
 
+/// `Recv "." Word ":" Sig`
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Method {
+    pub recv: Type,
+    pub name: String,
+    pub sig: Sig,
+}
+
 /// Parse a `Method`: `Recv "." Word ":" Sig`.
+#[cfg(test)]
 pub fn parse_method(text: &str) -> R<Method> {
     let mut p = TypeParser::new(text, true)?;
     let recv = p.alt()?;

@@ -3,9 +3,9 @@
 //!
 //! ```no_run
 //! # fn main() {
-//! let env = risor::env::Env::default();
+//! let env = risor::Env::default();
 //! let file = risor::testing::load("tests/orders.test.json", &env).expect("a valid file");
-//! let report = file.run(&risor::host::NoVars);
+//! let report = file.run(&risor::NoVars);
 //! report.assert_ok();
 //! # }
 //! ```

@@ -2,17 +2,12 @@
 //! and an environment built from a description
 //! (`spec/packages/f01-host-types.md` 5).
 
-use crate::check::ty::{print, sig_type, Ty};
+use crate::check::ty::{print, sig_type};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::{Env, Limits};
 use crate::json::{self, Json};
 use crate::types::text::{Bound, ParamType, Sig};
 use std::fmt;
-
-/// The description of a type: its printed text (5.1).
-pub fn describe_type(t: &Ty) -> String {
-    print(t)
-}
 
 /// A signature printed (5.2). `opaque` is the environment's opaque types.
 pub fn print_sig<N: crate::check::ty::TypeNames + ?Sized>(sig: &Sig, opaque: &N) -> String {
@@ -84,7 +79,7 @@ fn limit(n: Option<u64>) -> Json {
 impl Env {
     /// The description of the environment (5.3), with the keys of every
     /// object in code point order.
-    pub fn describe(&self) -> Json {
+    pub(crate) fn description(&self) -> Json {
         let d = self.data();
         let variables = d
             .vars
@@ -178,14 +173,14 @@ impl Env {
     /// The text of the description (5.3 item 5): its JSON form, which two
     /// implementations give alike for one environment.
     pub fn description_text(&self) -> String {
-        json::to_text(&self.describe())
+        json::to_text(&self.description())
     }
 
     /// An environment built from a description (5.4): for check only. Each
     /// type text is read on its own. Its functions and methods have no
     /// implementation, so a compile against it fails with
     /// `no-implementation` while it declares one.
-    pub fn from_description(d: &Json) -> Result<Env, DescriptionError> {
+    pub(crate) fn from_description_json(d: &Json) -> Result<Env, DescriptionError> {
         let form = |m: &str| DescriptionError::Form(m.to_string());
         let o = d
             .as_obj()
@@ -243,7 +238,7 @@ impl Env {
         b = b.version(version);
         if let Some(g) = d.get("groups") {
             for name in list_of(g, "groups")? {
-                b = b.group(&name);
+                b = b.groups(&[&name]);
             }
         }
         // F4 8 item 3: each entry of `types` is a named type by type text.
@@ -273,7 +268,7 @@ impl Env {
             }
         }
         for (name, text) in strings_of(get("functions")?, "functions")? {
-            b = b.declare_function(&name, &text);
+            b = b.function_decl(&name, &text, None);
         }
         let opaque = get("opaque")?
             .as_obj()
@@ -281,11 +276,11 @@ impl Env {
         for (t, methods) in opaque {
             b = b.opaque(t);
             for (m, text) in strings_of(methods, &format!("opaque.{t}"))? {
-                b = b.method_impl(&format!("{t}.{m}"), &text, None);
+                b = b.method_decl(&format!("{t}.{m}"), &text, None);
             }
         }
         for r in list_of(get("removed")?, "removed")? {
-            b = b.remove(&r);
+            b = b.without(&[&r]);
         }
         let reject = list_of(get("reject")?, "reject")?;
         let reject: Vec<&str> = reject.iter().map(String::as_str).collect();
@@ -356,10 +351,41 @@ impl Env {
         }
     }
 
-    /// As `from_description`, from the description's JSON text.
-    pub fn from_description_text(text: &str) -> Result<Env, DescriptionError> {
+    /// The description of the environment (5.3) as host data: a map, whose
+    /// keys are in code point order. [`Env::description_text`] gives its
+    /// JSON text.
+    pub fn describe(&self) -> crate::host::Data {
+        fn data(j: &Json) -> crate::host::Data {
+            use crate::host::Data;
+            match j {
+                Json::Null => Data::Null,
+                Json::Bool(b) => Data::Bool(*b),
+                Json::Num(n)
+                    if crate::value::is_whole(*n) && n.abs() < 9.007_199_254_740_992e15 =>
+                {
+                    Data::Int(*n as i64)
+                }
+                Json::Num(n) => Data::Float(*n),
+                Json::Str(s) => Data::Str(s.clone()),
+                Json::Arr(a) => Data::List(a.iter().map(data).collect()),
+                Json::Obj(o) => Data::Map(o.iter().map(|(k, v)| (k.clone(), data(v))).collect()),
+            }
+        }
+        data(&self.description())
+    }
+
+    /// An environment built from a description's JSON text (5.4): for check
+    /// only. Each type text is read on its own. Its functions and methods
+    /// have no implementation, so a compile against it fails with
+    /// `no-implementation` while it declares one; [`Env::with`] adds them.
+    ///
+    /// An error of a declaration is [`DescriptionError::Declare`], which
+    /// holds the `Error`; text that is not a description at all is
+    /// [`DescriptionError::Form`], with no diagnostic code (`05-host-api.md`
+    /// E.3).
+    pub fn from_description(text: &str) -> Result<Env, DescriptionError> {
         let d = json::parse(text).map_err(DescriptionError::Form)?;
-        Env::from_description(&d)
+        Env::from_description_json(&d)
     }
 }
 

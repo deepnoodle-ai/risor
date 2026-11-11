@@ -15,7 +15,7 @@
 
 use super::{Arg, Run, R};
 use crate::compile::Res;
-use crate::source::Span;
+use crate::source::Range;
 use crate::syntax::ast::{Ast, BinaryOp, NodeId, NodeKind, TemplatePart};
 use crate::value::{release, Str, Value};
 use std::sync::Arc;
@@ -126,7 +126,7 @@ enum Step {
     Member {
         name: Box<str>,
         optional: bool,
-        span: Span,
+        span: Range,
     },
     Node(NodeId),
 }
@@ -531,7 +531,7 @@ fn operator(
     op: BinaryOp,
     x: NodeId,
     y: NodeId,
-    span: Span,
+    span: Range,
 ) -> Code {
     use crate::number;
     let (a, b) = (operand(ast, res, code, x), operand(ast, res, code, y));
@@ -594,7 +594,7 @@ fn operator(
 /// The closure of a numeric operator: when both operands are numbers and
 /// `f` gives a result, 1 step and the result, as `Run::operate` does it;
 /// else `Run::operate`.
-fn numeric<F>(op: BinaryOp, a: Operand, b: Operand, span: Span, f: F) -> Code
+fn numeric<F>(op: BinaryOp, a: Operand, b: Operand, span: Range, f: F) -> Code
 where
     F: Fn(f64, f64) -> Option<Value<'static>> + Copy + Send + Sync + 'static,
 {

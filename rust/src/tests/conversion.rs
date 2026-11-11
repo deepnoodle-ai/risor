@@ -1,6 +1,6 @@
 //! Package F4: the binding surface the suite does not reach.
 
-use risor::{Data, Env};
+use crate::{Data, Env};
 use std::collections::BTreeMap;
 
 fn order(id: Data, lines: Vec<Data>) -> Data {
@@ -27,41 +27,40 @@ fn env() -> Env {
 
 #[test]
 fn the_conformance_function() {
-    let t = env().ty("Order").unwrap();
-    assert!(t
-        .conform(&order(Data::Str("a".into()), vec![line("x", Data::Int(1))]))
-        .is_ok());
+    let t = env().parse_type("Order").unwrap();
+    let conform = |d: &Data| crate::conform(&crate::Value::from_data(d), &t);
+    assert!(conform(&order(Data::Str("a".into()), vec![line("x", Data::Int(1))])).is_ok());
     let bad = order(
         Data::Str("a".into()),
         vec![line("x", Data::Int(1)), line("y", Data::Str("2".into()))],
     );
-    let d = t.conform(&bad).err().unwrap();
+    let d = conform(&bad).err().unwrap();
     assert_eq!(d.code, "not-conforming");
     assert_eq!(d.class, Some("value"));
     assert!(d.span.is_none());
     assert_eq!(d.message, "expected int, found \"2\"");
-    use risor::diag::PathStep::{Index, Key};
+    use crate::diag::PathStep::{Index, Key};
     assert_eq!(
         d.path.as_deref().unwrap().as_slice(),
         [Key("lines".into()), Index(1), Key("qty".into())]
     );
     // A type that names nothing declared is `bad-type`.
     assert_eq!(
-        env().ty("Item").err().unwrap().diagnostics[0].code,
+        env().parse_type("Item").err().unwrap().diagnostics[0].code,
         "bad-type"
     );
 }
 
 #[test]
 fn the_walk_counts_steps() {
-    use risor::conform::{test, Count};
+    use crate::conform::{test, Count};
     let t = env().ty("Order").unwrap();
-    let v = risor::Value::from_data(&order(
+    let v = crate::Value::from_data(&order(
         Data::Str("a".into()),
         vec![line("x", Data::Int(1)), line("y", Data::Str("2".into()))],
     ));
     let mut c = Count::default();
-    assert!(test(&v, &t.ty, &mut c).unwrap().is_some());
+    assert!(test(&v, &t, &mut c).unwrap().is_some());
     // 9.7 item 2: the map, id, lines, 3 for the first line, then the
     // second line and its qty.
     assert_eq!(c.0, 8);
@@ -78,15 +77,18 @@ fn named_types_in_order_and_in_the_description() {
         .unwrap();
     assert_eq!(e.diagnostics[0].code, "bad-type");
     let env = env();
-    let d = env.describe();
+    let d = env.description();
     assert_eq!(
-        risor::json::to_text(d.get("types").unwrap()),
+        crate::json::to_text(d.get("types").unwrap()),
         r#"{"Line":"{qty: int, sku: string}","Order":"{id: string, lines: {qty: int, sku: string}[], ...}"}"#
     );
-    let e2 = Env::from_description(&d).unwrap();
+    let e2 = Env::from_description(&env.description_text()).unwrap();
     assert_eq!(e2.description_text(), env.description_text());
     // No named type: no key `types`.
-    assert!(Env::default().describe().get("types").is_none());
+    let Data::Map(m) = Env::default().describe() else {
+        panic!("a description is a map")
+    };
+    assert!(!m.contains_key("types"));
 }
 
 #[test]
@@ -108,19 +110,16 @@ fn a_doubling_chain_of_named_types_is_shared() {
 #[test]
 fn as_and_is_in_a_program() {
     let env = Env::builder()
-        .vars("{body: any}")
+        .var_record("{body: any}")
         .named_type("Order", "{id: string, total: float, ...}")
         .build()
         .unwrap();
-    let p = risor::compile(
-        &env,
-        risor::parse("try { body as Order } catch (err) { err.path }").unwrap(),
-    )
-    .unwrap();
+    let x = crate::parse("try { body as Order } catch (err) { err.path }").unwrap();
+    let p = env.compile(&x, Default::default()).unwrap();
     let mut vars = BTreeMap::new();
     let mut m = BTreeMap::new();
     m.insert("id".to_string(), Data::Int(1));
     vars.insert("body".to_string(), Data::Map(m));
-    let out = p.run(&vars).result.unwrap();
+    let out = p.run(&vars).unwrap();
     assert_eq!(out.to_data(), Data::List(vec![Data::Str("id".into())]));
 }

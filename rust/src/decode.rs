@@ -8,7 +8,7 @@
 //! length for an array, an opaque value. The decode is not a run: it charges
 //! nothing and copies.
 
-use crate::diag::{Diagnostic, PathStep, Phase};
+use crate::diag::{Diagnostic, Error, PathStep, Phase};
 use crate::host::Data;
 use crate::hosttype::{HostType, Opaque, OpaqueType};
 use crate::value::{Kind, Value};
@@ -71,14 +71,28 @@ pub trait Decode: Sized {
     fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self>;
 }
 
-/// Decode a value into `T` (`f10-config.md` 6.1): the failures of the walk
-/// of every failure against D(T), up to `max`, else the value.
-pub fn decode<T: Decode + HostType>(v: &Value<'_>, max: usize) -> Result<T, Vec<Diagnostic>> {
+/// Decode a value into `T` (`f10-config.md` 6.1): the value, or an error
+/// of phase `run` that holds the first failure, and any failure the decode
+/// of the fields found beside it. The value is copied.
+pub fn decode<T: Decode + HostType>(v: &Value<'_>) -> Result<T, Error> {
+    decode_max(v, 1).map_err(|diagnostics| Error {
+        phase: Phase::Run,
+        diagnostics,
+    })
+}
+
+/// Decode with the failures of the walk of every failure against D(T), up
+/// to `max`: a load reports them all (F10 5.2).
+pub(crate) fn decode_max<T: Decode + HostType>(
+    v: &Value<'_>,
+    max: usize,
+) -> Result<T, Vec<Diagnostic>> {
     let ty = crate::hosttype::type_of::<T>().map_err(|e| {
         let mut d = Diagnostic::bare(Phase::Run, "not-conforming", e.0);
         d.class = Some("value");
         vec![d]
     })?;
+    let ty = ty.into_ty();
     let all = crate::conform::all(v, &ty, max.max(1));
     if !all.is_empty() {
         return Err(all.iter().map(|f| f.diagnostic()).collect());
@@ -335,35 +349,44 @@ mod tests {
 
     #[test]
     fn scalars_and_lists() {
-        assert_eq!(decode::<bool>(&v(Data::Bool(true)), 1).ok(), Some(true));
+        assert_eq!(decode_max::<bool>(&v(Data::Bool(true)), 1).ok(), Some(true));
         assert_eq!(
-            decode::<String>(&v(Data::Str("a".into())), 1).ok(),
+            decode_max::<String>(&v(Data::Str("a".into())), 1).ok(),
             Some("a".into())
         );
-        assert_eq!(decode::<i64>(&v(Data::Float(3.0)), 1).ok(), Some(3));
-        assert_eq!(decode::<f64>(&v(Data::Float(1.5)), 1).ok(), Some(1.5));
+        assert_eq!(decode_max::<i64>(&v(Data::Float(3.0)), 1).ok(), Some(3));
+        assert_eq!(decode_max::<f64>(&v(Data::Float(1.5)), 1).ok(), Some(1.5));
         let l = Data::List(vec![Data::Float(1.0), Data::Float(2.0)]);
-        assert_eq!(decode::<Vec<u8>>(&v(l.clone()), 1).ok(), Some(vec![1, 2]));
-        assert_eq!(decode::<[u8; 2]>(&v(l.clone()), 1).ok(), Some([1, 2]));
-        assert!(decode::<[u8; 3]>(&v(l), 1).is_err());
+        assert_eq!(
+            decode_max::<Vec<u8>>(&v(l.clone()), 1).ok(),
+            Some(vec![1, 2])
+        );
+        assert_eq!(decode_max::<[u8; 2]>(&v(l.clone()), 1).ok(), Some([1, 2]));
+        assert!(decode_max::<[u8; 3]>(&v(l), 1).is_err());
     }
 
     #[test]
     fn narrower_than_the_type() {
         // 6.1 item 7: `int` for every integer type, the range by the host's.
-        let e = decode::<u8>(&v(Data::Float(300.0)), 1).unwrap_err();
+        let e = decode_max::<u8>(&v(Data::Float(300.0)), 1).unwrap_err();
         assert_eq!(e[0].code, "not-conforming");
-        assert!(decode::<f32>(&v(Data::Float(1e300)), 1).is_err());
-        assert_eq!(decode::<f32>(&v(Data::Float(0.1)), 1).ok(), Some(0.1f32));
+        assert!(decode_max::<f32>(&v(Data::Float(1e300)), 1).is_err());
+        assert_eq!(
+            decode_max::<f32>(&v(Data::Float(0.1)), 1).ok(),
+            Some(0.1f32)
+        );
         // Not whole: the walk's own failure.
-        let e = decode::<i32>(&v(Data::Float(1.5)), 1).unwrap_err();
+        let e = decode_max::<i32>(&v(Data::Float(1.5)), 1).unwrap_err();
         assert_eq!(e[0].message, "expected int, found 1.5");
     }
 
     #[test]
     fn null_and_options() {
-        assert_eq!(decode::<Option<i64>>(&v(Data::Null), 1).ok(), Some(None));
-        let e = decode::<i64>(&v(Data::Null), 1).unwrap_err();
+        assert_eq!(
+            decode_max::<Option<i64>>(&v(Data::Null), 1).ok(),
+            Some(None)
+        );
+        let e = decode_max::<i64>(&v(Data::Null), 1).unwrap_err();
         assert_eq!(e[0].message, "expected int, found null");
         assert_eq!(e[0].path.as_deref().map(|p| p.len()), Some(0));
     }
@@ -371,16 +394,16 @@ mod tests {
     #[test]
     fn maps_and_data() {
         let m = map(&[("a", Data::Float(1.0)), ("b", Data::Float(2.0))]);
-        let got = decode::<BTreeMap<String, i64>>(&v(m.clone()), 1).unwrap();
+        let got = decode_max::<BTreeMap<String, i64>>(&v(m.clone()), 1).unwrap();
         assert_eq!(got.get("b"), Some(&2));
         assert_eq!(
-            decode::<HashMap<String, i64>>(&v(m.clone()), 1)
+            decode_max::<HashMap<String, i64>>(&v(m.clone()), 1)
                 .unwrap()
                 .len(),
             2
         );
-        assert_eq!(decode::<Data>(&v(m.clone()), 1).ok(), Some(m));
-        let e = decode::<BTreeMap<String, i64>>(&v(map(&[("a", Data::Str("x".into()))])), 1)
+        assert_eq!(decode_max::<Data>(&v(m.clone()), 1).ok(), Some(m));
+        let e = decode_max::<BTreeMap<String, i64>>(&v(map(&[("a", Data::Str("x".into()))])), 1)
             .unwrap_err();
         assert_eq!(
             e[0].path.as_deref().cloned(),
@@ -392,13 +415,15 @@ mod tests {
     fn every_failure_up_to_the_maximum() {
         let m = map(&[("a", Data::Str("x".into())), ("b", Data::Str("y".into()))]);
         assert_eq!(
-            decode::<BTreeMap<String, i64>>(&v(m.clone()), 5)
+            decode_max::<BTreeMap<String, i64>>(&v(m.clone()), 5)
                 .unwrap_err()
                 .len(),
             2
         );
         assert_eq!(
-            decode::<BTreeMap<String, i64>>(&v(m), 1).unwrap_err().len(),
+            decode_max::<BTreeMap<String, i64>>(&v(m), 1)
+                .unwrap_err()
+                .len(),
             1
         );
     }

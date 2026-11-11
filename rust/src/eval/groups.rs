@@ -7,7 +7,7 @@
 use super::{fail, Run, R};
 use crate::messages::json_string;
 use crate::number;
-use crate::source::Span;
+use crate::source::Range;
 use crate::value::{size, MapVal, Str, Value};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -16,7 +16,12 @@ const MAX_SAFE: &str = "9007199254740991";
 
 impl<'h> Run<'h> {
     /// An entry of a group, after the tests and the call's step.
-    pub(super) fn group_entry(&mut self, name: &str, x: Value<'h>, span: Span) -> R<'h, Value<'h>> {
+    pub(super) fn group_entry(
+        &mut self,
+        name: &str,
+        x: Value<'h>,
+        span: Range,
+    ) -> R<'h, Value<'h>> {
         match name {
             "json.stringify" => {
                 let mut out = super::Rendering::new(String::new());
@@ -124,7 +129,7 @@ impl<'h> Run<'h> {
     /// `json.parse` (6.2): one pass that checks the grammar over the whole
     /// text, finds the first bad number, the depth, `c` and `u`; then the
     /// charges; then the value.
-    fn json_parse(&mut self, s: &str, span: Span) -> R<'h, Value<'h>> {
+    fn json_parse(&mut self, s: &str, span: Range) -> R<'h, Value<'h>> {
         let mut p = JsonScan {
             s: s.chars().collect(),
             i: 0,

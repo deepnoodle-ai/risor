@@ -85,6 +85,7 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
 
 /// As [`ty_schema`], from the schema's JSON text, read with the crate's own
 /// strict reader. Text that is not JSON is an error too.
+#[cfg(test)]
 pub fn ty_schema_text(text: &str, opts: SchemaOptions) -> Result<Ty, String> {
     let schema = crate::json::parse(text).map_err(|e| format!("the schema is not JSON: {e}"))?;
     ty_schema(&schema, opts)
@@ -742,6 +743,7 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
 
 /// Close(T) (4.1 item 3): the rest of every closable record of T is
 /// `never`, at every depth. Shared parts are closed once.
+#[cfg(test)]
 pub fn close(t: &Ty) -> Ty {
     Closer {
         close: true,

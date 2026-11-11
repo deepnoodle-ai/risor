@@ -1,11 +1,24 @@
 //! The checker against the worked examples of `05-types.md` 21.
 
-use risor::check::{check, expected, ty::print};
-use risor::{parse, Data, Env, HostError};
+use risor::{parse, Data, Diagnostic, Env, Expected, Expr, HostError, Span};
+
+/// The check of a program as the host sees it: the diagnostics of a
+/// failure, or none.
+fn check(e: &Env, p: &Expr, x: &Expected) -> Vec<Diagnostic> {
+    match e.check(p, x) {
+        Ok(_) => Vec::new(),
+        Err(err) => err.diagnostics,
+    }
+}
+
+/// A span as `[line, column, end line, end column]`.
+fn arr(s: Span) -> [u32; 4] {
+    [s.start.line, s.start.column, s.end.line, s.end.column]
+}
 
 fn env(reject: &[&str]) -> Env {
     Env::builder()
-        .vars(
+        .var_record(
             "{input:   {role: \"admin\" | \"member\" | \"owner\", note?: string,
                         tags: string[], priority: int | null,
                         options: {retries?: int, backoff?: string} | null},
@@ -21,11 +34,9 @@ fn env(reject: &[&str]) -> Env {
               ids:     (int | null)[]}",
         )
         .opaque("Time")
-        .method_impl(
-            "Time.format",
-            "(layout: string) => string",
-            Some(std::sync::Arc::new(|_, _| Ok(Data::Str(String::new())))),
-        )
+        .method("Time", "format", "(layout: string) => string", |_, _| {
+            Ok(Data::Str(String::new()))
+        })
         .function("rate", "(code: string) => float !", |_, _| {
             Err(HostError("x".into()))
         })
@@ -42,32 +53,30 @@ fn env(reject: &[&str]) -> Env {
 fn run(src: &str, reject: &[&str], exp: Option<&str>) -> String {
     let e = env(reject);
     let p = parse(src).unwrap();
-    let x = expected(&e, exp).unwrap();
-    let r = check(&e, &p, &x);
-    let span = |s: risor::LineSpan| {
-        let [a, b, c, d] = s.0;
+    let x = exp.map_or(Expected::None, Expected::text);
+    let r = e.check(&p, &x);
+    let span = |s: [u32; 4]| {
+        let [a, b, c, d] = s;
         if a == 1 && c == 1 {
             format!("{b}-{d}")
         } else {
             format!("{a}:{b}-{c}:{d}")
         }
     };
-    if r.diagnostics.is_empty() {
-        let mut out = print(r.ty.as_ref().unwrap());
-        for s in &r.sites {
-            out.push_str(&format!(
-                "; {} {}",
-                s.class,
-                span(p.source.line_span(s.span))
-            ));
+    match r {
+        Ok(r) => {
+            let mut out = r.ty.to_string();
+            for s in &r.sites {
+                out.push_str(&format!("; {} {}", s.class, span(arr(s.span))));
+            }
+            out
         }
-        out
-    } else {
-        r.diagnostics
+        Err(err) => err
+            .diagnostics
             .iter()
-            .map(|d| format!("{} {}", d.code, span(d.span.unwrap())))
+            .map(|d| format!("{} {}", d.code, span(arr(d.span.unwrap()))))
             .collect::<Vec<_>>()
-            .join("; ")
+            .join("; "),
     }
 }
 
@@ -213,7 +222,7 @@ fn checker_declare_errors() {
         "{q: {a: int, a: int}}",
         "{x: {a: int} | {b: string}}",
     ] {
-        let e = Env::builder().vars(t).build().err().expect(t);
+        let e = Env::builder().var_record(t).build().err().expect(t);
         assert_eq!(e.first().code, "bad-type", "{t}");
     }
     let e = Env::builder()
@@ -223,12 +232,15 @@ fn checker_declare_errors() {
         .unwrap();
     assert_eq!(e.first().code, "bad-signature");
     let e = Env::builder()
-        .method_impl("Time.f", "() => int", None)
+        .method("Time", "f", "() => int", |_, _| Ok(Data::Null))
         .build()
         .err()
         .unwrap();
     assert_eq!(e.first().code, "bad-signature");
-    assert!(Env::builder().vars("{x: {a: int, ...}}").build().is_ok());
+    assert!(Env::builder()
+        .var_record("{x: {a: int, ...}}")
+        .build()
+        .is_ok());
 }
 
 /// 20.3: at most 1,000 lambda body checks; 20.6: what opens no level costs no
@@ -239,17 +251,13 @@ fn checker_limits() {
     let mut src = String::from("const f = x => x;\n");
     src.push_str(&vec!["f(1)"; 1001].join(" + "));
     let p = parse(&src).unwrap();
-    let r = check(&e, &p, &risor::check::Expected::Nothing);
-    let limits: Vec<_> = r
-        .diagnostics
-        .iter()
-        .filter(|d| d.code == "check-limit")
-        .collect();
+    let r = check(&e, &p, &Expected::None);
+    let limits: Vec<_> = r.iter().filter(|d| d.code == "check-limit").collect();
     assert_eq!(limits.len(), 1, "the 1,001st use");
     let mut src = String::from("const f = x => x;\n");
     src.push_str(&vec!["f(1)"; 1000].join(" + "));
-    let r = check(&e, &parse(&src).unwrap(), &risor::check::Expected::Nothing);
-    assert!(r.diagnostics.is_empty());
+    let r = check(&e, &parse(&src).unwrap(), &Expected::None);
+    assert!(r.is_empty());
     let n = 100_000;
     for src in [
         vec!["gate.failed"; n].join(" + "),
@@ -261,8 +269,8 @@ fn checker_limits() {
         format!("input{}", ".tags"),
         vec!["gate.failed > 0"; n].join(" && "),
     ] {
-        let r = check(&e, &parse(&src).unwrap(), &risor::check::Expected::Nothing);
-        assert!(r.ty.is_some(), "{}", &src[..40]);
+        let r = check(&e, &parse(&src).unwrap(), &Expected::None);
+        assert!(r.is_empty(), "{}", &src[..40]);
     }
 }
 
@@ -278,13 +286,12 @@ fn the_doubling_chain_is_constant_work() {
     let src = lines.join("\n");
     let start = std::time::Instant::now();
     let p = risor::parse(&src).unwrap();
-    let r = risor::check(&risor::Env::default(), &p, &risor::Expected::Nothing);
+    let r = check(&risor::Env::default(), &p, &Expected::None);
     assert!(start.elapsed().as_secs() < 2);
     let lines: Vec<u32> = r
-        .diagnostics
         .iter()
         .filter(|d| d.code == "check-limit")
-        .map(|d| d.span.unwrap().0[0])
+        .map(|d| d.span.unwrap().start.line)
         .collect();
     // Over at line 16; `a15` is then `never`, and the chain grows again
     // from size 3 until line 32.
@@ -307,7 +314,7 @@ fn large_literal_sets_are_n_log_n() {
     }
     let schema = |n: usize| {
         let vals: Vec<String> = (0..n).map(|i| format!("\"v{i}\"")).collect();
-        risor::json::parse(&format!("{{\"enum\": [{}]}}", vals.join(","))).unwrap()
+        format!("{{\"enum\": [{}]}}", vals.join(","))
     };
     let matchp = |n: usize| {
         let arms: Vec<String> = (0..n).map(|i| format!("\"v{i}\" => \"r{i}\"")).collect();
@@ -320,22 +327,25 @@ fn large_literal_sets_are_n_log_n() {
     let (a, b) = (8_000, 32_000);
     let (sa, sb) = (schema(a), schema(b));
     let ratio_schema = best(&|| {
-        let _ = risor::ty_schema(&sb, risor::SchemaOptions::default());
+        let _ = risor::type_from_schema(&sb, risor::SchemaOptions::default());
     }) / best(&|| {
-        let _ = risor::ty_schema(&sa, risor::SchemaOptions::default());
+        let _ = risor::type_from_schema(&sa, risor::SchemaOptions::default());
     });
-    let env = risor::Env::builder().vars("{s: string}").build().unwrap();
+    let env = risor::Env::builder()
+        .var_record("{s: string}")
+        .build()
+        .unwrap();
     let (ma, mb) = (matchp(a), matchp(b));
     let ratio_match = best(&|| {
-        risor::check(&env, &mb, &risor::Expected::Nothing);
+        let _ = env.check(&mb, &Expected::None);
     }) / best(&|| {
-        risor::check(&env, &ma, &risor::Expected::Nothing);
+        let _ = env.check(&ma, &Expected::None);
     });
     let (ta, tb) = (text(a), text(b));
     let ratio_text = best(&|| {
-        let _ = risor::Env::builder().vars(&tb).build();
+        let _ = risor::Env::builder().var_record(&tb).build();
     }) / best(&|| {
-        let _ = risor::Env::builder().vars(&ta).build();
+        let _ = risor::Env::builder().var_record(&ta).build();
     });
     for (what, r) in [
         ("schema", ratio_schema),

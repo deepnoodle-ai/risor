@@ -9,7 +9,6 @@ use crate::hosttype::{opaque_names, type_of, HostType};
 use crate::json::Json;
 use crate::library;
 use crate::schema::{ty_schema, SchemaOptions};
-use crate::syntax::token::is_reserved;
 use crate::types::text::{parse_sig, parse_type, Rest, Sig, Type};
 use crate::value::Value;
 use std::sync::Arc;
@@ -102,15 +101,15 @@ impl Env {
         EnvBuilder::default()
     }
 
-    pub fn data(&self) -> &EnvData {
+    pub(crate) fn data(&self) -> &EnvData {
         &self.data
     }
 
-    pub fn function(&self, name: &str) -> Option<usize> {
+    pub(crate) fn function(&self, name: &str) -> Option<usize> {
         self.data.functions.iter().position(|f| f.name == name)
     }
 
-    pub fn is_namespace(&self, name: &str) -> bool {
+    pub(crate) fn is_namespace(&self, name: &str) -> bool {
         self.data.groups.iter().any(|g| g == name)
             || self
                 .data
@@ -120,13 +119,13 @@ impl Env {
     }
 
     /// Whether an opt-in group is on (`f06-groups.md` 2.1).
-    pub fn group_on(&self, name: &str) -> bool {
+    pub(crate) fn group_on(&self, name: &str) -> bool {
         self.data.groups.iter().any(|g| g == name)
     }
 
     /// The value of a constant `ns.name` of a group that is on, not removed
     /// (`f06-groups.md` 2.4 item 2).
-    pub fn constant(&self, ns: &str, name: &str) -> Option<f64> {
+    pub(crate) fn constant(&self, ns: &str, name: &str) -> Option<f64> {
         let full = format!("{ns}.{name}");
         let n = library::records().len();
         library::constants()
@@ -138,30 +137,76 @@ impl Env {
             .map(|(_, c)| c.value)
     }
 
-    pub fn method(&self, type_name: &str, name: &str) -> Option<usize> {
+    pub(crate) fn method(&self, type_name: &str, name: &str) -> Option<usize> {
         self.data
             .methods
             .iter()
             .position(|m| m.type_name == type_name && m.name == name)
     }
 
-    pub fn var(&self, name: &str) -> Option<usize> {
-        self.data.vars.iter().position(|v| v == name)
-    }
-
     /// A type text resolved by the environment, as declared type text (F4
     /// 7.1 item 4): its names are the opaque and named types. An error is
     /// the `declare` error `bad-type`.
-    pub fn ty(&self, text: &str) -> Result<crate::conform::ProgramType, Error> {
+    pub fn parse_type(&self, text: &str) -> Result<crate::typ::Type, Error> {
+        self.ty(text).map(crate::typ::Type::from_ty)
+    }
+
+    pub(crate) fn ty(&self, text: &str) -> Result<Ty, Error> {
         let bad = |m: String| Error::one(Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m));
         let t = parse_type(text).map_err(|e| bad(e.to_string()))?;
-        let ty = from_text(&t, &self.data.names, None).map_err(bad)?;
-        Ok(crate::conform::ProgramType { ty })
+        from_text(&t, &self.data.names, None).map_err(bad)
+    }
+
+    /// The names of the library entries the environment has (`03-host.md`
+    /// 3.3.1, `05-host-api.md` E.2 item 8). Removed entries are not in it.
+    pub fn library_names(&self) -> LibraryNames {
+        let mut out = LibraryNames {
+            functions: Vec::new(),
+            namespaces: self.data.groups.clone(),
+            group_functions: Vec::new(),
+            methods: ["string", "list", "map"]
+                .into_iter()
+                .map(|k| (k.to_string(), Vec::new()))
+                .collect(),
+        };
+        for (i, r) in library::records().iter().enumerate() {
+            if self.data.removed.contains(&i) {
+                continue;
+            }
+            match (&r.group, r.receiver) {
+                (Some(g), _) if self.group_on(g) => out.group_functions.push(r.name.clone()),
+                (Some(_), _) => {}
+                (None, None) => out.functions.push(r.name.clone()),
+                (None, Some(k)) => {
+                    let key = match k {
+                        crate::value::Kind::String => "string",
+                        crate::value::Kind::List => "list",
+                        _ => "map",
+                    };
+                    out.methods
+                        .entry(key.to_string())
+                        .or_default()
+                        .push(r.name.clone());
+                }
+            }
+        }
+        for l in [
+            &mut out.functions,
+            &mut out.namespaces,
+            &mut out.group_functions,
+        ]
+        .into_iter()
+        .chain(out.methods.values_mut())
+        {
+            l.sort();
+            l.dedup();
+        }
+        out
     }
 
     /// The library function of a name that the environment has: not
     /// removed.
-    pub fn lib_function(&self, name: &str) -> Option<usize> {
+    pub(crate) fn lib_function(&self, name: &str) -> Option<usize> {
         library::function(name).filter(|&i| {
             !self.data.removed.contains(&i)
                 && library::records()[i]
@@ -172,13 +217,13 @@ impl Env {
     }
 
     /// The library method of a kind and a name that the environment has.
-    pub fn lib_method(&self, kind: crate::value::Kind, name: &str) -> Option<usize> {
+    pub(crate) fn lib_method(&self, kind: crate::value::Kind, name: &str) -> Option<usize> {
         library::method(kind, name).filter(|i| !self.data.removed.contains(i))
     }
 
     /// The names of the removed entries, as 3.3.1 writes them, in code point
     /// order.
-    pub fn removed_names(&self) -> Vec<String> {
+    pub(crate) fn removed_names(&self) -> Vec<String> {
         let mut out: Vec<String> = self
             .data
             .removed
@@ -189,24 +234,20 @@ impl Env {
         out
     }
 
-    /// A child environment (`03-host.md` 3.3.2): its declarations are added
-    /// to this one's, and a name it declares replaces this one's, in the
-    /// child only. It may remove further entries and cannot bring one back.
-    /// Its rejected classes and limits, when given, apply in it only.
-    pub fn child(&self) -> EnvBuilder {
+    /// A child environment (`03-host.md` 3.3.2, `f14-host-facts.md` 3.3):
+    /// its declarations are added to this one's, and a name it declares
+    /// replaces this one's, in the child only. It may remove further entries
+    /// and cannot bring one back. Its rejected classes and limits, when
+    /// given, apply in it only.
+    pub fn with(&self) -> EnvBuilder {
         EnvBuilder {
             parent: Some(self.clone()),
             ..EnvBuilder::default()
         }
     }
 
-    /// The same as `child` (`f14-host-facts.md` 3.3).
-    pub fn with(&self) -> EnvBuilder {
-        self.child()
-    }
-
     /// F14: the host facts that have the variable `v` as a member.
-    pub fn facts_of_var(&self, v: u32) -> impl Iterator<Item = &[u32]> {
+    pub(crate) fn facts_of_var(&self, v: u32) -> impl Iterator<Item = &[u32]> {
         self.data
             .facts
             .iter()
@@ -215,18 +256,32 @@ impl Env {
     }
 
     /// F14 4.1: whether the variable `v` is a member of some host fact.
-    pub fn is_member(&self, v: u32) -> bool {
+    pub(crate) fn is_member(&self, v: u32) -> bool {
         self.data.facts.iter().any(|f| f.contains(&v))
     }
 
     /// F14 9.1: the host facts by the names of their members.
-    pub fn fact_names(&self) -> Vec<Vec<String>> {
+    pub(crate) fn fact_names(&self) -> Vec<Vec<String>> {
         let d = &self.data;
         d.facts
             .iter()
             .map(|f| f.iter().map(|&v| d.vars[v as usize].clone()).collect())
             .collect()
     }
+}
+
+/// The library entries an environment has (`05-host-api.md` E.2 item 8),
+/// each list sorted.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LibraryNames {
+    /// The functions called by name: `len`.
+    pub functions: Vec<String>,
+    /// The opt-in groups that are on: `json`.
+    pub namespaces: Vec<String>,
+    /// The functions of those groups, by full name: `json.parse`.
+    pub group_functions: Vec<String>,
+    /// The methods by the kind of their receiver: `string`, `list`, `map`.
+    pub methods: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// The six check classes (`05-types.md` 17).
@@ -256,6 +311,8 @@ const RESERVED_NAMESPACES: [&str; 4] = ["json", "time", "math", "base64"];
 enum NamedDecl {
     Text(String),
     Schema(Json, SchemaOptions),
+    /// A type the host built, or the error of reading its schema.
+    Type(Result<Ty, String>),
 }
 
 /// A variable declared alone: in type text, or by a JSON Schema (F1).
@@ -296,19 +353,20 @@ impl EnvBuilder {
         self
     }
 
-    /// Turn an opt-in group on: `json`, `time`, `math` or `base64`
+    /// Turn opt-in groups on: `json`, `time`, `math` or `base64`
     /// (`f06-groups.md` 2.1). Another name is the `declare` error `bad-name`.
-    pub fn group(mut self, name: &str) -> Self {
-        self.groups.push(name.to_string());
+    pub fn groups(mut self, names: &[&str]) -> Self {
+        self.groups.extend(names.iter().map(|n| n.to_string()));
         self
     }
 
-    /// A library entry the environment does not have (`03-host.md` 3.3.1):
+    /// Library entries the environment does not have (`03-host.md` 3.3.1):
     /// a function by its name, `len`; a method by its receiver's kind, a dot
-    /// and its name, `string.repeat`, `list.map`, `map.keys`. A name that is
-    /// no entry is the `declare` error `bad-name`.
-    pub fn remove(mut self, entry: &str) -> Self {
-        self.removed.push(entry.to_string());
+    /// and its name, `string.repeat`, `list.map`, `map.keys`; a group by its
+    /// name, `core`. A name that is no entry is the `declare` error
+    /// `bad-name`.
+    pub fn without(mut self, entries: &[&str]) -> Self {
+        self.removed.extend(entries.iter().map(|e| e.to_string()));
         self
     }
 
@@ -318,7 +376,7 @@ impl EnvBuilder {
     }
 
     /// The variables, as one record type: `{input: {...}, limit: int}`.
-    pub fn vars(mut self, record: &str) -> Self {
+    pub fn var_record(mut self, record: &str) -> Self {
         self.vars = Some(record.to_string());
         self
     }
@@ -332,12 +390,36 @@ impl EnvBuilder {
         self
     }
 
-    /// A variable declared by a JSON Schema, with the options given (F1,
-    /// `f01-host-types.md` 2). Its type is M(S); the schema is not kept. An
-    /// error in the schema is the `declare` error `bad-type`.
-    pub fn var_schema(mut self, name: &str, schema: &Json, opts: SchemaOptions) -> Self {
+    /// A variable declared by a JSON Schema, given as JSON text, with the
+    /// options given (F1, `f01-host-types.md` 2). Its type is M(S); the
+    /// schema is not kept. An error in the schema is the `declare` error
+    /// `bad-type`.
+    pub fn var_schema(mut self, name: &str, schema: &str, opts: SchemaOptions) -> Self {
+        let decl = match crate::json::parse(schema) {
+            Ok(j) => VarDecl::Schema(j, opts),
+            Err(e) => VarDecl::Host(Err(format!("the schema is not JSON: {e}"))),
+        };
+        self.one_vars.push((name.to_string(), decl));
+        self
+    }
+
+    pub(crate) fn var_schema_json(
+        mut self,
+        name: &str,
+        schema: &Json,
+        opts: SchemaOptions,
+    ) -> Self {
         self.one_vars
             .push((name.to_string(), VarDecl::Schema(schema.clone(), opts)));
+        self
+    }
+
+    /// A variable of a type the host built (`05-host-api.md` E.7). An opaque
+    /// name in it that the environment does not declare is the `declare`
+    /// error `bad-type`.
+    pub fn var_type(mut self, name: &str, t: &crate::typ::Type) -> Self {
+        self.one_vars
+            .push((name.to_string(), VarDecl::Host(t.ty().cloned())));
         self
     }
 
@@ -345,11 +427,13 @@ impl EnvBuilder {
     /// type that cannot be derived, or that names an opaque type the
     /// environment does not declare, is the `declare` error `bad-type`.
     pub fn var_host<T: HostType + ?Sized>(mut self, name: &str) -> Self {
-        let t = type_of::<T>().map_err(|e| e.0);
+        let t = type_of::<T>().map(|t| t.into_ty()).map_err(|e| e.0);
         self.one_vars.push((name.to_string(), VarDecl::Host(t)));
         self
     }
 
+    /// A host function (`03-host.md` 3.5): its name, `rate` or
+    /// `geo.distance`, its signature, and its implementation.
     pub fn function(
         mut self,
         name: &str,
@@ -361,17 +445,11 @@ impl EnvBuilder {
         self
     }
 
-    /// A function with a signature and no implementation: compile fails with
-    /// `no-implementation`.
-    pub fn declare_function(mut self, name: &str, sig: &str) -> Self {
+    /// A host function with an implementation, or none: compile fails with
+    /// `no-implementation` while one has none.
+    pub(crate) fn function_decl(mut self, name: &str, sig: &str, imp: Option<HostImpl>) -> Self {
         self.functions
-            .push((name.to_string(), sig.to_string(), None));
-        self
-    }
-
-    pub fn function_impl(mut self, name: &str, sig: &str, imp: HostImpl) -> Self {
-        self.functions
-            .push((name.to_string(), sig.to_string(), Some(imp)));
+            .push((name.to_string(), sig.to_string(), imp));
         self
     }
 
@@ -383,10 +461,32 @@ impl EnvBuilder {
         self
     }
 
-    /// A named type by JSON Schema, with the options of F1 4 (F4 3.1 item 4).
-    pub fn named_type_schema(mut self, name: &str, schema: &Json, opts: SchemaOptions) -> Self {
+    /// A named type by JSON Schema, given as JSON text, with the options of
+    /// F1 4 (F4 3.1 item 4).
+    pub fn named_type_schema(mut self, name: &str, schema: &str, opts: SchemaOptions) -> Self {
+        let decl = match crate::json::parse(schema) {
+            Ok(j) => NamedDecl::Schema(j, opts),
+            Err(e) => NamedDecl::Type(Err(format!("the schema is not JSON: {e}"))),
+        };
+        self.named.push((name.to_string(), decl));
+        self
+    }
+
+    pub(crate) fn named_type_schema_json(
+        mut self,
+        name: &str,
+        schema: &Json,
+        opts: SchemaOptions,
+    ) -> Self {
         self.named
             .push((name.to_string(), NamedDecl::Schema(schema.clone(), opts)));
+        self
+    }
+
+    /// A named type of a type the host built (`05-host-api.md` E.7).
+    pub fn named_type_of(mut self, name: &str, t: &crate::typ::Type) -> Self {
+        self.named
+            .push((name.to_string(), NamedDecl::Type(t.ty().cloned())));
         self
     }
 
@@ -395,9 +495,26 @@ impl EnvBuilder {
         self
     }
 
-    /// A method of an opaque type: `"Token.owner"`, its signature without the
-    /// receiver, and its implementation.
-    pub fn method_impl(mut self, key: &str, sig: &str, imp: Option<HostImpl>) -> Self {
+    /// A method of an opaque type: the type's name, the method's name, its
+    /// signature without the receiver, and its implementation, which
+    /// receives the receiver as its first value.
+    pub fn method(
+        mut self,
+        type_name: &str,
+        name: &str,
+        sig: &str,
+        imp: impl Fn(&mut Call<'_>, &[Value<'_>]) -> Result<Data, HostError> + Send + Sync + 'static,
+    ) -> Self {
+        self.methods.push((
+            format!("{type_name}.{name}"),
+            sig.to_string(),
+            Some(Arc::new(imp)),
+        ));
+        self
+    }
+
+    /// A method by its key, `"Token.owner"`, with an implementation or none.
+    pub(crate) fn method_decl(mut self, key: &str, sig: &str, imp: Option<HostImpl>) -> Self {
         self.methods.push((key.to_string(), sig.to_string(), imp));
         self
     }
@@ -514,6 +631,7 @@ impl EnvBuilder {
                     Err(e) => Err(e.to_string()),
                 },
                 NamedDecl::Schema(schema, opts) => ty_schema(schema, *opts),
+                NamedDecl::Type(t) => t.clone(),
             };
             match ty {
                 Ok(t) => {
@@ -978,9 +1096,4 @@ pub fn check_expected(text: &str) -> Result<(), Diagnostic> {
             format!("expected result: {e}"),
         )
     })
-}
-
-/// Whether a word is reserved, for hosts that name things.
-pub fn reserved(word: &str) -> bool {
-    is_reserved(word)
 }

@@ -3,30 +3,30 @@
 //! A template is a host text with `${{ }}` parts. [`parse_template`] reads
 //! it whole first, every part's tokens included (2.3 item 3), then parses the
 //! parts in order. The program of each mode (2.5) is an ordinary
-//! [`Parsed`], which checks, compiles and runs as any program does.
+//! [`Expr`], which checks, compiles and runs as any program does.
 
 use crate::diag::Error;
-use crate::source::{Source, Span};
+use crate::source::{Range, Source, Span};
 use crate::syntax::ast::{Ast, NodeId, NodeKind, TemplatePart};
 use crate::syntax::lexer::lex_part;
 use crate::syntax::parser::parse_parts;
 use crate::syntax::token::{StrForm, Tok, Token, P};
-use crate::syntax::Parsed;
+use crate::syntax::Expr;
 
 /// How a host takes the program of a template (2.5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+pub enum TemplateMode {
     /// The value is always a string.
     String,
     /// A single template gives its expression's value as it is.
     Value,
 }
 
-impl Mode {
-    pub fn from_name(s: &str) -> Option<Mode> {
+impl TemplateMode {
+    pub(crate) fn from_name(s: &str) -> Option<TemplateMode> {
         match s {
-            "string" => Some(Mode::String),
-            "value" => Some(Mode::Value),
+            "string" => Some(TemplateMode::String),
+            "value" => Some(TemplateMode::Value),
             _ => None,
         }
     }
@@ -43,6 +43,13 @@ pub enum Segment {
     Part { expr: Span, span: Span },
 }
 
+/// A segment in code-point offsets, as the crate reads it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Seg {
+    Text { value: String, span: Range },
+    Part { expr: Range, span: Range },
+}
+
 /// A parsed template.
 #[derive(Clone, Debug)]
 pub struct Template {
@@ -50,6 +57,7 @@ pub struct Template {
     /// The parts' expressions; the program nodes are added for each mode.
     ast: Ast,
     parts: Vec<NodeId>,
+    segs: Vec<Seg>,
     segments: Vec<Segment>,
 }
 
@@ -59,18 +67,18 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
     let source = Source::raw(text);
     let s = source.chars();
     let n = s.len();
-    let mut segments: Vec<Segment> = Vec::new();
+    let mut segments: Vec<Seg> = Vec::new();
     let mut toks: Vec<Token> = Vec::new();
-    let mut part_starts: Vec<(usize, Span)> = Vec::new();
-    let mut part_spans: Vec<Span> = Vec::new();
+    let mut part_starts: Vec<(usize, Range)> = Vec::new();
+    let mut part_spans: Vec<Range> = Vec::new();
     let mut run = String::new();
     let mut run_start = 0usize;
     let mut i = 0usize;
-    let close_run = |run: &mut String, start: usize, end: usize, segs: &mut Vec<Segment>| {
+    let close_run = |run: &mut String, start: usize, end: usize, segs: &mut Vec<Seg>| {
         if end > start {
-            segs.push(Segment::Text {
+            segs.push(Seg::Text {
                 value: std::mem::take(run),
-                span: Span::new(start, end),
+                span: Range::new(start, end),
             });
         }
     };
@@ -88,11 +96,11 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
             close_run(&mut run, run_start, i, &mut segments);
             let dollar = i;
             let (mut ptoks, brace) = lex_part(&source, i + 3, dollar).map_err(Error::one)?;
-            part_starts.push((toks.len(), Span::new(dollar, dollar + 3)));
+            part_starts.push((toks.len(), Range::new(dollar, dollar + 3)));
             toks.append(&mut ptoks);
             let end = if s.get(brace + 1) == Some(&'}') {
                 // The closing delimiter `}}`.
-                let sp = Span::new(brace, brace + 2);
+                let sp = Range::new(brace, brace + 2);
                 toks.push(Token {
                     tok: Tok::Eof,
                     span: sp,
@@ -103,14 +111,14 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
             } else {
                 // A lone closing brace (2.2 item 5): `unexpected-token` where
                 // the parser reaches it.
-                let sp = Span::new(brace, brace + 1);
+                let sp = Range::new(brace, brace + 1);
                 toks.push(Token {
                     tok: Tok::Punct(P::RBrace),
                     span: sp,
                     diag: sp,
                     code: None,
                 });
-                let e = Span::at(brace + 1);
+                let e = Range::at(brace + 1);
                 toks.push(Token {
                     tok: Tok::Eof,
                     span: e,
@@ -119,10 +127,10 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
                 });
                 brace + 1
             };
-            part_spans.push(Span::new(dollar, end));
-            segments.push(Segment::Part {
-                expr: Span::at(0),
-                span: Span::new(dollar, end),
+            part_spans.push(Range::new(dollar, end));
+            segments.push(Seg::Part {
+                expr: Range::at(0),
+                span: Range::new(dollar, end),
             });
             i = end;
             run_start = i;
@@ -139,22 +147,36 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
     };
     let mut k = 0;
     for seg in &mut segments {
-        if let Segment::Part { expr, .. } = seg {
+        if let Seg::Part { expr, .. } = seg {
             *expr = ast.span(parts[k]);
             k += 1;
         }
     }
+    let public = segments
+        .iter()
+        .map(|s| match s {
+            Seg::Text { value, span } => Segment::Text {
+                value: value.clone(),
+                span: source.line_span(*span),
+            },
+            Seg::Part { expr, span } => Segment::Part {
+                expr: source.line_span(*expr),
+                span: source.line_span(*span),
+            },
+        })
+        .collect();
     Ok(Template {
         source,
         ast,
         parts,
-        segments,
+        segs: segments,
+        segments: public,
     })
 }
 
 impl Template {
     /// The template text.
-    pub fn source(&self) -> &Source {
+    pub(crate) fn source(&self) -> &Source {
         &self.source
     }
 
@@ -163,19 +185,20 @@ impl Template {
         &self.segments
     }
 
+    /// The segments in code-point offsets.
+    pub(crate) fn segs(&self) -> &[Seg] {
+        &self.segs
+    }
+
     /// Exactly one part, with no text run before or after it.
     pub fn is_single(&self) -> bool {
         self.segments.len() == 1 && matches!(self.segments[0], Segment::Part { .. })
     }
 
-    /// The number of parts.
-    pub fn parts(&self) -> usize {
-        self.parts.len()
-    }
-
-    /// A part as a program of its own: its expression alone, with spans in
-    /// the whole text. Each part is an expression of its own (2.5 item 6).
-    pub fn part_program(&self, i: usize) -> Option<Parsed> {
+    /// Part `i` as a program of its own: its expression alone, with spans
+    /// in the whole text. Each part is an expression of its own (2.5 item
+    /// 6). `None` past the last part; [`Template::segments`] counts them.
+    pub fn part(&self, i: usize) -> Option<Expr> {
         let e = *self.parts.get(i)?;
         let mut ast = self.ast.clone();
         let span = ast.span(e);
@@ -188,17 +211,23 @@ impl Template {
             0,
         );
         ast.root = root;
-        Some(Parsed {
+        Some(Expr {
             source: self.source.clone(),
             ast,
         })
     }
 
+    /// The analysis of the template's program in a mode, with its segments
+    /// (F2 3.1 item 6).
+    pub fn analyze(&self, mode: TemplateMode) -> crate::analysis::Analysis {
+        crate::analysis::analyze_template(self, mode)
+    }
+
     /// The program of the template in a mode (2.5).
-    pub fn program(&self, mode: Mode) -> Parsed {
+    pub fn program(&self, mode: TemplateMode) -> Expr {
         let mut ast = self.ast.clone();
-        let whole = Span::new(0, self.source.len());
-        let (result, span) = if mode == Mode::Value && self.is_single() {
+        let whole = Range::new(0, self.source.len());
+        let (result, span) = if mode == TemplateMode::Value && self.is_single() {
             (self.parts[0], ast.span(self.parts[0]))
         } else if self.parts.is_empty() {
             let value = self
@@ -243,7 +272,7 @@ impl Template {
             0,
         );
         ast.root = root;
-        Parsed {
+        Expr {
             source: self.source.clone(),
             ast,
         }

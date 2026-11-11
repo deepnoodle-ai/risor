@@ -9,7 +9,7 @@
 
 use super::token::{is_reserved, StrForm, Tok, Token, P};
 use crate::diag::{code, Diagnostic, Phase};
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 
 /// One open interpolation: how many `{` are open inside it, and the offset of
 /// the backtick of its template.
@@ -55,7 +55,7 @@ struct Lexer<'a> {
     /// Package F2: the part of a template being read, if any.
     part: Option<PartState>,
     /// F12: the spans of the comments met, in order.
-    comments: Vec<Span>,
+    comments: Vec<Range>,
     /// F12 3.2: the text ends at a cut. At its end, the open interpolations
     /// are recorded, innermost last (`true` for a text block's), and the
     /// lexer stops with `CUT_OPEN`.
@@ -130,7 +130,7 @@ fn lexer(src: &Source) -> Lexer<'_> {
 
 /// As `lex`, with the spans of the comments, those inside interpolations
 /// among them (F12 2.12).
-pub fn lex_comments(src: &Source) -> Result<(Vec<Token>, Vec<Span>), Diagnostic> {
+pub fn lex_comments(src: &Source) -> Result<(Vec<Token>, Vec<Range>), Diagnostic> {
     let mut lx = lexer(src);
     lx.run()?;
     Ok((lx.out, lx.comments))
@@ -141,7 +141,7 @@ pub fn lex_part_comments(
     src: &Source,
     from: usize,
     dollar: usize,
-) -> Result<(Vec<Token>, Vec<Span>), Diagnostic> {
+) -> Result<(Vec<Token>, Vec<Range>), Diagnostic> {
     let mut lx = lexer(src);
     lx.i = from;
     lx.part = Some(PartState {
@@ -158,7 +158,7 @@ pub fn lex_part_comments(
 /// interpolations are open, outermost first (`true` for a text block's).
 pub struct CutLex {
     pub tokens: Vec<Token>,
-    pub comments: Vec<Span>,
+    pub comments: Vec<Range>,
     pub error: Option<Diagnostic>,
     pub open: Vec<bool>,
 }
@@ -196,7 +196,7 @@ impl<'a> Lexer<'a> {
     /// the text at the span chooses the template. `_what` says, for a reader,
     /// what went wrong.
     fn err(&self, c: &'static str, start: usize, end: usize, _what: &str) -> Diagnostic {
-        let span = Span::new(start, end);
+        let span = Range::new(start, end);
         let msg = super::message::parse_message(self.src, c, "", span, &[]);
         Diagnostic::at(Phase::Parse, c, self.src, span, msg)
     }
@@ -206,7 +206,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, tok: Tok, start: usize, end: usize) {
-        let span = Span::new(start, end);
+        let span = Range::new(start, end);
         self.out.push(Token {
             tok,
             span,
@@ -236,7 +236,7 @@ impl<'a> Lexer<'a> {
             if self.i >= n {
                 if self.cut && !self.stack.is_empty() {
                     self.open_at_end = self.stack.iter().map(|t| t.block).collect();
-                    let span = Span::new(n, n);
+                    let span = Range::new(n, n);
                     return Err(Diagnostic::at(
                         Phase::Parse,
                         CUT_OPEN,
@@ -282,7 +282,7 @@ impl<'a> Lexer<'a> {
                     while self.i < n && self.s[self.i] != '\n' && self.s[self.i] != '\r' {
                         self.i += 1;
                     }
-                    self.comments.push(Span::new(start, self.i));
+                    self.comments.push(Range::new(start, self.i));
                 }
                 '/' if self.at(self.i + 1) == Some('*') => {
                     let start = self.i;
@@ -302,7 +302,7 @@ impl<'a> Lexer<'a> {
                         j += 1;
                     }
                     self.i = j + 2;
-                    self.comments.push(Span::new(start, self.i));
+                    self.comments.push(Range::new(start, self.i));
                 }
                 _ => break,
             }
@@ -447,7 +447,7 @@ impl<'a> Lexer<'a> {
             '&' => ("bitwise-operator", "and"),
             _ => (code::UNEXPECTED_CHARACTER, "default"),
         };
-        let span = Span::new(i, i + 1);
+        let span = Range::new(i, i + 1);
         let msg = super::message::parse_message(self.src, code, template, span, &[]);
         Diagnostic::at(Phase::Parse, code, self.src, span, msg)
     }
@@ -488,8 +488,8 @@ impl<'a> Lexer<'a> {
                 self.i = end;
                 self.out.push(Token {
                     tok: Tok::Refused,
-                    span: Span::new(start, end),
-                    diag: Span::new(start, j),
+                    span: Range::new(start, end),
+                    diag: Range::new(start, j),
                     code: None,
                 });
                 return Ok(());
@@ -517,8 +517,8 @@ impl<'a> Lexer<'a> {
         self.i = end;
         self.out.push(Token {
             tok: Tok::Refused,
-            span: Span::new(start, end),
-            diag: Span::new(start, start + 3),
+            span: Range::new(start, end),
+            diag: Range::new(start, start + 3),
             code: None,
         });
     }
@@ -745,11 +745,11 @@ impl<'a> Lexer<'a> {
         } else {
             self.push(Tok::TmplTail(text), start, end);
             if let Some(h) = self.heads.pop() {
-                self.out[h].diag = Span::new(ts, end);
+                self.out[h].diag = Range::new(ts, end);
             }
         }
         if let Some(t) = self.out.last_mut() {
-            t.diag = Span::new(start, start + 1);
+            t.diag = Range::new(start, start + 1);
         }
         Ok(())
     }
@@ -814,11 +814,11 @@ impl<'a> Lexer<'a> {
                     // `text-block-open`: the literal runs raw to the next
                     // `"""`, and nothing in it is read.
                     let end = self.next_triple(start + delim);
-                    let open = Span::new(start, start + delim);
+                    let open = Range::new(start, start + delim);
                     self.i = end;
                     self.out.push(Token {
                         tok: Tok::Refused,
-                        span: Span::new(start, end),
+                        span: Range::new(start, end),
                         diag: open,
                         code: Some((code::TEXT_BLOCK_OPEN, open)),
                     });
@@ -906,7 +906,7 @@ impl<'a> Lexer<'a> {
                 self.push(tok, ts, j + 2);
                 if !first {
                     let last = self.out.len() - 1;
-                    self.out[last].diag = Span::new(ts, ts + 1);
+                    self.out[last].diag = Range::new(ts, ts + 1);
                 }
                 self.stack.push(Interp {
                     depth: 0,
@@ -931,7 +931,7 @@ impl<'a> Lexer<'a> {
         let is_space = |c: char| c == ' ' || c == '\t';
         let mut lines: Vec<&[Seg]> = b.segs.split(|s| matches!(s, Seg::End)).collect();
         let closing = lines.pop().unwrap_or_default();
-        let mut code_at: Option<(&'static str, Span)> = None;
+        let mut code_at: Option<(&'static str, Range)> = None;
         let closing_blank = closing
             .iter()
             .all(|s| matches!(s, Seg::Ch(c, _, false) if is_space(*c)));
@@ -944,7 +944,7 @@ impl<'a> Lexer<'a> {
                 })
                 .collect()
         } else {
-            code_at = Some((code::TEXT_BLOCK_CLOSE, Span::new(close, end)));
+            code_at = Some((code::TEXT_BLOCK_CLOSE, Range::new(close, end)));
             Vec::new()
         };
         // The parts of the value: text, split at each interpolation.
@@ -966,7 +966,7 @@ impl<'a> Lexer<'a> {
                         Some(Seg::Ch(c, _, false)) if c == want => {}
                         Some(Seg::Ch(_, p, _)) | Some(Seg::Interp(p)) => {
                             if code_at.is_none() {
-                                code_at = Some((code::TEXT_BLOCK_INDENT, Span::new(*p, p + 1)));
+                                code_at = Some((code::TEXT_BLOCK_INDENT, Range::new(*p, p + 1)));
                             }
                             break;
                         }
@@ -990,7 +990,7 @@ impl<'a> Lexer<'a> {
             }
         }
         self.i = end;
-        let whole = Span::new(b.start, end);
+        let whole = Range::new(b.start, end);
         if b.toks.is_empty() {
             let form = if b.raw {
                 StrForm::RawTriple
@@ -1014,7 +1014,7 @@ impl<'a> Lexer<'a> {
         let tail = texts.next().unwrap_or_default();
         self.push(Tok::TmplTail(tail), b.tok_start, end);
         let last = self.out.len() - 1;
-        self.out[last].diag = Span::new(b.tok_start, b.tok_start + 1);
+        self.out[last].diag = Range::new(b.tok_start, b.tok_start + 1);
         let head = b.toks[0];
         self.out[head].diag = whole;
         self.out[head].code = code_at;

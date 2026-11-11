@@ -8,8 +8,8 @@
 //! RISOR_CASES=path/to/cases.json cargo test --test suite -- --nocapture
 //! ```
 
-use risor::json::Json;
-use risor::testing::{
+use crate::json::Json;
+use crate::testing::{
     case_files, load_doc, run_case, run_case_unchecked, run_file_with, Counts, Verdict,
 };
 use std::collections::BTreeMap;
@@ -37,7 +37,7 @@ fn run_names(target: &Path, checked: bool) -> (Counts, Vec<String>) {
     let files = if target.is_file() {
         vec![target.to_path_buf()]
     } else {
-        for f in risor::testing::skipped_files(target) {
+        for f in crate::testing::skipped_files(target) {
             println!(
                 "not run (an until- file of a package offered): {}",
                 f.display()
@@ -171,14 +171,14 @@ fn core_check() {
 
 #[test]
 fn catalog_cases() {
-    let lists = risor::messages::catalog().cases.clone();
+    let lists = crate::messages::catalog().cases.clone();
     let total = run_lists("suite/messages.json", lists);
     assert_eq!(total.invalid, 0, "lists were invalid");
 }
 
 #[test]
 fn library_cases() {
-    let lists: Vec<(String, Json)> = risor::library::records()
+    let lists: Vec<(String, Json)> = crate::library::records()
         .iter()
         .filter(|r| r.group.is_none() && !r.queries)
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
@@ -191,12 +191,12 @@ fn library_cases() {
 /// `library.json` are (`f06-groups.md` 3.5).
 #[test]
 fn library_groups_cases() {
-    let lists: Vec<(String, Json)> = risor::library::records()
+    let lists: Vec<(String, Json)> = crate::library::records()
         .iter()
         .filter(|r| r.group.is_some())
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
         .chain(
-            risor::library::constants()
+            crate::library::constants()
                 .iter()
                 .filter_map(|c| c.cases.clone().map(|x| (c.name.clone(), x))),
         )
@@ -252,7 +252,7 @@ fn analysis_package() {
 /// run; every other file is.
 #[test]
 fn until_files_of_offered_packages_are_not_run() {
-    use risor::testing::skipped_by_package;
+    use crate::testing::skipped_by_package;
     use std::path::Path;
     for (name, skip) in [
         ("until-f01-x.json", true),
@@ -272,13 +272,13 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 14);
+    assert_eq!(crate::PACKAGES.len(), 14);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
 #[test]
 fn check_files_of_package_directories() {
-    use risor::testing::check_only_file;
+    use crate::testing::check_only_file;
     use std::path::Path;
     assert!(check_only_file(Path::new(
         "suite/strings/strings-check.json"
@@ -312,7 +312,7 @@ fn unions_package() {
 /// `sortBy` among them (`f07-queries.md` 12).
 #[test]
 fn library_queries_cases() {
-    let lists: Vec<(String, Json)> = risor::library::records()
+    let lists: Vec<(String, Json)> = crate::library::records()
         .iter()
         .filter_map(|r| {
             if r.queries {
@@ -330,7 +330,7 @@ fn library_queries_cases() {
 /// Package F7: the cases of `suite/messages-queries.json`.
 #[test]
 fn catalog_queries_cases() {
-    let lists = risor::messages::catalog().query_cases.clone();
+    let lists = crate::messages::catalog().query_cases.clone();
     let total = run_lists("suite/messages-queries.json", lists);
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert_eq!(total.fail, 0, "cases failed");
@@ -355,7 +355,7 @@ fn errors_package() {
 /// Package F8: the cases of `suite/messages-parse.json`.
 #[test]
 fn catalog_parse_cases() {
-    let lists = risor::messages::catalog().parse_cases.clone();
+    let lists = crate::messages::catalog().parse_cases.clone();
     let total = run_lists("suite/messages-parse.json", lists);
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert_eq!(total.fail, 0, "cases failed");
@@ -367,10 +367,10 @@ fn catalog_parse_cases() {
 fn catalog_check_cases() {
     let mut total = Counts::default();
     let mut failed = Vec::new();
-    for (entry, cases) in risor::messages::catalog().check_cases.clone() {
+    for (entry, cases) in crate::messages::catalog().check_cases.clone() {
         let cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
         for c in &cases {
-            let v = risor::testing::run_case_in(c, true);
+            let v = crate::testing::run_case_in(c, true);
             if let Verdict::Fail(diffs) = &v {
                 failed.push(c.name.clone());
                 println!("  fail: {entry}: {}", c.name);
@@ -398,13 +398,13 @@ fn testing_package() {
 /// helper gives every case the verdict the runner gives it.
 #[test]
 fn the_helper_agrees_with_the_runner() {
-    let env = risor::env::Env::default();
+    let env = crate::env::Env::default();
     for dir in ["core-run", "testing", "conversion"] {
         for path in case_files(&suite_dir().join(dir)) {
-            let Ok(file) = risor::testing::load(&path, &env) else {
+            let Ok(file) = crate::testing::load(&path, &env) else {
                 continue;
             };
-            let report = file.run(&risor::host::NoVars);
+            let report = file.run(&crate::host::NoVars);
             for (c, v) in file.cases().iter().zip(report.verdicts()) {
                 assert_eq!(
                     v.label(),
@@ -425,16 +425,16 @@ fn a_stub_with_no_type_reads_the_base() {
     let text = r#"[{"name": "a", "source": "rate(\"A\") * 2",
         "functions": {"rate": {"calls": [{"args": ["A"], "result": 0.5}]}},
         "expect": {"value": 1}}]"#;
-    let plain = risor::env::Env::default();
-    assert!(risor::testing::from_text(text, false, &plain).is_err());
-    let base = risor::env::Env::builder()
+    let plain = crate::env::Env::default();
+    assert!(crate::testing::from_text(text, false, &plain).is_err());
+    let base = crate::env::Env::builder()
         .function("rate", "(code: string) => float !", |_, _| {
-            Err(risor::host::HostError("not in a test".into()))
+            Err(crate::host::HostError("not in a test".into()))
         })
         .build()
         .expect("a base");
-    let file = risor::testing::from_text(text, false, &base).expect("a valid file");
-    let report = file.run(&risor::host::NoVars);
+    let file = crate::testing::from_text(text, false, &base).expect("a valid file");
+    let report = file.run(&crate::host::NoVars);
     assert!(
         matches!(report.verdicts()[0], Verdict::Pass),
         "{}",
@@ -453,7 +453,7 @@ fn config_package() {
 /// Package F13: the records of `suite/library-math.json` (`f13-math.md` 5).
 #[test]
 fn library_math_cases() {
-    let lists: Vec<(String, Json)> = risor::library::records()
+    let lists: Vec<(String, Json)> = crate::library::records()
         .iter()
         .filter(|r| r.name.starts_with("math.") && r.name != "math.sqrt")
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))

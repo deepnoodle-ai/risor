@@ -14,9 +14,9 @@ use crate::compile::{resolve, sort_diagnostics, Program, Res};
 use crate::diag::{Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library::{self, Record};
-use crate::source::{Source, Span};
-use crate::syntax::ast::{Ast, BinaryOp, CondForm, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
-use crate::syntax::Parsed;
+use crate::source::{Range, Source};
+use crate::syntax::ast::{Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
+use crate::syntax::Expr;
 use crate::types::text::{self, Bound, ParamType, Sig};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ty::*;
@@ -25,12 +25,12 @@ use ty::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Site {
     pub class: &'static str,
-    pub span: Span,
+    pub span: Range,
 }
 
 /// The expected result of a check (`03-host.md` 3.2.3).
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expected {
+pub enum Want {
     Nothing,
     Type(Ty),
     Condition,
@@ -39,22 +39,22 @@ pub enum Expected {
 /// What a check gives: the program's type and its sites when it checks, and
 /// its diagnostics, ordered by 6.1.
 #[derive(Clone, Debug)]
-pub struct CheckResult {
+pub struct Checked {
     pub ty: Option<Ty>,
     pub sites: Vec<Site>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
 /// Read the text of an expected result: `condition` or a type.
-pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
+pub fn expected(env: &Env, text: Option<&str>) -> Result<Want, Diagnostic> {
     let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
     match text {
-        None => Ok(Expected::Nothing),
-        Some("condition") => Ok(Expected::Condition),
+        None => Ok(Want::Nothing),
+        Some("condition") => Ok(Want::Condition),
         Some(t) => {
             let parsed = text::parse_type(t).map_err(|e| bad(e.message))?;
             let ty = from_text(&parsed, &env.data().names, None).map_err(bad)?;
-            Ok(Expected::Type(ty))
+            Ok(Want::Type(ty))
         }
     }
 }
@@ -65,7 +65,7 @@ pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
 pub fn expected_schema(
     schema: &crate::json::Json,
     opts: crate::schema::SchemaOptions,
-) -> Result<Expected, Diagnostic> {
+) -> Result<Want, Diagnostic> {
     let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
     if opts.absent_is_null || opts.defaults_applied {
         return Err(bad(
@@ -73,11 +73,11 @@ pub fn expected_schema(
         ));
     }
     let ty = crate::schema::ty_schema(schema, opts).map_err(bad)?;
-    Ok(Expected::Type(ty))
+    Ok(Want::Type(ty))
 }
 
 /// Check a program against an environment (`03-host.md` 3.2.1).
-pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
+pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     let r = resolve(env, parsed);
     let mut c = Checker::new(env, parsed, &r.res);
     let t = c.program(expected);
@@ -103,13 +103,13 @@ pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
     sites.sort_by_key(|s| (s.span.start, s.span.end, s.class));
     sites.dedup();
     if diags.is_empty() {
-        CheckResult {
+        Checked {
             ty: Some(t),
             sites,
             diagnostics: diags,
         }
     } else {
-        CheckResult {
+        Checked {
             ty: None,
             sites: Vec::new(),
             diagnostics: diags,
@@ -131,12 +131,7 @@ pub struct Probe {
 
 /// Check a program for assist, recording the types of the slots where the
 /// node `probe` is checked.
-pub fn check_probe(
-    env: &Env,
-    parsed: &Parsed,
-    expected: &Expected,
-    probe: Option<NodeId>,
-) -> Probe {
+pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
     let mut c = Checker::new(env, parsed, &r.res);
     c.probe = probe;
@@ -153,9 +148,9 @@ pub fn check_probe(
 /// check reports a diagnostic (`03-host.md` 3.2.1 item 3).
 pub fn compile_checked(
     env: &Env,
-    parsed: Parsed,
-    expected: &Expected,
-) -> Result<(Program, CheckResult), Error> {
+    parsed: Expr,
+    expected: &Want,
+) -> Result<(Program, Checked), Error> {
     let result = check(env, &parsed, expected);
     if !result.diagnostics.is_empty() {
         return Err(Error {
@@ -165,6 +160,7 @@ pub fn compile_checked(
     }
     let mut p = crate::compile::compile_unchecked(env, parsed)?;
     p.sites = Some(result.sites.clone());
+    p.ty = result.ty.clone();
     Ok((p, result))
 }
 
@@ -238,7 +234,7 @@ fn whole(v: f64) -> bool {
 }
 
 impl<'a> Checker<'a> {
-    fn new(env: &'a Env, parsed: &'a Parsed, res: &'a [Res]) -> Checker<'a> {
+    fn new(env: &'a Env, parsed: &'a Expr, res: &'a [Res]) -> Checker<'a> {
         let mut uses = HashMap::new();
         let mut slots_n = 0;
         for r in res {
@@ -323,7 +319,7 @@ impl<'a> Checker<'a> {
         self.env.data().reject.iter().any(|c| c == class)
     }
 
-    fn span(&self, id: NodeId) -> Span {
+    fn span(&self, id: NodeId) -> Range {
         self.ast.span(id)
     }
 
@@ -332,7 +328,7 @@ impl<'a> Checker<'a> {
     }
 
     /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.5).
-    fn diag(&mut self, code: &'static str, span: Span, template: &str, params: &[(&str, String)]) {
+    fn diag(&mut self, code: &'static str, span: Range, template: &str, params: &[(&str, String)]) {
         let msg = crate::messages::build(code, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, code, self.src, span, msg));
@@ -341,7 +337,7 @@ impl<'a> Checker<'a> {
     fn diag_class(
         &mut self,
         code: &'static str,
-        span: Span,
+        span: Range,
         class: &'static str,
         template: &str,
         params: &[(&str, String)],
@@ -353,30 +349,30 @@ impl<'a> Checker<'a> {
     }
 
     /// The source text at a span, as visible text (`f08-errors.md` 3.2).
-    fn text(&self, span: Span) -> String {
+    fn text(&self, span: Range) -> String {
         self.src.param_text(span)
     }
 
     /// `maybe-null` at a span whose type is `t` (`f08-errors.md` 3.5 item 3).
-    fn null_at(&mut self, span: Span, t: &Ty) {
+    fn null_at(&mut self, span: Range, t: &Ty) {
         let params = [("text", self.text(span)), ("type", print(t))];
         self.diag("maybe-null", span, "default", &params);
     }
 
     /// `kind` with one type.
-    fn kind_at(&mut self, span: Span, template: &str, t: &Ty) {
+    fn kind_at(&mut self, span: Range, template: &str, t: &Ty) {
         self.diag("kind", span, template, &[("type", print(t))]);
     }
 
     /// `kind` on an operand of an operator.
-    fn kind_op(&mut self, span: Span, template: &str, op: BinaryOp, t: &Ty) {
+    fn kind_op(&mut self, span: Range, template: &str, op: BinaryOp, t: &Ty) {
         let params = [("op", op_text(op).to_string()), ("type", print(t))];
         self.diag("kind", span, template, &params);
     }
 
     /// The message of `unchecked` or `may-fail` at a rejected site
     /// (`f08-errors.md` 3.5 item 7).
-    fn site_message(&self, code: &str, class: &str, span: Span) -> String {
+    fn site_message(&self, code: &str, class: &str, span: Range) -> String {
         if code == "unchecked" {
             return crate::messages::build(code, "default", &[("text", self.text(span))]);
         }
@@ -398,7 +394,7 @@ impl<'a> Checker<'a> {
     }
 
     /// `no-field` or `maybe-absent` (template `field`) at a key of a record.
-    fn field_diag(&mut self, code: &'static str, span: Span, key: &str, t: &Ty) {
+    fn field_diag(&mut self, code: &'static str, span: Range, key: &str, t: &Ty) {
         let template = if code == "no-field" {
             "default"
         } else {
@@ -433,13 +429,13 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn site(&mut self, class: &'static str, span: Span) {
+    fn site(&mut self, class: &'static str, span: Range) {
         self.sites.push(Site { class, span });
     }
 
     /// A `dynamic` site. Returns whether the class is rejected: then the
     /// node takes the type `never` (17).
-    fn dyn_site(&mut self, span: Span) -> bool {
+    fn dyn_site(&mut self, span: Range) -> bool {
         self.site("dynamic", span);
         self.dropping == 0 && self.rejects("dynamic")
     }
@@ -894,7 +890,7 @@ impl<'a> Checker<'a> {
 
     // ---- the walk ---------------------------------------------------------------
 
-    fn program(&mut self, expected: &Expected) -> Ty {
+    fn program(&mut self, expected: &Want) -> Ty {
         let NodeKind::Program { consts, result } = self.kind(self.ast.root) else {
             return Ty::never();
         };
@@ -903,9 +899,9 @@ impl<'a> Checker<'a> {
         }
         let t = self.synth(*result);
         match expected {
-            Expected::Nothing => {}
-            Expected::Type(e) => self.fit_form(*result, e, Fit::Result),
-            Expected::Condition => self.tested(*result, &t),
+            Want::Nothing => {}
+            Want::Type(e) => self.fit_form(*result, e, Fit::Result),
+            Want::Condition => self.tested(*result, &t),
         }
         t
     }
@@ -1216,7 +1212,7 @@ impl<'a> Checker<'a> {
 
     /// The type size limit (20.7): a type over it is
     /// `check-limit` at `span`, and `never` afterwards.
-    fn size_check(&mut self, span: Span, t: Ty) -> Ty {
+    fn size_check(&mut self, span: Range, t: Ty) -> Ty {
         if t.too_big() {
             self.diag("check-limit", span, "size", &[]);
             return Ty::never();
@@ -1764,7 +1760,7 @@ impl<'a> Checker<'a> {
 
     /// Bind a pattern against a type (12.2). `bound` is the span of the
     /// value bound (12.3).
-    fn bind_pattern(&mut self, pat: NodeId, v: Ty, bound: Span) {
+    fn bind_pattern(&mut self, pat: NodeId, v: Ty, bound: Range) {
         match self.kind(pat) {
             NodeKind::NamePat { .. } => self.set_names(pat, &v),
             NodeKind::MapPat { fields, rest } => {
@@ -1996,7 +1992,7 @@ impl<'a> Checker<'a> {
                 self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
-            let key: Option<(String, Span)> = match self.kind(s) {
+            let key: Option<(String, Range)> = match self.kind(s) {
                 NodeKind::Member {
                     name, name_span, ..
                 } => Some((name.clone(), *name_span)),
@@ -2121,8 +2117,8 @@ impl<'a> Checker<'a> {
         &mut self,
         cur: Ty,
         reads: &'a [NodeId],
-        rs: Span,
-        star: Span,
+        rs: Range,
+        star: Range,
         optional: bool,
     ) -> (Ty, bool) {
         let elem = if cur.any {
@@ -2160,7 +2156,7 @@ impl<'a> Checker<'a> {
         &mut self,
         elem: Ty,
         reads: &'a [NodeId],
-        star: Option<Span>,
+        star: Option<Range>,
         skipped_elem: &mut bool,
         failed: &mut bool,
     ) -> Ty {
@@ -2295,8 +2291,8 @@ impl<'a> Checker<'a> {
         &mut self,
         cur: &Ty,
         key: &str,
-        ks: Span,
-        rs: Span,
+        ks: Range,
+        rs: Range,
         optional: bool,
         present: bool,
     ) -> Ty {
@@ -2342,7 +2338,7 @@ impl<'a> Checker<'a> {
     }
 
     /// An index read with an expression that is not a `String` node (9.2).
-    fn index(&mut self, s: NodeId, rs: Span, cur: Ty, index: NodeId, optional: bool) -> Ty {
+    fn index(&mut self, s: NodeId, rs: Range, cur: Ty, index: NodeId, optional: bool) -> Ty {
         let it = self.synth(index);
         let ss = self.span(s);
         if let Some(rec) = cur.record() {
@@ -2431,7 +2427,7 @@ impl<'a> Checker<'a> {
         x: NodeId,
         cur: Ty,
         name: &str,
-        name_span: Span,
+        name_span: Range,
         args: &'a [NodeId],
     ) -> Ty {
         // The receiver, as argument zero, is fitted with its type after the
@@ -2884,7 +2880,7 @@ impl<'a> Checker<'a> {
 
     /// A place of failure (15.1), with the template of `f08-errors.md` 3.5
     /// that `why` names.
-    fn report(&mut self, span: Span, at: &Ty, target: &Ty, mode: Fit, why: Why) {
+    fn report(&mut self, span: Range, at: &Ty, target: &Ty, mode: Fit, why: Why) {
         let code = match mode {
             Fit::Result => "result-mismatch",
             Fit::Arg => "arg-mismatch",
@@ -2997,7 +2993,7 @@ impl<'a> Checker<'a> {
         enum Ent<'b> {
             Written {
                 key: String,
-                key_span: Span,
+                key_span: Range,
                 value: NodeId,
             },
             Spread {
@@ -3349,13 +3345,5 @@ fn bind(p: &text::Type, a: &Ty, sol: &mut Solutions) {
             }
         }
         _ => {}
-    }
-}
-
-/// Which `Cond` form a node has, for callers that care.
-pub fn cond_form(ast: &Ast, id: NodeId) -> Option<CondForm> {
-    match ast.kind(id) {
-        NodeKind::Cond { form, .. } => Some(*form),
-        _ => None,
     }
 }

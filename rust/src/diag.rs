@@ -1,6 +1,6 @@
 //! Diagnostics, in the one shape of `03-host.md` 3.7.
 
-use crate::source::{LineSpan, Source, Span};
+use crate::source::{Range, Source, Span};
 use std::fmt;
 
 /// The phase of a failure (`03-host.md` 3.7.2).
@@ -94,8 +94,8 @@ pub struct Diagnostic {
     pub phase: Phase,
     pub code: &'static str,
     pub class: Option<&'static str>,
-    pub range: Option<Span>,
-    pub span: Option<LineSpan>,
+    pub(crate) range: Option<Range>,
+    pub span: Option<Span>,
     pub message: String,
     /// For `failed`: the second argument of `fail`, or null.
     pub data: Option<Box<crate::host::Data>>,
@@ -112,8 +112,8 @@ pub struct Diagnostic {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TraceEntry {
     /// The span of the call, in code-point offsets and as lines and columns.
-    pub range: Span,
-    pub span: LineSpan,
+    pub(crate) range: Range,
+    pub span: Span,
     /// The name of a `const`-bound lambda, or of a library entry as written.
     pub name: String,
     /// For a library entry, the index of the element; else `None`.
@@ -135,11 +135,11 @@ impl Diagnostic {
     }
 
     /// A diagnostic at a span of a source text.
-    pub fn at(
+    pub(crate) fn at(
         phase: Phase,
         code: &'static str,
         src: &Source,
-        range: Span,
+        range: Range,
         message: impl Into<String>,
     ) -> Diagnostic {
         Diagnostic {

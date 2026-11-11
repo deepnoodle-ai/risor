@@ -15,7 +15,7 @@ use crate::casemap;
 use crate::library::{records, Record};
 use crate::messages::json_string;
 use crate::number::{self, from_text, NumErr};
-use crate::source::Span;
+use crate::source::Range;
 use crate::types::text::{Bound, ParamType, Type};
 use crate::value::{is_whole, log2_ceil, release, size, weight, Kind, MapVal, Str, Value};
 use std::cmp::Ordering;
@@ -457,14 +457,14 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn lam(&self, args: &[Arg<'h>], i: usize, span: Span) -> R<'h, crate::syntax::ast::NodeId> {
+    fn lam(&self, args: &[Arg<'h>], i: usize, span: Range) -> R<'h, crate::syntax::ast::NodeId> {
         match args.get(i) {
             Some(Arg::Lam(l)) => Ok(*l),
             _ => Err(self.internal(span)),
         }
     }
 
-    fn unordered(&self, name: &str, k: Kind, span: Span) -> Box<Fail<'h>> {
+    fn unordered(&self, name: &str, k: Kind, span: Range) -> Box<Fail<'h>> {
         fail(
             "wrong-kind",
             "unordered",
@@ -473,7 +473,7 @@ impl<'h> Run<'h> {
         )
     }
 
-    fn element(&self, name: &str, v: &Value<'h>, span: Span) -> Box<Fail<'h>> {
+    fn element(&self, name: &str, v: &Value<'h>, span: Range) -> Box<Fail<'h>> {
         fail(
             "wrong-kind",
             "element",
@@ -482,7 +482,7 @@ impl<'h> Run<'h> {
         )
     }
 
-    pub(super) fn entry_range(&self, name: &str, span: Span) -> Box<Fail<'h>> {
+    pub(super) fn entry_range(&self, name: &str, span: Range) -> Box<Fail<'h>> {
         fail(
             "number-range",
             "entry",
@@ -503,7 +503,7 @@ impl<'h> Run<'h> {
     /// parameter bound `ordered` every failure of kind is `unordered` (`04-library.md` 2.2).
     /// The tests are read from the record's plan ([`plan`]), built once.
     #[inline]
-    fn arg_tests(&self, idx: usize, args: &[Arg<'h>], span: Span) -> R<'h, ()> {
+    fn arg_tests(&self, idx: usize, args: &[Arg<'h>], span: Range) -> R<'h, ()> {
         let plan = &plans()[idx];
         let mut ordered_first: Option<Kind> = None;
         for (i, a) in args.iter().enumerate() {
@@ -564,7 +564,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn arg_kind(&self, idx: usize, v: &Value<'h>, span: Span) -> Box<Fail<'h>> {
+    fn arg_kind(&self, idx: usize, v: &Value<'h>, span: Range) -> Box<Fail<'h>> {
         fail(
             "wrong-kind",
             "argument",
@@ -577,7 +577,7 @@ impl<'h> Run<'h> {
         &mut self,
         idx: usize,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let rec = &records()[idx];
         let name = rec.name.as_str();
@@ -746,7 +746,7 @@ impl<'h> Run<'h> {
         idx: usize,
         recv: Value<'h>,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
         let rec = &records()[idx];
@@ -768,7 +768,7 @@ impl<'h> Run<'h> {
         rec: &Record,
         recv: Value<'h>,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         // Nothing is copied before it is charged: the receiver and the
         // arguments are read where they are.
@@ -931,7 +931,7 @@ impl<'h> Run<'h> {
         &mut self,
         recv: Value<'h>,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
         let es = recv.entries();
@@ -957,7 +957,7 @@ impl<'h> Run<'h> {
         rec: &Record,
         recv: Value<'h>,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
         let name = rec.name.as_str();
@@ -1059,7 +1059,7 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn map_method(&mut self, rec: &Record, recv: Value<'h>, _span: Span) -> R<'h, Value<'h>> {
+    fn map_method(&mut self, rec: &Record, recv: Value<'h>, _span: Range) -> R<'h, Value<'h>> {
         let es = recv.entries();
         let n = es.len() as u64;
         let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
@@ -1096,7 +1096,7 @@ impl<'h> Run<'h> {
         rec: &Record,
         recv: Value<'h>,
         args: &[Arg<'h>],
-        span: Span,
+        span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
         let name = rec.name.as_str();
@@ -1494,7 +1494,7 @@ impl<'h> Run<'h> {
 
     /// The elements of a list under the ordered test of 3.6, each read as it
     /// is tested. A failed test charges by 4.5, then fails.
-    fn ordered_scan(&mut self, name: &str, recv: &Value<'h>, span: Span) -> R<'h, Vec<Value<'h>>> {
+    fn ordered_scan(&mut self, name: &str, recv: &Value<'h>, span: Range) -> R<'h, Vec<Value<'h>>> {
         let n = recv.len().unwrap_or(0);
         let mut xs: Vec<Value<'h>> = Vec::with_capacity(n);
         let mut first: Option<Kind> = None;

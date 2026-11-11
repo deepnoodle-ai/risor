@@ -1,12 +1,12 @@
 //! Package F12: completion and hover beyond the suite's cases.
 
-use risor::assist::{complete, hover};
-use risor::check::Expected;
-use risor::Env;
+use crate::assist::{complete, hover};
+use crate::check::Want as Expected;
+use crate::Env;
 
 fn env() -> Env {
     Env::builder()
-        .vars("{user: {name: string}, n: int}")
+        .var_record("{user: {name: string}, n: int}")
         .build()
         .unwrap()
 }
@@ -55,9 +55,9 @@ fn a_long_text_is_helped() {
 /// check that assist reads.
 #[test]
 fn a_parameter_takes_the_first_check() {
-    use risor::compile::Res;
-    use risor::syntax::ast::NodeKind;
-    let p = risor::parse("const f = x => x;\n[f(1), f(\"a\")]").unwrap();
+    use crate::compile::Res;
+    use crate::syntax::ast::NodeKind;
+    let p = crate::parse("const f = x => x;\n[f(1), f(\"a\")]").unwrap();
     // The `x` of the body: the second `Ident` named x.
     let id = p
         .ast
@@ -65,14 +65,14 @@ fn a_parameter_takes_the_first_check() {
         .iter()
         .enumerate()
         .filter(|(_, n)| matches!(&n.kind, NodeKind::Ident { name } if name == "x"))
-        .map(|(i, _)| risor::syntax::ast::NodeId(i as u32))
+        .map(|(i, _)| crate::syntax::ast::NodeId(i as u32))
         .next_back()
         .unwrap();
-    let pr = risor::check::check_probe(&env(), &p, &Expected::Nothing, Some(id));
+    let pr = crate::check::check_probe(&env(), &p, &Expected::Nothing, Some(id));
     let Res::Slot(s) = pr.res[id.index()] else {
         panic!("x reads a slot");
     };
     let at = pr.at.expect("the check reached x");
-    assert_eq!(risor::check::ty::print(&at[s as usize]), "int");
-    assert_eq!(risor::check::ty::print(&pr.slots[s as usize]), "\"a\"");
+    assert_eq!(crate::check::ty::print(&at[s as usize]), "int");
+    assert_eq!(crate::check::ty::print(&pr.slots[s as usize]), "\"a\"");
 }

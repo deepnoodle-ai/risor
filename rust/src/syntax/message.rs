@@ -1,12 +1,12 @@
 //! The messages of `parse` diagnostics (`f08-errors.md` 3.2 to 3.4).
 
 use crate::messages::{build, char_param};
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 
 /// The rendering of a parameter of kind `token` (`f08-errors.md` 3.2): the
 /// source text at the span, as visible text; the empty span at the end of
 /// input as `end of input`; a span from `not` to the end of `in` as `not in`.
-pub(crate) fn token_text(src: &Source, span: Span) -> String {
+pub(crate) fn token_text(src: &Source, span: Range) -> String {
     if span.start >= span.end {
         return "end of input".to_string();
     }
@@ -26,7 +26,7 @@ pub(crate) fn token_text(src: &Source, span: Span) -> String {
 
 /// The template of a code that the text at the span decides (3.4), when
 /// the place that reports it does not name one.
-fn auto_template(src: &Source, code: &str, span: Span) -> &'static str {
+fn auto_template(src: &Source, code: &str, span: Range) -> &'static str {
     let text = src.slice(span);
     match code {
         "unterminated-string" => {
@@ -79,7 +79,7 @@ pub(crate) fn parse_message(
     src: &Source,
     code: &str,
     template: &str,
-    span: Span,
+    span: Range,
     extra: &[(&str, String)],
 ) -> String {
     let template = if template.is_empty() {

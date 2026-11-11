@@ -17,7 +17,7 @@ use crate::env::Limits;
 use crate::host::{Data, Vars};
 use crate::messages::{self, json_string, push_json_char};
 use crate::number::{self, NumErr};
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 use crate::syntax::ast::{
     AsForm, Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, SpannedName, TemplatePart, UnaryOp,
 };
@@ -152,7 +152,7 @@ pub struct Fail<'h> {
     pub code: &'static str,
     pub template: &'static str,
     pub params: Vec<(&'static str, String)>,
-    pub span: Option<Span>,
+    pub span: Option<Range>,
     /// The message of `failed` and `function-error`, which no template words.
     pub text: Option<String>,
     pub data: Option<Value<'h>>,
@@ -162,7 +162,7 @@ pub struct Fail<'h> {
     pub path: Option<Vec<crate::diag::PathStep>>,
     /// The calls in progress, the innermost first: each call adds its entry
     /// as the failure leaves it (`f08-errors.md` 4). Built only on failure.
-    pub trace: Vec<(Span, String, Option<usize>)>,
+    pub trace: Vec<(Range, String, Option<usize>)>,
 }
 
 impl Fail<'_> {
@@ -233,11 +233,11 @@ pub struct Outcome<'h> {
 
 impl Program {
     /// Run the program with variables lent for the run.
-    pub fn run<'h>(&'h self, vars: &'h dyn Vars) -> Outcome<'h> {
-        self.run_with(vars, RunOptions::default())
+    pub(crate) fn outcome<'h>(&'h self, vars: &'h dyn Vars) -> Outcome<'h> {
+        self.outcome_with(vars, RunOptions::default())
     }
 
-    pub fn run_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
+    pub(crate) fn outcome_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
         let limits = self.env.data().limits;
         let nvars = self.vars_read;
         let n = self.slots + nvars;
@@ -384,7 +384,7 @@ fn op_text(op: BinaryOp) -> &'static str {
 fn fail<'h>(
     code: &'static str,
     template: &'static str,
-    span: Span,
+    span: Range,
     params: Vec<(&'static str, String)>,
 ) -> Box<Fail<'h>> {
     Box::new(Fail {
@@ -405,7 +405,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn limit(&self, code: &'static str, span: Option<Span>) -> Box<Fail<'h>> {
+    fn limit(&self, code: &'static str, span: Option<Range>) -> Box<Fail<'h>> {
         let l = &self.m.limits;
         let limit = match code {
             STEPS_EXCEEDED => l.steps.map(|n| n as f64),
@@ -439,7 +439,7 @@ impl<'h> Run<'h> {
     }
 
     /// The depth test of 8.4 item 7, for adding `n`.
-    fn depth_test(&self, n: u32, span: Span) -> R<'h, ()> {
+    fn depth_test(&self, n: u32, span: Range) -> R<'h, ()> {
         if self.m.depth + n > self.m.limits.depth {
             return Err(self.limit(DEPTH_EXCEEDED, Some(span)));
         }
@@ -448,7 +448,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn host_number(&self, span: Option<Span>) -> Box<Fail<'h>> {
+    fn host_number(&self, span: Option<Range>) -> Box<Fail<'h>> {
         Box::new(Fail {
             code: "number-range",
             template: "host",
@@ -463,7 +463,7 @@ impl<'h> Run<'h> {
     }
 
     /// Read a value: a host number that cannot enter fails here.
-    fn read(&self, v: Value<'h>, span: Span) -> R<'h, Value<'h>> {
+    fn read(&self, v: Value<'h>, span: Range) -> R<'h, Value<'h>> {
         match v {
             Value::BadNum => Err(self.host_number(Some(span))),
             v => Ok(v),
@@ -472,7 +472,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn internal(&self, span: Span) -> Box<Fail<'h>> {
+    fn internal(&self, span: Range) -> Box<Fail<'h>> {
         fail("internal-error", "default", span, Vec::new())
     }
 
@@ -559,7 +559,7 @@ impl<'h> Run<'h> {
     }
 
     /// F4 5.1 and 5.2: `x as T` and `x is T`, by the walk of 4.
-    fn as_test(&mut self, id: NodeId, form: AsForm, x: NodeId, span: Span) -> R<'h, Value<'h>> {
+    fn as_test(&mut self, id: NodeId, form: AsForm, x: NodeId, span: Range) -> R<'h, Value<'h>> {
         let v = self.eval(x)?;
         let Res::As(Some(t)) = self.res(id) else {
             return Err(self.internal(span));
@@ -649,7 +649,7 @@ impl<'h> Run<'h> {
 
     // ---- literals -------------------------------------------------------
 
-    fn template(&mut self, span: Span, parts: &'h [TemplatePart]) -> R<'h, Value<'h>> {
+    fn template(&mut self, span: Range, parts: &'h [TemplatePart]) -> R<'h, Value<'h>> {
         let mut out = Rendering::new(self.take_scratch());
         let mut vals = std::mem::take(&mut self.parts_buf);
         for p in parts {
@@ -689,7 +689,7 @@ impl<'h> Run<'h> {
         out: Rendering,
         mut vals: Vec<Value<'h>>,
         texts: impl Iterator<Item = Option<&'a str>>,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let sz = out.weight() / 64;
         self.charge(1 + sz)?;
@@ -736,7 +736,7 @@ impl<'h> Run<'h> {
 
     /// The rendering of a value, and its walk (`02-evaluation.md` 5.5). The
     /// second rendering of `Run::rendered` charges nothing.
-    fn render(&mut self, v: &Value<'h>, out: &mut Rendering, top: bool, span: Span) -> R<'h, ()> {
+    fn render(&mut self, v: &Value<'h>, out: &mut Rendering, top: bool, span: Range) -> R<'h, ()> {
         match v {
             Value::Str(s) => {
                 if top {
@@ -968,7 +968,7 @@ impl<'h> Run<'h> {
 
     // ---- operators ------------------------------------------------------
 
-    fn unary(&mut self, op: UnaryOp, v: Value<'h>, span: Span) -> R<'h, Value<'h>> {
+    fn unary(&mut self, op: UnaryOp, v: Value<'h>, span: Range) -> R<'h, Value<'h>> {
         match op {
             UnaryOp::Not => {
                 self.charge(1)?;
@@ -1061,7 +1061,7 @@ impl<'h> Run<'h> {
         op: BinaryOp,
         v: Value<'h>,
         r: Value<'h>,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         // Two numbers: the charge of 1, then the operation, as `binop` does
         // it.
@@ -1099,7 +1099,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn operands(&self, op: BinaryOp, a: &Value<'h>, b: &Value<'h>, span: Span) -> Box<Fail<'h>> {
+    fn operands(&self, op: BinaryOp, a: &Value<'h>, b: &Value<'h>, span: Range) -> Box<Fail<'h>> {
         if a.is_null() || b.is_null() {
             return fail(
                 "null-operand",
@@ -1120,7 +1120,7 @@ impl<'h> Run<'h> {
         )
     }
 
-    fn arith(&self, op: BinaryOp, r: Result<f64, NumErr>, span: Span) -> R<'h, Value<'h>> {
+    fn arith(&self, op: BinaryOp, r: Result<f64, NumErr>, span: Range) -> R<'h, Value<'h>> {
         match r {
             Ok(x) => Ok(Value::Num(x)),
             Err(NumErr::Range) => Err(fail(
@@ -1142,7 +1142,7 @@ impl<'h> Run<'h> {
     }
 
     #[inline(never)]
-    fn binop(&mut self, op: BinaryOp, a: Value<'h>, b: Value<'h>, span: Span) -> R<'h, Value<'h>> {
+    fn binop(&mut self, op: BinaryOp, a: Value<'h>, b: Value<'h>, span: Range) -> R<'h, Value<'h>> {
         match op {
             BinaryOp::Eq | BinaryOp::Ne => {
                 let r = self.eq(&a, &b, span)?;
@@ -1225,7 +1225,7 @@ impl<'h> Run<'h> {
 
     /// `==` with the charges of 5.3. A comparison of two lists of one length
     /// or two maps of one size is a walk.
-    fn eq(&mut self, a: &Value<'h>, b: &Value<'h>, span: Span) -> R<'h, bool> {
+    fn eq(&mut self, a: &Value<'h>, b: &Value<'h>, span: Range) -> R<'h, bool> {
         let (ka, kb) = (a.kind(), b.kind());
         if ka != kb {
             self.charge(1)?;
@@ -1294,7 +1294,7 @@ impl<'h> Run<'h> {
 
     /// `x in [a, b, ...]` with no spread: the items evaluated, the list's
     /// units charged, then each element tested, as for the list built.
-    fn in_literal(&mut self, x: &Value<'h>, items: &[code::Code], span: Span) -> R<'h, bool> {
+    fn in_literal(&mut self, x: &Value<'h>, items: &[code::Code], span: Range) -> R<'h, bool> {
         let mut vals = std::mem::take(&mut self.in_buf);
         vals.clear();
         let found = self.in_items(x, items, &mut vals, span);
@@ -1308,7 +1308,7 @@ impl<'h> Run<'h> {
         x: &Value<'h>,
         items: &[code::Code],
         vals: &mut Vec<Value<'h>>,
-        span: Span,
+        span: Range,
     ) -> R<'h, bool> {
         for i in items {
             vals.push(i(self)?);
@@ -1348,7 +1348,7 @@ impl<'h> Run<'h> {
 
     /// One element of a list tested by `in`: 1 step, then the comparison.
     #[inline]
-    fn in_elem(&mut self, x: &Value<'h>, e: &Value<'h>, span: Span) -> R<'h, bool> {
+    fn in_elem(&mut self, x: &Value<'h>, e: &Value<'h>, span: Range) -> R<'h, bool> {
         self.charge(1)?;
         Ok(match (x, e) {
             (Value::Str(a), Value::Str(b)) => {
@@ -1367,7 +1367,7 @@ impl<'h> Run<'h> {
     }
 
     /// `x in y` (`01-language.md` 6.8; `02-evaluation.md` 5.3).
-    fn contains(&mut self, op: BinaryOp, x: &Value<'h>, y: &Value<'h>, span: Span) -> R<'h, bool> {
+    fn contains(&mut self, op: BinaryOp, x: &Value<'h>, y: &Value<'h>, span: Range) -> R<'h, bool> {
         let opp = || vec![("op", op_text(op).to_string())];
         match y.kind() {
             Kind::Null => Err(fail("null-operand", "operand", span, opp())),
@@ -1454,7 +1454,7 @@ impl<'h> Run<'h> {
     /// the whole chain is null.
     /// The test of a star's receiver (F7 3.1): `None` for a null receiver of
     /// `?.[*]`; else the list.
-    fn star_receiver(&self, v: &Value<'h>, optional: bool, star: Span) -> R<'h, Option<()>> {
+    fn star_receiver(&self, v: &Value<'h>, optional: bool, star: Range) -> R<'h, Option<()>> {
         match v.kind() {
             crate::value::Kind::Null if optional => Ok(None),
             crate::value::Kind::Null => Err(fail("null-operand", "star", star, vec![])),
@@ -1520,7 +1520,7 @@ impl<'h> Run<'h> {
         v: Value<'h>,
         name: &str,
         optional: bool,
-        span: Span,
+        span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         match &v {
             Value::Map(_) | Value::HMap(_) => {}
@@ -1552,7 +1552,7 @@ impl<'h> Run<'h> {
 
     #[cold]
     #[inline(never)]
-    fn member_fail(&self, v: &Value<'h>, name: &str, span: Span) -> Box<Fail<'h>> {
+    fn member_fail(&self, v: &Value<'h>, name: &str, span: Range) -> Box<Fail<'h>> {
         if v.is_null() {
             return fail(
                 "null-operand",
@@ -1786,7 +1786,7 @@ impl<'h> Run<'h> {
         recv: Value<'h>,
         name: &'h SpannedName,
         args: &'h [NodeId],
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let kind = recv.kind();
         let nm = || ("name", name.name.clone());
@@ -1928,7 +1928,7 @@ impl<'h> Run<'h> {
         imp: Option<crate::env::HostImpl>,
         vals: &[Value<'h>],
         name: &str,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let Some(imp) = imp else {
             return Err(self.internal(span));
@@ -1966,7 +1966,7 @@ impl<'h> Run<'h> {
         l: NodeId,
         args: &mut [Value<'h>],
         measure: u32,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         self.invoke(l, args, measure, span).map_err(|mut f| {
             f.trace.push((span, entry.to_string(), Some(index)));
@@ -2001,7 +2001,7 @@ impl<'h> Run<'h> {
         a: Value<'h>,
         b: Value<'h>,
         measure: u32,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
             let mut args = [a, b];
@@ -2039,7 +2039,7 @@ impl<'h> Run<'h> {
         index: usize,
         args: [Value<'h>; 3],
         measure: u32,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
             let mut args = args;
@@ -2073,7 +2073,7 @@ impl<'h> Run<'h> {
 
     /// The depth test of a call, and the depth it adds (`invoke`).
     #[inline]
-    fn enter(&mut self, measure: u32, span: Span) -> R<'h, ()> {
+    fn enter(&mut self, measure: u32, span: Range) -> R<'h, ()> {
         self.depth_test(measure, span)?;
         self.m.depth += measure;
         Ok(())
@@ -2114,7 +2114,7 @@ impl<'h> Run<'h> {
         l: NodeId,
         args: &mut [Value<'h>],
         measure: u32,
-        span: Span,
+        span: Range,
     ) -> R<'h, Value<'h>> {
         self.depth_test(measure, span)?;
         self.m.depth += measure;
@@ -2284,7 +2284,7 @@ impl<'h> Run<'h> {
 
     // ---- match and try ----------------------------------------------------
 
-    fn match_arm(&mut self, span: Span, subject: NodeId, arms: &'h [NodeId]) -> R<'h, NodeId> {
+    fn match_arm(&mut self, span: Range, subject: NodeId, arms: &'h [NodeId]) -> R<'h, NodeId> {
         let s = self.eval(subject)?;
         for &a in arms {
             let NodeKind::Arm { literals, result } = self.ast.kind(a) else {
@@ -2672,7 +2672,7 @@ impl Program {
     /// Whether a failure at a node's span is at a site of a class: the site is
     /// on the failing node, or on its operand, receiver, index or argument
     /// (`05-types.md` 18.3). This reach is for `dynamic` sites.
-    fn at_site(&self, sites: &[crate::check::Site], class: &str, span: Span) -> bool {
+    fn at_site(&self, sites: &[crate::check::Site], class: &str, span: Range) -> bool {
         let ast = &self.parsed.ast;
         let mut spans = vec![span];
         for (i, n) in ast.nodes.iter().enumerate() {

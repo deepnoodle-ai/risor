@@ -13,9 +13,9 @@ use crate::check::ty::{Ty, TypeNames};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library;
-use crate::source::Span;
+use crate::source::Range;
 use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
-use crate::syntax::Parsed;
+use crate::syntax::Expr;
 use std::collections::{HashMap, HashSet};
 
 /// What compile found for a node.
@@ -56,16 +56,18 @@ pub enum Res {
 /// A compiled program. It does not change, and is safe to share between
 /// threads and to run many times.
 pub struct Program {
-    pub parsed: Parsed,
-    pub env: Env,
-    pub res: Vec<Res>,
+    pub(crate) parsed: Expr,
+    pub(crate) env: Env,
+    pub(crate) res: Vec<Res>,
     /// For each `Call` and `MethodCall`: 1 plus its nesting depth within the
     /// body that holds it (8.4).
-    pub measure: Vec<u16>,
-    pub slots: usize,
+    pub(crate) measure: Vec<u16>,
+    pub(crate) slots: usize,
     /// For a program compiled with a check: its sites, which decide the
     /// class of a run failure (`05-types.md` 18.5).
-    pub sites: Option<Vec<crate::check::Site>>,
+    pub(crate) sites: Option<Vec<crate::check::Site>>,
+    /// For a program compiled with a check: its type.
+    pub(crate) ty: Option<Ty>,
     /// The compiled form of the hot node kinds (`eval/code.rs`).
     pub(crate) code: Vec<Option<crate::eval::code::Code>>,
     /// The slots of each lambda's parameters, when all are plain names.
@@ -84,17 +86,9 @@ enum Bind {
     Lambda(NodeId),
 }
 
-/// Compile a parsed program against an environment, with a check: the
-/// default (`03-host.md` 3.2.1). It fails exactly when
-/// the check reports a diagnostic. `compile_unchecked` is the explicit
-/// option without the type rules, and `check::check` the check alone.
-pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
-    crate::check::compile_checked(env, parsed, &crate::check::Expected::Nothing).map(|(p, _)| p)
-}
-
 /// Compile with the static rules and no type rules (`03-host.md` 3.2.1
 /// item 4). A run reports classes by the column "not checked".
-pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
+pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Error> {
     let missing: Vec<Diagnostic> = env
         .data()
         .functions
@@ -156,6 +150,7 @@ pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
         measure: r.measure,
         slots: r.slots,
         sites: None,
+        ty: None,
     })
 }
 
@@ -170,7 +165,7 @@ pub struct Resolution {
 }
 
 /// Resolve every name of a program, and apply the static rules.
-pub fn resolve(env: &Env, parsed: &Parsed) -> Resolution {
+pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
     let n = parsed.ast.nodes.len();
     let mut vars = HashMap::new();
     for (i, v) in env.data().vars.iter().enumerate() {
@@ -216,7 +211,7 @@ pub fn sort_diagnostics(d: &mut Vec<Diagnostic>) {
 
 struct Resolver<'a> {
     env: &'a Env,
-    p: &'a Parsed,
+    p: &'a Expr,
     scopes: Vec<HashMap<String, Bind>>,
     res: Vec<Res>,
     measure: Vec<u16>,
@@ -252,26 +247,26 @@ impl Resolver<'_> {
         self.p.ast.kind(id)
     }
 
-    fn span(&self, id: NodeId) -> Span {
+    fn span(&self, id: NodeId) -> Range {
         self.p.ast.span(id)
     }
 
     /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.5).
-    fn diag(&mut self, c: &'static str, span: Span, template: &str, params: &[(&str, String)]) {
+    fn diag(&mut self, c: &'static str, span: Range, template: &str, params: &[(&str, String)]) {
         let msg = crate::messages::build(c, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
     }
 
     /// The source text at a span, as visible text (`f08-errors.md` 3.2).
-    fn text(&self, span: Span) -> String {
+    fn text(&self, span: Range) -> String {
         self.p.source.param_text(span)
     }
 
     /// `arity` (`f08-errors.md` 3.5 item 5).
     fn arity(
         &mut self,
-        span: Span,
+        span: Range,
         name: &str,
         count: usize,
         required: usize,
@@ -407,7 +402,7 @@ impl Resolver<'_> {
     }
 
     /// Bind a name in the innermost scope (22.7).
-    fn bind(&mut self, name: &str, span: Span, b: Option<Bind>) -> Option<u32> {
+    fn bind(&mut self, name: &str, span: Range, b: Option<Bind>) -> Option<u32> {
         if name == "_" {
             return None;
         }
@@ -788,11 +783,11 @@ impl Resolver<'_> {
     fn call(
         &mut self,
         id: NodeId,
-        ns: Option<(String, Span)>,
+        ns: Option<(String, Range)>,
         name: &str,
-        name_span: Span,
+        name_span: Range,
         args: &[NodeId],
-        call_span: Span,
+        call_span: Range,
     ) {
         self.set_measure(id);
         let full = match &ns {
@@ -980,7 +975,7 @@ pub(crate) fn lit_key(l: &Lit) -> LitKey {
 }
 
 /// Every type name of a program type, with its span, in order.
-fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Span)) {
+fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Range)) {
     for a in &pt.alts {
         match &a.prim {
             PPrim::Name(n, s) => f(n, *s),

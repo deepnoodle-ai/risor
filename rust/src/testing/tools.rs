@@ -4,7 +4,7 @@ use super::case::{Case, Expect};
 use super::run::{case_env, compare_failure_pub, form, outcome_line, Difference, Verdict};
 use crate::diag::{Diagnostic, Phase};
 use crate::json::{self, Json};
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 
 /// The kind of a case of F12.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,10 +279,10 @@ fn check_hover(w: &Json) -> Result<(), String> {
     Ok(())
 }
 
-fn span_json(src: &Source, s: Span) -> Json {
+fn span_json(src: &Source, s: Range) -> Json {
     Json::Arr(
         src.line_span(s)
-            .0
+            .arr()
             .iter()
             .map(|&x| Json::Num(x as f64))
             .collect(),
@@ -424,7 +424,7 @@ fn failure_text(phase: Phase, diags: &[Diagnostic]) -> String {
     let d = diags.first();
     let span = d
         .and_then(|d| d.span)
-        .map(|s| format!("{:?}", s.0))
+        .map(|s| format!("{:?}", s.arr()))
         .unwrap_or_default();
     format!(
         "{{\"phase\":\"{phase}\",\"code\":\"{}\",\"span\":{span}}}",
@@ -575,7 +575,7 @@ pub(super) fn outcome(case: &Case, tc: &ToolCase) -> String {
                         "span".into(),
                         match d.span {
                             Some(s) => {
-                                Json::Arr(s.0.iter().map(|&x| Json::Num(x as f64)).collect())
+                                Json::Arr(s.arr().iter().map(|&x| Json::Num(x as f64)).collect())
                             }
                             None => Json::Null,
                         },

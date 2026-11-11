@@ -2544,6 +2544,13 @@ function with no implementation, for a check-only environment, comes from a
 description (`fromDescription`); there is no second name for it. Go's zero
 `Impl` is not part of the surface.
 
+`fromDescription` reports an error of a declaration (`bad-type`, `name-clash`
+and the rest of F1 5.4 item 2) as an `Error` (`RisorError`), like `build`.
+Input that is not a description at all is refused with the binding's plain
+error, which carries no diagnostic code (F1 5.4 item 2): Go a plain `error`,
+TypeScript a plain `Error`, Rust a `DescriptionError`. No binding invents a
+code for it.
+
 ### E.4 Programs
 
 | Concept | Canonical name | Go | TypeScript | Rust |

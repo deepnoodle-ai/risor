@@ -6,11 +6,12 @@
 //! walks the tree with an explicit stack, so that a chain or an operator
 //! chain of any length costs it no host stack (3.1 item 5).
 
+use crate::host::Data;
 use crate::json::Json;
-use crate::source::{Source, Span};
+use crate::source::{Range, Span};
 use crate::syntax::ast::{EntryKey, NodeId, NodeKind, TemplatePart, UnaryOp};
-use crate::syntax::Parsed;
-use crate::template::{Mode, Segment, Template};
+use crate::syntax::Expr;
+use crate::template::{Segment, Template, TemplateMode};
 
 /// A step of a path (3.5). Package F7 adds a star step beside the key.
 #[derive(Clone, Debug, PartialEq)]
@@ -30,37 +31,47 @@ pub struct Ref {
 
 /// A call of a free function name, or `n.m(...)` with a free `n` (3.6).
 #[derive(Clone, Debug, PartialEq)]
-pub struct CallRef {
+pub(crate) struct CallRef {
     pub name: String,
     /// The receiver's name for a call of the form `n.m(...)`; `None` for a
     /// `Call`.
     pub namespace: Option<String>,
-    pub span: Span,
+    pub span: Range,
     /// The span of each argument.
-    pub args: Vec<Span>,
-    /// The node of each argument, for [`Report::arg_program`].
-    pub arg_nodes: Vec<NodeId>,
+    pub args: Vec<Range>,
+    /// The node of each argument, for [`CallSite::args`].
+    pub(crate) arg_nodes: Vec<NodeId>,
     /// The call stands inside a `Lambda`: in its body or a default.
     pub lambda: bool,
 }
 
 /// The report of an analysis (3.3).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Report {
+#[derive(Clone, Debug)]
+pub struct Analysis {
     /// The names of the reads, each once, in code point order.
     pub names: Vec<String>,
     /// One reference for each read, by the start of the read.
     pub refs: Vec<Ref>,
     /// The calls, by the start of their span.
-    pub calls: Vec<CallRef>,
+    pub calls: Vec<CallSite>,
     /// The value of the program when it is a literal (3.7).
-    pub literal: Option<Json>,
+    pub literal: Option<Data>,
     /// A template's segments; `None` for a program.
     pub segments: Option<Vec<Segment>>,
 }
 
+impl PartialEq for Analysis {
+    fn eq(&self, o: &Analysis) -> bool {
+        self.names == o.names
+            && self.refs == o.refs
+            && self.calls == o.calls
+            && self.literal == o.literal
+            && self.segments == o.segments
+    }
+}
+
 /// The analysis of a parsed program (3.1).
-pub fn analyze(p: &Parsed) -> Report {
+pub(crate) fn analyze(p: &Expr) -> Analysis {
     let mut w = Walker {
         p,
         scopes: Vec::new(),
@@ -72,21 +83,96 @@ pub fn analyze(p: &Parsed) -> Report {
     refs.sort_by_key(|r| r.span.start);
     let mut calls = w.calls;
     calls.sort_by_key(|c| c.span.start);
+    let calls = calls.into_iter().map(|c| call_site(p, c)).collect();
     let mut names: Vec<String> = refs.iter().map(|r| r.name.clone()).collect();
     names.sort();
     names.dedup();
-    Report {
+    Analysis {
         names,
         refs,
         calls,
-        literal: literal_of(p),
+        literal: literal_of(p).map(|j| json_data(&j)),
         segments: None,
+    }
+}
+
+/// The record of a call in an analysis (`05-host-api.md` E.2 item 7).
+#[derive(Clone, Debug)]
+pub struct CallSite {
+    /// The name as called: `lookup`, or `xs.map` for `n.m(...)`.
+    pub name: String,
+    /// The receiver's name for a call of the form `n.m(...)`; `None` for a
+    /// call by name.
+    pub namespace: Option<String>,
+    pub span: Span,
+    /// Each argument as a program of its own text, with spans in the whole
+    /// text (3.6 item 5); `None` for a lambda. An argument that reads a name
+    /// the program binds does not compile alone.
+    pub args: Vec<Option<Expr>>,
+    /// The span of each argument.
+    pub arg_spans: Vec<Span>,
+    /// The call stands inside a lambda: in its body or a default.
+    pub in_lambda: bool,
+}
+
+impl PartialEq for CallSite {
+    fn eq(&self, o: &CallSite) -> bool {
+        self.name == o.name
+            && self.namespace == o.namespace
+            && self.span == o.span
+            && self.arg_spans == o.arg_spans
+            && self.in_lambda == o.in_lambda
+            && self
+                .args
+                .iter()
+                .map(|a| a.as_ref().map(Expr::text))
+                .eq(o.args.iter().map(|a| a.as_ref().map(Expr::text)))
+    }
+}
+
+/// A call's record, with each argument as a program of its own.
+fn call_site(program: &Expr, c: CallRef) -> CallSite {
+    let args = c
+        .arg_nodes
+        .iter()
+        .map(|&a| {
+            if matches!(program.ast.kind(a), NodeKind::Lambda { .. }) {
+                return None;
+            }
+            let mut ast = program.ast.clone();
+            let span = ast.span(a);
+            let root = ast.push(
+                NodeKind::Program {
+                    consts: Vec::new(),
+                    result: a,
+                },
+                span,
+                0,
+            );
+            ast.root = root;
+            Some(Expr {
+                source: program.source.clone(),
+                ast,
+            })
+        })
+        .collect();
+    CallSite {
+        name: c.name,
+        namespace: c.namespace,
+        span: program.source.line_span(c.span),
+        args,
+        arg_spans: c
+            .args
+            .iter()
+            .map(|a| program.source.line_span(*a))
+            .collect(),
+        in_lambda: c.lambda,
     }
 }
 
 /// The analysis of a template in a mode: of its program in that mode, with
 /// its segments (3.1 item 6).
-pub fn analyze_template(t: &Template, mode: Mode) -> Report {
+pub(crate) fn analyze_template(t: &Template, mode: TemplateMode) -> Analysis {
     let mut r = analyze(&t.program(mode));
     r.segments = Some(t.segments().to_vec());
     r
@@ -102,7 +188,7 @@ enum Task {
 }
 
 struct Walker<'p> {
-    p: &'p Parsed,
+    p: &'p Expr,
     scopes: Vec<Vec<String>>,
     refs: Vec<Ref>,
     calls: Vec<CallRef>,
@@ -113,7 +199,7 @@ impl<'p> Walker<'p> {
         self.p.ast.kind(id)
     }
 
-    fn span(&self, id: NodeId) -> Span {
+    fn span(&self, id: NodeId) -> Range {
         self.p.ast.span(id)
     }
 
@@ -199,7 +285,7 @@ impl<'p> Walker<'p> {
                     self.refs.push(Ref {
                         name: name.clone(),
                         path: Vec::new(),
-                        span: self.span(id),
+                        span: self.p.source.line_span(self.span(id)),
                     });
                 }
             }
@@ -367,7 +453,10 @@ impl<'p> Walker<'p> {
                 self.refs.push(Ref {
                     name: name.clone(),
                     path,
-                    span: Span::new(ast.span(primary).start as usize, end as usize),
+                    span: self
+                        .p
+                        .source
+                        .line_span(Range::new(ast.span(primary).start as usize, end as usize)),
                 });
                 // A method call on a free name has the form of a call of a
                 // namespace (3.6 item 3).
@@ -417,7 +506,7 @@ fn flat_steps(ast: &crate::syntax::ast::Ast, s: NodeId, out: &mut Vec<NodeId>) {
 
 /// The literal of a program (3.7): no `const` line, and a result that is a
 /// literal expression.
-fn literal_of(p: &Parsed) -> Option<Json> {
+fn literal_of(p: &Expr) -> Option<Json> {
     let NodeKind::Program { consts, result } = p.ast.kind(p.ast.root) else {
         return None;
     };
@@ -429,7 +518,7 @@ fn literal_of(p: &Parsed) -> Option<Json> {
 
 /// A literal expression's value. Lists and maps open a level each, so the
 /// recursion is bounded by the nesting limit.
-fn literal(p: &Parsed, id: NodeId) -> Option<Json> {
+fn literal(p: &Expr, id: NodeId) -> Option<Json> {
     Some(match p.ast.kind(id) {
         NodeKind::Null => Json::Null,
         NodeKind::Bool { value } => Json::Bool(*value),
@@ -480,38 +569,12 @@ fn literal(p: &Parsed, id: NodeId) -> Option<Json> {
     })
 }
 
-impl Report {
-    /// An argument of a call as a parsed program of its text, with spans in
-    /// the whole text (3.6 item 5). `None` for a lambda argument. An argument
-    /// that reads a name the program binds does not compile alone.
-    pub fn arg_program(&self, program: &Parsed, call: usize, arg: usize) -> Option<Parsed> {
-        let c = self.calls.get(call)?;
-        let a = *c.arg_nodes.get(arg)?;
-        if matches!(program.ast.kind(a), NodeKind::Lambda { .. }) {
-            return None;
-        }
-        let mut ast = program.ast.clone();
-        let span = ast.span(a);
-        let root = ast.push(
-            NodeKind::Program {
-                consts: Vec::new(),
-                result: a,
-            },
-            span,
-            0,
-        );
-        ast.root = root;
-        Some(Parsed {
-            source: program.source.clone(),
-            ast,
-        })
-    }
-
+impl Analysis {
     /// The report as JSON text, in the field order of 3.3 and 4.3, with
-    /// spans as `[line, column, end line, end column]` in `source`.
-    pub fn to_json(&self, source: &Source) -> String {
+    /// spans as `[line, column, end line, end column]`.
+    pub fn json(&self) -> String {
         let span = |s: Span| {
-            let [a, b, c, d] = source.line_span(s).0;
+            let [a, b, c, d] = s.arr();
             format!("[{a},{b},{c},{d}]")
         };
         let st = |s: &str| crate::json::to_text(&Json::Str(s.to_string()));
@@ -556,12 +619,12 @@ impl Report {
                     st(&c.name),
                     c.namespace.as_deref().map_or("null".to_string(), st),
                     span(c.span),
-                    c.args
+                    c.arg_spans
                         .iter()
                         .map(|a| span(*a))
                         .collect::<Vec<_>>()
                         .join(","),
-                    c.lambda
+                    c.in_lambda
                 )
             })
             .collect();
@@ -571,7 +634,7 @@ impl Report {
             None => out.push_str("false"),
             Some(v) => {
                 out.push_str("{\"value\":");
-                out.push_str(&crate::json::to_text(v));
+                out.push_str(&crate::json::to_text(&data_json(v)));
                 out.push('}');
             }
         }
@@ -597,5 +660,34 @@ impl Report {
         }
         out.push('}');
         out
+    }
+}
+
+/// A literal's JSON value as host data: a whole number in the safe range is
+/// an `Int`, another number a `Float`.
+fn json_data(j: &Json) -> Data {
+    match j {
+        Json::Null => Data::Null,
+        Json::Bool(b) => Data::Bool(*b),
+        Json::Num(n) if crate::value::is_whole(*n) && n.abs() <= 9_007_199_254_740_991.0 => {
+            Data::Int(*n as i64)
+        }
+        Json::Num(n) => Data::Float(*n),
+        Json::Str(s) => Data::Str(s.clone()),
+        Json::Arr(a) => Data::List(a.iter().map(json_data).collect()),
+        Json::Obj(o) => Data::Map(o.iter().map(|(k, v)| (k.clone(), json_data(v))).collect()),
+    }
+}
+
+/// The JSON value of a literal's host data, which `json_data` gave.
+fn data_json(d: &Data) -> Json {
+    match d {
+        Data::Null | Data::Opaque(_) => Json::Null,
+        Data::Bool(b) => Json::Bool(*b),
+        Data::Int(i) => Json::Num(*i as f64),
+        Data::Float(f) => Json::Num(*f),
+        Data::Str(s) => Json::Str(s.clone()),
+        Data::List(a) => Json::Arr(a.iter().map(data_json).collect()),
+        Data::Map(m) => Json::Obj(m.iter().map(|(k, v)| (k.clone(), data_json(v))).collect()),
     }
 }

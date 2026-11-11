@@ -124,7 +124,11 @@ fn fixture_test(case: &Case, env: &Env) -> Option<(Vec<Json>, String)> {
     let mut interner = Interner::default();
     let test = |interner: &mut Interner, v: &Json, ty: crate::check::ty::Ty| {
         let d = interner.data(v);
-        crate::conform::ProgramType { ty }.conform(&d).err()
+        crate::typ::conform(
+            &crate::value::Value::from_data(&d),
+            &crate::typ::Type::from_ty(ty),
+        )
+        .err()
     };
     let with_path = |mut place: Vec<Json>, d: &Diagnostic| {
         if let Some(p) = &d.path {
@@ -282,7 +286,7 @@ pub fn diag_json(d: &Diagnostic, cols: &[&str]) -> Json {
             }
             "span" => {
                 if let (Some(s), false) = (d.span, limit) {
-                    m.push(("span".into(), span_json(s.0)));
+                    m.push(("span".into(), span_json(s.arr())));
                 }
             }
             "message" if d.phase != Phase::Declare => {
@@ -307,7 +311,7 @@ pub fn diag_json(d: &Diagnostic, cols: &[&str]) -> Json {
                     .iter()
                     .map(|e| {
                         Json::Obj(vec![
-                            ("span".into(), span_json(e.span.0)),
+                            ("span".into(), span_json(e.span.arr())),
                             ("name".into(), Json::Str(e.name.clone())),
                             (
                                 "index".into(),
@@ -680,32 +684,34 @@ fn build_env_in(
     base: Option<&Env>,
 ) -> Result<Env, Error> {
     let mut b = match base {
-        Some(e) => e.child(),
+        Some(e) => e.with(),
         None => Env::builder(),
     };
     if let Some(v) = &case.version {
         b = b.version(v);
     }
     if let Some(e) = &case.env {
-        b = b.vars(e);
+        b = b.var_record(e);
     }
     for (name, schema, opts) in &case.schemas {
-        b = b.var_schema(name, schema, *opts);
+        b = b.var_schema_json(name, schema, *opts);
     }
     for t in &case.types {
         b = match t {
             super::case::TypeDecl::Text(n, text) => b.named_type(n, text),
-            super::case::TypeDecl::Schema(n, schema, opts) => b.named_type_schema(n, schema, *opts),
+            super::case::TypeDecl::Schema(n, schema, opts) => {
+                b.named_type_schema_json(n, schema, *opts)
+            }
         };
     }
     for o in &case.opaque {
         b = b.opaque(o);
     }
     for r in &case.removed {
-        b = b.remove(r);
+        b = b.without(&[r]);
     }
     for g in &case.groups {
-        b = b.group(g);
+        b = b.groups(&[g]);
     }
     for f in case.facts.iter().flatten() {
         let names: Vec<&str> = f.iter().map(String::as_str).collect();
@@ -713,11 +719,11 @@ fn build_env_in(
     }
     for (key, stub) in &case.methods {
         let imp = stub_impl(key, stub, interner, unmatched.clone());
-        b = b.method_impl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
+        b = b.method_decl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
     }
     for (name, stub) in &case.functions {
         let imp = stub_impl(name, stub, interner, unmatched.clone());
-        b = b.function_impl(name, stub.ty.as_deref().unwrap_or_default(), imp);
+        b = b.function_decl(name, stub.ty.as_deref().unwrap_or_default(), Some(imp));
     }
     if let Some(r) = &case.reject {
         let r: Vec<&str> = r.iter().map(String::as_str).collect();
@@ -766,7 +772,7 @@ fn build_env_in(
 }
 
 /// The expected result of a case: by `returns`, or by schema (F10 10.1).
-fn case_expected(case: &Case, env: &Env) -> Result<crate::check::Expected, Diagnostic> {
+fn case_expected(case: &Case, env: &Env) -> Result<crate::check::Want, Diagnostic> {
     match &case.returns_schema {
         Some((s, o)) => crate::check::expected_schema(s, *o),
         None => crate::check::expected(env, case.returns.as_deref()),
@@ -780,8 +786,8 @@ fn load_step(case: &Case, env: &Env, v: &Value<'_>) -> Option<Diagnostic> {
         return None;
     }
     match case_expected(case, env) {
-        Ok(crate::check::Expected::Type(ty)) => {
-            crate::conform::ProgramType { ty }.conform_value(v).err()
+        Ok(crate::check::Want::Type(ty)) => {
+            crate::typ::conform(v, &crate::typ::Type::from_ty(ty)).err()
         }
         _ => None,
     }
@@ -1012,7 +1018,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
         ..
     }) = &case.expect
     {
-        let got = env.describe();
+        let got = env.description();
         if !crate::json::same_data(want, &got) {
             diffs.push(Difference {
                 name: "description",
@@ -1074,7 +1080,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                 let gs: Vec<(String, [u32; 4])> = r
                     .sites
                     .iter()
-                    .map(|s| (s.class.to_string(), parsed.source.line_span(s.span).0))
+                    .map(|s| (s.class.to_string(), parsed.source.line_span(s.span).arr()))
                     .collect();
                 let ws: Vec<(String, [u32; 4])> =
                     ws.iter().map(|s| (s.class.clone(), s.span)).collect();
@@ -1140,7 +1146,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
         case: &vars,
         host: ctx.vars,
     };
-    let out = program.run(&layered);
+    let out = program.outcome(&layered);
     let usage = out.usage;
     if let Ok(v) = &out.result {
         if let Some(d) = load_step(case, &env, v) {
@@ -1443,7 +1449,7 @@ fn show_span(s: Option<[u32; 4]>) -> String {
 }
 
 fn show_diag(d: &Diagnostic) -> String {
-    let mut s = format!("{} at {}", d.code, show_span(d.span.map(|s| s.0)));
+    let mut s = format!("{} at {}", d.code, show_span(d.span.map(|s| s.arr())));
     if d.phase != Phase::Declare {
         s.push_str(&format!(" {:?}", d.message));
         if let Some(x) = &d.data {
@@ -1477,7 +1483,7 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
         }
     }
     if let Some(s) = e.span {
-        if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.0) != Some(s) {
+        if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.arr()) != Some(s) {
             return false;
         }
     }
@@ -1496,7 +1502,7 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
             let got: Vec<([u32; 4], &str, Option<u64>)> = a
                 .trace()
                 .iter()
-                .map(|x| (x.span.0, x.name.as_str(), x.index.map(|i| i as u64)))
+                .map(|x| (x.span.arr(), x.name.as_str(), x.index.map(|i| i as u64)))
                 .collect();
             let want: Vec<([u32; 4], &str, Option<u64>)> =
                 t.iter().map(|(s, n, i)| (*s, n.as_str(), *i)).collect();
@@ -1616,7 +1622,7 @@ fn compare_failure(
 /// its `expect` ignored.
 /// The case's program (3.10.5 step 3): its text parsed as a program, or,
 /// with F2's `template`, as a template taken in its mode.
-pub(super) fn parse_case(case: &Case) -> Result<crate::syntax::Parsed, Error> {
+pub(super) fn parse_case(case: &Case) -> Result<crate::syntax::Expr, Error> {
     match case.template {
         Some(mode) => crate::template::parse_template(&case.source).map(|t| t.program(mode)),
         None => parse(&case.source),
@@ -1629,11 +1635,11 @@ pub(super) fn analysis_text(case: &Case) -> Option<String> {
     match case.template {
         Some(mode) => {
             let t = crate::template::parse_template(&case.source).ok()?;
-            Some(crate::analysis::analyze_template(&t, mode).to_json(t.source()))
+            Some(t.analyze(mode).json())
         }
         None => {
             let p = parse(&case.source).ok()?;
-            Some(crate::analysis::analyze(&p).to_json(&p.source))
+            Some(p.analyze().json())
         }
     }
 }
@@ -1658,11 +1664,14 @@ pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
     let mut interner = Interner::default();
     let unmatched = Arc::new(Unmatched::default());
     let env = build_env(case, &mut interner, &unmatched)?;
-    let pt = env.ty(text)?;
+    let pt = env.parse_type(text)?;
     let data = interner.data(value);
-    let function = pt.conform(&data).err();
-    let all = case.conform_max.map(|m| pt.conform_all(&data, m));
-    let child = env.child().var("v", "any").build()?;
+    let dv = crate::value::Value::from_data(&data);
+    let function = crate::typ::conform(&dv, &pt).err();
+    let all = case
+        .conform_max
+        .map(|m| crate::typ::conform_all(&dv, &pt, m));
+    let child = env.with().var("v", "any").build()?;
     let mut vars = BTreeMap::new();
     vars.insert("v".to_string(), data.clone());
     let one = |form: &str| -> (Result<bool, Diagnostic>, u64) {
@@ -1670,7 +1679,7 @@ pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
             Ok(p) => p,
             Err(e) => return (Err(e.diagnostics[0].clone()), 0),
         };
-        let out = p.run(&vars);
+        let out = p.outcome(&vars);
         let steps = out.usage.steps;
         let r = match out.result {
             Ok(Value::Bool(b)) if form == "is" => Ok(b),
@@ -1915,7 +1924,7 @@ pub fn outcome_line(case: &Case) -> String {
             Err(e) => {
                 out.push_str(",\"phase\":\"parse\",\"diagnostics\":[");
                 if let Some(d) = e.diagnostics.first() {
-                    let [a, b, c, f] = d.span.map(|s| s.0).unwrap_or([0; 4]);
+                    let [a, b, c, f] = d.span.map(|s| s.arr()).unwrap_or([0; 4]);
                     out.push_str(&format!(
                         "{{\"code\":\"{}\",\"span\":[{a},{b},{c},{f}]}}",
                         d.code
@@ -2096,7 +2105,7 @@ fn outcome_core(case: &Case) -> String {
                 // R73: a limit's span is not specified, so the line leaves it out.
                 match d.span.filter(|_| !code::LIMIT.contains(&d.code)) {
                     Some(s) => {
-                        let [a, b, c, e] = s.0;
+                        let [a, b, c, e] = s.arr();
                         out.push_str(&format!("[{a},{b},{c},{e}]"));
                     }
                     None => out.push_str("null"),
@@ -2126,7 +2135,7 @@ fn outcome_core(case: &Case) -> String {
                     if i > 0 {
                         out.push(',');
                     }
-                    let [a, b, c, f] = e.span.0;
+                    let [a, b, c, f] = e.span.arr();
                     out.push_str(&format!("{{\"span\":[{a},{b},{c},{f}],\"name\":"));
                     out.push_str(&json_text(&e.name));
                     out.push_str(",\"index\":");
@@ -2172,7 +2181,7 @@ fn outcome_core(case: &Case) -> String {
                     out.push_str(&json_text(&ty));
                     out.push_str(",\"sites\":[");
                     for (i, s) in r.sites.iter().enumerate() {
-                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).0;
+                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).arr();
                         if i > 0 {
                             out.push(',');
                         }
@@ -2201,7 +2210,7 @@ fn outcome_core(case: &Case) -> String {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
-    let run = program.run(&vars);
+    let run = program.outcome(&vars);
     let mut result = run.result.map_err(|f| program.diagnostic(&f));
     // F10 10.4: a load that fails at step 5a.
     if let Ok(v) = &result {
@@ -2561,7 +2570,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         Ok(e) => e,
         Err(e) => return fail(e.phase, e.diagnostics),
     };
-    let description = Some(env.describe());
+    let description = Some(env.description());
     let parsed = match parse_case(case) {
         Ok(p) => p,
         Err(e) => return fail(Phase::Parse, e.diagnostics),
@@ -2583,7 +2592,10 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
                 .map(|s| {
                     Json::Obj(vec![
                         ("class".into(), Json::Str(s.class.to_string())),
-                        ("span".into(), span_json(parsed.source.line_span(s.span).0)),
+                        (
+                            "span".into(),
+                            span_json(parsed.source.line_span(s.span).arr()),
+                        ),
                     ])
                 })
                 .collect(),
@@ -2616,7 +2628,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
-    let out = program.run(&vars);
+    let out = program.outcome(&vars);
     let usage = (out.usage.steps, out.usage.allocated);
     if let Ok(v) = &out.result {
         if let Some(d) = load_step(case, &env, v) {

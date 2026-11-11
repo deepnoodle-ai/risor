@@ -2,32 +2,38 @@
 //! numbers that cannot enter where an entry reads an element, and the work bound of the searches, the sort and the join on large
 //! inputs (`02-evaluation.md` 8.5).
 
-use risor::{compile_unchecked as compile, parse, Data, Env, Limits, Program};
+use risor::{parse, CompileOptions, Data, Env, Limits, Program};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 fn program(env: &Env, src: &str) -> Program {
-    compile(env, parse(src).unwrap()).unwrap_or_else(|e| panic!("{src}: {e}"))
+    let opts = CompileOptions {
+        check: false,
+        ..CompileOptions::default()
+    };
+    env.compile(&parse(src).unwrap(), opts)
+        .unwrap_or_else(|e| panic!("{src}: {e}"))
 }
 
 fn run(env: &Env, src: &str, vars: &BTreeMap<String, Data>) -> Result<String, String> {
     let p = program(env, src);
-    let out = p.run(vars);
-    match out.result {
+    let r = match p.run(vars) {
         Ok(v) => Ok(format!("{v:?}")),
-        Err(f) => {
-            if f.code == "number-range" {
-                assert_eq!(f.class(), Some("environment"), "{src}");
+        Err(e) => {
+            let d = e.first();
+            if d.code == "number-range" {
+                assert_eq!(d.class, Some("environment"), "{src}");
             }
-            Err(f.code.to_string())
+            Err(d.code.to_string())
         }
-    }
+    };
+    r
 }
 
 #[test]
 fn entries_read_host_numbers_only_where_they_read_elements() {
     let env = Env::builder()
-        .vars("{xs: any, es: any, s: any}")
+        .var_record("{xs: any, es: any, s: any}")
         .build()
         .unwrap();
     let big = Data::Int(1 << 60);
@@ -75,7 +81,7 @@ fn entries_read_host_numbers_only_where_they_read_elements() {
 
 fn unlimited() -> Env {
     Env::builder()
-        .vars("{s: string, t: string, xs: any}")
+        .var_record("{s: string, t: string, xs: any}")
         .limits(Limits {
             steps: None,
             allocation: None,
@@ -90,15 +96,11 @@ fn unlimited() -> Env {
 fn timed(env: &Env, src: &str, v: &BTreeMap<String, Data>) -> u64 {
     let p = program(env, src);
     let start = Instant::now();
-    let out = p.run(v);
+    let (result, usage) = p.measure(v);
     let took = start.elapsed();
-    assert!(
-        out.result.is_ok(),
-        "{src}: {:?}",
-        out.result.err().map(|f| f.code)
-    );
+    assert!(result.is_ok(), "{src}: {:?}", result.err());
     assert!(took < Duration::from_secs(5), "{src} took {took:?}");
-    out.usage.steps
+    usage.steps
 }
 
 #[test]

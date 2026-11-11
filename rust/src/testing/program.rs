@@ -12,11 +12,10 @@ pub fn program_value(text: &str) -> Result<Json, String> {
     let env = Env::default();
     let parsed =
         crate::syntax::parse(text).map_err(|e| crate::render::render_line(&e.diagnostics))?;
-    let (program, _) =
-        crate::check::compile_checked(&env, parsed, &crate::check::Expected::Nothing)
-            .map_err(|e| crate::render::render_line(&e.diagnostics))?;
+    let (program, _) = crate::check::compile_checked(&env, parsed, &crate::check::Want::Nothing)
+        .map_err(|e| crate::render::render_line(&e.diagnostics))?;
     let vars = std::collections::BTreeMap::<String, crate::host::Data>::new();
-    let out = program.run(&vars);
+    let out = program.outcome(&vars);
     let v = out
         .result
         .map_err(|f| crate::render::render_line(&[program.diagnostic(&f)]))?;

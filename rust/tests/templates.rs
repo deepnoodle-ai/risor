@@ -2,14 +2,13 @@
 //! does not reach.
 
 use risor::{
-    analyze, analyze_template, compile, parse, parse_template, Data, Env, Mode, Segment, Step,
-    Value,
+    parse, parse_template, CompileOptions, Data, Env, Expected, Segment, Step, TemplateMode, Value,
 };
 use std::collections::BTreeMap;
 
 fn env() -> Env {
     Env::builder()
-        .vars("{pr: {number: int}, tags: string[]}")
+        .var_record("{pr: {number: int}, tags: string[]}")
         .build()
         .unwrap()
 }
@@ -26,16 +25,17 @@ fn vars() -> BTreeMap<String, Data> {
     v
 }
 
-fn run(p: risor::Parsed) -> String {
-    let prog = compile(&env(), p).unwrap();
-    format!("{:?}", prog.run(&vars()).result.unwrap())
+fn run(p: risor::Expr) -> String {
+    let prog = env().compile(&p, CompileOptions::default()).unwrap();
+    let out = format!("{:?}", prog.run(&vars()).unwrap());
+    out
 }
 
 #[test]
 fn segments_and_single() {
     let t = parse_template("Review of #${{ pr.number }} $${{ x }}").unwrap();
     assert!(!t.is_single());
-    assert_eq!(t.parts(), 1);
+    assert!(t.part(0).is_some() && t.part(1).is_none());
     match &t.segments()[0] {
         Segment::Text { value, .. } => assert_eq!(value, "Review of #"),
         s => panic!("{s:?}"),
@@ -59,45 +59,44 @@ fn the_two_modes() {
             Data::Str("b".into())
         ]))
     );
-    assert_eq!(run(t.program(Mode::Value)), list);
+    assert_eq!(run(t.program(TemplateMode::Value)), list);
     let s = format!("{:?}", Value::from_data(&Data::Str("[\"a\",\"b\"]".into())));
-    assert_eq!(run(t.program(Mode::String)), s);
+    assert_eq!(run(t.program(TemplateMode::String)), s);
     // Not single: a string in both modes.
     let t = parse_template("#${{ pr.number }}").unwrap();
     let want = format!("{:?}", Value::from_data(&Data::Str("#42".into())));
-    assert_eq!(run(t.program(Mode::Value)), want);
-    assert_eq!(run(t.program(Mode::String)), want);
+    assert_eq!(run(t.program(TemplateMode::Value)), want);
+    assert_eq!(run(t.program(TemplateMode::String)), want);
 }
 
 #[test]
 fn a_part_as_its_own_program() {
     let t = parse_template("a ${{ pr.number + 1 }} b ${{ len(tags) }}").unwrap();
-    let p = t.part_program(1).unwrap();
+    let p = t.part(1).unwrap();
     assert_eq!(run(p), format!("{:?}", Value::Num(2.0)));
-    let p = t.part_program(0).unwrap();
+    let p = t.part(0).unwrap();
     // Spans are in the whole text.
-    let r = risor::check(&env(), &p, &risor::Expected::Nothing);
-    assert!(r.diagnostics.is_empty());
-    assert!(t.part_program(2).is_none());
+    assert!(env().check(&p, &Expected::None).is_ok());
+    assert!(t.part(2).is_none());
 }
 
 #[test]
 fn a_template_parse_error_is_in_the_whole_text() {
     let e = parse_template("ab\n${{ }}").err().unwrap();
     assert_eq!(e.diagnostics[0].code, "unexpected-token");
-    assert_eq!(e.diagnostics[0].span.unwrap().0, [2, 5, 2, 7]);
+    assert_eq!(e.diagnostics[0].span.unwrap().to_string(), "[2, 5, 2, 7]");
 }
 
 #[test]
 fn analysis_of_a_program() {
     let p = parse("const e = input.event; xs.map(x => lookup(x.id) + e.id + y)").unwrap();
-    let r = analyze(&p);
+    let r = p.analyze();
     assert_eq!(r.names, ["input", "xs", "y"]);
     assert_eq!(r.refs[0].path, [Step::Key("event".into())]);
     let calls: Vec<(&str, Option<&str>, bool)> = r
         .calls
         .iter()
-        .map(|c| (c.name.as_str(), c.namespace.as_deref(), c.lambda))
+        .map(|c| (c.name.as_str(), c.namespace.as_deref(), c.in_lambda))
         .collect();
     assert_eq!(
         calls,
@@ -105,34 +104,45 @@ fn analysis_of_a_program() {
     );
     assert!(r.literal.is_none());
     assert!(r.segments.is_none());
-    let lit = analyze(&parse("{a: 1, b: [true, null], a: -2}").unwrap());
-    assert_eq!(
-        lit.literal.map(|v| risor::json::to_text(&v)),
-        Some(r#"{"a":-2,"b":[true,null]}"#.to_string())
-    );
+    let lit = parse("{a: 1, b: [true, null], a: -2}").unwrap().analyze();
+    let want: std::collections::BTreeMap<String, Data> = [
+        ("a".to_string(), Data::Int(-2)),
+        (
+            "b".to_string(),
+            Data::List(vec![Data::Bool(true), Data::Null]),
+        ),
+    ]
+    .into();
+    assert_eq!(lit.literal, Some(Data::Map(want)));
+    assert!(lit
+        .json()
+        .contains(r#""literal":{"value":{"a":-2,"b":[true,null]}}"#));
 }
 
 #[test]
 fn analysis_of_a_template() {
     let t = parse_template("Hi ${{ user.name }}, ${{ geo.distance(a, 1 + 2) }}").unwrap();
-    let r = analyze_template(&t, Mode::String);
+    let r = t.analyze(TemplateMode::String);
     assert_eq!(r.names, ["a", "geo", "user"]);
     assert_eq!(r.segments.as_ref().unwrap().len(), 4);
     assert_eq!(r.calls[0].name, "geo.distance");
     // An argument as a program of its own text, with spans in the whole text.
-    let program = t.program(Mode::String);
-    let arg = r.arg_program(&program, 0, 1).unwrap();
-    let prog = compile(&Env::default(), arg).unwrap();
-    let out = prog.run(&risor::NoVars).result.unwrap();
+    let arg = r.calls[0].args[1].clone().unwrap();
+    let prog = Env::default()
+        .compile(&arg, CompileOptions::default())
+        .unwrap();
+    let out = prog.run(&risor::NoVars).unwrap();
     assert_eq!(format!("{out:?}"), format!("{:?}", Value::Num(3.0)));
     // A lambda argument is not a program.
     let p = parse("f(x => x)").unwrap();
-    assert!(analyze(&p).arg_program(&p, 0, 0).is_none());
+    assert!(p.analyze().calls[0].args[0].is_none());
     // An argument that reads a name the program binds does not compile alone.
     let p = parse("const k = 1; f(k)").unwrap();
-    let r = analyze(&p);
-    let arg = r.arg_program(&p, 0, 0).unwrap();
-    assert!(compile(&Env::default(), arg).is_err());
+    let r = p.analyze();
+    let arg = r.calls[0].args[0].clone().unwrap();
+    assert!(Env::default()
+        .compile(&arg, CompileOptions::default())
+        .is_err());
 }
 
 /// 3.1 item 5: what does not open a level costs no stack. A long chain and a
@@ -147,13 +157,13 @@ fn deep_chains_without_host_recursion() {
         .stack_size(256 * 1024)
         .spawn(move || {
             let p = parse(&chain).unwrap();
-            let r = analyze(&p);
+            let r = p.analyze();
             assert_eq!(r.refs[0].path.len(), 50_000);
-            let r = analyze(&parse(&sum).unwrap());
+            let r = parse(&sum).unwrap().analyze();
             assert_eq!(r.refs.len(), 50_000);
-            let r = analyze(&parse(&ors).unwrap());
+            let r = parse(&ors).unwrap().analyze();
             assert_eq!(r.names, ["p", "q"]);
-            let r = analyze(&parse(&idx).unwrap());
+            let r = parse(&idx).unwrap().analyze();
             assert_eq!(r.refs[0].path.len(), 20_000);
         })
         .unwrap();

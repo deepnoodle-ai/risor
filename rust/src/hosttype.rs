@@ -24,6 +24,7 @@
 
 use crate::check::ty::{join, Field, Rec, Ty};
 use crate::host::{Data, Host, HostList, HostMap, OpaqueRef, View};
+use crate::typ::Type;
 use std::any::Any;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -39,7 +40,7 @@ const MAX_DEPTH: usize = 64;
 pub trait HostType {
     /// The type. Call it through [`TypeCx::of`], which finds a type that
     /// contains itself.
-    fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError>;
+    fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError>;
 }
 
 /// Why a type could not be derived: the `declare` error `bad-type` when an
@@ -70,8 +71,8 @@ impl TypeCx {
     }
 
     /// The type of `T`.
-    pub fn of<T: HostType + ?Sized>(&mut self) -> Result<Ty, TypeError> {
-        let t = T::host_type(self)?;
+    pub fn of<T: HostType + ?Sized>(&mut self) -> Result<Type, TypeError> {
+        let t = T::host_type(self)?.into_ty();
         // `05-types.md` 20.7: each host type's derived type is tested.
         if t.too_big() {
             return Err(TypeError(format!(
@@ -80,7 +81,7 @@ impl TypeCx {
                 crate::check::ty::SIZE_LIMIT
             )));
         }
-        Ok(t)
+        Ok(Type::from_ty(t))
     }
 
     /// The exact record of the struct `S`, whose fields `fields` adds. The
@@ -89,10 +90,10 @@ impl TypeCx {
     pub fn record<S: ?Sized>(
         &mut self,
         fields: impl FnOnce(&mut TypeCx, &mut RecordType) -> Result<(), TypeError>,
-    ) -> Result<Ty, TypeError> {
+    ) -> Result<Type, TypeError> {
         let name = std::any::type_name::<S>();
         if let Some(t) = self.done.get(name) {
-            return Ok(t.clone());
+            return Ok(Type::from_ty(t.clone()));
         }
         if self.in_progress.contains(&name) {
             return Err(TypeError(format!(
@@ -111,7 +112,7 @@ impl TypeCx {
         out?;
         let t = Ty::rec(Rec::new(r.fields, Ty::never()));
         self.done.insert(name, t.clone());
-        Ok(t)
+        Ok(Type::from_ty(t))
     }
 }
 
@@ -124,7 +125,8 @@ pub struct RecordType {
 impl RecordType {
     /// A field under `key`: optional when the binding may present it as
     /// absent (6.1).
-    pub fn field(&mut self, key: &str, ty: Ty, optional: bool) -> Result<(), TypeError> {
+    pub fn field(&mut self, key: &str, ty: Type, optional: bool) -> Result<(), TypeError> {
+        let ty = ty.into_ty();
         if self
             .fields
             .insert(key.to_string(), Field { ty, optional })
@@ -137,8 +139,8 @@ impl RecordType {
 }
 
 /// The type of `T`, at most 64 deep (6.1, row Limits).
-pub fn type_of<T: HostType + ?Sized>() -> Result<Ty, TypeError> {
-    let t = TypeCx::new().of::<T>()?;
+pub fn type_of<T: HostType + ?Sized>() -> Result<Type, TypeError> {
+    let t = TypeCx::new().of::<T>()?.into_ty();
     // `05-types.md` 20.7: a struct used many times is shared, so its type
     // written out can pass the size limit.
     if t.too_big() {
@@ -154,12 +156,7 @@ pub fn type_of<T: HostType + ?Sized>() -> Result<Ty, TypeError> {
             std::any::type_name::<T>()
         )));
     }
-    Ok(t)
-}
-
-/// The description of the type of `T`: its printed text (5.1).
-pub fn describe_host_type<T: HostType + ?Sized>() -> Result<String, TypeError> {
-    type_of::<T>().map(|t| crate::check::ty::print(&t))
+    Ok(Type::from_ty(t))
 }
 
 /// The depth of a type, with shared parts measured once.
@@ -266,8 +263,8 @@ impl<T: OpaqueType> fmt::Debug for Opaque<T> {
 }
 
 impl<T: OpaqueType> HostType for Opaque<T> {
-    fn host_type(_: &mut TypeCx) -> Result<Ty, TypeError> {
-        Ok(Ty::opaque(T::NAME))
+    fn host_type(_: &mut TypeCx) -> Result<Type, TypeError> {
+        Ok(crate::typ::opaque_type_named(T::NAME))
     }
 }
 
@@ -298,17 +295,17 @@ impl<T: HostType + Host> OptionLike for Option<T> {
 macro_rules! scalar {
     ($ty:expr, $($t:ty),*) => {$(
         impl HostType for $t {
-            fn host_type(_: &mut TypeCx) -> Result<Ty, TypeError> {
+            fn host_type(_: &mut TypeCx) -> Result<Type, TypeError> {
                 Ok($ty)
             }
         }
     )*};
 }
 
-scalar!(Ty::boolean(), bool);
-scalar!(Ty::string(), String, str);
+scalar!(Type::from_ty(Ty::boolean()), bool);
+scalar!(Type::from_ty(Ty::string()), String, str);
 scalar!(
-    Ty::int(),
+    Type::INT,
     i8,
     i16,
     i32,
@@ -322,12 +319,12 @@ scalar!(
     u128,
     usize
 );
-scalar!(Ty::float(), f32, f64);
-scalar!(Ty::any(), Data);
+scalar!(Type::from_ty(Ty::float()), f32, f64);
+scalar!(Type::from_ty(Ty::any()), Data);
 
 impl HostType for Cow<'_, str> {
-    fn host_type(_: &mut TypeCx) -> Result<Ty, TypeError> {
-        Ok(Ty::string())
+    fn host_type(_: &mut TypeCx) -> Result<Type, TypeError> {
+        Ok(Type::STRING)
     }
 }
 
@@ -403,8 +400,8 @@ impl Host for f64 {
 }
 
 impl<T: HostType> HostType for Option<T> {
-    fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
-        Ok(join(&cx.of::<T>()?, &Ty::null()))
+    fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
+        Ok(Type::from_ty(join(&cx.of::<T>()?.into_ty(), &Ty::null())))
     }
 }
 
@@ -420,7 +417,7 @@ impl<T: Host> Host for Option<T> {
 macro_rules! pointer {
     ($($p:ident),*) => {$(
         impl<T: HostType + ?Sized> HostType for $p<T> {
-            fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
+            fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
                 cx.of::<T>()
             }
         }
@@ -434,7 +431,7 @@ macro_rules! pointer {
 pointer!(Box, Rc, Arc);
 
 impl<T: HostType + ?Sized> HostType for &T {
-    fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
+    fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
         cx.of::<T>()
     }
 }
@@ -448,8 +445,8 @@ impl<T: Host + ?Sized> Host for &T {
 macro_rules! list {
     ($([$($g:tt)*] $t:ty),*) => {$(
         impl<$($g)*> HostType for $t {
-            fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
-                Ok(Ty::list(cx.of::<T>()?))
+            fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
+                Ok(Type::from_ty(Ty::list(cx.of::<T>()?.into_ty())))
             }
         }
         impl<$($g)*> Host for $t {
@@ -470,8 +467,8 @@ macro_rules! list {
 list!([T: HostType + Host] Vec<T>, [T: HostType + Host, const N: usize] [T; N]);
 
 impl<T: HostType> HostType for [T] {
-    fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
-        Ok(Ty::list(cx.of::<T>()?))
+    fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
+        Ok(Type::from_ty(Ty::list(cx.of::<T>()?.into_ty())))
     }
 }
 
@@ -492,8 +489,8 @@ impl<T: Host> HostList for &[T] {
 }
 
 impl<T: HostType + Host> HostType for VecDeque<T> {
-    fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
-        Ok(Ty::list(cx.of::<T>()?))
+    fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
+        Ok(Type::from_ty(Ty::list(cx.of::<T>()?.into_ty())))
     }
 }
 
@@ -548,8 +545,8 @@ pub(crate) fn btree_get<'a, T>(m: &'a BTreeMap<String, T>, key: &str) -> Option<
 macro_rules! map {
     ($($m:ident),*) => {$(
         impl<T: HostType + Host> HostType for $m<String, T> {
-            fn host_type(cx: &mut TypeCx) -> Result<Ty, TypeError> {
-                Ok(Ty::map_of(cx.of::<T>()?))
+            fn host_type(cx: &mut TypeCx) -> Result<Type, TypeError> {
+                Ok(Type::from_ty(Ty::map_of(cx.of::<T>()?.into_ty())))
             }
         }
         impl<T: HostType + Host> Host for $m<String, T> {
@@ -575,7 +572,6 @@ map!(HashMap, BTreeMap);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::ty::print;
 
     struct Time;
     impl OpaqueType for Time {
@@ -583,7 +579,9 @@ mod tests {
     }
 
     fn text<T: HostType + ?Sized>() -> String {
-        describe_host_type::<T>().unwrap_or_else(|e| format!("error: {e}"))
+        type_of::<T>()
+            .map(|t| t.to_string())
+            .unwrap_or_else(|e| format!("error: {e}"))
     }
 
     #[test]
@@ -638,6 +636,6 @@ mod tests {
         };
         assert!(a.same(&b), "one identity for every read");
         assert!(matches!(u128::MAX.view(), View::UInt(u64::MAX)));
-        assert_eq!(print(&type_of::<Vec<u8>>().unwrap()), "int[]");
+        assert_eq!(type_of::<Vec<u8>>().unwrap().to_string(), "int[]");
     }
 }

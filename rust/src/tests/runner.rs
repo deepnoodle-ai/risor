@@ -1,7 +1,7 @@
 //! The case-file runner: validation (`03-host.md` 3.10.10) and verdicts.
 
-use risor::json;
-use risor::testing::{load_doc, run_case, Verdict};
+use crate::json;
+use crate::testing::{load_doc, run_case, Verdict};
 use std::path::Path;
 
 fn verdicts(text: &str) -> Result<Vec<Verdict>, String> {
