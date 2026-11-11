@@ -2697,10 +2697,13 @@ TypeScript string union, a Rust `enum`. Go's `IsZero` reports Go's zero
 | A hover | `Hover` | `Hover` | `Hover` | `Hover` |
 
 A position `Pos` has two public fields, a line and a column
-(`spec/core/03-host.md` 3.7.7), in all three, and no offset. There is one public `Span`, a start and an exclusive end
-position, and every span a host sees uses it: of a diagnostic, a `Site`, a
-`Ref`, a `CallSite`, a `Segment`, a completion and a hover. `RisorError` keeps
-its name because `Error` is a global of JavaScript.
+(`spec/core/03-host.md` 3.7.7), in all three, and no offset. There is one
+public `Span`, a record of two fields, `start` and `end`, each a `Pos`; the
+end is exclusive. The four numbers of 3.7.7 item 5 are how a span is
+written, in JSON and in rendered text, not its shape in a binding. Every span
+a host sees uses it: of a diagnostic, a `Site`, a `Ref`, a `CallSite`, a
+`Segment`, a completion and a hover. `RisorError` keeps its name because
+`Error` is a global of JavaScript.
 
 What fails gives the binding's form of failure (E.1 row 3) with an `Error`
 (`RisorError`). `jsonText` is among them: it fails with `wrong-kind` on an
