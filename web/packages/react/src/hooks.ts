@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CheckOptions, Description, Problem, RunResult } from "@risor/service";
-import { useRisorEnvironment } from "./context.tsx";
+import { useRisorEnvironment, useRisorService } from "./context.tsx";
 
 export interface UseRisorCheckOptions extends CheckOptions {
   code: string;
@@ -15,9 +15,11 @@ export interface UseRisorCheckOptions extends CheckOptions {
  */
 export function useRisorCheck({ code, environment, expected, debounce = 300 }: UseRisorCheckOptions) {
   const env = useRisorEnvironment(environment);
+  const service = useRisorService();
   const [problems, setProblems] = useState<Problem[]>([]);
   const [checking, setChecking] = useState(false);
   useEffect(() => {
+    if (!env) return;
     let live = true;
     setChecking(true);
     const t = setTimeout(async () => {
@@ -32,10 +34,17 @@ export function useRisorCheck({ code, environment, expected, debounce = 300 }: U
     };
   }, [env, code, expected, debounce]);
   const validate = useCallback(async () => {
-    const ps = await env.validate(code, { expected });
-    setProblems(ps);
-    return ps;
-  }, [env, code, expected]);
+    // Before the first effect there is no environment yet: open one for this call.
+    const e = env ?? service.environment(environment);
+    try {
+      const ps = await e.validate(code, { expected });
+      setProblems(ps);
+      return ps;
+    } finally {
+      if (!env) e.release();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [env, service, code, expected]);
   return { problems, checking, validate };
 }
 
@@ -68,12 +77,13 @@ export function useRisorRun({ code, environment, vars, expected, debounce = 400,
 
   const rerun = useCallback(async () => {
     const g = ++generation.current;
+    if (!runRef.current && !env) return null;
     setRunning(true);
     let r: RunResult;
     try {
       r = runRef.current
         ? await runRef.current(code, JSON.parse(varsKey))
-        : await env.run(code, JSON.parse(varsKey), { expected, timeoutMs });
+        : await env!.run(code, JSON.parse(varsKey), { expected, timeoutMs });
     } catch (e) {
       r = { ok: false, stage: "run", problems: [{ phase: "service", code: "run-callback", message: String((e as Error)?.message ?? e) }] };
     }

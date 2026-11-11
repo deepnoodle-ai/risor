@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { sharedService } from "@risor/codemirror";
 import type { Description, RisorEnvironment, RisorService } from "@risor/service";
@@ -23,12 +23,22 @@ export function descriptionKey(d: Description | undefined): string {
   return d === undefined ? "" : JSON.stringify(d);
 }
 
-/** The service's environment for a description, released when it changes or on unmount. */
-export function useRisorEnvironment(description: Description | undefined): RisorEnvironment {
+/**
+ * The service's environment for a description, opened in an effect and
+ * released when the description changes or on unmount. Null until the first
+ * effect runs, and on the server. Opening it in an effect, not in render,
+ * means a render React discards never opens one.
+ */
+export function useRisorEnvironment(description: Description | undefined): RisorEnvironment | null {
   const service = useRisorService();
   const key = descriptionKey(description);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const env = useMemo(() => service.environment(description), [service, key]);
-  useEffect(() => () => env.release(), [env]);
+  const [env, setEnv] = useState<RisorEnvironment | null>(null);
+  useEffect(() => {
+    const e = service.environment(description);
+    setEnv(e);
+    return () => e.release();
+    // The key stands for the description.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key]);
   return env;
 }

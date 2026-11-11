@@ -10,6 +10,10 @@ Unstyled except for one optional CSS file. For Mantine, use `@risor/mantine`.
 npm install @risor/react
 ```
 
+CodeMirror and React are peer dependencies, so the page has one copy of
+each. npm 7 and later install them; with pnpm or Yarn, add
+`@codemirror/state @codemirror/view @codemirror/autocomplete @codemirror/lint @codemirror/commands`.
+
 ```tsx
 import { useRef, useState } from "react";
 import { describeSample, RisorEditor, RisorResult, useRisorRun } from "@risor/react";
