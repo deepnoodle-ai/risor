@@ -1134,7 +1134,7 @@ on. Every binding gives a second function for this: `ConformAll` in Go,
 
 | Matter | Rule |
 | --- | --- |
-| Takes | A value, a type, and a maximum, which is 1 or more |
+| Takes | A value, a type, and a maximum. A maximum below 1 is read as 1 (F8 6.1) |
 | Order | The walk of `07`, 2.3, going on after a failure. A list by index. A record's declared fields in code point order of their keys, then its other keys in code point order. A value is finished before the next is started |
 | A failure | One of three shapes: a required field that is missing; a key an exact record does not allow, each one and not only the least; a value that does not conform where it stands. Nothing inside a value of the wrong kind is visited |
 | Other keys | Always reached. The first-failure walk reaches them only when every declared field passed |
@@ -1195,6 +1195,10 @@ fixed order, and the first four are the stages and functions above.
   value to the second as a variable.
 
 ## 3. Part B: the Go binding
+
+> **Superseded where it differs.** Part E (R201) is the authority for the
+> public surface of every binding. Where this part disagrees with it, Part E
+> holds.
 
 Import path `github.com/deepnoodle-ai/risor/go/v3`, package `risor`. Rules not
 repeated here are Part A's.
@@ -1435,8 +1439,8 @@ func Load[T any](ctx context.Context, env *Env, x *Expr, vars Vars, dst *T) erro
   `float64`, so a host still reads a number with `AsInt` (`O:N1`).
 - **`ConformAll`** returns diagnostics and not an `error`, because a list of
   failures is the answer and not a fault. Each has `Path` and `Message`, and no
-  span. It panics on a `max` below 1 and on a type with an unresolved name,
-  which are mistakes in the host's code (I).
+  span. A `max` below 1 is read as 1 (F8 6.1). An invalid type gives its
+  `bad-type` diagnostic.
 - **`Decode` and `Load`** (`12-4`). `Decode` follows `encoding/json`: field
   names by the `json` tag, a number into any numeric field it fits, text into
   a type that implements `encoding.TextUnmarshaler`, so a `time.Time` field
@@ -1904,6 +1908,10 @@ func TestDiscount(t *testing.T) {
 
 ## 4. Part C: the TypeScript binding, in sketch
 
+> **Superseded where it differs.** Part E (R201) is the authority for the
+> public surface of every binding. Where this part disagrees with it, Part E
+> holds.
+
 This is a sketch to test Part A, not a final API.
 
 ```ts
@@ -2171,6 +2179,10 @@ parser over a literal type text could type the `vars` parameter of `run`. It is
 a convenience of this binding, as `TypeOf[T]` is of Go's.
 
 ## 4a. Part D: the Rust binding, in sketch
+
+> **Superseded where it differs.** Part E (R201) is the authority for the
+> public surface of every binding. Where this part disagrees with it, Part E
+> holds.
 
 This is a sketch to test Part A a second time, against a language with no
 reflection and no garbage collector. Nothing here was built. (I)
@@ -2463,7 +2475,7 @@ A binding may differ from the others only in these five ways.
 | 2 | How an environment is declared | Option values: `NewEnv(decls...)` | One options object: `createEnv({...})` | A builder: `Env::builder()...build()` |
 | 3 | How a failure reaches the host | A returned `error` | A thrown `RisorError` | A returned `Result` |
 | 4 | How a run is cancelled | `context.Context` | `AbortSignal` | `RunOptions` |
-| 5 | Conveniences for the host's own types | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11) | none | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
+| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero` (Go's zero value) | none | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
 
 Everything else is the same: the concepts, their names, which object a
 function belongs to, what it takes, and what it gives. A name in the tables
@@ -2471,11 +2483,11 @@ below is the canonical name. Each binding writes it in its own case (row 1).
 
 ### E.2 The boundary
 
-1. The root of each package exports exactly the surface of E.3 to E.8, and
-   nothing else.
+1. The root of each package exports exactly the surface of E.3 to E.8 and
+   the conveniences of E.1 row 5, and nothing else.
 2. The case-file runner is a separate entry point: Go `risortest`, TypeScript
    `risor/testing`, Rust `risor::testing`.
-3. Everything else is private: Go `internal/`; TypeScript not exported from
+3. Everything else is private: Go `go/internal/`; TypeScript not exported from
    `index.ts`; Rust `pub(crate)`, or `#[doc(hidden)]` where a binary or an
    integration test of the crate needs it.
 4. One concept has one way to reach it. An alias or a second spelling of the
@@ -2486,7 +2498,8 @@ below is the canonical name. Each binding writes it in its own case (row 1).
    `Ref`, a `CallSite`, a `Segment` and a trace entry. They take the same
    names in all three bindings, cased per E.1 row 1.
 6. A limit turned off is written in each binding's own form: Go `NoLimit`,
-   TypeScript `null`, Rust `None`.
+   TypeScript `null` (so `steps` and `allocation` are `number | null`), Rust
+   `None`.
 7. The record of a call in an analysis is a `CallSite`: `name`, `namespace`,
    `span`, `args` (each argument as an `Expr`, or absent for a lambda),
    `argSpans`, and `inLambda`.
@@ -2517,14 +2530,16 @@ below is the canonical name. Each binding writes it in its own case (row 1).
 | Check classes rejected | `reject` | `Reject(classes...)` | `reject: [...]` | `.reject(&[...])` |
 | Host fact (F14) | `someNotNull` | `SomeNotNull(names...)` | `someNotNull: [[...]]` | `.some_not_null(&[...])` |
 | Limits | `limits` | `Limits{Steps, Allocation, Deadline, Depth}` | `limits: {steps, allocation, deadlineMs, depth}` | `.limits(Limits{steps, allocation, deadline, depth})` |
-| The description (F1 5) | `describe` | `env.Describe()` | `env.describe()` | `env.describe()` |
+| The description (`spec/packages/f01-host-types.md` 5) | `describe` | `env.Describe()` | `env.describe()` | `env.describe()` |
 | The description as text | `descriptionText` | (`Describe` gives bytes) | `descriptionText(d)` | `env.description_text()` |
 | An environment from a description | `fromDescription` | `FromDescription(data)`, a declaration | `Env.fromDescription(json)` | `Env::from_description(json)` |
 | A type from type text | `parseType` | `env.ParseType(text)` | `env.parseType(text)` | `env.parse_type(text)` |
 | The library's names | `libraryNames` | `env.LibraryNames()` | `env.libraryNames()` | `env.library_names()` |
 
 `Function` in Go keeps its struct form, which is the Go idiom for a declaration
-with three parts. A host declares a function with its implementation. A
+with three parts. `Method(type, name, f)` takes a `Function` too: its `Type`
+is the signature, as the `sig` argument is in Rust, and its `Name` is not
+read. A host declares a function with its implementation. A
 function with no implementation, for a check-only environment, comes from a
 description (`fromDescription`); there is no second name for it. Go's zero
 `Impl` is not part of the surface.
@@ -2552,11 +2567,13 @@ description (`fromDescription`); there is no second name for it. Go's zero
 
 1. `check` and `compile` take an `Expr`, never source text. A host parses first.
 2. A check result's type is a `Type` (E.7). Its printed form is the type's
-   text form.
+   text form. A program compiled without the check has no check result:
+   `checkResult` is absent (Go `nil`, TypeScript `null`, Rust `None`).
 3. `run` gives the value or the failure. `measure` gives the usage as well,
    whether the run succeeds or fails.
 4. Removed: TypeScript `execute`, `tryCompile`, `parseProgramText`,
-   `ParsedProgram`, `reportJSON`, and the AST-level `parse`; Rust the free
+   `ParsedProgram`, `reportJSON`, and the `parse` that gave a syntax tree in a
+   `ParseResult` (the new `parse` gives an `Expr`); Rust the free
    functions `compile`, `compile_unchecked`, `check` and `analyze`; Go
    `CheckCompile`, `WalkCalls`, `Expr.Names`, `Expr.Refs`, `Expr.Calls`,
    `Expr.Literal` and `Expr.Source`, each of which `Analyze` or `Text` gives.
@@ -2600,7 +2617,7 @@ expression as a program, or absent when there is no part `i`.
 | Every failure, up to a maximum | `conformAll` | `ConformAll(v, t, max)` | `conformAll(v, t, max)` | `conform_all(&v, &t, max)` |
 | Load a config file into a value | `loadValue` | `LoadValue(ctx, env, text, vars, opts...)` | `loadValue(env, text, options)` | `load_value(&env, text, &vars, opts)` |
 | Load into a host type | `load` | `Load[T](...)` | none (E.1 row 5) | `load::<T>(...)` |
-| Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)` | `decode::<T>(&v, max)` |
+| Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)`, into plain data (F10 6.6) | `decode::<T>(&v)` |
 | A failed load | `LoadError` | `*LoadError` | `LoadError` | `LoadError` |
 
 The structural type API of R179 is offered by all three. A `Type` is immutable
@@ -2620,7 +2637,7 @@ and may be shared. "Absent" below is the binding's own form: Go a second
 | `unionType` | `Type` values | their union |
 | `taggedUnionType` | record `Type` values | the tagged union of them |
 | `opaqueTypeNamed` | a name | the opaque type of that name |
-| `join` | two `Type` values | their join (`05-types.md`) |
+| `join` | two `Type` values | their join (`spec/core/05-types.md`) |
 | `t.kind()` | | a `TypeKind` of a type of one alternative: never, any, null, bool, int, float, string (a literal set is a string), list, record (any map type), union (a tagged union), opaque, var (a type variable of a signature); mixed for two or more alternatives, so `T \| null` is mixed; invalid for an invalid type |
 | `t.elem()` | | the element type of a list, or absent |
 | `t.fields()` | | the fields of a record, in order |
@@ -2633,26 +2650,35 @@ and may be shared. "Absent" below is the binding's own form: Go a second
 | `t.nonNull()` | | `t` without null |
 | `t.isNullable()`, `t.isExact()` | | bool |
 | `t.opaqueName()` | | the opaque name, or empty |
-| `t.fits(want)` | a `Type` | whether every value of `t` is a value of `want` |
+| `t.fits(want)` | a `Type` | whether `t` fits `want` by Fits (`spec/core/05-types.md` 4.2), the checker's one assignability relation. `any` fits every type |
 | `t.equal(u)` | a `Type` | whether the two are the same type |
-| text form | | the type text of `05-types.md` 3.9: Go `String()`, TypeScript `toString()`, Rust `Display` |
+| text form | | the type text of `spec/core/05-types.md` 3.9: Go `String()`, TypeScript `toString()`, Rust `Display` |
 | `t.err()` | | the `bad-type` failure of an invalid type, or absent |
 
 A reader of one kind (`elem`, `fields`, `field`, `rest`, `variants`, `tag`,
 `literals`) reads the matching alternative of a mixed type, so
-`({a: int} | null).fields()` gives `a`.
+`({a: int} | null).fields()` gives the `FieldType` whose key is `a`.
 
 `conform` takes no environment. How it knows that a host value is an opaque
 value of a type is the binding's matter (E.1 row 5): in Go the value names its
-type, in Rust an `OpaqueRef` carries its name, and in TypeScript the `test` of
-the environment the type came from decides. So in TypeScript a type made by
-`opaqueTypeNamed` alone admits no opaque value.
+type, in Rust an `OpaqueRef` carries its name, and in TypeScript a `Type`
+carries the opaque `test` functions of the environment that made it
+(`env.parseType` or a check result). So in TypeScript a type made by
+`opaqueTypeNamed` alone admits no opaque value. TypeScript has no
+`env.conform`: `conform` and `conformAll` are free functions in all three.
+
+`conformAll` reads a maximum below 1 as 1 (F8 6.1). On an invalid type,
+`conform` and `conformAll` give its `bad-type` diagnostic, of phase
+`declare`, through the same result as a failure to conform.
+
+`decode` gives the host value, or the binding's form of failure with an
+`Error` that holds at least the first failure (F10 6.1). It takes no maximum.
 
 A constructor never fails. A construction that has no type, or passes a
-limit of `05-types.md` 20.4 or 20.7, gives an invalid type, and `err` reports
+limit of `spec/core/05-types.md` 20.4 or 20.7, gives an invalid type, and `err` reports
 it. The binding of `TypeKind` is per E.1: a Go `int` with `Kind*` constants, a
-TypeScript string union, a Rust `enum`. Go's `IsZero` is a Go convenience
-(E.1 row 5).
+TypeScript string union, a Rust `enum`. Go's `IsZero` reports Go's zero
+`Type`, a value the other bindings do not have (E.1 row 5).
 
 ### E.8 Diagnostics and tools
 
@@ -2670,22 +2696,26 @@ TypeScript string union, a Rust `enum`. Go's `IsZero` is a Go convenience
 | A completion | `Completion`, `Candidate` | the same | the same | the same |
 | A hover | `Hover` | `Hover` | `Hover` | `Hover` |
 
-A position is a line and a column (`spec/core/03-host.md` 3.7.7) in all three,
-not an offset. There is one public `Span`, a start and an exclusive end
+A position `Pos` has two public fields, a line and a column
+(`spec/core/03-host.md` 3.7.7), in all three, and no offset. There is one public `Span`, a start and an exclusive end
 position, and every span a host sees uses it: of a diagnostic, a `Site`, a
 `Ref`, a `CallSite`, a `Segment`, a completion and a hover. `RisorError` keeps
 its name because `Error` is a global of JavaScript.
 
 What fails gives the binding's form of failure (E.1 row 3) with an `Error`
-(`RisorError`): `jsonText` among them. A test gives what it found instead:
-`conform` gives its one diagnostic or nothing (Go a nil-or-`*Error`
-`error`, TypeScript `Diagnostic | null`, Rust `Result<(), Diagnostic>`), and
-`conformAll` a list of diagnostics.
+(`RisorError`). `jsonText` is among them: it fails with `wrong-kind` on an
+opaque value and with `depth-exceeded` on nesting past the default depth
+limit (`spec/core/03-host.md` 3.2.4), and on a host number that cannot enter
+the language (3.4.4). A test gives what it found instead: `conform`
+gives its one diagnostic or nothing, and `conformAll` a list of diagnostics.
+Go wraps the one diagnostic of `conform` in an `*Error`, because a Go
+function that can fail gives an `error`; TypeScript gives `Diagnostic | null`
+and Rust `Result<(), Diagnostic>`.
 
 ### E.9 What is not part of the surface
 
-The Go REPL's `Env.RunEntry` and `Held` serve `cmd/risor` alone. They move out
-of the root package, to a package under `internal/` that `cmd/risor` imports.
+The Go REPL's `Env.RunEntry` and `Held` serve `go/cmd/risor` alone. They move out
+of the package root, to a package under `go/internal/` that `go/cmd/risor` imports.
 
 ## 5. Alternatives rejected
 

@@ -812,8 +812,8 @@ Every binding gives the host the test that `as` and `is` make.
 | Binding | Form |
 | --- | --- |
 | Go | `t, err := env.ParseType(text)`, then `risor.Conform(v, t)`, which returns `nil` or an `error` that holds the diagnostic |
-| TypeScript | `env.conform(value, typeText)`, which returns `null` or the diagnostic |
-| Rust | `env.ty(text)?.conform(&value)`, which returns `Ok(())` or `Err(diagnostic)` |
+| TypeScript | `const t = env.parseType(text)`, then `conform(value, t)`, which returns `null` or the diagnostic |
+| Rust | `let t = env.parse_type(text)?`, then `risor::conform(&value, &t)`, which returns `Ok(())` or `Err(diagnostic)` |
 
 ## 8. The description
 

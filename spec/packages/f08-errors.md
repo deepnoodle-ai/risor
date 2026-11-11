@@ -1006,8 +1006,8 @@ Every binding gives a second conformance function beside the one of F4 7.
 | Binding | Form |
 | --- | --- |
 | Go | `risor.ConformAll(v, t, max)`, with `t` from `env.ParseType(text)`, which returns a `[]Diagnostic` |
-| TypeScript | `env.conformAll(value, typeText, max)`, which returns a list of diagnostics |
-| Rust | `env.ty(text)?.conform_all(&value, max)`, which returns a `Vec<Diagnostic>` |
+| TypeScript | `conformAll(value, t, max)`, with `t` from `env.parseType(text)`, which returns a list of diagnostics |
+| Rust | `risor::conform_all(&value, &t, max)`, with `t` from `env.parse_type(text)?`, which returns a `Vec<Diagnostic>` |
 
 | Matter | Rule |
 | --- | --- |

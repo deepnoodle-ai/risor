@@ -569,7 +569,7 @@ TypeScript types are erased (F1 6.4). There is no H to decode into.
    keys come first in that language. The JSON text (4) has the specified
    order.
 4. An opaque value is `not-conforming` at its path.
-5. `load<T>` asserts the type T of the host's code. Steps 2 and 4 make the
+5. `loadValue<T>` asserts the type T of the host's code. Steps 2 and 4 make the
    assertion true of the type the host gave as text or schema.
 
 ## 7. What a config file may use
