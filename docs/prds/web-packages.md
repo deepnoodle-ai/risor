@@ -1,6 +1,6 @@
 # Risor in the browser: npm packages for running, editing and showing Risor
 Status: Draft
-PRD PR: #TBD  Implementation PR: #TBD  Updated: 2026-11-10
+PRD PR: #TBD  Implementation PR: #TBD  Updated: 2026-11-10 (after the PRD review)
 
 ## Problem
 
@@ -82,9 +82,10 @@ Secondary users:
 | --- | --- | --- |
 | Risor package (`risor`) | The language for JavaScript: run, check, format, complete, hover. | The TypeScript implementation in `ts/`, built and published. |
 | Environment description | JSON that says which variables, functions and types a host gives a program. | Already exists (F1 5.3). The server makes it; the browser reads it. |
-| Worker runner | Runs Risor off the page's main thread and ends a run that does not stop. | New. Replaces the site's `useRunner` and worker. |
-| Risor editor | A code editor for Risor with colours, completion, hover, error marks and format. | New. A CodeMirror 6 extension, wrapped for React and Vue. |
-| Risor input | A one-line or few-line form field for one expression, with a label, a description and an error. | New. The editor in the shape of a form control. |
+| Environment description | (above) | The one way to tell every package what a program may use. Made by Go's `Env.Describe()`, by `createEnv(...).describe()`, or from sample JSON by `describeSample`. |
+| Risor service | Checks, completes, hovers, formats and runs Risor away from the page's main thread, and ends a run that does not stop. | New, in `@risor/service`. Replaces the site's `useRunner` and worker. |
+| Risor editor | A code editor for Risor with colours, completion, hover, error marks and format. | New. A CodeMirror 6 extension, wrapped for React (and later Vue). |
+| Risor input | A form field for one expression, with a label, a description and an error, in Mantine's style. | New, in `@risor/mantine`. The editor in the shape of a form control. |
 | Result view | Shows a run's value as a tree, its type, its steps and allocation, or its error. | New. |
 
 ## Use cases
@@ -100,13 +101,15 @@ A customer's Go server stores workflow steps. Each step has a condition.
    ```tsx
    import { RisorInput } from "@risor/mantine";
 
+   const ref = useRef<RisorInputHandle>(null);
+
    <RisorInput
+     ref={ref}
      label="Run this step when"
      description="A Risor expression. It must give a bool."
      environment={description}
      expected="bool"
-     value={value}
-     onChange={setValue}
+     {...form.getInputProps("condition")}
    />
    ```
 
@@ -114,8 +117,11 @@ A customer's Go server stores workflow steps. Each step has a condition.
    underlined and the field shows the checker's message for the missing
    field. The user types `order.`, and a list of the fields of `order`
    appears.
-4. The form reads `diagnostics` from `onDiagnostics` and blocks submit while
-   there is an error.
+4. On submit, the form awaits `ref.current.validate()`. It checks the text
+   as it is now, not as it was at the last pause, and returns the problems.
+   The form blocks submit while there is one.
+5. The server checks the text again before it saves. The field helps the
+   user; it is not the gate.
 
 Acceptance:
 
@@ -126,8 +132,15 @@ Acceptance:
       the Go server would give for the same text (the suite makes the two
       agree).
 - [ ] `expected="bool"` makes `order.total` (a float) an error.
+- [ ] Text typed and submitted at once, before the pause ends, is blocked
+      by `validate()` if it has an error.
 - [ ] The field works with no `environment`: it then checks against an
       empty environment.
+- [ ] `environment` takes a description and nothing else. A value that is
+      not a description is a console error that names the prop, and the
+      field checks against an empty environment.
+- [ ] The field's code on the main thread, without CodeMirror, is at most
+      20 KB gzipped. The rest of Risor loads in the worker.
 - [ ] The field renders on the server (SSR) as a plain text box with the
       value, and becomes the editor on the client.
 
@@ -141,22 +154,42 @@ Acceptance:
 3. The user writes an expression that runs past the limits. The preview
    shows the limit error. The page does not freeze.
 
+A real host declares functions, and the browser has no implementation of
+them. An environment made from a description that declares a function
+compiles nothing (f01 5.4 item 4). So a customer whose environment has
+functions gives the preview a `run` callback, and runs the preview on their
+own server with the real environment:
+
+```tsx
+<RisorPreview code={value} vars={sample}
+  run={(code, vars) => fetch("/api/risor/preview", { method: "POST",
+    body: JSON.stringify({ code, vars }) }).then((r) => r.json())} />
+```
+
 Acceptance:
 
-- [ ] Every run happens in a web worker. A run that does not answer within
-      its deadline plus a grace time ends the worker and shows "stopped".
+- [ ] Without `run`, every run happens in a web worker. A run that does
+      not answer within its deadline (default 2,000 ms) plus a grace of
+      1,500 ms ends the worker and shows "stopped".
+- [ ] The description's step, allocation and depth limits apply to a run
+      in the worker. The deadline is the preview's `timeoutMs` prop, since
+      a description has none.
 - [ ] Numbers show the text Risor gave them: `1.0` stays `1.0`, an int
       beyond 2^53 is exact.
-- [ ] When the description declares a function, a preview cannot run
-      (`envFromDescription` compiles nothing then: f01 5.4 item 4). The
-      preview says so in one sentence and still shows check errors.
+- [ ] With `run`, the preview shows what the callback returns, in the same
+      view. The result's JSON shape is documented in the README. (A Go
+      helper that makes it from a run is a follow-up.)
+- [ ] Without `run`, when the description declares a function, the
+      preview says in one sentence that it needs `run`, and still shows
+      check errors.
 
 ### UC-3: Build the website's playground from the packages
 
 1. `risor-site-v2` removes `app/vendor/risor-v3` and `sync:risor`, and
    depends on `risor`, `@risor/react` and `@risor/mantine`.
 2. The playground, the "Try it" buttons and the home page example use the
-   packages' editor, runner and result view.
+   packages' editor, service and result view. The playground page itself
+   stays in the site: only the site needs it.
 
 Acceptance:
 
@@ -179,9 +212,11 @@ Acceptance:
 
 - [ ] `npm install risor` works in Node 22 and later, Deno, Bun, and every
       bundler that reads `exports`, with type declarations.
-- [ ] The package has no dependencies and imports no `node:` module.
+- [ ] The package has no dependencies. Its main entry imports no `node:`
+      module. (`risor/testing`, the F9 binding, reads files and is for
+      Node.)
 
-### UC-5: Colour Risor in static pages and other editors
+### UC-5: Colour Risor in static pages and other editors (a later track)
 
 1. The site renders docs with Shiki. It loads the Risor TextMate grammar
    from `@risor/grammar`.
@@ -202,7 +237,9 @@ Acceptance:
   `@risor/react` installs React once.
 - R-3: The editor never runs a user's program on the main thread. Checking,
   completion and hover may run on the main thread or in the worker; the
-  default is the worker.
+  default is the worker. Colouring runs on the main thread with
+  `risor/tokens`, an entry that holds only the lexer (12 KB gzipped,
+  measured).
 - R-4: Every position a package exposes counts the units of a JavaScript
   string (UTF-16), as the DOM and CodeMirror do. The packages convert from
   Risor's code points at one place.
@@ -212,6 +249,9 @@ Acceptance:
 - R-6: Every component takes a `className` and exposes CSS variables for
   colour. The React and Vue components carry no styling framework. Mantine
   styling is only in `@risor/mantine`.
+- R-6a: Every package names an environment one way: a description.
+  `describeSample(sample)` makes one from sample JSON; `createEnv(options)
+  .describe()` makes one from options.
 - R-7: The packages release together, with one version number, which is the
   version of the Risor alpha they were built from (`3.0.0-alpha.N`).
 - R-8: Each package has a README with a runnable example, and the
@@ -224,12 +264,13 @@ Acceptance:
   customer on Monaco can use the `risor` calls directly. Revisit on demand.
 - **Svelte, Solid, Angular.** No user has asked. The CodeMirror extension
   works in any of them without a wrapper.
+- **A playground component.** The site's playground stays in the site,
+  built from the packages. No customer has asked for one.
 - **A VS Code extension.** The grammar makes it small, but it is its own
   track.
 - **Visual (block) editing of expressions.** A different product.
-- **Running host functions written in JavaScript inside the worker** in the
-  first release. The runner takes a worker module path later if customers
-  need it; see the open questions.
+- **Running host functions written in JavaScript inside the worker.** The
+  `run` callback (UC-2) covers a preview that needs functions.
 
 ## Decisions
 
@@ -245,6 +286,18 @@ Acceptance:
   next to `ts/`. A change to the TypeScript implementation and the editor
   that shows it land in one pull request, and CI tests them together.
   Rejected: a separate repository (versions drift; two PRs for one change).
+- **The preview runs on the host's server when the environment has
+  functions.** The browser cannot run them, and the server already has
+  them. Rejected: a worker module of JavaScript functions (each host would
+  write its functions twice, in Go and in JavaScript).
+- **One shape for an environment: a description.** It crosses to the
+  worker as JSON, Go already makes it, and one shape cannot be passed
+  wrongly. Rejected: also taking `EnvOptions` or sample JSON in the prop
+  (a raw description fits the options shape by structure and silently
+  loses its functions).
+- **Release order: React and Mantine first, Vue and the grammar after.**
+  The site and the first customers use React and Mantine. Vue follows once
+  the React API has settled, so both wrappers share one design.
 - **Unscoped `risor` for the language, `@risor/*` for the rest.** It
   matches the Go module's name and `npm install risor` is the shortest
   thing to say. Rejected: `@risor/core` (one more thing to explain);
@@ -259,34 +312,33 @@ Acceptance:
 - First customer use: one Deep Noodle product or customer ships `RisorInput`.
 
 Must not get worse: the cost of a run in the browser. A run through the
-worker runner adds no more than 2 ms to the run itself for a small program.
+service in the worker adds no more than 2 ms to the run itself for a small
+program.
 
 ## Risks and open questions
 
 1. **Names on npm (blocks the publish, not the build).** `risor` and the
    `@risor` scope are free today (checked 2026-11-10). The owner must claim
    both before someone else does.
-2. **The lexer is not exported (blocks R-5).** Colours need the tokens.
-   `ts/src/index.ts` does not export `lex`. Recommendation: export a small,
-   stable `tokens(text)` call with kinds for colouring, documented as a
-   TypeScript binding call, not a spec call. Open: should it be a spec call
-   of F12, so Go and Rust have it too?
-3. **Bundle size.** 141 KB gzipped is large for a form field. The worker
-   loads it apart from the page, so the page's first paint does not wait.
-   Lazy-loading the math tables is a follow-up if a customer needs it.
+2. **`tokens` is a new TypeScript call.** Colours need the tokens, and
+   `ts/src/index.ts` did not export the lexer. The build adds `tokens(text)`
+   in its own entry, `risor/tokens`, as a TypeScript binding call, not a
+   spec call. Open: should it be a call of F12, so Go and Rust have it too?
+   Recommendation: no, until a non-browser editor needs it.
+3. **Bundle size.** The full core is 141 KB gzipped. It loads only in the
+   worker, so the page's first paint does not wait for it. The main thread
+   loads `risor/tokens` (12 KB) for colours.
 4. **Mantine versions.** The site uses Mantine 7.17; Mantine is at 9.8.
    Recommendation: `@risor/mantine` supports 7 and later in its peer range,
    tested with 7 and the latest. Open: or upgrade the site to the latest and
    support only that.
-5. **Vue demand.** No Vue user is known. Recommendation: build the Vue
-   package in the second release, after React proves the API. Open for the
-   owner.
-6. **Host functions in the worker.** An environment built from a
-   description that declares a function compiles nothing (f01 5.4 item 4),
-   so the preview cannot run in a typical customer environment. Checking,
-   completion and hover still work. Recommendation: the first release says
-   so plainly; a later release lets the host give a worker module that
-   implements the functions. This limits UC-2 for customers until then.
+5. **Vue demand.** No Vue user is known, but the owner asked for Vue. It
+   is the last step of the plan, after the React API has settled.
+6. **Should a description with functions compile?** Today f01 5.4 item 4
+   makes it compile nothing. If it compiled and failed only at a call of a
+   function it lacks, a worker preview would run every program that calls
+   no host function. That is a spec change, for the owner. The `run`
+   callback does not depend on it.
 7. **SSR.** CodeMirror needs the DOM. The components render a plain
    `<textarea>`-like element on the server and upgrade on mount. Risk: a
    layout shift. Measure it on the site's playground.
