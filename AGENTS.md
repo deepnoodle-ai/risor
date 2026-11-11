@@ -220,6 +220,10 @@ Instead, describe the user-visible change in the PR title and description.
 
 ## Releasing
 
-v3 alpha releases are tagged `v3.0.0-alpha.N` on `main`, and the same commit is
-tagged `go/v3.0.0-alpha.N` for the Go module in `go/` (R200). v2 releases are cut
+v3 alpha releases are tagged `go/v3.0.0-alpha.N` on `main`: the Go module in
+`go/` takes its versions from tags with that prefix (R200). **Never push a bare
+`v3.*` tag.** With no `go.mod` at the root, Go lists such a tag as a broken
+version of the old path `github.com/deepnoodle-ai/risor/v3`, and `go list -m
+-versions` and `@latest` fail there. The GitHub release is made from the
+`go/` tag. v2 releases are cut
 from the `v2` branch; see `docs/guides/releasing.md` there.

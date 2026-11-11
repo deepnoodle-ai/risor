@@ -59,6 +59,9 @@ furthest along.
 go get github.com/deepnoodle-ai/risor/go/v3@latest
 ```
 
+The first alpha, `v3.0.0-alpha.1`, was published at
+`github.com/deepnoodle-ai/risor/v3`. Later releases use the path above.
+
 ```go
 env, err := risor.NewEnv(
     risor.Var("tests", "{name: string, status: string, ms: int}[]"),

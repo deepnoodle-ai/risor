@@ -24,7 +24,18 @@ type suiteText struct {
 // suiteTexts collects every program text of the suite: the source of each
 // case, the file a case names, and the text of each format case, from the
 // case files and the catalogs, runner cases' inner files included.
+// needSuite skips a test that reads ../suite when it is not there: the
+// module's zip holds go/ only, so a test run from the module cache has no
+// suite.
+func needSuite(t *testing.T) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join("..", "suite")); err != nil {
+		t.Skip("../suite is not there")
+	}
+}
+
 func suiteTexts(t *testing.T) []suiteText {
+	needSuite(t)
 	t.Helper()
 	var out []suiteText
 	seen := map[suiteText]bool{}

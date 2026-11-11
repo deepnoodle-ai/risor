@@ -536,8 +536,12 @@ package path follows the repository's layout, and the owner chose a
 `github.com` path over a custom domain. A module in a subdirectory takes that
 directory into its path, and its version tags carry the directory as a
 prefix (the Go modules reference, "Mapping versions to commits"; checked
-against the module proxy once the first `go/` tag is pushed).
+in a scratch clone with Go 1.26 in direct mode). The same check found that a
+bare `v3.0.0-alpha.2` tag at the root breaks the old path: with no root
+`go.mod`, Go lists the tag as an invalid version of
+`github.com/deepnoodle-ai/risor/v3`, and `@latest` and `go list -m -versions`
+fail for it.
 
 | # | Ruling |
 | --- | --- |
-| R200 | **Each implementation in its own directory.** The Go implementation is the module in `go/`, path `github.com/deepnoodle-ai/risor/go/v3`, tagged `go/v3.x.y`. `ts/` and `rust/` are unchanged. `v3.0.0-alpha.1`, tagged at the root path `github.com/deepnoodle-ai/risor/v3`, is the only release at that path; it is not retracted and gets no successor there. This replaces R199. |
+| R200 | **Each implementation in its own directory.** The Go implementation is the module in `go/`, path `github.com/deepnoodle-ai/risor/go/v3`, tagged `go/v3.x.y`; no bare `v3.*` tag is pushed again. `ts/` and `rust/` are unchanged. `v3.0.0-alpha.1`, tagged at the root path `github.com/deepnoodle-ai/risor/v3`, is the only release at that path; it is not retracted and gets no successor there. This replaces R199, and the layout answer of `14` section 7, question 6. |

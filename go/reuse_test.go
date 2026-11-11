@@ -18,6 +18,7 @@ import (
 // first left, which may have failed at any point. Every run must give the
 // same value, usage and failure.
 func TestReusedRunState(t *testing.T) {
+	needSuite(t)
 	files, err := runner.Files(filepath.Join("..", "suite", "core-run"))
 	assert.NoError(t, err)
 	ran := 0

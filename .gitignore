@@ -6,6 +6,8 @@ node_modules
 /proposals
 
 /go/cmd/risor/risor
+/go/risor
+/go/outcome
 
 cpu.out
 cover.out
