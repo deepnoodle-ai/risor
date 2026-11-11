@@ -3,9 +3,9 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, RisorError } from "../src/host/api.ts";
+import { createEnv, parse, RisorError } from "../src/host/api.ts";
 
-const env = createEnv({ vars: "{s: string, t: float}", groups: ["json", "time"], limits: { steps: null, allocation: null, depth: 1000 } });
+const env = createEnv({ varRecord: "{s: string, t: float}", groups: ["json", "time"], limits: { steps: null, allocation: null, depth: 1000 } });
 
 function code(f: () => unknown): string {
   try {
@@ -18,7 +18,7 @@ function code(f: () => unknown): string {
 }
 
 describe("json.parse never uses the host's stack in proportion to the nesting (f06 6.2.5 item 4)", () => {
-  const p = env.compile("json.parse(s)");
+  const p = env.compile(parse("json.parse(s)"));
   test("a text nested 200,000 deep is depth-exceeded; one left open is not-json", () => {
     assert.equal(code(() => p.run({ s: "[".repeat(200000) + "]".repeat(200000) })), "depth-exceeded");
     assert.equal(code(() => p.run({ s: "[".repeat(200000) })), "invalid-argument");
@@ -26,8 +26,8 @@ describe("json.parse never uses the host's stack in proportion to the nesting (f
 });
 
 describe("time.format and time.parse round trip (f06 7.3 item 5)", () => {
-  const fmt = env.compile("time.format(t)");
-  const parse = env.compile("time.parse(s)");
+  const fmt = env.compile(parse("time.format(t)"));
+  const parseTime = env.compile(parse("time.parse(s)"));
   test("for whole and fractional times across the range", () => {
     let x = 12345;
     for (let i = 0; i < 2000; i++) {
@@ -35,7 +35,7 @@ describe("time.format and time.parse round trip (f06 7.3 item 5)", () => {
       const t = -62167219200 + (x / 2147483648) * (253402300800 + 62167219200 - 1);
       const v = i % 2 === 0 ? Math.floor(t) : t;
       const text = fmt.run({ t: v }) as string;
-      assert.equal(parse.run({ s: text }), v + 0, text);
+      assert.equal(parseTime.run({ s: text }), v + 0, text);
     }
   });
 });

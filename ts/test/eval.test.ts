@@ -4,14 +4,14 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv } from "../src/host/api.ts";
+import { createEnv, execute, parse } from "../src/host/api.ts";
 import { plainEqual } from "../src/value/value.ts";
 
-const env = createEnv({ vars: "{u: any, m: any, s: any, t: any, xs: any, d: any, n: any}" });
+const env = createEnv({ varRecord: "{u: any, m: any, s: any, t: any, xs: any, d: any, n: any}" });
 const vars = { u: { name: "", tags: [] } };
 
 function outcome(src: string, v: Record<string, unknown> = vars): { value?: unknown; code?: string } {
-  const o = env.compile(src, { check: false }).execute(v);
+  const o = execute(env.compile(parse(src), { check: false }), v);
   return o.ok ? { value: o.value } : { code: o.diagnostic.code };
 }
 
@@ -48,7 +48,7 @@ describe("01 section 15", () => {
 });
 
 describe("02 section 7: worked counts", () => {
-  const usage = (src: string, v: Record<string, unknown> = {}) => env.compile(src, { check: false }).execute(v).usage;
+  const usage = (src: string, v: Record<string, unknown> = {}) => execute(env.compile(parse(src), { check: false }), v).usage;
   const rows: [string, Record<string, unknown>, number, number][] = [
     ["1 + 2 * 3", {}, 2, 0],
     ["const xs = [1, 2, 3]; [...xs, 4]", {}, 3, 9],
@@ -76,7 +76,7 @@ describe("02 section 7: worked counts", () => {
 
 describe("02 8.4: an empty pair is entered, with the depth test", () => {
   const at = (depth: number, src: string) => {
-    const o = createEnv({ limits: { depth } }).compile(src, { check: false }).execute();
+    const o = execute(createEnv({ limits: { depth } }).compile(parse(src), { check: false }));
     return o.ok ? "ok" : o.diagnostic.code;
   };
   test("== on empty lists and maps, at the limit and one past it", () => {
@@ -93,7 +93,7 @@ describe("02 8.4: an empty pair is entered, with the depth test", () => {
     assert.equal(at(1, "string([{}])"), "depth-exceeded");
   });
   test("the empty pair still charges nothing", () => {
-    assert.deepEqual(createEnv({}).compile("[] == []", { check: false }).execute().usage, { steps: 0, allocated: 2 });
+    assert.deepEqual(execute(createEnv({}).compile(parse("[] == []"), { check: false })).usage, { steps: 0, allocated: 2 });
   });
 });
 
@@ -104,8 +104,8 @@ describe("02 5.3: == on maps visits the left map in key order when a value is a 
     const long = "x".repeat(64 * 50);
     const m = { a: deep, z: long };
     const n = { a: deep, z: long };
-    const env = createEnv({ vars: "{m: any, n: any}", limits: { depth: 5, steps: 20 } });
-    const o = env.compile("m == n", { check: false }).execute({ m, n });
+    const env = createEnv({ varRecord: "{m: any, n: any}", limits: { depth: 5, steps: 20 } });
+    const o = execute(env.compile(parse("m == n"), { check: false }), { m, n });
     assert.ok(!o.ok);
     assert.equal(o.diagnostic.code, "depth-exceeded");
   });

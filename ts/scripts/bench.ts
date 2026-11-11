@@ -18,7 +18,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import { createEnv, toJSON } from "../src/index.ts";
+import { createEnv, jsonText, parse } from "../src/index.ts";
 
 interface BenchFile {
   env: string;
@@ -48,18 +48,18 @@ const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "suite", "
 const filter = process.argv[2] ?? "";
 for (const fn of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
   const f = JSON.parse(readFileSync(join(dir, fn), "utf8")) as BenchFile;
-  const env = createEnv({ vars: f.env, limits: { steps: f.limits.steps, allocation: f.limits.allocation } });
+  const env = createEnv({ varRecord: f.env, limits: { steps: f.limits.steps, allocation: f.limits.allocation } });
   for (const c of f.cases) {
     const name = `${fn.replace(/\.json$/, "")}/${c.name}`;
     if (!name.includes(filter)) continue;
-    const p = env.compile(c.source);
+    const p = env.compile(parse(c.source));
     const { value, usage } = p.measure(f.vars);
-    const got: unknown = JSON.parse(toJSON(value));
-    if (!isDeepStrictEqual(got, c.expect.value)) throw new Error(`${name}: value differs from expect: ${toJSON(value).slice(0, 200)}`);
+    const got: unknown = JSON.parse(jsonText(value));
+    if (!isDeepStrictEqual(got, c.expect.value)) throw new Error(`${name}: value differs from expect: ${jsonText(value).slice(0, 200)}`);
     if (usage.steps !== c.expect.steps || usage.allocated !== c.expect.allocated) {
       throw new Error(`${name}: usage ${JSON.stringify(usage)}, expect steps ${c.expect.steps} allocated ${c.expect.allocated}`);
     }
-    const compileNs = median(() => { env.compile(c.source); });
+    const compileNs = median(() => { env.compile(parse(c.source)); });
     const runNs = median(() => { p.run(f.vars); });
     console.log(JSON.stringify({ impl: "ts", program: name, compile_ns: compileNs, run_ns: runNs, steps: usage.steps, allocated: usage.allocated }));
   }

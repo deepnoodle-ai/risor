@@ -8,7 +8,7 @@ import { CLASSIFIER, OpaqueRef, analysisOf, assistOutcome, executeCase, renderCa
 import { formatProgram, formatTemplate } from "../tools/format.ts";
 import { Source } from "../syntax/source.ts";
 import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
-import { descriptionText, reportJSON } from "../host/api.ts";
+import { descriptionText } from "../host/api.ts";
 
 /** A result as JSON (03 3.2.4), an opaque value as a case file writes it. */
 export function valueJSON(v: unknown, depth = 0): string {
@@ -43,7 +43,7 @@ export function outcomeLine(c: Case): string {
       const d = a.diagnostics[0];
       return `{"name":${jsonString(c.name)},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${JSON.stringify(a.source.lineSpan(d.span!))}}]}`;
     }
-    return `{"name":${jsonString(c.name)},"phase":null,"analysis":${reportJSON(a.report, a.source)}}`;
+    return `{"name":${jsonString(c.name)},"phase":null,"analysis":${a.report.json()}}`;
   }
   // f04 9.5: a conform case.
   if (c.conform !== undefined) return conformLine(c);
@@ -139,7 +139,7 @@ export function outcomeLine(c: Case): string {
   if (o.usage !== undefined && !limit) parts.push(`"steps":${o.usage.steps}`, `"units":${o.usage.allocated}`);
   // f02 4.8: the analysis, last, when the text parses.
   const a = analysisOf(c);
-  if (a.ok) parts.push(`"analysis":${reportJSON(a.report, a.source)}`);
+  if (a.ok) parts.push(`"analysis":${a.report.json()}`);
   return `{${parts.join(",")}}`;
 }
 

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createEnv } from "../src/host/api.ts";
 import { join, printType, typeEqual, typeSize, unite } from "../src/types/type.ts";
 
-const env = createEnv({ types: [{ name: "Shape", type: '{kind: "circle", r: float} | {kind: "rect", h: float, w: float}' }] });
+const env = createEnv({ namedTypes: [{ name: "Shape", type: '{kind: "circle", r: float} | {kind: "rect", h: float, w: float}' }] });
 const T = (text: string) => env.declaredType(text);
 
 describe("tagged unions (f05 2, 4)", () => {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { FUNCTIONS, METHODS } from "../src/library/registry.ts";
 import type { Entry } from "../src/library/registry.ts";
 import { parseReceiver, parseSignature } from "../src/types/typetext.ts";
-import { createEnv, RisorError } from "../src/host/api.ts";
+import { createEnv, execute, parse, RisorError } from "../src/host/api.ts";
 import { SUITE } from "./suite-report.ts";
 import { CASEMAP_UNICODE } from "../src/library/text.ts";
 
@@ -55,9 +55,9 @@ describe("the registry is suite/library.json and suite/library-queries.json", ()
 });
 
 describe("03 3.4.4: an entry that reads an element reads a host number", () => {
-  const env = createEnv({ vars: "{xs: any}" });
+  const env = createEnv({ varRecord: "{xs: any}" });
   const code = (src: string, xs: unknown[]) => {
-    const o = env.compile(src, { check: false }).execute({ xs });
+    const o = execute(env.compile(parse(src), { check: false }), { xs });
     return o.ok ? "ok" : o.diagnostic.code;
   };
   const big = [1, 2n ** 60n];
@@ -70,20 +70,20 @@ describe("03 3.4.4: an entry that reads an element reads a host number", () => {
   }
   test("the failure has the span of the call (04 2.6 item 6)", () => {
     try {
-      env.compile("1 + xs.sort()", { check: false }).run({ xs: big });
+      env.compile(parse("1 + xs.sort()"), { check: false }).run({ xs: big });
       assert.fail("no failure");
     } catch (e) {
       assert.ok(e instanceof RisorError);
-      assert.deepEqual(e.diagnostics[0].span, { start: 4, end: 13 });
+      assert.deepEqual(e.diagnostics[0].span, [1, 5, 1, 14]);
     }
   });
 });
 
 describe("work in proportion to the charge", () => {
-  const env = createEnv({ vars: "{s: any, t: any, xs: any}", limits: { steps: null, allocation: null } });
+  const env = createEnv({ varRecord: "{s: any, t: any, xs: any}", limits: { steps: null, allocation: null } });
   const timed = (src: string, vars: Record<string, unknown>) => {
     const t0 = performance.now();
-    const o = env.compile(src, { check: false }).execute(vars);
+    const o = execute(env.compile(parse(src), { check: false }), vars);
     const ms = performance.now() - t0;
     assert.ok(o.ok, o.ok ? "" : o.diagnostic.code);
     return { ms, steps: o.usage.steps, value: o.value };
@@ -116,6 +116,6 @@ describe("work in proportion to the charge", () => {
 describe("04 2.6: a type variable with no bound accepts null", () => {
   test("[].reduce(p => 0, null) gives null", () => {
     const env = createEnv({});
-    assert.equal(env.compile("[].reduce(p => 0, null)", { check: false }).run(), null);
+    assert.equal(env.compile(parse("[].reduce(p => 0, null)"), { check: false }).run(), null);
   });
 });

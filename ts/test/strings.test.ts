@@ -4,9 +4,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { err, ok } from "./helpers.ts";
-import { createEnv } from "../src/host/api.ts";
+import { createEnv, parse } from "../src/host/api.ts";
 
-const value = (src: string) => createEnv({}).compile(src).run();
+const value = (src: string) => createEnv({}).compile(parse(src)).run();
 
 describe("f03: text blocks", () => {
   test("a block of 200,000 lines is read in linear time (7.3)", () => {
@@ -66,7 +66,7 @@ describe("f03: raw strings", () => {
   });
   test("a raw string and a block with no interpolation cost nothing (7.1)", () => {
     const env = createEnv({});
-    assert.deepEqual(env.compile('[r"a\\b", """\n  abc\n  """]').measure().usage, { steps: 0, allocated: 3 });
-    assert.deepEqual(env.compile('r"' + "x".repeat(10_000) + '"').measure().usage, { steps: 0, allocated: 0 });
+    assert.deepEqual(env.compile(parse('[r"a\\b", """\n  abc\n  """]')).measure().usage, { steps: 0, allocated: 3 });
+    assert.deepEqual(env.compile(parse('r"' + "x".repeat(10_000) + '"')).measure().usage, { steps: 0, allocated: 0 });
   });
 });

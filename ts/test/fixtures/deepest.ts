@@ -1,7 +1,7 @@
 // The deepest programs within the limits (02 8.4, 01 13.2). Run by deep.test.ts in
 // a child process with a small V8 stack. Prints one line per program.
 
-import { createEnv } from "../../src/host/api.ts";
+import { createEnv, execute, parse } from "../../src/host/api.ts";
 
 /** depth - 1 calls in a chain, at nesting 0, then a walk of one level: the depth count reaches the limit. */
 function calls(depth: number): string {
@@ -9,8 +9,8 @@ function calls(depth: number): string {
   let src = "const f0 = x => [x == y, `${x}`];\n";
   for (let i = 1; i < n; i++) src += `const f${i} = x => f${i - 1}(x);\n`;
   src += `f${n - 1}(y)`;
-  const env = createEnv({ vars: "{y: any}", limits: { depth, steps: null, allocation: null } });
-  const o = env.compile(src, { check: false }).execute({ y: [1] });
+  const env = createEnv({ varRecord: "{y: any}", limits: { depth, steps: null, allocation: null } });
+  const o = execute(env.compile(parse(src), { check: false }), { y: [1] });
   return o.ok ? "ok" : o.diagnostic.code;
 }
 
@@ -18,14 +18,14 @@ function calls(depth: number): string {
 function walk(depth: number): string {
   let y: unknown = 1;
   for (let i = 0; i < depth; i++) y = [y];
-  const env = createEnv({ vars: "{y: any, z: any}", limits: { depth, steps: null, allocation: null } });
-  const o = env.compile("[y == z, `${y}`]", { check: false }).execute({ y, z: y });
+  const env = createEnv({ varRecord: "{y: any, z: any}", limits: { depth, steps: null, allocation: null } });
+  const o = execute(env.compile(parse("[y == z, `${y}`]"), { check: false }), { y, z: y });
   return o.ok ? "ok" : o.diagnostic.code;
 }
 
 /** 100 levels of source nesting, in each kind of opener. */
 function nesting(): string {
-  const env = createEnv({ vars: "{c: any}", limits: { steps: null, allocation: null } });
+  const env = createEnv({ varRecord: "{c: any}", limits: { steps: null, allocation: null } });
   const srcs = [
     "(".repeat(100) + "1" + ")".repeat(100),
     "[".repeat(100) + "]".repeat(100),
@@ -35,7 +35,7 @@ function nesting(): string {
     "c ? ".repeat(100) + "1" + " : 2".repeat(100),
   ];
   for (const s of srcs) {
-    const o = env.compile(s, { check: false }).execute({ c: true });
+    const o = execute(env.compile(parse(s), { check: false }), { c: true });
     if (!o.ok) return o.diagnostic.code;
   }
   return "ok";

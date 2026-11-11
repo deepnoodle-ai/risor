@@ -4,10 +4,11 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, descriptionText, envFromDescription, RisorError, typeFromSchema } from "../src/host/api.ts";
+import { createEnv, descriptionText, Env, parse, RisorError, typeFromSchema } from "../src/host/api.ts";
 import { close, meet, pick } from "../src/types/schema.ts";
 import { ANY, INT, NEVER, STRING, printType, record } from "../src/types/type.ts";
 import type { Rec } from "../src/types/type.ts";
+import { tryCheck } from "./helpers.ts";
 
 const req = (type: import("../src/types/type.ts").Type) => ({ type, optional: false });
 const opt = (type: import("../src/types/type.ts").Type) => ({ type, optional: true });
@@ -24,8 +25,8 @@ function declareCode(f: () => unknown): string {
 
 describe("f01 5.3, 5.4: descriptions", () => {
   const e1 = createEnv({
-    vars: "{n: int, t: Time | null}",
-    schemas: { order: { schema: { type: "object", properties: { id: { type: "integer" }, note: { type: "string" } }, required: ["id"] } } },
+    varRecord: "{n: int, t: Time | null}",
+    varSchemas: { order: { schema: { type: "object", properties: { id: { type: "integer" }, note: { type: "string" } }, required: ["id"] } } },
     opaque: { Time: { test: () => false, methods: { format: { type: "(layout:string)=>string", call: () => "" } } } },
     functions: { rate: { type: "(code:string)=>float!", call: () => 0.1 }, "geo.distance": { type: "(a: T, b: T) => float where T: ordered", call: () => 0 } },
     reject: ["dynamic", "constant-condition"],
@@ -40,32 +41,32 @@ describe("f01 5.3, 5.4: descriptions", () => {
     );
   });
   test("the round trip: the same description, and the same check", () => {
-    const e2 = envFromDescription(JSON.parse(descriptionText(e1.describe())));
+    const e2 = Env.fromDescription(JSON.parse(descriptionText(e1.describe())));
     assert.equal(descriptionText(e2.describe()), descriptionText(e1.describe()));
     for (const src of ["order.id + n", "order.note", "rate(order.note ?? \"x\")", "t?.format(\"iso\")", "geo.distance(1, 2)", "nope"]) {
-      assert.deepEqual(JSON.stringify(e2.check(src)), JSON.stringify(e1.check(src)), src);
+      assert.deepEqual(JSON.stringify(tryCheck(e2, parse(src))), JSON.stringify(tryCheck(e1, parse(src))), src);
     }
   });
   test("an environment from a description has no implementation", () => {
-    const e2 = envFromDescription(e1.describe());
-    assert.equal(declareCode(() => e2.compile("n")), "no-implementation");
-    const plain = envFromDescription(createEnv({ vars: "{n: int}" }).describe());
-    assert.equal(plain.compile("n + 1").run({ n: 1 }), 2);
+    const e2 = Env.fromDescription(e1.describe());
+    assert.equal(declareCode(() => e2.compile(parse("n"))), "no-implementation");
+    const plain = Env.fromDescription(createEnv({ varRecord: "{n: int}" }).describe());
+    assert.equal(plain.compile(parse("n + 1")).run({ n: 1 }), 2);
   });
   test("its declare errors are those of 03 3.3.4", () => {
     const base = createEnv({}).describe();
-    assert.equal(declareCode(() => envFromDescription({ ...base, variables: { x: "number" } })), "bad-type");
-    assert.equal(declareCode(() => envFromDescription({ ...base, variables: { if: "int" } })), "bad-name");
-    assert.equal(declareCode(() => envFromDescription({ ...base, functions: { f: "(x) => int" } })), "bad-signature");
-    assert.equal(declareCode(() => envFromDescription({ ...base, variables: { f: "int" }, functions: { f: "() => int" } })), "name-clash");
-    assert.equal(declareCode(() => envFromDescription({ ...base, reject: ["nope"] })), "bad-class");
-    assert.equal(declareCode(() => envFromDescription({ ...base, version: "9.9" })), "unsupported-version");
-    assert.equal(declareCode(() => envFromDescription({ ...base, limits: { steps: -1, allocation: null, depth: 200 } })), "bad-limit");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, variables: { x: "number" } })), "bad-type");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, variables: { if: "int" } })), "bad-name");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, functions: { f: "(x) => int" } })), "bad-signature");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, variables: { f: "int" }, functions: { f: "() => int" } })), "name-clash");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, reject: ["nope"] })), "bad-class");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, version: "9.9" })), "unsupported-version");
+    assert.equal(declareCode(() => Env.fromDescription({ ...base, limits: { steps: -1, allocation: null, depth: 200 } })), "bad-limit");
   });
   test("a value that is not a description is the binding's own error (5.4 item 2)", () => {
     const base = createEnv({}).describe();
     for (const bad of [null, [], { ...base, extra: 1 }, { ...base, variables: { x: 1 } }, { ...base, limits: { steps: 1 } }]) {
-      assert.throws(() => envFromDescription(bad), (e: unknown) => e instanceof Error && !(e instanceof RisorError));
+      assert.throws(() => Env.fromDescription(bad), (e: unknown) => e instanceof Error && !(e instanceof RisorError));
     }
   });
 });
@@ -104,13 +105,13 @@ describe("f01 3.10 item 5: a shared $ref target is mapped once", () => {
       return { $defs: defs, $ref: `#/$defs/d${n}` };
     };
     const t0 = performance.now();
-    const env = createEnv({ schemas: { v: { schema: chain(14) } } });
-    assert.ok(env.check("1").ok);
-    assert.equal(declareCode(() => createEnv({ schemas: { v: { schema: chain(30) } } })), "bad-type");
+    const env = createEnv({ varSchemas: { v: { schema: chain(14) } } });
+    assert.ok(tryCheck(env, parse("1")).ok);
+    assert.equal(declareCode(() => createEnv({ varSchemas: { v: { schema: chain(30) } } })), "bad-type");
     assert.ok(performance.now() - t0 < 1000);
   });
   test("typeFromSchema, and its bad-type", () => {
-    assert.equal(typeFromSchema({ type: "object", properties: { a: { type: "string" } } }, ["closed"]), "{a?: string}");
+    assert.equal(typeFromSchema({ type: "object", properties: { a: { type: "string" } } }, ["closed"]).toString(), "{a?: string}");
     assert.equal(declareCode(() => typeFromSchema({ type: "int" })), "bad-type");
     assert.equal(declareCode(() => typeFromSchema({ $defs: { x: { $ref: "#/$defs/x" } }, $ref: "#/$defs/x" })), "bad-type");
   });

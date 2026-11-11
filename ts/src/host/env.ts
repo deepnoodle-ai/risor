@@ -14,6 +14,7 @@ import type { Type } from "../types/type.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import { FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS, GROUPS, METHODS } from "../library/registry.ts";
 import type { SchemaOption } from "../types/schema.ts";
+import { opaqueNamesIn } from "./type.ts";
 
 /** The newest version of the specification this implementation offers. */
 export const VERSION = "3.0";
@@ -55,6 +56,8 @@ export interface Declarations {
   variableTexts?: Record<string, string>;
   /** Variables declared by JSON Schema (f01 2). */
   schemas?: Record<string, { schema: unknown; options?: SchemaOption[] }>;
+  /** Variables each declared by a type the host built (05 Part E, E.3 `varType`). */
+  varTypes?: Record<string, Type>;
   /** Library entries the environment does not have (03 3.3.1). */
   removed?: string[];
   /** Package F6: the opt-in groups that are on (f06 2.1). */
@@ -78,7 +81,7 @@ export interface Declarations {
 }
 
 /** A named type by type text, or by JSON Schema with F1's options (f04 3.1, 9.1). */
-export type NamedTypeDecl = { name: string; type: string } | { name: string; schema: unknown; options?: SchemaOption[] };
+export type NamedTypeDecl = { name: string; type: string } | { name: string; schema: unknown; options?: SchemaOption[] } | { name: string; typeOf: Type };
 
 export interface Environment {
   version: string;
@@ -197,7 +200,10 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     childNamed.add(name);
     let t: Type;
     try {
-      if ("type" in nt) {
+      if ("typeOf" in nt) {
+        t = nt.typeOf;
+        for (const n of opaqueNamesIn(t)) if (!env.opaque.has(n)) throw new TypeRuleError(`${n} is not a declared opaque type`);
+      } else if ("type" in nt) {
         const p = parseType(nt.type);
         if (!p.ok) throw new TypeRuleError(p.message);
         t = fromNode(p.node, { opaque: env.opaque, named: env.named });
@@ -273,6 +279,18 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       if (!(e instanceof SchemaError)) throw e;
       errs.push(diag("bad-type", `the schema of ${name}: ${e.message}`));
     }
+  }
+
+  // 05 Part E, E.3: a variable declared by a type the host built; it may name only declared opaque types.
+  for (const [name, t] of Object.entries(d.varTypes ?? {})) {
+    if (!variableName(name)) continue;
+    env.variables.set(name, { t: "word", word: "any" });
+    schemaVars.add(name);
+    const bad = [...opaqueNamesIn(t)].find((n) => !env.opaque.has(n));
+    if (bad !== undefined) errs.push(diag("bad-type", `the type of ${name}: ${bad} is not a declared opaque type`));
+    else if (depth(t, 70) > 64) errs.push(diag("bad-type", `the type of ${name}: a type deeper than 64`));
+    else if (typeSize(t) > SIZE_LIMIT) errs.push(diag("bad-type", `the type of ${name}: a type larger than 100,000`));
+    else env.variableTypes.set(name, t);
   }
 
   for (const [full, signature] of Object.entries(d.functions ?? {})) {
