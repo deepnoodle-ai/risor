@@ -14,13 +14,13 @@ npm install @risor/mantine
 import { useRef } from "react";
 import { useForm } from "@mantine/form";
 import { RisorInput, RisorPreview } from "@risor/mantine";
-import type { RisorEditorHandle } from "@risor/mantine";
+import type { RisorInputHandle } from "@risor/mantine";
 import "@risor/mantine/styles.css";
 
 // `description` is what your Go server's env.Describe() returned.
 export function StepCondition({ description, sample }) {
   const form = useForm({ initialValues: { condition: "order.total > 100" } });
-  const input = useRef<RisorEditorHandle>(null);
+  const input = useRef<RisorInputHandle>(null);
   return (
     <form onSubmit={form.onSubmit(async (values) => {
       if ((await input.current!.validate()).length > 0) return;

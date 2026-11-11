@@ -2,7 +2,7 @@
 // in the risor repository. Import "@risor/mantine/styles.css" once.
 
 export { RisorInput } from "./input.tsx";
-export type { RisorInputProps } from "./input.tsx";
+export type { RisorInputHandle, RisorInputProps } from "./input.tsx";
 export { RisorPreview } from "./preview.tsx";
 export type { RisorPreviewProps } from "./preview.tsx";
 export { describeSample, RisorProvider, RisorResult, RisorEditor } from "@risor/react";

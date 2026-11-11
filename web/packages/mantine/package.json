@@ -3,21 +3,37 @@
   "version": "0.0.0",
   "description": "Mantine components for Risor: a checked expression input and a result preview",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/deepnoodle-ai/risor.git", "directory": "web/packages/mantine" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepnoodle-ai/risor.git",
+    "directory": "web/packages/mantine"
+  },
   "type": "module",
-  "sideEffects": ["*.css"],
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
-    ".": { "risor-source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    ".": {
+      "risor-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./styles.css": "./styles.css",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "src", "styles.css", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "styles.css",
+    "README.md"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\""
   },
   "dependencies": {
+    "@risor/codemirror": "0.0.0",
     "@risor/react": "0.0.0"
   },
   "peerDependencies": {

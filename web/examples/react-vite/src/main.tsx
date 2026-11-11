@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import { Button, Code, Container, Group, MantineProvider, SegmentedControl, SimpleGrid, Stack, Text, Textarea, Title } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { describeSample, RisorInput, RisorPreview } from "@risor/mantine";
-import type { Description, RisorEditorHandle } from "@risor/mantine";
+import type { Description, RisorInputHandle } from "@risor/mantine";
 import "@risor/mantine/styles.css";
 import { RisorEditor, RisorResult, useRisorRun } from "@risor/react";
 
@@ -23,7 +23,7 @@ const WITH_FUNCTION: Description = {
 };
 
 function ConditionForm() {
-  const input = useRef<RisorEditorHandle>(null);
+  const input = useRef<RisorInputHandle>(null);
   const [value, setValue] = useState("order.total > 100 && customer.tier == \"gold\"");
   const [envKind, setEnvKind] = useState("sample");
   const [submitted, setSubmitted] = useState<string | null>(null);
@@ -45,6 +45,7 @@ function ConditionForm() {
           <RisorInput
             ref={input}
             label="Run this step when"
+            required
             description="A Risor expression that gives a bool. Try order. and wait for the fields."
             environment={environment}
             expected="bool"

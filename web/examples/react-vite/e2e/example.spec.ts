@@ -45,7 +45,9 @@ test("the preview runs in the worker; with a host function it says to use run", 
   await expect(page.locator(".risor-mantine-preview")).toContainText("host-functions");
 });
 
-test("the playground: a result tree, and a run that loops is stopped by its deadline", async ({ page }) => {
+test("the playground: a result tree, and a long run ends with a limit error while the page stays responsive", async ({ page }) => {
+  // The deadline and the worker restart are tested with a fake worker in
+  // @risor/service: a program cannot hang past its own deadline here.
   await page.goto("/");
   const result = page.locator(".risor-result").last();
   await expect(result.locator(".risor-v-key").first()).toBeVisible();
@@ -54,7 +56,18 @@ test("the playground: a result tree, and a run that loops is stopped by its dead
   await editor.click();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type("len(range(100000000).map(i => i))");
-  await expect(result).toContainText(/deadline-exceeded|allocation|Stopped|steps-exceeded/, { timeout: 10_000 });
-  // The page did not freeze: the editor still takes text.
+  await expect(result).toContainText(/steps-exceeded|allocation-exceeded|deadline-exceeded/, { timeout: 10_000 });
   await page.keyboard.type(" ");
+});
+
+test("an empty field shows no error, and a required one blocks the submit", async ({ page }) => {
+  await page.goto("/");
+  await field(page).click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("Backspace");
+  await page.waitForTimeout(700); // past the pause before a check
+  await expect(page.locator(".risor-mantine-input .cm-lintRange-error")).toHaveCount(0);
+  await expect(page.locator(".risor-mantine-input.risor-editor-invalid")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("submitted")).toHaveText("Blocked: Enter an expression.");
 });
