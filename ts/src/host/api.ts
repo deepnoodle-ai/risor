@@ -49,7 +49,7 @@ import { METHODS } from "../library/registry.ts";
 import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
 import { declareError, failure, publicDiagnostic, RisorError } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
-import { innerType, Type, typeClassifier, typeOf } from "./type.ts";
+import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
 import { formatProgram as formatProgramResult, formatTemplate as formatTemplateResult } from "../tools/format.ts";
 import { complete as assistComplete, hover as assistHover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
@@ -628,6 +628,8 @@ export class Env {
     };
     if (typeof text !== "string" && "type" in text) {
       const t = innerType(text.type);
+      // As for varTypes and namedTypes: every opaque name must be declared here.
+      for (const n of opaqueNamesIn(t)) if (!this.environment.opaque.has(n)) fail(`${n} is not a declared opaque type`);
       if (depth(t, 70) > 64) fail("a type deeper than 64");
       if (typeSize(t) > SIZE_LIMIT) fail("a type larger than 100,000");
       return { kind: "type", type: t };

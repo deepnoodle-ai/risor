@@ -90,6 +90,14 @@ describe("E.3: the environment", () => {
     assert.equal(thrown(() => createEnv({ varTypes: { t: opaqueTypeNamed("Time") } })).diagnostics[0].code, "bad-type");
     assert.equal(thrown(() => createEnv({ varTypes: { t: literalType() } })).diagnostics[0].code, "bad-type");
   });
+  test("an expected result by a Type naming an undeclared opaque type is bad-type", () => {
+    const env = createEnv({ varRecord: "{x: int}" });
+    const e = thrown(() => env.check(parse("x"), { type: opaqueTypeNamed("Time") }));
+    assert.deepEqual([e.phase, e.diagnostics[0].code], ["declare", "bad-type"]);
+    assert.equal(thrown(() => loadValue(env, "1", { expected: { type: listType(opaqueTypeNamed("Time")) } })).diagnostics[0].code, "bad-type");
+    const timed = createEnv({ varRecord: "{x: int}", opaque: { Time: { test: () => false } } });
+    assert.equal(thrown(() => timed.check(parse("x"), { type: opaqueTypeNamed("Time") })).diagnostics[0].code, "result-mismatch");
+  });
   test("with, fromDescription, parseType and libraryNames", () => {
     const env = createEnv({ varRecord: "{n: int}" });
     const child = env.with({ vars: { m: "string" } });
