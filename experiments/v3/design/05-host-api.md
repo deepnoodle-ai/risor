@@ -2524,8 +2524,10 @@ below is the canonical name. Each binding writes it in its own case (row 1).
 | The library's names | `libraryNames` | `env.LibraryNames()` | `env.libraryNames()` | `env.library_names()` |
 
 `Function` in Go keeps its struct form, which is the Go idiom for a declaration
-with three parts. A host function with no implementation is declared the same
-way with the implementation left out; it is not a second name.
+with three parts. A host declares a function with its implementation. A
+function with no implementation, for a check-only environment, comes from a
+description (`fromDescription`); there is no second name for it. Go's zero
+`Impl` is not part of the surface.
 
 ### E.4 Programs
 
@@ -2669,8 +2671,16 @@ TypeScript string union, a Rust `enum`. Go's `IsZero` is a Go convenience
 | A hover | `Hover` | `Hover` | `Hover` | `Hover` |
 
 A position is a line and a column (`spec/core/03-host.md` 3.7.7) in all three,
-not an offset. `RisorError` keeps its name because `Error` is a global of
-JavaScript.
+not an offset. There is one public `Span`, a start and an exclusive end
+position, and every span a host sees uses it: of a diagnostic, a `Site`, a
+`Ref`, a `CallSite`, a `Segment`, a completion and a hover. `RisorError` keeps
+its name because `Error` is a global of JavaScript.
+
+What fails gives the binding's form of failure (E.1 row 3) with an `Error`
+(`RisorError`): `jsonText` among them. A test gives what it found instead:
+`conform` gives its one diagnostic or nothing (Go a nil-or-`*Error`
+`error`, TypeScript `Diagnostic | null`, Rust `Result<(), Diagnostic>`), and
+`conformAll` a list of diagnostics.
 
 ### E.9 What is not part of the surface
 
