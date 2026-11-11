@@ -1,0 +1,63 @@
+/* @risor/react: optional styles. Every colour is a CSS variable with a light
+   and a dark default; set the variables on any parent to change them. */
+
+.risor-editor {
+  --risor-border: #d0d7de;
+  --risor-bg: #ffffff;
+  --risor-fg: #1f2328;
+  --risor-muted: #656d76;
+  --risor-error: #cf222e;
+  --risor-focus: #0969da;
+  border: 1px solid var(--risor-border);
+  border-radius: 6px;
+  background: var(--risor-bg);
+  color: var(--risor-fg);
+  overflow: hidden;
+}
+.risor-editor:focus-within { border-color: var(--risor-focus); box-shadow: 0 0 0 1px var(--risor-focus); }
+.risor-editor-invalid { border-color: var(--risor-error); }
+.risor-editor .cm-editor { background: transparent; }
+.risor-editor .cm-editor.cm-focused { outline: none; }
+.risor-editor-fallback {
+  padding: 4px 8px;
+  font-family: var(--risor-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: pre-wrap;
+  color: var(--risor-fg);
+}
+.risor-editor-single .cm-content { white-space: pre; }
+
+.risor-result, .risor-diagnostics {
+  font-family: var(--risor-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.875em;
+  color: var(--risor-fg, #1f2328);
+}
+.risor-result-running { opacity: 0.6; }
+.risor-result-type, .risor-result-usage { color: var(--risor-muted, #656d76); margin-top: 6px; }
+.risor-result-stage { color: var(--risor-error, #cf222e); font-weight: 600; margin-bottom: 4px; }
+.risor-value summary { cursor: pointer; list-style: revert; }
+.risor-v-children { padding-left: 1.25em; }
+.risor-v-key { color: var(--risor-property, #0a3069); }
+.risor-v-string { color: var(--risor-string, #0a7a32); }
+.risor-v-number, .risor-v-bool, .risor-v-null { color: var(--risor-number, #0550ae); }
+.risor-v-summary, .risor-v-punct { color: var(--risor-muted, #656d76); }
+
+.risor-diagnostics { list-style: none; margin: 0; padding: 0; }
+.risor-diagnostic { margin: 4px 0; }
+.risor-diagnostic-code { color: var(--risor-error, #cf222e); }
+.risor-diagnostic-place { color: var(--risor-muted, #656d76); }
+.risor-diagnostic-frame { margin: 2px 0 0; color: var(--risor-muted, #656d76); }
+.risor-diagnostic-trace { margin: 2px 0 0; color: var(--risor-muted, #656d76); }
+
+@media (prefers-color-scheme: dark) {
+  .risor-editor, .risor-result, .risor-diagnostics {
+    --risor-border: #30363d;
+    --risor-bg: #0d1117;
+    --risor-fg: #e6edf3;
+    --risor-muted: #8d96a0;
+    --risor-error: #ff7b72;
+    --risor-focus: #4493f8;
+  }
+  .risor-v-key { color: var(--risor-property, #a5d6ff); }
+  .risor-v-string { color: var(--risor-string, #7ee787); }
+  .risor-v-number, .risor-v-bool, .risor-v-null { color: var(--risor-number, #79c0ff); }
+}
