@@ -14,28 +14,27 @@ memory.**
 > [`v2` branch](https://github.com/deepnoodle-ai/risor/tree/v2).
 
 Your application has data. Your users, your operators or an LLM want to
-write the logic over it: a rule in a workflow, a filter, a template, a
-transform of an API response, a config file. Risor is the language for that
-logic. Your program gives it data and gets a value back.
+write a little logic over it. Risor is the language for that logic. Your
+program gives it data and gets a value back.
 
 ```js
-// Summarize a test run. `fetch` is data from the host.
-const failed = fetch.tests.filter(t => t.status == "fail");
-const rate = len(failed) / len(fetch.tests);
-const verdict = if (!failed) { "pass" }
-  else if (rate < 0.1) { "flaky" }
-  else { "fail" };
-{
-  verdict,
-  summary: `${len(failed)} of ${len(fetch.tests)} failed`,
-  names: failed[*].name,
-  slowest: failed.sortBy(t => t.ms, "desc").slice(0, 3)
-    .map(({name, ms}) => `${name} ${ms}ms`),
-  owner: try { fetch.owner as string } catch { "unknown" },
-}
+// A rule
+order.total > 100 && order.country == "US"
+
+// A template
+`Hello, ${user.name}!`
+
+// A query
+users.filter(u => u.age >= 18).map(u => u.name)
 ```
 
-If you know TypeScript, you can read this already.
+If you know JavaScript or TypeScript, you can read Risor already. A longer
+program names its values with `const` and ends with one expression:
+
+```js
+const adults = users.filter(u => u.age >= 18);
+`${len(adults)} of ${len(users)} users are adults`
+```
 
 ## Why Risor
 
@@ -53,44 +52,44 @@ did not write, and meter it.
 
 **Checked before it runs.** A static checker is part of the language. A
 program that passes the checker cannot fail with an unknown name, a missing
-field, an unexpected null or a value of the wrong kind. You find the error
-when the user saves the rule, not at 3 a.m.
+field, an unexpected null or a value of the wrong kind.
 
-**Small enough to learn in an afternoon.** A program is `const` bindings
-followed by one expression. There are no statements, no loops and no
-reassignment. `if`, `match` and `try` are expressions. Values cannot be
-changed, and host data is read in place, with no copy.
+**Small.** No statements, no loops, no reassignment. `if`, `match` and
+`try` are expressions. Values cannot be changed, and host data is read in
+place, with no copy.
 
 **Defined by a specification.** The language is defined by
 [`spec/`](spec) and by a conformance suite of data files in
 [`suite/`](suite). All three implementations pass the Core suite.
 
-## Catch errors before they run
+## Catch mistakes before they run
 
-The checker knows the shape of your data. Here, a test that failed has no
-owner:
+The checker knows the shape of your data. Say `user` is
+`{name: string, age: int, email: string | null}`:
 
-```bash
-$ risor check rule.risor --vars data.json
-error[maybe-null] 2:17-2:24: t.owner may be null; its type is {team: "web"} | null
-    failed.map(t => t.owner.team)
-                    ^^^^^^^
+```text
+user.nmae
+
+error[no-field] 1:6-1:10: {age: int, email: string | null, name: string} has no field "nmae"
 ```
 
-Change the program to `t.owner?.team ?? "unowned"` and the checker accepts
-it. It infers the type of the result: `("unowned" | "web")[]`.
+```text
+user.email.toLowerCase()
+
+error[maybe-null] 1:1-1:11: user.email may be null; its type is string | null
+```
+
+Write `user.email?.toLowerCase() ?? "none"` and the checker accepts it.
+You find the mistake when the rule is saved, not when it runs.
 
 ## Run code you did not write
 
-A run that passes a limit stops with an error that names the limit. A
-`catch` in the program cannot catch it.
+A run that passes a limit stops with an error that names the limit:
 
-```bash
-$ risor eval runaway.risor
-error[steps-exceeded] 1:1-2:32: the run needed more than its limit of 1000000 steps
-    const xs = range(0, 100000);
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  in map, element 2, at 2:1-2:32
+```text
+range(0, 10000000)
+
+error[steps-exceeded] 1:1-1:19: the run needed more than its limit of 1000000 steps
 ```
 
 | Limit | Default | Bounds |
@@ -103,13 +102,12 @@ error[steps-exceeded] 1:1-2:32: the run needed more than its limit of 1000000 st
 Steps, allocation and depth are deterministic: whether a program passes one
 of these limits is the same in every implementation, on every run. The
 deadline is not, because wall-clock time is not. A host can also cancel a
-run.
-The rules are in [`spec/core/03-host.md`](spec/core/03-host.md) 3.6.
+run. A `catch` in the program cannot catch a limit.
 
 ## Embed it
 
-The three APIs have the same concepts and the same names. They differ only
-where each language has its own idiom: options, errors and cancellation.
+Declare what the program can see, compile it once, run it as often as you
+like. The three APIs have the same concepts and the same names.
 
 ### Go
 
@@ -118,73 +116,55 @@ go get github.com/deepnoodle-ai/risor/go/v3@latest
 ```
 
 ```go
-env, err := risor.NewEnv(
-    risor.Var("tests", "{name: string, status: string, ms: int}[]"),
-    risor.Limits{Steps: 100_000, Allocation: 50_000, Deadline: 50 * time.Millisecond},
-)
-expr, err := risor.Parse(`
-const failed = tests.filter(t => t.status == "fail");
-{
-  verdict: if (!failed) { "pass" } else { "fail" },
-  names: failed[*].name,
-}`)
-prog, err := env.Compile(expr) // checks the program against the declarations
-out, err := prog.Run(ctx, risor.Map(map[string]any{"tests": tests}))
-// map[names:[upload] verdict:fail]
+env, err := risor.NewEnv(risor.Var("user", "{name: string, age: int}"))
+expr, err := risor.Parse(`user.age >= 18`)
+prog, err := env.Compile(expr) // checks the program
+out, err := prog.Run(ctx, risor.Map(map[string]any{
+    "user": map[string]any{"name": "Ada", "age": 36},
+}))
+// true
 ```
-
-A compiled program does not change, and many goroutines can run it at the
-same time. The full example is
-[`go/example_test.go`](go/example_test.go).
 
 ### TypeScript
 
 ```ts
-import { createEnv, parse, RisorError } from "risor";
+import { createEnv, parse } from "risor";
 
-const env = createEnv({
-  vars: { tests: "{name: string, status: string, ms: int}[]" },
-  limits: { steps: 100_000, allocation: 50_000, deadlineMs: 50 },
-});
-const prog = env.compile(parse(`
-const failed = tests.filter(t => t.status == "fail");
-{
-  verdict: if (!failed) { "pass" } else { "fail" },
-  names: failed[*].name,
-}`));
-const { value, usage } = prog.measure({ tests });
-// value: Map { verdict => "fail", names => ["upload"] }
-// usage: { steps, allocated }
+const env = createEnv({ vars: { user: "{name: string, age: int}" } });
+const prog = env.compile(parse("user.age >= 18")); // checks the program
+prog.run({ user: { name: "Ada", age: 36 } });
+// true
 ```
-
-A failure throws a `RisorError` that holds its diagnostics. A run takes an
-`AbortSignal`.
 
 ### Rust
 
 ```rust
-use risor::{parse, CompileOptions, Env, Limits};
+use risor::{parse, CompileOptions, Env};
 
 #[derive(risor::Host)]
-struct Test { name: String, status: String, ms: i64 }
+struct User { name: String, age: i64 }
 
-let env = Env::builder()
-    .var_host::<Vec<Test>>("tests") // the type comes from the struct
-    .limits(Limits { steps: Some(100_000), allocation: Some(50_000), ..Limits::default() })
-    .build()?;
-let expr = parse(r#"
-const failed = tests.filter(t => t.status == "fail");
-{
-  verdict: if (!failed) { "pass" } else { "fail" },
-  names: failed[*].name,
-}"#)?;
-let prog = env.compile(&expr, CompileOptions::default())?;
-let out = prog.run(&HashMap::from([("tests".to_string(), tests)]))?;
-// {"names":["upload"],"verdict":"fail"}
+let env = Env::builder().var_host::<User>("user").build()?;
+let prog = env.compile(&parse("user.age >= 18")?, CompileOptions::default())?;
+let vars = HashMap::from([("user".to_string(), User { name: "Ada".into(), age: 36 })]);
+let out = prog.run(&vars)?;
+// true
 ```
 
-The crate has no dependencies and no `unsafe`. Host structs are read in
-place through `#[derive(risor::Host)]`.
+### Setting limits
+
+```go
+risor.NewEnv(risor.Limits{Steps: 10_000, Allocation: 10_000, Deadline: time.Second})
+```
+
+```ts
+createEnv({ limits: { steps: 10_000, allocation: 10_000, deadlineMs: 1000 } });
+```
+
+```rust
+Env::builder().limits(Limits { steps: Some(10_000), allocation: Some(10_000),
+    deadline: Some(Duration::from_secs(1)), ..Limits::default() })
+```
 
 | Implementation | Where | Package |
 | --- | --- | --- |
