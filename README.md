@@ -116,20 +116,26 @@ like. The three APIs have the same concepts and the same names.
 go get github.com/deepnoodle-ai/risor/go/v3@latest
 ```
 
-The first alpha, `v3.0.0-alpha.1`, was published at
-`github.com/deepnoodle-ai/risor/v3`. Later releases use the path above.
-
 ```go
-env, err := risor.NewEnv(risor.Var("user", "{name: string, age: int}"))
+type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+userType, err := risor.TypeOf[User]() // {age: int, name: string}
+env, err := risor.NewEnv(risor.VarType("user", userType))
 expr, err := risor.Parse(`user.age >= 18`)
 prog, err := env.Compile(expr) // checks the program
 out, err := prog.Run(ctx, risor.Map(map[string]any{
-    "user": map[string]any{"name": "Ada", "age": 36},
+    "user": User{Name: "Ada", Age: 36},
 }))
 // true
 ```
 
 ### TypeScript
+
+TypeScript's types do not exist at run time, so a TypeScript host declares
+the type in Risor's type syntax. It looks like a TypeScript type.
 
 ```ts
 import { createEnv, parse } from "risor";
