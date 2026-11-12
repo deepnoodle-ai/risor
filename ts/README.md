@@ -21,7 +21,7 @@ npm install risor
 ```ts
 import { createEnv } from "risor";
 
-const env = createEnv({ vars: "{order: {total: float, items: {sku: string}[]}}" });
+const env = createEnv({ vars: { order: "{total: float, items: {sku: string}[]}" } });
 const program = env.compile(`order.total > 100 && len(order.items) > 0`);
 
 program.run({ order: { total: 120, items: [{ sku: "A1" }] } }); // true
@@ -29,12 +29,16 @@ program.run({ order: { total: 120, items: [{ sku: "A1" }] } }); // true
 
 `compile` checks the program against the declared variables. A checked program
 cannot fail with an unknown name, a missing field, a null or a wrong kind. A
-program that does not check throws a `RisorError` with its diagnostics; use
-`tryCompile` to get them as a value.
+program that does not check throws a `RisorError` with its diagnostics:
 
 ```ts
-const r = env.tryCompile(`order.totl > 100`);
-if (!r.ok) console.log(r.diagnostics[0].message);
+import { RisorError } from "risor";
+
+try {
+  env.compile(`order.totl > 100`);
+} catch (e) {
+  if (e instanceof RisorError) console.log(e.diagnostics[0].code); // "no-field"
+}
 ```
 
 ## Limits
@@ -42,20 +46,23 @@ if (!r.ok) console.log(r.diagnostics[0].message);
 Steps, allocation, a deadline and a depth limit bound every run:
 
 ```ts
-const env = createEnv({ vars: "{n: int}", limits: { steps: 10_000, allocation: 100_000, timeoutMs: 50 } });
-const o = env.compile("range(n).map(i => i * i)").execute({ n: 1_000_000 });
-if (!o.ok) console.log(o.diagnostic.code); // a limit error, never a hung page
+const env = createEnv({ vars: { n: "int" }, limits: { steps: 10_000, allocation: 100_000, deadlineMs: 50 } });
+try {
+  env.compile("range(n).map(i => i * i)").run({ n: 1_000_000 });
+} catch (e) {
+  if (e instanceof RisorError) console.log(e.diagnostics[0].code); // "steps-exceeded": a limit error, never a hung page
+}
 ```
 
 ## Tools for editors
 
 | Call | Does |
 | --- | --- |
-| `formatProgram(text)` | The one formatted text of a program |
-| `complete(env, text, position)` | Completion candidates at a position of a text that need not parse |
-| `hover(env, text, position)` | The type, signature and doc of the name at a position |
-| `env.describe()`, `envFromDescription(json)` | An environment as JSON, so a browser can check text against a server's environment |
-| `tokens(text)`, also from `risor/tokens` | Coloured ranges for an editor, from the lexer. `risor/tokens` loads only the lexer (about 12 KB gzipped) |
+| `format(text)` | The one formatted text of a program |
+| `env.complete(text, { line, column })` | Completion candidates at a position of a text that need not parse |
+| `env.hover(text, { line, column })` | The type, signature and doc of the name at a position |
+| `env.describe()`, `Env.fromDescription(json)` | An environment as JSON, so a browser can check text against a server's environment |
+| `tokens(text)`, from `risor/tokens` | Coloured ranges for an editor, from the lexer only (about 12 KB gzipped). A call of this binding, not of the specification |
 
 Positions count code points, not UTF-16 units.
 
