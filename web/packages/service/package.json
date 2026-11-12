@@ -1,6 +1,6 @@
 {
   "name": "@deepnoodle/risor-service",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
   "description": "Check, complete, hover, format and run Risor off the page's main thread",
   "license": "Apache-2.0",
   "repository": {
@@ -39,6 +39,6 @@
     "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "@deepnoodle/risor": "3.0.0-alpha.1"
+    "@deepnoodle/risor": "3.0.0-alpha.2"
   }
 }
