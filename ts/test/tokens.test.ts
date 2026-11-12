@@ -16,10 +16,10 @@ function show(text: string): string[] {
   return tokens(text).map((t) => `${t.class}:${cps.slice(t.start, t.end).join("")}`);
 }
 
-/** The ranges are in order, do not overlap, and cover every code point that is not white space. */
+/** The ranges are in order, do not overlap, and cover every code point that is not white space or a leading BOM. */
 function assertCovers(text: string, ts: ColourToken[]): void {
   const cps = Array.from(text);
-  let at = 0;
+  let at = cps[0] === "\uFEFF" ? 1 : 0;
   for (const t of ts) {
     assert.ok(t.start >= at, `range ${t.start} overlaps the one before it in ${JSON.stringify(text)}`);
     assert.ok(t.end > t.start, `empty range at ${t.start} in ${JSON.stringify(text)}`);
@@ -79,6 +79,14 @@ describe("tokens", () => {
   test("offsets count code points", () => {
     const ts = tokens(`"😀" + x`);
     assert.deepEqual(ts.map((t) => [t.start, t.end]), [[0, 3], [4, 5], [6, 7]]);
+  });
+
+  test("a leading byte order mark is in no range; offsets count it", () => {
+    assert.deepEqual(tokens("\uFEFFx + 1"), [
+      { class: "name", start: 1, end: 2 },
+      { class: "operator", start: 3, end: 4 },
+      { class: "number", start: 5, end: 6 },
+    ]);
   });
 
   test("the empty text, and white space only", () => {

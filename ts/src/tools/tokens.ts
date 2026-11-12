@@ -46,7 +46,9 @@ export function tokens(text: string): ColourToken[] {
   const all = new Source(text, { keepBom: true });
   const cps = all.cps;
   const out: ColourToken[] = [];
-  let lineStart = 0;
+  // A leading byte order mark is not part of the program (01 2.1): it is in
+  // no range, as white space is. Offsets still count it.
+  let lineStart = cps[0] === 0xfeff ? 1 : 0;
   while (lineStart <= cps.length) {
     const { tokens: toks, error } = lexFrom(cps, lineStart);
     const end = error ?? cps.length;
@@ -173,8 +175,8 @@ function comments(cps: Uint32Array, from: number, to: number, out: ColourToken[]
     if (i >= to) break;
     const s = i;
     while (i < to && !isSpace(cps[i])) i++;
-    // A comment runs on over white space to its last code point in the gap
-    // when it is a block comment; join runs on one line.
+    // Join the runs of one comment within a line, so a comment's spaces are
+    // coloured too. A block comment over several lines gets one range per line.
     const last = out[out.length - 1];
     if (last && last.class === "comment" && !newlineBetween(cps, last.end, s)) last.end = i;
     else out.push({ class: "comment", start: s, end: i });
