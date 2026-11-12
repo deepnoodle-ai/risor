@@ -62,6 +62,17 @@ function sizeTheme(minLines: number, maxLines: number | undefined): Extension {
   });
 }
 
+/** The attributes of the editable element: its id, its name, and its error state. */
+function contentAttributes(p: RisorEditorProps): Extension {
+  const a: Record<string, string> = {};
+  if (p.id) a.id = p.id;
+  if (p["aria-label"]) a["aria-label"] = p["aria-label"];
+  if (p["aria-labelledby"]) a["aria-labelledby"] = p["aria-labelledby"];
+  if (p["aria-describedby"]) a["aria-describedby"] = p["aria-describedby"];
+  if (p["aria-invalid"]) a["aria-invalid"] = "true";
+  return EditorView.contentAttributes.of(a);
+}
+
 function prefersDark(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 }
@@ -81,7 +92,7 @@ export const RisorEditor = forwardRef<RisorEditorHandle, RisorEditorProps>(funct
   // Callbacks change on each render; the extension reads them through this ref.
   const latest = useRef(props);
   latest.current = props;
-  const compartments = useRef({ risor: new Compartment(), size: new Compartment(), editable: new Compartment(), scheme: new Compartment(), placeholder: new Compartment() });
+  const compartments = useRef({ risor: new Compartment(), size: new Compartment(), editable: new Compartment(), scheme: new Compartment(), placeholder: new Compartment(), attributes: new Compartment() });
   const lines = minLines ?? (singleLine ? 1 : 4);
 
   const risorExtension = () =>
@@ -117,12 +128,7 @@ export const RisorEditor = forwardRef<RisorEditorHandle, RisorEditorProps>(funct
             if (u.docChanged) latest.current.onChange?.(u.state.doc.toString());
             if (u.focusChanged) (u.view.hasFocus ? latest.current.onFocus : latest.current.onBlur)?.();
           }),
-          EditorView.contentAttributes.of({
-            ...(props.id ? { id: props.id } : {}),
-            ...(props["aria-label"] ? { "aria-label": props["aria-label"] } : {}),
-            ...(props["aria-labelledby"] ? { "aria-labelledby": props["aria-labelledby"] } : {}),
-            ...(props["aria-describedby"] ? { "aria-describedby": props["aria-describedby"] } : {}),
-          }),
+          c.attributes.of(contentAttributes(props)),
           props.extensions ?? [],
         ],
       }),
@@ -160,6 +166,10 @@ export const RisorEditor = forwardRef<RisorEditorHandle, RisorEditorProps>(funct
   useEffect(() => {
     view.current?.dispatch({ effects: compartments.current.editable.reconfigure([EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly)]) });
   }, [readOnly]);
+  const { id, "aria-label": ariaLabel, "aria-labelledby": labelledBy, "aria-describedby": describedBy, "aria-invalid": invalid } = props;
+  useEffect(() => {
+    view.current?.dispatch({ effects: compartments.current.attributes.reconfigure(contentAttributes(latest.current)) });
+  }, [id, ariaLabel, labelledBy, describedBy, invalid]);
   useEffect(() => {
     view.current?.dispatch({ effects: compartments.current.placeholder.reconfigure(placeholder ? placeholderExt(placeholder) : []) });
   }, [placeholder]);
@@ -181,11 +191,12 @@ export const RisorEditor = forwardRef<RisorEditorHandle, RisorEditorProps>(funct
     },
   }), []);
 
-  const classes = ["risor-editor", singleLine ? "risor-editor-single" : "", props["aria-invalid"] ? "risor-editor-invalid" : "", className ?? ""].filter(Boolean).join(" ");
+  const scheme = colorScheme === "auto" ? "" : `risor-editor-${colorScheme}`;
+  const classes = ["risor-editor", scheme, singleLine ? "risor-editor-single" : "", props["aria-invalid"] ? "risor-editor-invalid" : "", className ?? ""].filter(Boolean).join(" ");
   return (
     <div className={classes} style={style} data-risor-editor="">
       {!mounted && (
-        <pre className="risor-editor-fallback" style={{ minHeight: `${lines * LINE}em`, lineHeight: LINE, margin: 0 }}>
+        <pre className="risor-editor-fallback" style={{ minHeight: `${lines * LINE}em`, ...(maxLines ? { maxHeight: `${maxLines * LINE}em`, overflow: "hidden" } : {}), lineHeight: LINE, margin: 0 }}>
           {value || placeholder}
         </pre>
       )}

@@ -14,6 +14,19 @@ describe("server rendering", () => {
     assert.match(html, /<pre class="risor-editor-fallback"[^>]*>order.total &gt; 100<\/pre>/);
   });
 
+  test("a forced colour scheme names its class; auto names none", () => {
+    const render = (colorScheme?: "light" | "dark" | "auto") =>
+      renderToString(
+        <RisorProvider service={localService()}>
+          <RisorEditor value="1" colorScheme={colorScheme} />
+        </RisorProvider>,
+      ).match(/class="(risor-editor[^"]*)"/)![1];
+    assert.equal(render("dark"), "risor-editor risor-editor-dark");
+    assert.equal(render("light"), "risor-editor risor-editor-light");
+    assert.equal(render("auto"), "risor-editor");
+    assert.equal(render(), "risor-editor");
+  });
+
   test("a result: the value as a tree, its type and its usage", () => {
     const html = renderToString(<RisorResult result={{ ok: true, json: `{"a":[1,2]}`, type: "{a: int[]}", usage: { steps: 3, allocated: 4 }, ms: 0.2 }} />);
     assert.match(html, /risor-v-key/);
