@@ -230,7 +230,8 @@ version of the old path `github.com/deepnoodle-ai/risor/v3`, and `go list -m
 The npm packages (`@deepnoodle/risor` and `@deepnoodle/risor-*`) release
 together on the tag `npm-v<version>`: set the version with `node
 web/scripts/version.ts <version>`, merge that, then push the tag.
-`.github/workflows/release-npm.yml` publishes them.
+`.github/workflows/release-npm.yml` stages them; each version goes live when
+a maintainer approves it with 2FA on npmjs.com (Staged Packages).
 
 v2 releases are cut from the `v2` branch; see `docs/guides/releasing.md`
 there.
