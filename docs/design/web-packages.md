@@ -324,12 +324,18 @@ Playwright test, on changes to `ts/` or `web/`.
 
 ### Release
 
-- One version for all packages, the alpha's: `3.0.0-alpha.N` (PRD R-7). A
-  script sets it in every `package.json` and the internal dependency ranges.
-- A GitHub Actions workflow publishes on the tag `v3.0.0-alpha.N` with
-  `npm publish --provenance --tag alpha`, after the `web` job passes. No
-  version is `latest` until 3.0.0, so installs name the tag:
-  `npm install @deepnoodle/risor@alpha`.
+- One version for all packages, the alpha's: `3.0.0-alpha.N` (PRD R-7).
+  `node web/scripts/version.ts 3.0.0-alpha.N` sets it in every
+  `package.json`, in the dependencies between the packages and the example
+  apps, and in both lockfiles.
+- `.github/workflows/release-npm.yml` publishes on the tag
+  `npm-v3.0.0-alpha.N`, never a bare `v3.*` tag (AGENTS.md, Releasing). It
+  runs the `typescript` and `web` checks again, then
+  `web/scripts/publish.ts`: in dependency order, with npm trusted
+  publishing (GitHub OIDC, no token, provenance added), under the dist-tag
+  `alpha`. No version is `latest` until 3.0.0, so installs name the tag:
+  `npm install @deepnoodle/risor@alpha`. It ends with a GitHub prerelease
+  that is not marked Latest, so the Go release stays Latest.
 - Until the first publish, the site depends on the packages through a local
   link for development and stays on its vendored copy in production.
 

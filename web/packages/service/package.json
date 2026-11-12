@@ -29,12 +29,14 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/worker-url.ts dist/client.js",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
+    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
     "@deepnoodle/risor": "0.0.0"

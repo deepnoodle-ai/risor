@@ -25,12 +25,14 @@
     "dist",
     "src",
     "styles.css",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\""
+    "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\"",
+    "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
     "@deepnoodle/risor-codemirror": "0.0.0",
