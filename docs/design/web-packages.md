@@ -58,7 +58,7 @@ risor  (ts/)                       no dependencies
 
 | Package | Holds | Why it is its own package |
 | --- | --- | --- |
-| `risor` | The language: `createEnv`, `compile`, `run`, `check`, `formatProgram`, `complete`, `hover`, `envFromDescription`, `env.describe()`. `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
+| `risor` | The language: `createEnv` and its `Env` (`compile`, `check`, `describe`), `Program` (`run`), `formatProgram`, `complete`, `hover`, `envFromDescription`. `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
 | `@risor/service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A tree of Risor's JSON text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@risor/codemirror` and needs nothing else. |
 | `@risor/codemirror` | One CodeMirror 6 extension, `risor(options)`: colours, lint (check), completion, hover, format command, Mod-Enter to run, single-line mode, a theme on CSS variables. | All editor behaviour in one place, shared by React, Vue and plain DOM. |
 | `@risor/react` | `RisorEditor`, `RisorResult`, `RisorDiagnostics`, `RisorProvider`; hooks `useRisorService`, `useRisorCheck`, `useRisorRun`. Unstyled except for one optional CSS file. | React is a peer; no styling framework. |
@@ -133,11 +133,16 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
 - **The worker client** sends each request with an id and keeps one timer
   per run: its `timeoutMs` plus a grace (default 1,500 ms, as the site uses
   today). The timer starts when the run is sent to a worker that has
-  answered once, so a worker's download and start do not count against
-  the run. A worker that fails to load fails every call (`onerror`). On
-  expiry it terminates the worker, resolves the run as
-  stopped (stage `stopped`), starts a new worker on the next request,
-  and re-sends each live environment's description. Check, complete and
+  answered once. A new worker gets each environment's `open` before any
+  other request, so the first answer comes once the worker has loaded, and
+  its download and start do not count against the run. A worker that fails
+  to load fails every call (`onerror`). On expiry the client terminates
+  the worker and resolves the run as stopped (stage `stopped`). It starts a
+  new worker, sends it each live environment's description, and sends it
+  again every other request that was in flight: a check, complete, hover,
+  validate, format or queued run. Each of these settles from the new
+  worker, so no promise waits forever. A test holds a check in flight
+  while a run times out, and gets the check's answer from the new worker. Check, complete and
   hover have no deadline of their own; the checker is bounded by the source
   size.
 - **Each editor has its own environment.** `service.environment(d)` returns
@@ -145,15 +150,18 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   hook calls it once. Two editors with the same description never supersede
   each other's checks.
 - **Stale requests are dropped.** A newer check, complete or hover for the
-  same environment supersedes an older one of the same kind, which resolves
-  as superseded (`null` for complete and hover; the caller ignores it for
-  check). A fast typist does not queue work.
+  same environment supersedes an older one of the same kind that has not
+  yet gone to the worker. The older call resolves `null`, and the caller
+  ignores it. A fast typist does not queue work. `validate` is never
+  superseded and never resolves `null`, and `validateRisor` uses it, so a
+  lint keystroke cannot drop a submit's check.
 - **The worker script** is loaded with
   `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })`.
   Vite, webpack 5, Rollup and esbuild with a plugin understand this form.
   `options.worker` lets a host build the worker itself when its bundler
   does not.
-- **A description with a function** compiles nothing (f01 5.4 item 4).
+- **A description with a function or a method** compiles nothing (f01 5.4
+  item 4).
   `run` returns that as one problem that says the environment's functions
   run only on the host, and names the `run` callback. `check`, `complete`
   and `hover` work.
@@ -200,7 +208,7 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
 - **Single-line mode:** a transaction filter replaces a newline with a
   space, and Enter calls `onRun`.
 
-### The new core call: `tokens` (built in #631)
+### The new core call: `tokens` (in review in #631)
 
 ```ts
 // risor and risor/tokens

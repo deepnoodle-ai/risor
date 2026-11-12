@@ -166,6 +166,7 @@ own server with the real environment:
 ```tsx
 <RisorPreview code={value} vars={sample}
   run={(code, vars) => fetch("/api/risor/preview", { method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, vars }) }).then((r) => r.json())} />
 ```
 
@@ -181,10 +182,12 @@ Acceptance:
       Risor's JSON writes the float `3.0` as `3`, so the type is what shows
       `float` (ran: `toJSON` in `ts/`, 2026-11-10).
 - [ ] With `run`, the preview shows what the callback returns, in the same
-      view. The result's JSON shape is documented in the README. (A Go
+      view. When runs overlap, only the newest run's result shows; an older
+      answer that arrives later is dropped. A rejected callback, or a value
+      that is not a run result, shows as an error. The result's JSON shape is documented in the README. (A Go
       helper that makes it from a run is a follow-up.)
-- [ ] Without `run`, when the description declares a function, the
-      preview says in one sentence that it needs `run`, and still shows
+- [ ] Without `run`, when the description declares a function or a
+      method, the preview says in one sentence that it needs `run`, and still shows
       check errors.
 
 ### UC-3: Build the website's playground from the packages
