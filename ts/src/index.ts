@@ -64,6 +64,8 @@ export type { Call } from "./host/api.ts";
 // E.7 Types, conformance and config files.
 export { Type, typeNever, typeAny, typeNull, typeBool, typeInt, typeFloat, typeString, listType, mapType, nullable, literalType, recordType, exactRecordType, unionType, taggedUnionType, opaqueTypeNamed, join } from "./host/type.ts";
 export type { TypeKind, FieldType } from "./host/type.ts";
+// E.1 row 5: the TypeScript type of a Risor type (R202).
+export type { Infer } from "./host/infer.ts";
 export { typeFromSchema, conform, conformAll, loadValue, decode, LoadError } from "./host/api.ts";
 export type { LoadOptions, SchemaOption } from "./host/api.ts";
 

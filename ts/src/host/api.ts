@@ -50,6 +50,24 @@ import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
 import { declareError, failure, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
 import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
+import type { ChildNames, ChildVars, HostVars, Infer, Marked, VarsOf } from "./infer.ts";
+
+/**
+ * An opaque type whose test may guard its TypeScript type X (R202):
+ * `test: (v) => v instanceof Point` makes X `Point`. A test that only
+ * answers true or false leaves X `unknown`.
+ */
+type GuardedOpaque<X> = Omit<OpaqueType, "test"> & { test: ((value: unknown) => value is X) | ((value: unknown) => boolean) };
+type GuardedChildOpaque<X> = Omit<ChildOpaqueType, "test"> & { test?: ((value: unknown) => value is X) | ((value: unknown) => boolean) };
+
+/** The options with the parts the types read (R202) as parameters. */
+type TypedOptions<B, M, R, T, S, P> = Omit<B, "vars" | "varRecord" | "varTypes" | "varSchemas" | "opaque"> & {
+  vars?: M;
+  varRecord?: R;
+  varTypes?: T;
+  varSchemas?: S;
+  opaque?: P;
+};
 import { formatProgram as formatProgramResult, formatTemplate as formatTemplateResult } from "../tools/format.ts";
 import { complete as assistComplete, hover as assistHover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
@@ -170,6 +188,9 @@ export interface InternalWithOptions extends Omit<InternalEnvOptions, "opaque" |
 /** The variables of a run: an object, a `Map`, or a function from a name to its value. */
 export type Vars = { readonly [name: string]: unknown } | ReadonlyMap<string, unknown> | ((name: string) => unknown);
 
+/** The variables a run of a program takes: an object of the environment's variables (R202), a Map, or a function. */
+type RunVars<V> = HostVars<V> | ReadonlyMap<string, unknown> | ((name: string) => unknown);
+
 /** Internal: the outcome of one run, never thrown. */
 export type Outcome =
   | { ok: true; value: unknown; usage: Usage }
@@ -235,9 +256,18 @@ function namedDecls(ts: NamedType[] | undefined): NamedTypeDecl[] | undefined {
   return ts?.map((t) => ("typeOf" in t ? { name: t.name, typeOf: innerType(t.typeOf) } : t));
 }
 
-/** Build an environment. Throws RisorError of phase `declare`. */
-export function createEnv(options: EnvOptions = {}): Env {
-  return buildEnv(options);
+/**
+ * Build an environment. Throws RisorError of phase `declare`. The variables
+ * it declares give the TypeScript type of the variables a run takes (R202).
+ */
+export function createEnv<
+  const M extends Record<string, string> = {},
+  const R extends string = never,
+  T extends Record<string, Type<any>> = {},
+  S extends Record<string, { schema: unknown; options?: SchemaOption[] }> = {},
+  P extends Record<string, unknown> = {},
+>(options?: TypedOptions<EnvOptions, M, R, T, S, { [K in keyof P]: GuardedOpaque<P[K]> }>): Env<VarsOf<M, R, T, S, P>, P> {
+  return buildEnv((options ?? {}) as EnvOptions) as Env<VarsOf<M, R, T, S, P>, P>;
 }
 
 /** Internal: build an environment with the declarations only the runner and `with` give. */
@@ -486,7 +516,7 @@ export interface LibraryNames {
   methods: { string: string[]; list: string[]; map: string[] };
 }
 
-export class Env {
+export class Env<V = any, N = any> {
   /** Internal: the declarations, as declared. */
   readonly environment: Environment;
   private readonly compileEnv: CompileEnv;
@@ -735,8 +765,8 @@ export class Env {
    * A type from type text, read against this environment's opaque and named
    * types (05 19.5, f04 7.1 item 4). Throws RisorError `bad-type`.
    */
-  parseType(text: string): Type {
-    return typeOf(this.declaredType(text), this.classifier);
+  parseType<const S extends string>(text: S): Type<Infer<S, Marked<N>>> {
+    return typeOf(this.declaredType(text), this.classifier) as Type<Infer<S, Marked<N>>>;
   }
 
   /** Internal: type text resolved as declared type text. Throws RisorError `bad-type`. */
@@ -795,8 +825,14 @@ export class Env {
    * the child as it stands. Rejected classes and limits are the parent's unless
    * given; entries removed add up. Throws RisorError of phase `declare`.
    */
-  with(options: WithOptions = {}): Env {
-    return childEnv(this, options);
+  with<
+    const M extends Record<string, string> = {},
+    const R extends string = never,
+    T extends Record<string, Type<any>> = {},
+    S extends Record<string, { schema: unknown; options?: SchemaOption[] }> = {},
+    P extends Record<string, unknown> = {},
+  >(options?: TypedOptions<WithOptions, M, R, T, S, { [K in keyof P]: GuardedChildOpaque<P[K]> }>): Env<ChildVars<V, VarsOf<M, R, T, S, ChildNames<N, P>>>, ChildNames<N, P>> {
+    return childEnv(this, (options ?? {}) as WithOptions) as Env<ChildVars<V, VarsOf<M, R, T, S, ChildNames<N, P>>>, ChildNames<N, P>>;
   }
 
   /** Internal: the parent's declarations, as given. */
@@ -808,10 +844,10 @@ export class Env {
    * Compile a program, with a check unless `check: false`. Throws RisorError
    * of phase `declare` or `check`.
    */
-  compile(x: Expr, options: CompileOptions = {}): Program {
+  compile(x: Expr, options: CompileOptions = {}): Program<V> {
     const r = tryCompile(this, x, options);
     if (!r.ok) throw failure(r.diagnostics, r.source);
-    return r.program;
+    return r.program as Program<V>;
   }
 
   /** Completion at a position of a text that need not parse (package F12, f12 3.1). */
@@ -930,7 +966,7 @@ export function tryCompile(env: Env, input: string | Expr, options: CompileOptio
   return { ok: true, program: prog };
 }
 
-export class Program {
+export class Program<V = any> {
   /** Internal. */
   readonly env: Env;
   /** Internal: the source the spans point into. */
@@ -995,10 +1031,10 @@ export class Program {
   }
 
   /** Run once. Throws RisorError of phase `run`, with the usage. */
-  run(vars?: Vars, options?: { signal?: AbortSignal }): unknown {
+  run(vars?: RunVars<V>, options?: { signal?: AbortSignal }): unknown {
     let run: Run | undefined;
     try {
-      run = this.newRun(vars, options === undefined ? undefined : options.signal);
+      run = this.newRun(vars as Vars | undefined, options === undefined ? undefined : options.signal);
       return this.code(run);
     } catch (x) {
       const usage = { steps: run?.steps ?? 0, allocated: run?.units ?? 0 };
@@ -1007,8 +1043,8 @@ export class Program {
   }
 
   /** Run once and report the usage. Throws RisorError of phase `run`, whose `usage` is the usage of the failed run. */
-  measure(vars?: Vars, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
-    const o = execute(this, vars, options);
+  measure(vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
+    const o = execute(this, vars as Vars | undefined, options);
     if (!o.ok) throw failure([o.diagnostic], this.source, o.usage);
     return { value: o.value, usage: o.usage };
   }
