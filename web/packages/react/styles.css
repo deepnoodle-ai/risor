@@ -69,6 +69,14 @@
 .risor-result-stage { color: var(--risor-error, var(--risor-d-error)); font-weight: 600; margin-bottom: 4px; }
 .risor-value summary { cursor: pointer; list-style: revert; }
 .risor-v-children { padding-left: 1.25em; }
+.risor-v-more {
+  font: inherit;
+  color: var(--risor-focus, var(--risor-d-focus));
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
 .risor-v-key { color: var(--risor-property, var(--risor-d-property)); }
 .risor-v-string { color: var(--risor-string, var(--risor-d-string)); }
 .risor-v-number, .risor-v-bool, .risor-v-null { color: var(--risor-number, var(--risor-d-number)); }

@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToString } from "react-dom/server";
 import { localService } from "@risor/service";
-import { RisorEditor, RisorProvider, RisorResult } from "../src/index.ts";
+import { RisorEditor, RisorProvider, RisorResult, RisorValue } from "../src/index.ts";
 
 describe("server rendering", () => {
   test("the editor renders its text in a <pre> before it mounts", () => {
@@ -32,6 +32,15 @@ describe("server rendering", () => {
     assert.match(html, /risor-v-key/);
     assert.match(html, /\{a: int\[\]\}/);
     assert.match(html, /3 steps/);
+  });
+
+  test("a large value renders one page of a list, and no closed branch", () => {
+    const json = JSON.stringify({ big: Array.from({ length: 1000 }, (_, i) => i), deep: { a: { b: "needle" } } });
+    const html = renderToString(<RisorValue json={json} />);
+    assert.equal((html.match(/risor-v-number/g) ?? []).length, 200);
+    assert.match(html, /Show 200 more of 800/);
+    assert.doesNotMatch(html, /needle/); // below openDepth: closed, so not rendered
+    assert.doesNotMatch(html, /role="tree/);
   });
 
   test("a failed run: its problems with a caret under the line", () => {

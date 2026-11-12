@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { parseJsonTree } from "@risor/service";
 import type { JsonNode, Problem, RunResult } from "@risor/service";
@@ -14,7 +14,7 @@ export function RisorValue({ json, openDepth = 2 }: { json: string; openDepth?: 
   }, [json]);
   if (!tree) return <pre className="risor-value">{json}</pre>;
   return (
-    <div className="risor-value" role="tree">
+    <div className="risor-value">
       <Node node={tree} depth={0} openDepth={openDepth} />
     </div>
   );
@@ -37,7 +37,7 @@ function Node({ node, depth, openDepth, label }: { node: JsonNode; depth: number
   const key = label !== undefined ? <span className="risor-v-key">{label}: </span> : null;
   if (node.kind !== "array" && node.kind !== "object") {
     return (
-      <div className="risor-v-row" role="treeitem">
+      <div className="risor-v-row">
         {key}
         <Scalar node={node} />
       </div>
@@ -47,7 +47,7 @@ function Node({ node, depth, openDepth, label }: { node: JsonNode; depth: number
   const [open, close] = node.kind === "array" ? ["[", "]"] : ["{", "}"];
   if (entries.length === 0) {
     return (
-      <div className="risor-v-row" role="treeitem">
+      <div className="risor-v-row">
         {key}
         <span className="risor-v-punct">{open + close}</span>
       </div>
@@ -55,18 +55,42 @@ function Node({ node, depth, openDepth, label }: { node: JsonNode; depth: number
   }
   const summary = node.kind === "array" ? `${entries.length} item${entries.length === 1 ? "" : "s"}` : `${entries.length} key${entries.length === 1 ? "" : "s"}`;
   return (
-    <details className="risor-v-group" open={depth < openDepth} role="treeitem">
-      <summary>
-        {key}
-        <span className="risor-v-punct">{open}</span>
-        <span className="risor-v-summary">{` ${summary} `}</span>
-        <span className="risor-v-punct">{close}</span>
-      </summary>
-      <div className="risor-v-children" role="group">
-        {entries.map(([k, n], i) => (
-          <Node key={i} node={n} depth={depth + 1} openDepth={openDepth} label={k} />
-        ))}
-      </div>
+    <Branch depth={depth} openDepth={openDepth} entries={entries}>
+      {key}
+      <span className="risor-v-punct">{open}</span>
+      <span className="risor-v-summary">{` ${summary} `}</span>
+      <span className="risor-v-punct">{close}</span>
+    </Branch>
+  );
+}
+
+/** How many entries of a branch show before "Show more". */
+const PAGE = 200;
+
+/**
+ * An array or object that folds. Its children render only while it is open,
+ * and a long one shows PAGE entries at a time, so a large value does not put
+ * every node on the page. <details> carries the open state for assistive tech.
+ */
+function Branch({ depth, openDepth, entries, children }: { depth: number; openDepth: number; entries: [ReactNode, JsonNode][]; children: ReactNode }) {
+  const [isOpen, setOpen] = useState(depth < openDepth);
+  const [shown, setShown] = useState(PAGE);
+  const rest = entries.length - shown;
+  return (
+    <details className="risor-v-group" open={isOpen} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{children}</summary>
+      {isOpen && (
+        <div className="risor-v-children">
+          {entries.slice(0, shown).map(([k, n], i) => (
+            <Node key={i} node={n} depth={depth + 1} openDepth={openDepth} label={k} />
+          ))}
+          {rest > 0 && (
+            <button type="button" className="risor-v-more" onClick={() => setShown(shown + PAGE)}>
+              {`Show ${Math.min(rest, PAGE)} more of ${rest}`}
+            </button>
+          )}
+        </div>
+      )}
     </details>
   );
 }
