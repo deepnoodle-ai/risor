@@ -64,9 +64,15 @@ test("an empty field shows no error, and a required one blocks the submit", asyn
   await page.goto("/");
   await field(page).click();
   await page.keyboard.press("ControlOrMeta+a");
+  // First an error, so the test sees a check run, and the invalid state on the editable element.
+  await page.keyboard.type("order.totl");
+  await expect(page.locator(".risor-mantine-input .cm-lintRange-error")).toHaveText("totl");
+  await expect(page.locator(".risor-mantine-input .cm-content")).toHaveAttribute("aria-invalid", "true");
+  // Then empty: the error goes, and no new one comes.
+  await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.press("Backspace");
-  await page.waitForTimeout(700); // past the pause before a check
   await expect(page.locator(".risor-mantine-input .cm-lintRange-error")).toHaveCount(0);
+  await expect(page.locator(".risor-mantine-input .cm-content")).not.toHaveAttribute("aria-invalid", "true");
   await expect(page.locator(".risor-mantine-input.risor-editor-invalid")).toHaveCount(0);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("submitted")).toHaveText("Blocked: Enter an expression.");
