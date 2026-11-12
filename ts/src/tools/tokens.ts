@@ -9,7 +9,7 @@
 
 import { ParseError } from "../syntax/diagnostic.ts";
 import { lex } from "../syntax/lexer.ts";
-import { Source, fromCodePoints } from "../syntax/source.ts";
+import { Source } from "../syntax/source.ts";
 import { isReserved } from "../syntax/token.ts";
 import type { Token } from "../syntax/token.ts";
 
@@ -64,61 +64,88 @@ export function tokens(text: string): ColourToken[] {
     }
     comments(cps, at, end, out);
     if (error === null) break;
+    // The rest of the line is invalid. A line ends at LF, CR, or CR LF, as a
+    // string literal does.
     let eol = error;
-    while (eol < cps.length && cps[eol] !== 0x0a) eol++;
+    while (eol < cps.length && cps[eol] !== 0x0a && cps[eol] !== 0x0d) eol++;
     if (eol > error) out.push({ class: "invalid", start: error, end: eol });
-    lineStart = eol + 1;
+    lineStart = eol + (cps[eol] === 0x0d && cps[eol + 1] === 0x0a ? 2 : 1);
   }
   return out;
 }
 
-/** Lex the text from `start`; on a lexical error, the offset of the error. */
+/**
+ * Lex the text from `start`; on a lexical error, the offset of the error.
+ * The lexer reads a view of the code points, so a recovery copies nothing.
+ */
 function lexFrom(cps: Uint32Array, start: number): { tokens: Token[]; error: number | null } {
-  let text = fromCodePoints(cps, start);
+  let view = cps.subarray(start);
   for (;;) {
     try {
-      return { tokens: lex(new Source(text, { keepBom: true })), error: null };
+      return { tokens: lex(Source.ofCodePoints(view)), error: null };
     } catch (e) {
       if (!(e instanceof ParseError)) throw e;
       const at = e.diagnostic.span?.start ?? 0;
       // Lex the part before the error, so the colours reach it. The part is
       // shorter each time, so this ends.
-      const prefix = cutAt(text, at);
-      if (prefix.length >= text.length) return { tokens: [], error: start };
+      if (at >= view.length) return { tokens: [], error: start };
+      const prefix = view.subarray(0, at);
       try {
-        return { tokens: lex(new Source(prefix, { keepBom: true })), error: start + at };
+        return { tokens: lex(Source.ofCodePoints(prefix)), error: start + at };
       } catch (e2) {
         if (!(e2 instanceof ParseError)) throw e2;
-        text = prefix;
+        view = prefix;
       }
     }
   }
 }
 
-/** The text before code point `n`. */
-function cutAt(text: string, n: number): string {
-  let i = 0;
-  let units = 0;
-  for (const ch of text) {
-    if (i === n) break;
-    units += ch.length;
-    i++;
-  }
-  return text.slice(0, units);
-}
+/**
+ * Flatten tokens, those inside interpolations included, into coloured ranges.
+ * An explicit stack, not recursion: templates nest without limit.
+ */
+type Frame =
+  | { k: "list"; toks: Token[]; i: number }
+  | { k: "template"; t: Token; p: number; at: number };
 
-/** Flatten tokens, those inside interpolations included, into coloured ranges. */
 function flatten(toks: Token[], base: number, out: ColourToken[]): void {
-  for (let i = 0; i < toks.length; i++) {
-    const t = toks[i];
+  const stack: Frame[] = [{ k: "list", toks, i: 0 }];
+  while (stack.length > 0) {
+    const f = stack[stack.length - 1];
+    if (f.k === "template") {
+      const parts = f.t.parts ?? [];
+      while (f.p < parts.length && parts[f.p].kind !== "interp") f.p++;
+      if (f.p >= parts.length) {
+        const end = base + f.t.end;
+        if (end > f.at) out.push({ class: "template", start: f.at, end });
+        stack.pop();
+        continue;
+      }
+      const p = parts[f.p++];
+      if (p.kind !== "interp") continue;
+      const open = base + p.open.start;
+      if (open > f.at) out.push({ class: "template", start: f.at, end: open });
+      out.push({ class: "interpolation", start: open, end: base + p.open.end });
+      const last = p.tokens[p.tokens.length - 1];
+      f.at = last && last.kind === "interpEnd" ? base + last.end : base + p.open.end;
+      stack.push({ k: "list", toks: p.tokens, i: 0 });
+      continue;
+    }
+    if (f.i >= f.toks.length) {
+      stack.pop();
+      continue;
+    }
+    const i = f.i++;
+    const all = f.toks;
+    const t = all[i];
     const start = base + t.start;
     const end = base + t.end;
     switch (t.kind) {
       case "eof":
         break;
       case "word": {
-        const prev = toks[i - 1];
-        const next = toks[i + 1];
+        const prev = all[i - 1];
+        const next = all[i + 1];
         let cls: TokenClass;
         if (t.prefix) cls = "string";
         else if (t.text === "true" || t.text === "false" || t.text === "null") cls = "constant";
@@ -136,7 +163,7 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         out.push({ class: "string", start, end });
         break;
       case "template":
-        template(t, base, out);
+        stack.push({ k: "template", t, p: 0, at: start });
         break;
       case "punct":
         out.push({ class: BRACKETS.has(t.text) ? "punctuation" : "operator", start, end });
@@ -149,22 +176,6 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         break;
     }
   }
-}
-
-/** A template: its text, and each interpolation's `${`, tokens and `}`. */
-function template(t: Token, base: number, out: ColourToken[]): void {
-  let at = base + t.start;
-  for (const p of t.parts ?? []) {
-    if (p.kind !== "interp") continue;
-    const open = base + p.open.start;
-    if (open > at) out.push({ class: "template", start: at, end: open });
-    out.push({ class: "interpolation", start: open, end: base + p.open.end });
-    flatten(p.tokens, base, out);
-    const last = p.tokens[p.tokens.length - 1];
-    at = last && last.kind === "interpEnd" ? base + last.end : base + p.open.end;
-  }
-  const end = base + t.end;
-  if (end > at) out.push({ class: "template", start: at, end });
 }
 
 /** The comments in a gap between tokens: each run of code points that is not white space. */

@@ -25,8 +25,8 @@ export type LineSpan = [number, number, number, number];
 export class Source {
   /** The text's code points. A U+FEFF at the start is not included. */
   readonly cps: Uint32Array;
-  /** Offsets at which each line starts. Lines end at U+000A only. */
-  private readonly lineStarts: number[];
+  /** Offsets at which each line starts, made on first use. Lines end at U+000A only. */
+  private starts: number[] | null = null;
 
   constructor(text: string, options: { keepBom?: boolean } = {}) {
     const cps = toCodePoints(text);
@@ -34,10 +34,27 @@ export class Source {
     // removed before positions are counted (questions file, ts Q1). A
     // template keeps it (f02 2.1 item 2).
     this.cps = !options.keepBom && cps.length > 0 && cps[0] === 0xfeff ? cps.subarray(1) : cps;
-    this.lineStarts = [0];
-    for (let i = 0; i < this.cps.length; i++) {
-      if (this.cps[i] === 0x0a) this.lineStarts.push(i + 1);
+  }
+
+  /**
+   * A source over code points as they are, with no copy and no U+FEFF
+   * removed. For tools that lex part of a text (src/tools/tokens.ts).
+   */
+  static ofCodePoints(cps: Uint32Array): Source {
+    const s: Source = Object.create(Source.prototype);
+    (s as { cps: Uint32Array }).cps = cps;
+    s.starts = null;
+    return s;
+  }
+
+  private get lineStarts(): number[] {
+    if (this.starts === null) {
+      this.starts = [0];
+      for (let i = 0; i < this.cps.length; i++) {
+        if (this.cps[i] === 0x0a) this.starts.push(i + 1);
+      }
     }
+    return this.starts;
   }
 
   get length(): number {

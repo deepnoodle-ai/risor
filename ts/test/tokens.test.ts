@@ -72,6 +72,19 @@ describe("tokens", () => {
     assert.deepEqual(show(`x + "open\ny`), ["name:x", "operator:+", 'invalid:"open', "name:y"]);
   });
 
+  test("after an error, colouring starts again after a lone CR, and after CR LF", () => {
+    assert.deepEqual(show(`x + "open\ry`), ["name:x", "operator:+", 'invalid:"open', "name:y"]);
+    assert.deepEqual(show(`x + "open\r\ny`), ["name:x", "operator:+", 'invalid:"open', "name:y"]);
+  });
+
+  test("templates nested thousands deep do not exhaust the stack", () => {
+    const n = 20_000;
+    const text = "`${".repeat(n) + "1" + "}`".repeat(n);
+    const ts = tokens(text);
+    assertCovers(text, ts);
+    assert.ok(ts.some((t) => t.class === "number"));
+  });
+
   test("a rejected token", () => {
     assert.deepEqual(show(`a === b`), ["name:a", "invalid:===", "name:b"]);
   });
