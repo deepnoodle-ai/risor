@@ -30,7 +30,16 @@ export interface WorkerServiceOptions {
   worker?: () => WorkerLike;
   /** Time past a run's deadline before the worker is ended. Default 1,500 ms. */
   graceMs?: number;
+  /**
+   * Time a new worker has to load and answer its first message. Past it, the
+   * worker is ended and every pending call fails; the next call starts a new
+   * worker. Default 30,000 ms.
+   */
+  loadTimeoutMs?: number;
 }
+
+/** The longest delay setTimeout takes; a longer one fires at once. */
+const MAX_DELAY = 2_147_483_647;
 
 type Body = Request extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;
 
@@ -69,6 +78,8 @@ export function workerService(options: WorkerServiceOptions = {}): RisorService 
 class WorkerService implements RisorService {
   private readonly make: () => WorkerLike;
   private readonly graceMs: number;
+  private readonly loadTimeoutMs: number;
+  private loadTimer: ReturnType<typeof setTimeout> | null = null;
   private worker: WorkerLike | null = null;
   private nextId = 1;
   private nextEnv = 1;
@@ -86,6 +97,7 @@ class WorkerService implements RisorService {
   constructor(options: WorkerServiceOptions) {
     this.make = options.worker ?? defaultWorker;
     this.graceMs = options.graceMs ?? 1_500;
+    this.loadTimeoutMs = options.loadTimeoutMs ?? 30_000;
   }
 
   private ensure(): WorkerLike {
@@ -99,6 +111,11 @@ class WorkerService implements RisorService {
       if (typeof console !== "undefined") console.error(`@risor/service: ${this.closed}`);
     };
     this.worker = w;
+    if (this.loadTimer) clearTimeout(this.loadTimer);
+    this.loadTimer = setTimeout(() => {
+      this.loadTimer = null;
+      this.abandon(`the Risor worker did not load within ${this.loadTimeoutMs} ms`);
+    }, Math.min(this.loadTimeoutMs, MAX_DELAY));
     for (const [env, description] of this.envs) w.postMessage({ id: this.nextId++, op: "open", env, description });
     return w;
   }
@@ -110,13 +127,22 @@ class WorkerService implements RisorService {
     }
     const id = this.nextId++;
     this.inFlight.set(id, p);
-    this.ensure().postMessage({ ...p.body, id } as Request);
+    try {
+      this.ensure().postMessage({ ...p.body, id } as Request);
+    } catch (e) {
+      // A value the worker cannot receive: a function, a Symbol, a Proxy.
+      this.inFlight.delete(id);
+      p.fail(`the call cannot be sent to the worker: ${String((e as Error)?.message ?? e)}`);
+      return -1;
+    }
     return id;
   }
 
   private receive(m: Response): void {
     if (!this.warm) {
       this.warm = true;
+      if (this.loadTimer) clearTimeout(this.loadTimer);
+      this.loadTimer = null;
       this.startTimer();
     }
     const p = this.inFlight.get(m.id);
@@ -220,7 +246,26 @@ class WorkerService implements RisorService {
       this.restart();
       running.pending.resolve(stopped(running.timeoutMs));
       this.nextRun();
-    }, running.timeoutMs + this.graceMs);
+    }, Math.min(running.timeoutMs + this.graceMs, MAX_DELAY));
+  }
+
+  /**
+   * End a worker that did not load, and fail every pending call with the
+   * reason. The service stays open: the next call starts a new worker.
+   */
+  private abandon(reason: string): void {
+    this.worker?.terminate();
+    this.worker = null;
+    const running = this.running;
+    this.running = null;
+    if (running?.timer) clearTimeout(running.timer);
+    if (running) this.inFlight.delete(running.id);
+    const queued = this.runs.splice(0);
+    const inFlight = [...this.inFlight.values()];
+    this.inFlight.clear();
+    if (running) running.pending.fail(reason);
+    for (const r of queued) r.pending.fail(reason);
+    for (const p of inFlight) p.fail(reason);
   }
 
   /** End the worker, and send every call still waiting to a new one. */
@@ -289,6 +334,8 @@ class WorkerService implements RisorService {
   private close(reason: string): void {
     if (this.closed !== null) return;
     this.closed = reason;
+    if (this.loadTimer) clearTimeout(this.loadTimer);
+    this.loadTimer = null;
     this.worker?.terminate();
     this.worker = null;
     const running = this.running;
