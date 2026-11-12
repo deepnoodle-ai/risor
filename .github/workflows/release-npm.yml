@@ -2,7 +2,9 @@ name: release-npm
 
 # Publishes @deepnoodle/risor and @deepnoodle/risor-* on the tag
 # npm-v<version>, such as npm-v3.0.0-alpha.2. Never a bare v3.* tag (AGENTS.md).
-# web/scripts/version.ts sets the version; web/scripts/publish.ts publishes.
+# web/scripts/version.ts sets the version; web/scripts/publish.ts stages.
+# Staged versions go live only when a maintainer approves them with 2FA on
+# npmjs.com (Staged Packages): the trusted publisher may stage, not publish.
 
 on:
   push:
@@ -29,14 +31,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node 24 ships npm 11, which publishes through GitHub OIDC and adds
-      # provenance. No npm token is stored anywhere.
+      # npm publishes through GitHub OIDC and adds provenance. No npm token
+      # is stored anywhere.
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
           registry-url: https://registry.npmjs.org
+
+      # `npm stage publish` needs npm 11.21 or later; pin it.
+      - run: npm install -g npm@11.21.2
 
       - name: Check the tag and the trusted-publishing runtime
         run: |
@@ -67,8 +72,8 @@ jobs:
           npx playwright install --with-deps chromium
           npm run e2e
 
-      - run: node scripts/publish.ts --dry-run
-      - run: node scripts/publish.ts
+      - run: node scripts/publish.ts --stage --dry-run
+      - run: node scripts/publish.ts --stage
 
       # --latest=false: the Go release (go/v3.*) stays "Latest".
       - name: GitHub release

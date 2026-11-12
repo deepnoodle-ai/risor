@@ -331,9 +331,10 @@ Playwright test, on changes to `ts/` or `web/`.
 - `.github/workflows/release-npm.yml` publishes on the tag
   `npm-v3.0.0-alpha.N`, never a bare `v3.*` tag (AGENTS.md, Releasing). It
   runs the `typescript` and `web` checks again, then
-  `web/scripts/publish.ts`: in dependency order, with npm trusted
+  `web/scripts/publish.ts --stage`: in dependency order, with npm trusted
   publishing (GitHub OIDC, no token, provenance added), under the dist-tag
-  `alpha`. No version is `latest` until 3.0.0, so installs name the tag:
+  `alpha`. The trusted publisher may only stage: each version goes live when
+  a maintainer approves it with 2FA on npmjs.com (Staged Packages). No version is `latest` until 3.0.0, so installs name the tag:
   `npm install @deepnoodle/risor@alpha`. It ends with a GitHub prerelease
   that is not marked Latest, so the Go release stays Latest.
 - Until the first publish, the site depends on the packages through a local
