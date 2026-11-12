@@ -23,6 +23,7 @@ terraform.tfstate.backup
 .DS_Store
 test/
 !/ts/test/
+!/web/packages/*/test/
 coverage.out
 unit-tests.xml
 

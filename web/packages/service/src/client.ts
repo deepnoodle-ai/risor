@@ -1,0 +1,366 @@
+// The worker client: a RisorService whose calls run in a web worker.
+//
+// - Check, complete and hover are gated per environment and kind: one is in
+//   the worker at a time, and a call made while another waits replaces it
+//   (the replaced call resolves null).
+// - Runs go one at a time. Each has a timer: its deadline plus a grace. The
+//   timer starts once the worker has answered a message, so its download and
+//   start do not count against the first run. When
+//   the timer fires, the worker is stuck past the deadline that should have
+//   ended the run, so the client ends the worker, resolves the run as
+//   stopped, and starts a new worker that gets every live environment and
+//   every call still waiting.
+
+import type { Description } from "risor";
+import { DEFAULT_TIMEOUT_MS } from "./defaults.ts";
+import type { Request, Response } from "./protocol.ts";
+import type { CheckOptions, Completion, FormatResult, Hover, Problem, RisorEnvironment, RisorService, RunOptions, RunResult } from "./types.ts";
+
+/** The part of a Worker the client uses. */
+export interface WorkerLike {
+  postMessage(message: Request): void;
+  terminate(): void;
+  onmessage: ((e: MessageEvent<Response>) => void) | null;
+  /** Called when the worker script fails to load or throws. */
+  onerror?: ((e: Event) => void) | null;
+}
+
+export interface WorkerServiceOptions {
+  /** Make the worker. By default the package's own worker script, as a module worker. */
+  worker?: () => WorkerLike;
+  /** Time past a run's deadline before the worker is ended. Default 1,500 ms. */
+  graceMs?: number;
+  /**
+   * Time a new worker has to load and answer its first message. Past it, the
+   * worker is ended and every pending call fails; the next call starts a new
+   * worker. Default 30,000 ms.
+   */
+  loadTimeoutMs?: number;
+}
+
+/** The longest delay setTimeout takes; a longer one fires at once. */
+const MAX_DELAY = 2_147_483_647;
+
+type Body = Request extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;
+
+interface Pending {
+  body: Body;
+  resolve: (result: unknown) => void;
+  fail: (message: string) => void;
+}
+
+interface Gate {
+  busy: boolean;
+  /** The call waiting for the gate, and how to resolve it as replaced. */
+  waiting: { pending: Pending; replace: () => void } | null;
+}
+
+function defaultWorker(): WorkerLike {
+  return new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }) as unknown as WorkerLike;
+}
+
+const stopped = (timeoutMs: number): RunResult => ({
+  ok: false,
+  stage: "stopped",
+  problems: [{ phase: "service", code: "stopped", message: `The run did not end within ${timeoutMs} ms and was stopped.` }],
+});
+
+const failed = (message: string): RunResult => ({
+  ok: false,
+  stage: "run",
+  problems: [{ phase: "service", code: "internal-error", message }],
+});
+
+export function workerService(options: WorkerServiceOptions = {}): RisorService {
+  return new WorkerService(options);
+}
+
+class WorkerService implements RisorService {
+  private readonly make: () => WorkerLike;
+  private readonly graceMs: number;
+  private readonly loadTimeoutMs: number;
+  private loadTimer: ReturnType<typeof setTimeout> | null = null;
+  private worker: WorkerLike | null = null;
+  private nextId = 1;
+  private nextEnv = 1;
+  private readonly inFlight = new Map<number, Pending>();
+  private readonly envs = new Map<number, Description | undefined>();
+  private readonly gates = new Map<string, Gate>();
+  private readonly runs: { pending: Pending; timeoutMs: number }[] = [];
+  private running: { id: number; timer: ReturnType<typeof setTimeout> | null; pending: Pending; timeoutMs: number } | null = null;
+  /** The worker has answered a message: it has loaded. */
+  private warm = false;
+  /** Why the service takes no more calls: it was disposed, or its worker failed to load. */
+  private closed: string | null = null;
+  private disposed = false;
+
+  constructor(options: WorkerServiceOptions) {
+    this.make = options.worker ?? defaultWorker;
+    this.graceMs = options.graceMs ?? 1_500;
+    this.loadTimeoutMs = options.loadTimeoutMs ?? 30_000;
+  }
+
+  private ensure(): WorkerLike {
+    if (this.worker) return this.worker;
+    const w = this.make();
+    this.warm = false;
+    w.onmessage = (e) => this.receive(e.data);
+    w.onerror = (e) => {
+      const detail = (e as ErrorEvent).message ? `: ${(e as ErrorEvent).message}` : "";
+      this.close(`the Risor worker failed${detail}. If your bundler cannot load a worker from a package, build @risor/service/worker yourself and pass workerService({ worker })`);
+      if (typeof console !== "undefined") console.error(`@risor/service: ${this.closed}`);
+    };
+    this.worker = w;
+    if (this.loadTimer) clearTimeout(this.loadTimer);
+    this.loadTimer = setTimeout(() => {
+      this.loadTimer = null;
+      this.abandon(`the Risor worker did not load within ${this.loadTimeoutMs} ms`);
+    }, Math.min(this.loadTimeoutMs, MAX_DELAY));
+    for (const [env, description] of this.envs) w.postMessage({ id: this.nextId++, op: "open", env, description });
+    return w;
+  }
+
+  private post(p: Pending): number {
+    if (this.closed !== null) {
+      p.fail(this.closed);
+      return -1;
+    }
+    const id = this.nextId++;
+    this.inFlight.set(id, p);
+    try {
+      this.ensure().postMessage({ ...p.body, id } as Request);
+    } catch (e) {
+      // A value the worker cannot receive: a function, a Symbol, a Proxy.
+      this.inFlight.delete(id);
+      p.fail(`the call cannot be sent to the worker: ${String((e as Error)?.message ?? e)}`);
+      return -1;
+    }
+    return id;
+  }
+
+  private receive(m: Response): void {
+    if (!this.warm) {
+      this.warm = true;
+      if (this.loadTimer) clearTimeout(this.loadTimer);
+      this.loadTimer = null;
+      this.startTimer();
+    }
+    const p = this.inFlight.get(m.id);
+    if (!p) return;
+    this.inFlight.delete(m.id);
+    if ("error" in m) p.fail(m.error);
+    else p.resolve(m.result);
+  }
+
+  /** Send a call and resolve with its answer. */
+  private call<T>(body: Body, onError: (message: string) => T): Promise<T> {
+    if (this.closed !== null) return Promise.resolve(onError(this.closed));
+    return new Promise<T>((resolve) => {
+      this.post({ body, resolve: resolve as (r: unknown) => void, fail: (msg) => resolve(onError(msg)) });
+    });
+  }
+
+  /** A call through the gate of its environment and kind. */
+  private gated<T>(key: string, body: Body, onError: (message: string) => T): Promise<T | null> {
+    if (this.closed !== null) return Promise.resolve(onError(this.closed));
+    let g = this.gates.get(key);
+    if (!g) {
+      g = { busy: false, waiting: null };
+      this.gates.set(key, g);
+    }
+    const gate = g;
+    return new Promise<T | null>((resolve) => {
+      const p: Pending = {
+        body,
+        resolve: (r) => {
+          resolve(r as T);
+          this.release(gate);
+        },
+        fail: (msg) => {
+          resolve(onError(msg));
+          this.release(gate);
+        },
+      };
+      if (!gate.busy) {
+        gate.busy = true;
+        this.post(p);
+      } else {
+        gate.waiting?.replace();
+        gate.waiting = { pending: p, replace: () => resolve(null) };
+      }
+    });
+  }
+
+  private release(gate: Gate): void {
+    const next = gate.waiting;
+    gate.waiting = null;
+    if (next) this.post(next.pending);
+    else gate.busy = false;
+  }
+
+  private run(body: Body, timeoutMs: number): Promise<RunResult> {
+    if (this.disposed) return Promise.resolve(stopped(timeoutMs));
+    if (this.closed !== null) return Promise.resolve(failed(this.closed));
+    return new Promise<RunResult>((resolve) => {
+      const pending: Pending = {
+        body,
+        resolve: (r) => resolve(r as RunResult),
+        fail: (msg) => resolve(failed(msg)),
+      };
+      this.runs.push({ pending, timeoutMs });
+      this.nextRun();
+    });
+  }
+
+  private nextRun(): void {
+    if (this.running || this.runs.length === 0) return;
+    if (this.closed !== null) {
+      for (const r of this.runs.splice(0)) r.pending.fail(this.closed);
+      return;
+    }
+    const { pending, timeoutMs } = this.runs.shift()!;
+    const done = (fn: () => void) => () => {
+      if (this.running?.timer) clearTimeout(this.running.timer);
+      this.running = null;
+      fn();
+      this.nextRun();
+    };
+    const wrapped: Pending = {
+      body: pending.body,
+      resolve: (r) => done(() => pending.resolve(r))(),
+      fail: (msg) => done(() => pending.fail(msg))(),
+    };
+    const id = this.post(wrapped);
+    if (id < 0) return;
+    this.running = { id, timer: null, pending, timeoutMs };
+    this.startTimer();
+  }
+
+  /** Start the running run's timer, once the worker has loaded. */
+  private startTimer(): void {
+    const running = this.running;
+    if (!running || running.timer || !this.warm) return;
+    running.timer = setTimeout(() => {
+      this.inFlight.delete(running.id);
+      this.running = null;
+      this.restart();
+      running.pending.resolve(stopped(running.timeoutMs));
+      this.nextRun();
+    }, Math.min(running.timeoutMs + this.graceMs, MAX_DELAY));
+  }
+
+  /**
+   * End a worker that did not load, and fail every pending call with the
+   * reason. The service stays open: the next call starts a new worker.
+   */
+  private abandon(reason: string): void {
+    this.worker?.terminate();
+    this.worker = null;
+    const running = this.running;
+    this.running = null;
+    if (running?.timer) clearTimeout(running.timer);
+    if (running) this.inFlight.delete(running.id);
+    const queued = this.runs.splice(0);
+    const inFlight = [...this.inFlight.values()];
+    this.inFlight.clear();
+    if (running) running.pending.fail(reason);
+    for (const r of queued) r.pending.fail(reason);
+    for (const p of inFlight) p.fail(reason);
+  }
+
+  /** End the worker, and send every call still waiting to a new one. */
+  private restart(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    const waiting = [...this.inFlight.values()];
+    this.inFlight.clear();
+    for (const p of waiting) this.post(p);
+  }
+
+  environment(description?: Description): RisorEnvironment {
+    const env = this.nextEnv++;
+    const service = this;
+    let released = true;
+    // Open the environment, again after a release: React's StrictMode
+    // releases in an effect's cleanup and then uses the same object.
+    const open = () => {
+      if (!released) return;
+      released = false;
+      service.envs.set(env, description);
+      if (service.worker) service.worker.postMessage({ id: service.nextId++, op: "open", env, description });
+    };
+    open();
+    const problemsOnError = (message: string): Problem[] => [{ phase: "service", code: "internal-error", message }];
+    return {
+      check(text: string, options?: CheckOptions) {
+        open();
+        return service.gated(`${env}:check`, { op: "check", env, text, options }, problemsOnError);
+      },
+      validate(text: string, options?: CheckOptions) {
+        open();
+        return service.call({ op: "validate", env, text, options }, problemsOnError);
+      },
+      complete(text: string, offset: number, options?: CheckOptions) {
+        open();
+        return service.gated<Completion | null>(`${env}:complete`, { op: "complete", env, text, offset, options }, () => null);
+      },
+      hover(text: string, offset: number, options?: CheckOptions) {
+        open();
+        return service.gated<Hover | null>(`${env}:hover`, { op: "hover", env, text, offset, options }, () => null);
+      },
+      run(text: string, vars?: Record<string, unknown>, options?: RunOptions) {
+        open();
+        return service.run({ op: "run", env, text, vars, options }, options?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      },
+      release() {
+        if (released) return;
+        released = true;
+        service.envs.delete(env);
+        for (const k of ["check", "complete", "hover"]) service.gates.delete(`${env}:${k}`);
+        if (service.worker) service.worker.postMessage({ id: service.nextId++, op: "close", env });
+      },
+    };
+  }
+
+  format(text: string): Promise<FormatResult> {
+    return this.call<FormatResult>({ op: "format", text }, (message) => ({ ok: false, problems: [{ phase: "service", code: "internal-error", message }] }));
+  }
+
+  /**
+   * Take no more calls, end the worker, and settle every pending call: runs
+   * as stopped when disposed, other calls with the reason. Nothing starts a
+   * new worker afterwards: post() refuses once closed.
+   */
+  private close(reason: string): void {
+    if (this.closed !== null) return;
+    this.closed = reason;
+    if (this.loadTimer) clearTimeout(this.loadTimer);
+    this.loadTimer = null;
+    this.worker?.terminate();
+    this.worker = null;
+    const running = this.running;
+    this.running = null;
+    if (running) {
+      if (running.timer) clearTimeout(running.timer);
+      this.inFlight.delete(running.id);
+    }
+    const queued = this.runs.splice(0);
+    const inFlight = [...this.inFlight.values()];
+    this.inFlight.clear();
+    for (const g of this.gates.values()) g.waiting?.replace();
+    this.gates.clear();
+    if (this.disposed) {
+      if (running) running.pending.resolve(stopped(running.timeoutMs));
+      for (const r of queued) r.pending.resolve(stopped(r.timeoutMs));
+    } else {
+      if (running) running.pending.fail(reason);
+      for (const r of queued) r.pending.fail(reason);
+    }
+    for (const p of inFlight) p.fail(reason);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.close("the service was disposed");
+  }
+}

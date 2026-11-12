@@ -1,0 +1,42 @@
+{
+  "name": "@risor/service",
+  "version": "0.0.0",
+  "description": "Check, complete, hover, format and run Risor off the page's main thread",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepnoodle-ai/risor.git",
+    "directory": "web/packages/service"
+  },
+  "type": "module",
+  "sideEffects": [
+    "./src/worker.ts",
+    "./dist/worker.js"
+  ],
+  "exports": {
+    ".": {
+      "risor-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./worker": {
+      "risor-source": "./src/worker.ts",
+      "types": "./dist/worker.d.ts",
+      "default": "./dist/worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/worker-url.ts dist/client.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "risor": "0.0.0"
+  }
+}

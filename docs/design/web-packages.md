@@ -58,7 +58,7 @@ risor  (ts/)                       no dependencies
 
 | Package | Holds | Why it is its own package |
 | --- | --- | --- |
-| `risor` | The language: `createEnv` and its `Env` (`compile`, `check`, `describe`), `Program` (`run`), `formatProgram`, `complete`, `hover`, `envFromDescription`. `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
+| `risor` | The language: `createEnv` and its `Env` (`compile`, `check`, `describe`), `Program` (`run`, `measure`), `format`, `env.complete`, `env.hover`, `Env.fromDescription`, `jsonText`: the API of 05 Part E (R200). `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
 | `@risor/service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A tree of Risor's JSON text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@risor/codemirror` and needs nothing else. |
 | `@risor/codemirror` | One CodeMirror 6 extension, `risor(options)`: colours, lint (check), completion, hover, format command, Mod-Enter to run, single-line mode, a theme on CSS variables. | All editor behaviour in one place, shared by React, Vue and plain DOM. |
 | `@risor/react` | `RisorEditor`, `RisorResult`, `RisorDiagnostics`, `RisorProvider`; hooks `useRisorService`, `useRisorCheck`, `useRisorRun`. Unstyled except for one optional CSS file. | React is a peer; no styling framework. |
@@ -88,7 +88,7 @@ JSON that Go's `Env.Describe()` and TypeScript's `env.describe()` make.
 | Only sample data | `describeSample(sample, { groups })`, from `@risor/service`. `groups` names the opt-in library groups (F6) the program may use. |
 | Nothing | No `environment`: an empty one |
 
-The service checks the value with `envFromDescription`. A value that is not
+The service checks the value with `Env.fromDescription`. A value that is not
 a description is a console error that names the prop, and the service uses
 an empty environment. A description carries steps, allocation and depth
 limits; they apply to every run. It carries no deadline, so a run takes
@@ -135,15 +135,22 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   today). The timer starts when the run is sent to a worker that has
   answered once. A new worker gets each environment's `open` before any
   other request, so the first answer comes once the worker has loaded, and
-  its download and start do not count against the run. A worker that fails
-  to load fails every call (`onerror`). On expiry the client terminates
+  its download and start, up to `loadTimeoutMs`, do not count against the
+  run. Runs go one at a time per service: a run is sent only after the run
+  before it settles, so its timer never counts time spent behind another
+  run, even when a host calls `run` again before the last one ends. A worker that fails
+  to load fails every call (`onerror`). A worker that does not answer
+  within `loadTimeoutMs` (default 30,000 ms) is ended, and every pending
+  call fails; the next call starts a new worker. A value `postMessage`
+  cannot clone fails its call with a result. A run's timer is clamped to
+  `setTimeout`'s range. On expiry the client terminates
   the worker and resolves the run as stopped (stage `stopped`). It starts a
   new worker, sends it each live environment's description, and sends it
   again every other request that was in flight: a check, complete, hover,
   validate, format or queued run. Each of these settles from the new
   worker, so no promise waits forever. A test holds a check in flight
   while a run times out, and gets the check's answer from the new worker. Check, complete and
-  hover have no deadline of their own; the checker is bounded by the source
+  hover have no deadline of their own (#635); the checker is bounded by the source
   size.
 - **Each editor has its own environment.** `service.environment(d)` returns
   a new object on each call, and each `risor(...)` extension and each React
@@ -211,7 +218,7 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
 ### The new core call: `tokens` (in review in #631)
 
 ```ts
-// risor and risor/tokens
+// risor/tokens only: the main entry is exactly 05 Part E
 export type TokenClass = "keyword" | "constant" | "name" | "function" | "property"
   | "number" | "string" | "template" | "interpolation" | "operator"
   | "punctuation" | "comment" | "invalid";

@@ -1,0 +1,20 @@
+{
+  "name": "risor-web",
+  "private": true,
+  "description": "The npm packages for Risor in the browser. See docs/design/web-packages.md.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "../ts",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test -w @risor/service -w @risor/codemirror"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

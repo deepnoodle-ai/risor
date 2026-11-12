@@ -10,6 +10,7 @@ on:
     paths:
       - "go/**"
       - "ts/**"
+      - "web/**"
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
@@ -19,6 +20,7 @@ on:
     paths:
       - "go/**"
       - "ts/**"
+      - "web/**"
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
@@ -96,6 +98,38 @@ jobs:
       # The package as npm would publish it: prepack builds dist/.
       - name: Pack the npm package
         run: npm pack --dry-run
+
+  # The npm packages for Risor in the browser (docs/design/web-packages.md).
+  # They build against ts/ through the npm workspace in web/.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
   rust:
     runs-on: ubuntu-latest
