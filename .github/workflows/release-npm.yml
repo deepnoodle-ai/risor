@@ -78,5 +78,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           flags="--generate-notes --latest=false"
-          case "$TAG" in *-*) flags="$flags --prerelease" ;; esac
+          # The prefix npm-v has a hyphen of its own: test the version only.
+          case "${TAG#npm-v}" in *-*) flags="$flags --prerelease" ;; esac
           gh release create "$TAG" $flags
