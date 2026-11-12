@@ -65,7 +65,13 @@ export interface UseRisorRunOptions extends CheckOptions {
   auto?: boolean;
 }
 
-/** The result of running a text, after each pause in typing. */
+function isRunResult(r: unknown): r is RunResult {
+  if (typeof r !== "object" || r === null) return false;
+  const o = r as Record<string, unknown>;
+  return o.ok === true ? typeof o.json === "string" : o.ok === false && Array.isArray(o.problems);
+}
+
+/** The result of running a text, after each pause in typing. Only the newest run's result is kept. */
 export function useRisorRun({ code, environment, vars, expected, debounce = 400, timeoutMs, run, auto = true }: UseRisorRunOptions) {
   const env = useRisorEnvironment(environment);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -84,6 +90,7 @@ export function useRisorRun({ code, environment, vars, expected, debounce = 400,
       r = runRef.current
         ? await runRef.current(code, JSON.parse(varsKey))
         : await env!.run(code, JSON.parse(varsKey), { expected, timeoutMs });
+      if (!isRunResult(r)) throw new Error("the run callback did not return a RunResult");
     } catch (e) {
       r = { ok: false, stage: "run", problems: [{ phase: "service", code: "run-callback", message: String((e as Error)?.message ?? e) }] };
     }
