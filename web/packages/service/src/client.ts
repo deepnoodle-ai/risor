@@ -3,7 +3,9 @@
 // - Check, complete and hover are gated per environment and kind: one is in
 //   the worker at a time, and a call made while another waits replaces it
 //   (the replaced call resolves null).
-// - Runs go one at a time. Each has a timer: its deadline plus a grace. When
+// - Runs go one at a time. Each has a timer: its deadline plus a grace. The
+//   timer starts once the worker has answered a message, so its download and
+//   start do not count against the first run. When
 //   the timer fires, the worker is stuck past the deadline that should have
 //   ended the run, so the client ends the worker, resolves the run as
 //   stopped, and starts a new worker that gets every live environment and
@@ -74,7 +76,9 @@ class WorkerService implements RisorService {
   private readonly envs = new Map<number, Description | undefined>();
   private readonly gates = new Map<string, Gate>();
   private readonly runs: { pending: Pending; timeoutMs: number }[] = [];
-  private running: { id: number; timer: ReturnType<typeof setTimeout>; pending: Pending; timeoutMs: number } | null = null;
+  private running: { id: number; timer: ReturnType<typeof setTimeout> | null; pending: Pending; timeoutMs: number } | null = null;
+  /** The worker has answered a message: it has loaded. */
+  private warm = false;
   /** Why the service takes no more calls: it was disposed, or its worker failed to load. */
   private closed: string | null = null;
   private disposed = false;
@@ -87,6 +91,7 @@ class WorkerService implements RisorService {
   private ensure(): WorkerLike {
     if (this.worker) return this.worker;
     const w = this.make();
+    this.warm = false;
     w.onmessage = (e) => this.receive(e.data);
     w.onerror = (e) => {
       const detail = (e as ErrorEvent).message ? `: ${(e as ErrorEvent).message}` : "";
@@ -110,6 +115,10 @@ class WorkerService implements RisorService {
   }
 
   private receive(m: Response): void {
+    if (!this.warm) {
+      this.warm = true;
+      this.startTimer();
+    }
     const p = this.inFlight.get(m.id);
     if (!p) return;
     this.inFlight.delete(m.id);
@@ -185,7 +194,7 @@ class WorkerService implements RisorService {
     }
     const { pending, timeoutMs } = this.runs.shift()!;
     const done = (fn: () => void) => () => {
-      if (this.running) clearTimeout(this.running.timer);
+      if (this.running?.timer) clearTimeout(this.running.timer);
       this.running = null;
       fn();
       this.nextRun();
@@ -197,14 +206,21 @@ class WorkerService implements RisorService {
     };
     const id = this.post(wrapped);
     if (id < 0) return;
-    const timer = setTimeout(() => {
-      this.inFlight.delete(id);
+    this.running = { id, timer: null, pending, timeoutMs };
+    this.startTimer();
+  }
+
+  /** Start the running run's timer, once the worker has loaded. */
+  private startTimer(): void {
+    const running = this.running;
+    if (!running || running.timer || !this.warm) return;
+    running.timer = setTimeout(() => {
+      this.inFlight.delete(running.id);
       this.running = null;
       this.restart();
-      pending.resolve(stopped(timeoutMs));
+      running.pending.resolve(stopped(running.timeoutMs));
       this.nextRun();
-    }, timeoutMs + this.graceMs);
-    this.running = { id, timer, pending, timeoutMs };
+    }, running.timeoutMs + this.graceMs);
   }
 
   /** End the worker, and send every call still waiting to a new one. */
@@ -278,7 +294,7 @@ class WorkerService implements RisorService {
     const running = this.running;
     this.running = null;
     if (running) {
-      clearTimeout(running.timer);
+      if (running.timer) clearTimeout(running.timer);
       this.inFlight.delete(running.id);
     }
     const queued = this.runs.splice(0);

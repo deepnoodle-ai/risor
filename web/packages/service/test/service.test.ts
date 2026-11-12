@@ -226,6 +226,24 @@ describe("workerService", () => {
     s.dispose();
   });
 
+  test("a worker's load time does not count against the first run", async () => {
+    // The worker answers nothing for 60 ms, as if it were still loading; the run's deadline and grace are 20 ms.
+    class Slow extends FakeWorker {
+      private readonly start = Date.now();
+      override postMessage(m: Request): void {
+        this.received.push(m);
+        setTimeout(() => {
+          if (!this.terminated) this.onmessage?.({ data: answer(m) } as MessageEvent<Response>);
+        }, Math.max(1, 60 - (Date.now() - this.start)));
+      }
+    }
+    const s = workerService({ worker: () => new Slow(), graceMs: 10 });
+    const env = s.environment(describeSample({ a: 1 }));
+    const r = await env.run("a", { a: 1 }, { timeoutMs: 10 });
+    assert.ok(r.ok);
+    s.dispose();
+  });
+
   test("a check waiting when the worker is ended is answered by the new worker", async () => {
     FakeWorker.hang = true;
     let current: FakeWorker | null = null;
