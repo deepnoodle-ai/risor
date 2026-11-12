@@ -5,6 +5,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "types": ["node"],
+    "typeRoots": ["./node_modules/@types", "../web/node_modules/@types"],
     "strict": true,
     "noUncheckedIndexedAccess": false,
     "noImplicitOverride": true,
