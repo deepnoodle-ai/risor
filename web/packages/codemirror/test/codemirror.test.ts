@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
 import { describeSample, localService } from "@risor/service";
-import { colourDecorations, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics } from "../src/index.ts";
+import { colourDecorations, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics, validateRisor } from "../src/index.ts";
+import type { EditorView } from "@codemirror/view";
+import type { RisorService } from "@risor/service";
 
 /** Each decorated range as `class:text`. */
 function marks(text: string): string[] {
@@ -75,5 +77,39 @@ describe("isEmptyText", () => {
     assert.equal(isEmptyText(""), true);
     assert.equal(isEmptyText("  \n // a note\n /* b */"), true);
     assert.equal(isEmptyText("x // a note"), false);
+  });
+});
+
+describe("validateRisor", () => {
+  test("a text changed while the check is in flight is checked again", async () => {
+    const real = localService();
+    let view: { state: EditorState; dispatch(spec: unknown): void };
+    let first = true;
+    // A service whose first validate edits the text before it answers, as a user typing would.
+    const service: RisorService = {
+      ...real,
+      environment(d) {
+        const env = real.environment(d);
+        return {
+          ...env,
+          async validate(text, options) {
+            if (first) {
+              first = false;
+              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "a +" } });
+            }
+            return env.validate(text, options);
+          },
+        };
+      },
+    };
+    view = {
+      state: EditorState.create({ doc: "a + 1", extensions: risor({ service, environment: describeSample({ a: 1 }) }) }),
+      dispatch(spec) {
+        this.state = this.state.update(spec as never).state;
+      },
+    };
+    const problems = await validateRisor(view as unknown as EditorView);
+    assert.equal(view.state.doc.toString(), "a +");
+    assert.equal(problems.length, 1); // the problems of "a +", not of "a + 1"
   });
 });

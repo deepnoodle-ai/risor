@@ -1,6 +1,7 @@
 // @risor/codemirror: Risor for CodeMirror 6. One extension, `risor(options)`,
 // gives colours, errors as you type, completion, hover, format and a run
-// key. It works in any framework; @risor/react and @risor/vue wrap it.
+// key. It works in any framework; @risor/react (#633) wraps it, and a Vue
+// package is planned.
 //
 // The extension's options do not change after it is made. To change the
 // environment or the expected type, put the extension in a Compartment and
@@ -190,14 +191,17 @@ export const singleLineFilter: Extension = EditorState.transactionFilter.of((tr)
 export async function validateRisor(view: EditorView): Promise<Problem[]> {
   const session = view.state.facet(risorSession);
   if (!session) return [];
-  const text = view.state.doc.toString();
-  const problems = isEmptyText(text) ? [] : await session.environment.validate(text, { expected: session.options.expected });
-  if (view.state.doc.toString() === text) {
+  // Check again if the text changes while a check is in flight, so the
+  // result is always for the text as it is now.
+  for (;;) {
+    const text = view.state.doc.toString();
+    const problems = isEmptyText(text) ? [] : await session.environment.validate(text, { expected: session.options.expected });
+    if (view.state.doc.toString() !== text) continue;
     session.last = problems;
     view.dispatch(setDiagnostics(view.state, toDiagnostics(problems, view.state.doc.length)));
     session.options.onDiagnostics?.(problems);
+    return problems;
   }
-  return problems;
 }
 
 /** Format the text. Returns false when it does not parse; its problems then show. */
