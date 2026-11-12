@@ -1,4 +1,4 @@
-# @risor/mantine
+# @deepnoodle/risor-mantine
 
 [Risor](https://github.com/deepnoodle-ai/risor) in Mantine's style: a checked
 expression input with a label, a description and an error, and a preview of
@@ -7,15 +7,15 @@ the result against sample data. Mantine 7.17 or later.
 > Risor v3 is an alpha. This API will change before 3.0.
 
 ```sh
-npm install @risor/mantine
+npm install @deepnoodle/risor-mantine
 ```
 
 ```tsx
 import { useRef } from "react";
 import { useForm } from "@mantine/form";
-import { RisorInput, RisorPreview } from "@risor/mantine";
-import type { RisorInputHandle } from "@risor/mantine";
-import "@risor/mantine/styles.css";
+import { RisorInput, RisorPreview } from "@deepnoodle/risor-mantine";
+import type { RisorInputHandle } from "@deepnoodle/risor-mantine";
+import "@deepnoodle/risor-mantine/styles.css";
 
 // `description` is what your Go server's env.Describe() returned.
 export function StepCondition({ description, sample }) {
@@ -50,7 +50,7 @@ export function StepCondition({ description, sample }) {
 await it on submit. Your server still checks the text before it saves it.
 
 The preview's `run` returns the `RunResult` shape documented in
-`@risor/service`. Without `run`, the preview runs in a web worker, which
+`@deepnoodle/risor-service`. Without `run`, the preview runs in a web worker, which
 works when the environment has no host functions.
 
 License: Apache-2.0

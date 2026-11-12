@@ -3,3 +3,4 @@ dist
 *.tsbuildinfo
 test-results
 playwright-report
+packages/*/LICENSE

@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv } from "risor";
+import { createEnv } from "@deepnoodle/risor";
 import { describeSample, localService, parseJsonTree, prettyJSON, TextIndex, typeOfJSON, workerService } from "../src/index.ts";
 import type { WorkerLike } from "../src/index.ts";
 import { answer } from "../src/worker.ts";

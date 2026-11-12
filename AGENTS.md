@@ -225,5 +225,12 @@ v3 alpha releases are tagged `go/v3.0.0-alpha.N` on `main`: the Go module in
 `v3.*` tag.** With no `go.mod` at the root, Go lists such a tag as a broken
 version of the old path `github.com/deepnoodle-ai/risor/v3`, and `go list -m
 -versions` and `@latest` fail there. The GitHub release is made from the
-`go/` tag. v2 releases are cut
-from the `v2` branch; see `docs/guides/releasing.md` there.
+`go/` tag.
+
+The npm packages (`@deepnoodle/risor` and `@deepnoodle/risor-*`) release
+together on the tag `npm-v<version>`: set the version with `node
+web/scripts/version.ts <version>`, merge that, then push the tag.
+`.github/workflows/release-npm.yml` publishes them.
+
+v2 releases are cut from the `v2` branch; see `docs/guides/releasing.md`
+there.

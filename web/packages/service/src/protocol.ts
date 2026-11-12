@@ -1,6 +1,6 @@
 // The messages between the worker client and the worker script.
 
-import type { Description } from "risor";
+import type { Description } from "@deepnoodle/risor";
 import type { CheckOptions, RunOptions } from "./types.ts";
 
 export type Request =

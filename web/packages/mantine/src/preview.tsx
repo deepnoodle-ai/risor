@@ -1,7 +1,7 @@
 import { Group, Loader, Paper, Text } from "@mantine/core";
 import type { ReactNode } from "react";
-import { RisorResult, useRisorRun } from "@risor/react";
-import type { Description, RunCallback } from "@risor/react";
+import { RisorResult, useRisorRun } from "@deepnoodle/risor-react";
+import type { Description, RunCallback } from "@deepnoodle/risor-react";
 
 export interface RisorPreviewProps {
   code: string;

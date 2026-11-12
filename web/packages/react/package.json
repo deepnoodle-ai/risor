@@ -1,5 +1,5 @@
 {
-  "name": "@risor/react",
+  "name": "@deepnoodle/risor-react",
   "version": "0.0.0",
   "description": "React components for Risor: an editor with errors as you type, completion and hover, and a result view",
   "license": "Apache-2.0",
@@ -25,16 +25,18 @@
     "dist",
     "src",
     "styles.css",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\""
+    "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\"",
+    "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "@risor/codemirror": "0.0.0",
-    "@risor/service": "0.0.0"
+    "@deepnoodle/risor-codemirror": "0.0.0",
+    "@deepnoodle/risor-service": "0.0.0"
   },
   "peerDependencies": {
     "@codemirror/autocomplete": "^6.18.0",

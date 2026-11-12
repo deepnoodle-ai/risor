@@ -517,7 +517,7 @@ func Sources(read func(ref string) (string, Origin, error)) Option
 ### 7.3 TypeScript (binding rules)
 
 ```ts
-// "risor/testing". It imports no test framework.
+// "@deepnoodle/risor/testing". It imports no test framework.
 export function defineCases(test: TestFn, file: CaseFile): void;
 export function loadCaseFile(path: string, options?: CaseOptions): CaseFile; // Node
 export function caseFile(data: unknown, options?: CaseOptions): CaseFile;

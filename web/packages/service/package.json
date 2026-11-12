@@ -1,5 +1,5 @@
 {
-  "name": "@risor/service",
+  "name": "@deepnoodle/risor-service",
   "version": "0.0.0",
   "description": "Check, complete, hover, format and run Risor off the page's main thread",
   "license": "Apache-2.0",
@@ -29,14 +29,16 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/worker-url.ts dist/client.js",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
+    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "risor": "0.0.0"
+    "@deepnoodle/risor": "0.0.0"
   }
 }

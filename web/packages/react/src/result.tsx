@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { parseJsonTree } from "@risor/service";
-import type { JsonNode, Problem, RunResult } from "@risor/service";
+import { parseJsonTree } from "@deepnoodle/risor-service";
+import type { JsonNode, Problem, RunResult } from "@deepnoodle/risor-service";
 
 /** A JSON value as a tree: objects and arrays fold. */
 export function RisorValue({ json, openDepth = 2 }: { json: string; openDepth?: number }) {

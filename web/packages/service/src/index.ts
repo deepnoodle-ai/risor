@@ -1,4 +1,4 @@
-// @risor/service: check, complete, hover, format and run Risor, in a web
+// @deepnoodle/risor-service: check, complete, hover, format and run Risor, in a web
 // worker (workerService) or on the main thread (localService). See
 // docs/design/web-packages.md in the risor repository.
 //

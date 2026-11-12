@@ -80,11 +80,11 @@ Secondary users:
 
 | Concept | Definition | Relation |
 | --- | --- | --- |
-| Risor package (`risor`) | The language for JavaScript: run, check, format, complete, hover. | The TypeScript implementation in `ts/`, built and published. |
+| Risor package (`@deepnoodle/risor`) | The language for JavaScript: run, check, format, complete, hover. | The TypeScript implementation in `ts/`, built and published. |
 | Environment description | JSON that says which variables, functions and types a host gives a program. | Already exists (F1 5.3). The one way to tell every package what a program may use. Made by Go's `Env.Describe()`, by `createEnv(...).describe()`, or from sample JSON by `describeSample`. |
-| Risor service | Checks, completes, hovers, formats and runs Risor away from the page's main thread, and ends a run that does not stop. | New, in `@risor/service`. Replaces the site's `useRunner` and worker. |
+| Risor service | Checks, completes, hovers, formats and runs Risor away from the page's main thread, and ends a run that does not stop. | New, in `@deepnoodle/risor-service`. Replaces the site's `useRunner` and worker. |
 | Risor editor | A code editor for Risor with colours, completion, hover, error marks and format. | New. A CodeMirror 6 extension, wrapped for React (and later Vue). |
-| Risor input | A form field for one expression, with a label, a description and an error, in Mantine's style. | New, in `@risor/mantine`. The editor in the shape of a form control. |
+| Risor input | A form field for one expression, with a label, a description and an error, in Mantine's style. | New, in `@deepnoodle/risor-mantine`. The editor in the shape of a form control. |
 | Result view | Shows a run's value as a tree, its type, its steps and allocation, or its error. | New. |
 
 ## Use cases
@@ -98,7 +98,7 @@ A customer's Go server stores workflow steps. Each step has a condition.
 2. The page renders:
 
    ```tsx
-   import { RisorInput } from "@risor/mantine";
+   import { RisorInput } from "@deepnoodle/risor-mantine";
 
    const ref = useRef<RisorInputHandle>(null);
 
@@ -139,7 +139,7 @@ Acceptance:
       not a description is a console error that names the prop, and the
       field checks against an empty environment.
 - [ ] The Risor code the field adds to the main thread (the Risor packages
-      and `risor/tokens`, with CodeMirror, React and Mantine left out) is
+      and `@deepnoodle/risor/tokens`, with CodeMirror, React and Mantine left out) is
       at most 20 KB gzipped. The rest of Risor loads in the worker.
 - [ ] The editable element's accessible name is the label. An error sets
       `aria-invalid="true"` on it and links the message with
@@ -193,14 +193,14 @@ Acceptance:
 ### UC-3: Build the website's playground from the packages
 
 1. `risor-site-v2` removes `app/vendor/risor-v3` and `sync:risor`, and
-   depends on `risor`, `@risor/react` and `@risor/mantine`.
+   depends on `@deepnoodle/risor`, `@deepnoodle/risor-react` and `@deepnoodle/risor-mantine`.
 2. The playground, the "Try it" buttons and the home page example use the
    packages' editor, service and result view. The playground page itself
    stays in the site: only the site needs it.
 
 Acceptance:
 
-- [ ] `pnpm check:v3` passes with `risor` from npm.
+- [ ] `pnpm check:v3` passes with `@deepnoodle/risor` from npm.
 - [ ] The playground keeps every feature it has today: variables as JSON,
       the check switch, limits, format, share links, examples.
 - [ ] The playground gains completion, hover and error marks.
@@ -208,7 +208,7 @@ Acceptance:
 ### UC-4: Run Risor from JavaScript
 
 ```ts
-import { createEnv } from "risor";
+import { createEnv } from "@deepnoodle/risor";
 
 const env = createEnv({ vars: "{order: {total: float}}" });
 const program = env.compile("order.total > 100");
@@ -217,16 +217,16 @@ program.run({ order: { total: 120 } }); // true
 
 Acceptance:
 
-- [ ] `npm install risor@alpha` works in Node 22 and later, Deno, Bun,
+- [ ] `npm install @deepnoodle/risor@alpha` works in Node 22 and later, Deno, Bun,
       and every bundler that reads `exports`, with type declarations.
 - [ ] The package has no dependencies. Its main entry imports no `node:`
-      module. (`risor/testing`, the F9 binding, reads files and is for
+      module. (`@deepnoodle/risor/testing`, the F9 binding, reads files and is for
       Node.)
 
 ### UC-5: Colour Risor in static pages and other editors (a later track)
 
 1. The site renders docs with Shiki. It loads the Risor TextMate grammar
-   from `@risor/grammar`.
+   from `@deepnoodle/risor-grammar`.
 2. A customer's docs use the same grammar with Shiki. (highlight.js and
    Prism are not covered.)
 
@@ -241,11 +241,11 @@ Acceptance:
 - R-1: Each package is ES modules only, with `.d.ts` files, `sideEffects:
   false`, and an Apache-2.0 license.
 - R-2: A framework is a peer dependency, never a dependency. A page that uses
-  `@risor/react` installs React once.
+  `@deepnoodle/risor-react` installs React once.
 - R-3: The editor never runs a user's program on the main thread. Checking,
   completion and hover may run on the main thread or in the worker; the
   default is the worker. Colouring runs on the main thread with
-  `risor/tokens`, an entry that holds only the lexer (12 KB gzipped,
+  `@deepnoodle/risor/tokens`, an entry that holds only the lexer (12 KB gzipped,
   measured).
 - R-4: Every position a package exposes counts the units of a JavaScript
   string (UTF-16), as the DOM and CodeMirror do. The packages convert from
@@ -255,7 +255,7 @@ Acceptance:
   of ours: Shiki at build time, VS Code, GitHub.)
 - R-6: Every component takes a `className` and exposes CSS variables for
   colour. The React and Vue components carry no styling framework. Mantine
-  styling is only in `@risor/mantine`.
+  styling is only in `@deepnoodle/risor-mantine`.
 - R-6a: Every package names an environment one way: a description.
   `describeSample(sample)` makes one from sample JSON; `createEnv(options)
   .describe()` makes one from options.
@@ -268,7 +268,7 @@ Acceptance:
 
 - **A language server.** D24 dropped it. The calls cover the editor's needs.
 - **Monaco.** It is several megabytes and does not render on the server. A
-  customer on Monaco can use the `risor` calls directly. Revisit on demand.
+  customer on Monaco can use the `@deepnoodle/risor` calls directly. Revisit on demand.
 - **Svelte, Solid, Angular.** No user has asked. The CodeMirror extension
   works in any of them without a wrapper.
 - **A playground component.** The site's playground stays in the site,
@@ -305,10 +305,10 @@ Acceptance:
 - **Release order: React and Mantine first, Vue and the grammar after.**
   The site and the first customers use React and Mantine. Vue follows once
   the React API has settled, so both wrappers share one design.
-- **Unscoped `risor` for the language, `@risor/*` for the rest.** It
-  matches the Go module's name and `npm install risor` is the shortest
-  thing to say. Rejected: `@risor/core` (one more thing to explain);
-  `@deepnoodle/*` (ties the language to the company in its name).
+- **`@deepnoodle/risor` for the language, `@deepnoodle/risor-*` for the
+  rest.** The owner settled this on 2026-11-11. The packages publish from
+  the `deepnoodle` npm organization, next to its other packages. Rejected:
+  unscoped `risor` with an `@risor` scope (a second organization to own).
 
 ## Success
 
@@ -324,19 +324,18 @@ program.
 
 ## Risks and open questions
 
-1. **Names on npm (blocks the publish, not the build).** `risor` and the
-   `@risor` scope are free today (checked 2026-11-10). The owner must claim
-   both before someone else does.
+1. **Names on npm.** Settled: `@deepnoodle/risor` and
+   `@deepnoodle/risor-*`, in the `deepnoodle` organization (see Decisions).
 2. **`tokens` is a new TypeScript call.** Colours need the tokens, and
    `ts/src/index.ts` did not export the lexer. The build adds `tokens(text)`
-   in its own entry, `risor/tokens`, as a TypeScript binding call, not a
+   in its own entry, `@deepnoodle/risor/tokens`, as a TypeScript binding call, not a
    spec call. Open: should it be a call of F12, so Go and Rust have it too?
    Recommendation: no, until a non-browser editor needs it.
 3. **Bundle size.** The full core is 141 KB gzipped. It loads only in the
    worker, so the page's first paint does not wait for it. The main thread
-   loads `risor/tokens` (12 KB) for colours.
+   loads `@deepnoodle/risor/tokens` (12 KB) for colours.
 4. **Mantine versions.** The site uses Mantine 7.17; Mantine is at 9.8.
-   Recommendation: `@risor/mantine` supports `>=7.17` in its peer range,
+   Recommendation: `@deepnoodle/risor-mantine` supports `>=7.17` in its peer range,
    tested with 7.17 and the latest. Open: or upgrade the site to the latest and
    support only that.
 5. **Vue demand.** No Vue user is known, but the owner asked for Vue. It

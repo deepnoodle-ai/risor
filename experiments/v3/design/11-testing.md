@@ -266,7 +266,7 @@ func Sources(read func(ref string) (string, Origin, error)) Option
 ```
 
 ```ts
-// "risor/testing". It imports no runner: the host passes its own `test`.
+// "@deepnoodle/risor/testing". It imports no runner: the host passes its own `test`.
 export function defineCases(
   test: (name: string, fn: () => void) => void,  // vitest, jest, node:test
   base: Env | undefined, file: CaseFile): void;

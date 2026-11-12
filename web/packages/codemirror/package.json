@@ -1,24 +1,38 @@
 {
-  "name": "@risor/codemirror",
+  "name": "@deepnoodle/risor-codemirror",
   "version": "0.0.0",
   "description": "Risor for CodeMirror 6: colours, errors as you type, completion, hover and format",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/deepnoodle-ai/risor.git", "directory": "web/packages/codemirror" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepnoodle-ai/risor.git",
+    "directory": "web/packages/codemirror"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": { "risor-source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    ".": {
+      "risor-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "src", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
+    "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "@risor/service": "0.0.0",
-    "risor": "0.0.0"
+    "@deepnoodle/risor-service": "0.0.0",
+    "@deepnoodle/risor": "0.0.0"
   },
   "peerDependencies": {
     "@codemirror/autocomplete": "^6.18.0",

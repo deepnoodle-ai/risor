@@ -2,9 +2,9 @@ import { forwardRef, useId, useImperativeHandle, useRef, useState } from "react"
 import type { ReactNode } from "react";
 import { Input, useComputedColorScheme } from "@mantine/core";
 import type { MantineSize } from "@mantine/core";
-import { isEmptyText } from "@risor/codemirror";
-import { RisorEditor } from "@risor/react";
-import type { Description, Problem, RisorEditorHandle } from "@risor/react";
+import { isEmptyText } from "@deepnoodle/risor-codemirror";
+import { RisorEditor } from "@deepnoodle/risor-react";
+import type { Description, Problem, RisorEditorHandle } from "@deepnoodle/risor-react";
 
 export interface RisorInputProps {
   value: string;

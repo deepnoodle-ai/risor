@@ -18,7 +18,7 @@ dependencies.
 
 ## Goals
 
-- `npm install risor@alpha` gives the language, built, typed, with no dependencies.
+- `npm install @deepnoodle/risor@alpha` gives the language, built, typed, with no dependencies.
 - A Mantine form gets a checked, completing Risor field from one component
   (`RisorInput`) and one environment description.
 - No user program runs on the page's main thread. The main thread loads at
@@ -40,39 +40,39 @@ dependencies.
 
 ```
 risor  (ts/)                       no dependencies
- │                                 entries: risor, risor/tokens, risor/testing
- ├── @risor/service                risor
+ │                                 entries: risor, @deepnoodle/risor/tokens, @deepnoodle/risor/testing
+ ├── @deepnoodle/risor-service                risor
  │     │
- │     └── @risor/codemirror       risor (risor/tokens only), @risor/service
+ │     └── @deepnoodle/risor-codemirror       risor (@deepnoodle/risor/tokens only), @deepnoodle/risor-service
  │           │                     peers: @codemirror/state, view, language,
  │           │                            autocomplete, lint, commands
- │           ├── @risor/react      @risor/codemirror, @risor/service
+ │           ├── @deepnoodle/risor-react      @deepnoodle/risor-codemirror, @deepnoodle/risor-service
  │           │     │               peer: react >=18
- │           │     └── @risor/mantine   @risor/react
+ │           │     └── @deepnoodle/risor-mantine   @deepnoodle/risor-react
  │           │                          peers: react, @mantine/core >=7.17
- │           └── @risor/vue        (later) @risor/codemirror, @risor/service
+ │           └── @deepnoodle/risor-vue        (later) @deepnoodle/risor-codemirror, @deepnoodle/risor-service
  │                                 peer: vue >=3.4
  │
- └── @risor/grammar                (later) no dependencies: a TextMate grammar
+ └── @deepnoodle/risor-grammar                (later) no dependencies: a TextMate grammar
 ```
 
 | Package | Holds | Why it is its own package |
 | --- | --- | --- |
-| `risor` | The language: `createEnv` and its `Env` (`compile`, `check`, `describe`), `Program` (`run`, `measure`), `format`, `env.complete`, `env.hover`, `Env.fromDescription`, `jsonText`: the API of 05 Part E (R200). `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
-| `@risor/service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A tree of Risor's JSON text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@risor/codemirror` and needs nothing else. |
-| `@risor/codemirror` | One CodeMirror 6 extension, `risor(options)`: colours, lint (check), completion, hover, format command, Mod-Enter to run, single-line mode, a theme on CSS variables. | All editor behaviour in one place, shared by React, Vue and plain DOM. |
-| `@risor/react` | `RisorEditor`, `RisorResult`, `RisorDiagnostics`, `RisorProvider`; hooks `useRisorService`, `useRisorCheck`, `useRisorRun`. Unstyled except for one optional CSS file. | React is a peer; no styling framework. |
-| `@risor/mantine` | `RisorInput` (the editor in Mantine's input shell: label, description, error, required) and `RisorPreview`. | Mantine is the site's framework and a common one for customers; it must not leak into `@risor/react`. |
-| `@risor/vue` (later) | `RisorEditor`, `RisorResult` with `v-model`. Written with `defineComponent` and `h`, so the package needs no SFC compiler. | Vue is a peer. |
-| `@risor/grammar` (later) | The TextMate grammar of `f12-tools.md` 6, as JSON, and a Shiki language object. | Static pages (Shiki at build time), VS Code and GitHub have no JavaScript runtime of ours. |
+| `@deepnoodle/risor` | The language: `createEnv` and its `Env` (`compile`, `check`, `describe`), `Program` (`run`, `measure`), `format`, `env.complete`, `env.hover`, `Env.fromDescription`, `jsonText`: the API of 05 Part E (R200). `@deepnoodle/risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
+| `@deepnoodle/risor-service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A tree of Risor's JSON text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@deepnoodle/risor-codemirror` and needs nothing else. |
+| `@deepnoodle/risor-codemirror` | One CodeMirror 6 extension, `risor(options)`: colours, lint (check), completion, hover, format command, Mod-Enter to run, single-line mode, a theme on CSS variables. | All editor behaviour in one place, shared by React, Vue and plain DOM. |
+| `@deepnoodle/risor-react` | `RisorEditor`, `RisorResult`, `RisorDiagnostics`, `RisorProvider`; hooks `useRisorService`, `useRisorCheck`, `useRisorRun`. Unstyled except for one optional CSS file. | React is a peer; no styling framework. |
+| `@deepnoodle/risor-mantine` | `RisorInput` (the editor in Mantine's input shell: label, description, error, required) and `RisorPreview`. | Mantine is the site's framework and a common one for customers; it must not leak into `@deepnoodle/risor-react`. |
+| `@deepnoodle/risor-vue` (later) | `RisorEditor`, `RisorResult` with `v-model`. Written with `defineComponent` and `h`, so the package needs no SFC compiler. | Vue is a peer. |
+| `@deepnoodle/risor-grammar` (later) | The TextMate grammar of `f12-tools.md` 6, as JSON, and a Shiki language object. | Static pages (Shiki at build time), VS Code and GitHub have no JavaScript runtime of ours. |
 
-`@risor/react` has no `RisorInput`: the input with a label and an error is
+`@deepnoodle/risor-react` has no `RisorInput`: the input with a label and an error is
 Mantine's. A React page without Mantine uses `RisorEditor` with
 `singleLine`.
 
-**Why the service is not inside `@risor/codemirror`:** a result view, a
+**Why the service is not inside `@deepnoodle/risor-codemirror`:** a result view, a
 form's submit check and a preview all need the service and no editor. **Why
-`@risor/react` depends on `@risor/codemirror` and does not split the editor
+`@deepnoodle/risor-react` depends on `@deepnoodle/risor-codemirror` and does not split the editor
 out:** every React user of these packages wants the editor; the bundler drops
 the editor from a page that imports only `RisorResult` (`sideEffects: false`).
 
@@ -85,7 +85,7 @@ JSON that Go's `Env.Describe()` and TypeScript's `env.describe()` make.
 | --- | --- |
 | A Go server with the real environment | `env.Describe()`, sent to the page |
 | Options in TypeScript, no functions | `createEnv(options).describe()` |
-| Only sample data | `describeSample(sample, { groups })`, from `@risor/service`. `groups` names the opt-in library groups (F6) the program may use. |
+| Only sample data | `describeSample(sample, { groups })`, from `@deepnoodle/risor-service`. `groups` names the opt-in library groups (F6) the program may use. |
 | Nothing | No `environment`: an empty one |
 
 The service checks the value with `Env.fromDescription`. A value that is not
@@ -94,7 +94,7 @@ an empty environment. A description carries steps, allocation and depth
 limits; they apply to every run. It carries no deadline, so a run takes
 `timeoutMs` from its caller (default 2,000 ms).
 
-### The service (`@risor/service`)
+### The service (`@deepnoodle/risor-service`)
 
 ```ts
 interface RisorService {
@@ -173,7 +173,7 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   run only on the host, and names the `run` callback. `check`, `complete`
   and `hover` work.
 
-### The editor (`@risor/codemirror`)
+### The editor (`@deepnoodle/risor-codemirror`)
 
 ```ts
 function risor(options: {
@@ -195,7 +195,7 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
   change the environment or the expected type, a host puts `risor(...)` in a
   `Compartment` and reconfigures it; `RisorEditor` does this when its props
   change.
-- **Colours.** A `ViewPlugin` calls `tokens(text)` from `risor/tokens` on
+- **Colours.** A `ViewPlugin` calls `tokens(text)` from `@deepnoodle/risor/tokens` on
   the main thread and builds mark decorations. It is not a Lezer grammar,
   so the colours always match the lexer (PRD R-5). Lexing is linear, and
   Risor texts are expressions and configs, not large files; it reruns on
@@ -218,7 +218,7 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
 ### The new core call: `tokens` (in review in #631)
 
 ```ts
-// risor/tokens only: the main entry is exactly 05 Part E
+// @deepnoodle/risor/tokens only: the main entry is exactly 05 Part E
 export type TokenClass = "keyword" | "constant" | "name" | "function" | "property"
   | "number" | "string" | "template" | "interpolation" | "operator"
   | "punctuation" | "comment" | "invalid";
@@ -230,7 +230,7 @@ It flattens the lexer's tokens, including those inside template
 interpolations, and colours the comments in the gaps between tokens. It
 never throws. Its tests check that over every program in the suite the
 ranges are in order, do not overlap, and cover every code point that is
-not white space. A leading byte order mark is in no range. `risor/tokens`
+not white space. A leading byte order mark is in no range. `@deepnoodle/risor/tokens`
 is 12 KB gzipped (measured with esbuild 0.25.0 on #631; most of it is the message table the lexer imports). It is a
 TypeScript binding call, not a spec call (PRD question 2).
 
@@ -260,12 +260,12 @@ const { problems, validate } = useRisorCheck({ code, environment, expected: "boo
   dropped. A rejected promise, or a value that is not a `RunResult`, shows
   as an error result. The host's server owns the deadline of its own runs:
   the hook cannot stop work on the server, so it sets no timer.
-- `RisorResult` renders the JSON tree from `@risor/service`, so a number
+- `RisorResult` renders the JSON tree from `@deepnoodle/risor-service`, so a number
   shows the exact text Risor gave it. It shows the type, steps and
   allocation, and for an error the code, message, a caret under the line,
   and the trace.
 - Styling is by CSS variables (`--risor-*`) and an optional
-  `@risor/react/styles.css`.
+  `@deepnoodle/risor-react/styles.css`.
 
 ### The Mantine package
 
@@ -284,7 +284,7 @@ same optional `run`.
 ### Where the code lives
 
 ```
-ts/                       the `risor` package: gains a build, `tokens`, `risor/tokens`
+ts/                       the `@deepnoodle/risor` package: gains a build, `tokens`, `@deepnoodle/risor/tokens`
 web/
   package.json            npm workspaces: packages/*, examples/*, ../ts
   packages/service/
@@ -314,55 +314,61 @@ a plain file and the editor theme is CodeMirror's own `EditorView.theme`.
 
 | Package | Tests |
 | --- | --- |
-| `risor` | The suite, as today. `tokens`: unit tests over every class, and the cover test over every program of the suite. CI packs the package. |
-| `@risor/service` | `node --test` on `localService`: position conversion with astral characters, the JSON tree, `describeSample` (with the cases of the site's `typeOfJSON`). The worker client against a fake `Worker`: timeout, restart, re-sent environments, superseded requests. |
-| `@risor/codemirror` | `node --test` with an `EditorState` (no DOM): decorations for each class, lint ranges in UTF-16, single-line filter. |
-| `@risor/react`, `@risor/mantine` | Server rendering to a string; one browser test in Playwright over `examples/react-vite`: type, see a mark, accept a completion, validate on submit, run, see the tree, stop a run that loops. A size check: esbuild bundles `RisorInput` with CodeMirror, React and Mantine external, so it measures the Risor packages and `risor/tokens`. It is at most 20 KB gzipped. |
+| `@deepnoodle/risor` | The suite, as today. `tokens`: unit tests over every class, and the cover test over every program of the suite. CI packs the package. |
+| `@deepnoodle/risor-service` | `node --test` on `localService`: position conversion with astral characters, the JSON tree, `describeSample` (with the cases of the site's `typeOfJSON`). The worker client against a fake `Worker`: timeout, restart, re-sent environments, superseded requests. |
+| `@deepnoodle/risor-codemirror` | `node --test` with an `EditorState` (no DOM): decorations for each class, lint ranges in UTF-16, single-line filter. |
+| `@deepnoodle/risor-react`, `@deepnoodle/risor-mantine` | Server rendering to a string; one browser test in Playwright over `examples/react-vite`: type, see a mark, accept a completion, validate on submit, run, see the tree, stop a run that loops. A size check: esbuild bundles `RisorInput` with CodeMirror, React and Mantine external, so it measures the Risor packages and `@deepnoodle/risor/tokens`. It is at most 20 KB gzipped. |
 
 CI gains one job, `web`, that runs `npm ci`, `build`, `test` and the
 Playwright test, on changes to `ts/` or `web/`.
 
 ### Release
 
-- One version for all packages, the alpha's: `3.0.0-alpha.N` (PRD R-7). A
-  script sets it in every `package.json` and the internal dependency ranges.
-- A GitHub Actions workflow publishes on the tag `v3.0.0-alpha.N` with
-  `npm publish --provenance --tag alpha`, after the `web` job passes. No
-  version is `latest` until 3.0.0, so installs name the tag:
-  `npm install risor@alpha`.
+- One version for all packages, the alpha's: `3.0.0-alpha.N` (PRD R-7).
+  `node web/scripts/version.ts 3.0.0-alpha.N` sets it in every
+  `package.json`, in the dependencies between the packages and the example
+  apps, and in both lockfiles.
+- `.github/workflows/release-npm.yml` publishes on the tag
+  `npm-v3.0.0-alpha.N`, never a bare `v3.*` tag (AGENTS.md, Releasing). It
+  runs the `typescript` and `web` checks again, then
+  `web/scripts/publish.ts`: in dependency order, with npm trusted
+  publishing (GitHub OIDC, no token, provenance added), under the dist-tag
+  `alpha`. No version is `latest` until 3.0.0, so installs name the tag:
+  `npm install @deepnoodle/risor@alpha`. It ends with a GitHub prerelease
+  that is not marked Latest, so the Go release stays Latest.
 - Until the first publish, the site depends on the packages through a local
   link for development and stays on its vendored copy in production.
 
 ### Order of work, one pull request each
 
 1. This PRD and spec.
-2. `ts/`: the build, `exports`, `tokens` and `risor/tokens`. (#631.)
-3. `@risor/service` and `@risor/codemirror`.
-4. `@risor/react` and `examples/react-vite`.
-5. `@risor/mantine`.
+2. `ts/`: the build, `exports`, `tokens` and `@deepnoodle/risor/tokens`. (#631.)
+3. `@deepnoodle/risor-service` and `@deepnoodle/risor-codemirror`.
+4. `@deepnoodle/risor-react` and `examples/react-vite`.
+5. `@deepnoodle/risor-mantine`.
 6. The release workflow, and the first publish.
 7. `risor-site-v2`: move to the packages (in that repository).
-8. `@risor/vue`.
-9. `@risor/grammar`, and Shiki on the site.
+8. `@deepnoodle/risor-vue`.
+9. `@deepnoodle/risor-grammar`, and Shiki on the site.
 
 ## Alternatives considered
 
-1. **One package, `risor`, with subpath exports** (`risor/react`,
-   `risor/codemirror`, ...). One name, one version, nothing to keep in step.
+1. **One package, `@deepnoodle/risor`, with subpath exports**
+   (`@deepnoodle/risor/react`, `@deepnoodle/risor/codemirror`, ...). One name, one version, nothing to keep in step.
    Rejected: the peer dependencies would be optional peers of one package,
-   and a Node user who installs `risor` to run programs would see warnings
+   and a Node user who installs `@deepnoodle/risor` to run programs would see warnings
    or installs for React, Mantine and six CodeMirror packages. Separate
    packages make each peer real.
 2. **A Lezer grammar for the colours**, the usual way for CodeMirror. It
    gives incremental parsing and folding. Rejected: it is a second grammar
    that must track the lexer by hand, for texts that are small enough to
    lex whole. Risor already has a lexer that the suite tests.
-3. **Fold `@risor/service` into `@risor/codemirror`.** Rejected: a result
+3. **Fold `@deepnoodle/risor-service` into `@deepnoodle/risor-codemirror`.** Rejected: a result
    view or a submit check would then pull in CodeMirror.
 4. **Headless React only, no Mantine package.** The site and the first
    customers use Mantine; making each of them restyle the field is the work
    the PRD is meant to remove. The Mantine package is small because it only
-   composes `@risor/react`.
+   composes `@deepnoodle/risor-react`.
 5. **An `environment` prop that also takes options or sample JSON.**
    Rejected: a description fits the options shape by structure, so a wrong
    pass type-checks and silently drops the functions. One shape, and a
@@ -389,8 +395,8 @@ Playwright test, on changes to `ts/` or `web/`.
 1. **Is `tokens` a TypeScript-only call, or an F12 spec call** that Go and
    Rust must offer too? Recommendation: TypeScript only. The owner decides;
    it does not block the build.
-2. **Names.** `risor` and `@risor/*` (PRD question 1). The owner claims
-   them on npm before step 6.
+2. **Names.** Settled: `@deepnoodle/risor` and `@deepnoodle/risor-*`, in
+   the `deepnoodle` npm organization (PRD question 1).
 3. **Mantine range.** Peer `>=7.17` (PRD question 4). Tests run on 7.17
    today; a run on the latest waits for the owner's answer. Leaning to the
    range: the site is on 7.

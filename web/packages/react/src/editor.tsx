@@ -5,8 +5,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { Compartment, EditorState } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder as placeholderExt } from "@codemirror/view";
-import { formatRisor, risor, validateRisor } from "@risor/codemirror";
-import type { Description, Problem } from "@risor/service";
+import { formatRisor, risor, validateRisor } from "@deepnoodle/risor-codemirror";
+import type { Description, Problem } from "@deepnoodle/risor-service";
 import { descriptionKey, useRisorService } from "./context.tsx";
 
 export interface RisorEditorProps {

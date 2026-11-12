@@ -2,7 +2,7 @@
 // run blocks the page until its limits end it, so it is for Node, tests, and
 // pages whose programs are small. A browser page should use workerService.
 
-import type { Description } from "risor";
+import type { Description } from "@deepnoodle/risor";
 import { Engine } from "./engine.ts";
 import type { CheckOptions, RisorEnvironment, RisorService, RunOptions } from "./types.ts";
 

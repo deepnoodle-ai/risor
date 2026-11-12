@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToString } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
-import { localService } from "@risor/react";
+import { localService } from "@deepnoodle/risor-react";
 import { RisorInput, RisorPreview, RisorProvider } from "../src/index.ts";
 
 describe("server rendering", () => {

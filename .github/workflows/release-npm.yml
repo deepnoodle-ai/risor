@@ -1,0 +1,83 @@
+name: release-npm
+
+# Publishes @deepnoodle/risor and @deepnoodle/risor-* on the tag
+# npm-v<version>, such as npm-v3.0.0-alpha.2. Never a bare v3.* tag (AGENTS.md).
+# web/scripts/version.ts sets the version; web/scripts/publish.ts publishes.
+
+on:
+  push:
+    tags: ["npm-v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The npm trusted publisher of each package is bound to this environment.
+    # Without it the OIDC subject is the tag ref, the registry rejects the
+    # exchange, and npm falls back to anonymous auth with a misleading 404.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@deepnoodle/risor
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # npm trusted publishing
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Node 24 ships npm 11, which publishes through GitHub OIDC and adds
+      # provenance. No npm token is stored anywhere.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Check the tag and the trusted-publishing runtime
+        run: |
+          npm --version
+          version="$(node --print "require('../ts/package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "npm-v${version}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package version ${version}" >&2
+            exit 1
+          fi
+          test -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"
+
+      - run: npm ci --ignore-scripts
+
+      - name: The TypeScript implementation's tests and the conformance suite
+        working-directory: ts
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run suite
+
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run size
+
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      - run: node scripts/publish.ts --dry-run
+      - run: node scripts/publish.ts
+
+      # --latest=false: the Go release (go/v3.*) stays "Latest".
+      - name: GitHub release
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          flags="--generate-notes --latest=false"
+          # The prefix npm-v has a hyphen of its own: test the version only.
+          case "${TAG#npm-v}" in *-*) flags="$flags --prerelease" ;; esac
+          gh release create "$TAG" $flags
