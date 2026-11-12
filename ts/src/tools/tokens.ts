@@ -1,0 +1,204 @@
+// The tokens of a text for colouring it in an editor. This is a call of the
+// TypeScript binding, not of the specification: an editor in the browser
+// colours a program with the lexer the suite tests, instead of a second
+// grammar that must be kept in step by hand.
+//
+// The call never throws. A text that does not lex is coloured up to the
+// place of the lexical error; the rest of that line is `invalid`, and lexing
+// starts again on the next line.
+
+import { ParseError } from "../syntax/diagnostic.ts";
+import { lex } from "../syntax/lexer.ts";
+import { Source } from "../syntax/source.ts";
+import { isReserved } from "../syntax/token.ts";
+import type { Token } from "../syntax/token.ts";
+
+/** The class of a token, for its colour. */
+export type TokenClass =
+  | "keyword" // a reserved word other than the constants
+  | "constant" // true, false, null
+  | "name" // a word that is not reserved
+  | "function" // a word directly before `(`
+  | "property" // a word directly after `.` or `?.`
+  | "number"
+  | "string" // a one-line string, a raw string, a text block
+  | "template" // the text of a backtick literal, outside its interpolations
+  | "interpolation" // the `${` and `}` around an interpolation
+  | "operator"
+  | "punctuation" // brackets and separators
+  | "comment"
+  | "invalid"; // a token no rule accepts, or the rest of a line that does not lex
+
+/** One coloured range. Offsets count code points of the text as given, from 0. */
+export interface ColourToken {
+  class: TokenClass;
+  start: number;
+  end: number;
+}
+
+const BRACKETS = new Set(["(", ")", "[", "]", "{", "}", ",", ";", ":", "."]);
+
+/**
+ * The coloured ranges of a text, in order, never overlapping. White space is
+ * in no range. Every other code point is in exactly one range.
+ */
+export function tokens(text: string): ColourToken[] {
+  const all = new Source(text, { keepBom: true });
+  const cps = all.cps;
+  const out: ColourToken[] = [];
+  // A leading byte order mark is not part of the program (01 2.1): it is in
+  // no range, as white space is. Offsets still count it.
+  let lineStart = cps[0] === 0xfeff ? 1 : 0;
+  while (lineStart <= cps.length) {
+    const { tokens: toks, error } = lexFrom(cps, lineStart);
+    const end = error ?? cps.length;
+    const flat: ColourToken[] = [];
+    flatten(toks, lineStart, flat);
+    // Keep only the ranges before the error, and fill the gaps with comments.
+    let at = lineStart;
+    for (const t of flat) {
+      if (t.start >= end) break;
+      comments(cps, at, t.start, out);
+      out.push(t.end > end ? { ...t, end } : t);
+      at = Math.min(t.end, end);
+    }
+    comments(cps, at, end, out);
+    if (error === null) break;
+    // The rest of the line is invalid. A line ends at LF, CR, or CR LF, as a
+    // string literal does.
+    let eol = error;
+    while (eol < cps.length && cps[eol] !== 0x0a && cps[eol] !== 0x0d) eol++;
+    if (eol > error) out.push({ class: "invalid", start: error, end: eol });
+    lineStart = eol + (cps[eol] === 0x0d && cps[eol + 1] === 0x0a ? 2 : 1);
+  }
+  return out;
+}
+
+/**
+ * Lex the text from `start`; on a lexical error, the offset of the error.
+ * The lexer reads a view of the code points, so a recovery copies nothing.
+ */
+function lexFrom(cps: Uint32Array, start: number): { tokens: Token[]; error: number | null } {
+  let view = cps.subarray(start);
+  for (;;) {
+    try {
+      return { tokens: lex(Source.ofCodePoints(view)), error: null };
+    } catch (e) {
+      if (!(e instanceof ParseError)) throw e;
+      const at = e.diagnostic.span?.start ?? 0;
+      // Lex the part before the error, so the colours reach it. The part is
+      // shorter each time, so this ends.
+      if (at >= view.length) return { tokens: [], error: start };
+      const prefix = view.subarray(0, at);
+      try {
+        return { tokens: lex(Source.ofCodePoints(prefix)), error: start + at };
+      } catch (e2) {
+        if (!(e2 instanceof ParseError)) throw e2;
+        view = prefix;
+      }
+    }
+  }
+}
+
+/**
+ * Flatten tokens, those inside interpolations included, into coloured ranges.
+ * An explicit stack, not recursion: templates nest without limit.
+ */
+type Frame =
+  | { k: "list"; toks: Token[]; i: number }
+  | { k: "template"; t: Token; p: number; at: number };
+
+function flatten(toks: Token[], base: number, out: ColourToken[]): void {
+  const stack: Frame[] = [{ k: "list", toks, i: 0 }];
+  while (stack.length > 0) {
+    const f = stack[stack.length - 1];
+    if (f.k === "template") {
+      const parts = f.t.parts ?? [];
+      while (f.p < parts.length && parts[f.p].kind !== "interp") f.p++;
+      if (f.p >= parts.length) {
+        const end = base + f.t.end;
+        if (end > f.at) out.push({ class: "template", start: f.at, end });
+        stack.pop();
+        continue;
+      }
+      const p = parts[f.p++];
+      if (p.kind !== "interp") continue;
+      const open = base + p.open.start;
+      if (open > f.at) out.push({ class: "template", start: f.at, end: open });
+      out.push({ class: "interpolation", start: open, end: base + p.open.end });
+      const last = p.tokens[p.tokens.length - 1];
+      f.at = last && last.kind === "interpEnd" ? base + last.end : base + p.open.end;
+      stack.push({ k: "list", toks: p.tokens, i: 0 });
+      continue;
+    }
+    if (f.i >= f.toks.length) {
+      stack.pop();
+      continue;
+    }
+    const i = f.i++;
+    const all = f.toks;
+    const t = all[i];
+    const start = base + t.start;
+    const end = base + t.end;
+    switch (t.kind) {
+      case "eof":
+        break;
+      case "word": {
+        const prev = all[i - 1];
+        const next = all[i + 1];
+        let cls: TokenClass;
+        if (t.prefix) cls = "string";
+        else if (t.text === "true" || t.text === "false" || t.text === "null") cls = "constant";
+        else if (isReserved(t.text)) cls = "keyword";
+        else if (prev?.kind === "punct" && (prev.text === "." || prev.text === "?.")) cls = "property";
+        else if (next?.kind === "punct" && next.text === "(") cls = "function";
+        else cls = "name";
+        out.push({ class: cls, start, end });
+        break;
+      }
+      case "number":
+        out.push({ class: "number", start, end });
+        break;
+      case "string":
+        out.push({ class: "string", start, end });
+        break;
+      case "template":
+        stack.push({ k: "template", t, p: 0, at: start });
+        break;
+      case "punct":
+        out.push({ class: BRACKETS.has(t.text) ? "punctuation" : "operator", start, end });
+        break;
+      case "interpEnd":
+        out.push({ class: "interpolation", start, end });
+        break;
+      case "reject":
+        out.push({ class: "invalid", start, end });
+        break;
+    }
+  }
+}
+
+/** The comments in a gap between tokens: each run of code points that is not white space. */
+function comments(cps: Uint32Array, from: number, to: number, out: ColourToken[]): void {
+  let i = from;
+  while (i < to) {
+    while (i < to && isSpace(cps[i])) i++;
+    if (i >= to) break;
+    const s = i;
+    while (i < to && !isSpace(cps[i])) i++;
+    // Join the runs of one comment within a line, so a comment's spaces are
+    // coloured too. A block comment over several lines gets one range per line.
+    const last = out[out.length - 1];
+    if (last && last.class === "comment" && !newlineBetween(cps, last.end, s)) last.end = i;
+    else out.push({ class: "comment", start: s, end: i });
+  }
+}
+
+function newlineBetween(cps: Uint32Array, a: number, b: number): boolean {
+  for (let i = a; i < b; i++) if (cps[i] === 0x0a) return true;
+  return false;
+}
+
+function isSpace(c: number): boolean {
+  return c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
+}

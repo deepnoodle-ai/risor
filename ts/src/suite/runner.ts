@@ -806,7 +806,7 @@ function compare(c: Case, o: Outcome): Difference[] {
 /** Opaque values of a case are OpaqueRef objects: classified by this test. */
 const CLASSIFIER_TESTS: [string, (v: unknown) => boolean][] = [];
 import { Classifier as ClassifierClass } from "../value/value.ts";
-export const CLASSIFIER = new (class extends ClassifierClass {
+export const CLASSIFIER: ClassifierClass = new (class extends ClassifierClass {
   override opaqueName(v: unknown): string | null {
     return v instanceof OpaqueRef ? v.type : super.opaqueName(v);
   }
