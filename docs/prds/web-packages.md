@@ -37,9 +37,9 @@ What exists in this repository:
 | Part | Where | State |
 | --- | --- | --- |
 | Run, check, compile, limits | `ts/src/host/api.ts` | Done, passes Core and the packages built so far |
-| Format a program or template | `formatProgram`, `formatTemplate` (F12 2) | Done |
+| Format a program or template | `format`, `formatTemplate` (F12 2) | Done |
 | Completion and hover at a position | `complete`, `hover` (F12 3) | Done |
-| An environment as JSON | Go `Env.Describe()`, TS `env.describe()`, TS `envFromDescription()` (F1 5.3, 5.4) | Done |
+| An environment as JSON | Go `Env.Describe()`, TS `env.describe()`, TS `Env.fromDescription()` (F1 5.3, 5.4) | Done |
 | The editor grammar (TextMate) | `spec/packages/f12-tools.md` 6 | Specified, not built |
 | A language server | Dropped (D24) | Completion, hover and describe are calls instead |
 
@@ -287,7 +287,7 @@ Acceptance:
   `<textarea>` overlay (what the site has; no completion or hover).
 - **The environment crosses to the worker as a description.** Functions
   cannot be sent to a worker. A description is JSON, the Go server already
-  makes it, and `envFromDescription` already reads it. Rejected: building
+  makes it, and `Env.fromDescription` already reads it. Rejected: building
   the environment on the main thread and sending it (not possible).
 - **One repository.** The packages live in this repository under `web/`,
   next to `ts/`. A change to the TypeScript implementation and the editor
