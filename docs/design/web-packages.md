@@ -18,7 +18,7 @@ dependencies.
 
 ## Goals
 
-- `npm install risor` gives the language, built, typed, with no dependencies.
+- `npm install risor@alpha` gives the language, built, typed, with no dependencies.
 - A Mantine form gets a checked, completing Risor field from one component
   (`RisorInput`) and one environment description.
 - No user program runs on the page's main thread. The main thread loads at
@@ -85,7 +85,7 @@ JSON that Go's `Env.Describe()` and TypeScript's `env.describe()` make.
 | --- | --- |
 | A Go server with the real environment | `env.Describe()`, sent to the page |
 | Options in TypeScript, no functions | `createEnv(options).describe()` |
-| Only sample data | `describeSample(sample, { groups })`, from `@risor/service` |
+| Only sample data | `describeSample(sample, { groups })`, from `@risor/service`. `groups` names the opt-in library groups (F6) the program may use. |
 | Nothing | No `environment`: an empty one |
 
 The service checks the value with `envFromDescription`. A value that is not
@@ -132,11 +132,18 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   the browser test found this.
 - **The worker client** sends each request with an id and keeps one timer
   per run: its `timeoutMs` plus a grace (default 1,500 ms, as the site uses
-  today). On expiry it terminates the worker, resolves the run as
+  today). The timer starts when the run is sent to a worker that has
+  answered once, so a worker's download and start do not count against
+  the run. A worker that fails to load fails every call (`onerror`). On
+  expiry it terminates the worker, resolves the run as
   stopped (stage `stopped`), starts a new worker on the next request,
   and re-sends each live environment's description. Check, complete and
   hover have no deadline of their own; the checker is bounded by the source
   size.
+- **Each editor has its own environment.** `service.environment(d)` returns
+  a new object on each call, and each `risor(...)` extension and each React
+  hook calls it once. Two editors with the same description never supersede
+  each other's checks.
 - **Stale requests are dropped.** A newer check, complete or hover for the
   same environment supersedes an older one of the same kind, which resolves
   as superseded (`null` for complete and hover; the caller ignores it for
@@ -180,7 +187,9 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
   each change (20 KB of text lexes in about 3 ms, measured on the suite's
   largest program). A text that does not lex is coloured to the error; the
   rest of that line is `invalid`, and colouring starts again on the next
-  line.
+  line. `tokens` counts code points; the plugin converts each offset to
+  UTF-16 with the service's `TextIndex`, the one conversion R-4 asks for. A
+  test puts an astral character before other tokens.
 - **Lint** uses `@codemirror/lint` with the service's `check`.
   **Completion** uses `@codemirror/autocomplete` with `complete`; a
   candidate's `kind` picks the icon and `detail` shows its type. **Hover**
@@ -191,7 +200,7 @@ const risorTheme: Extension;   // colours from --risor-* CSS variables, light an
 - **Single-line mode:** a transaction filter replaces a newline with a
   space, and Enter calls `onRun`.
 
-### The new core call: `tokens` (built)
+### The new core call: `tokens` (built in #631)
 
 ```ts
 // risor and risor/tokens
@@ -206,8 +215,8 @@ It flattens the lexer's tokens, including those inside template
 interpolations, and colours the comments in the gaps between tokens. It
 never throws. Its tests check that over every program in the suite the
 ranges are in order, do not overlap, and cover every code point that is
-not white space. `risor/tokens` is 12 KB gzipped (measured with esbuild
-0.25.0; most of it is the message table the lexer imports). It is a
+not white space. A leading byte order mark is in no range. `risor/tokens`
+is 12 KB gzipped (measured with esbuild 0.25.0 on #631; most of it is the message table the lexer imports). It is a
 TypeScript binding call, not a spec call (PRD question 2).
 
 ### The React package
@@ -231,7 +240,11 @@ const { problems, validate } = useRisorCheck({ code, environment, expected: "boo
   with the text, the editor's padding and line height, so the page does not
   shift when CodeMirror takes over.
 - `useRisorRun` takes an optional `run(code, vars)` that returns a
-  `RunResult`. With it, the hook calls the host instead of the worker.
+  `RunResult`. With it, the hook calls the host instead of the worker. Only
+  the newest call's result is shown; an older answer that arrives later is
+  dropped. A rejected promise, or a value that is not a `RunResult`, shows
+  as an error result. The host's server owns the deadline of its own runs:
+  the hook cannot stop work on the server, so it sets no timer.
 - `RisorResult` renders the JSON tree from `@risor/service`, so a number
   shows the exact text Risor gave it. It shows the type, steps and
   allocation, and for an error the code, message, a caret under the line,
@@ -247,6 +260,9 @@ allow lines) inside `Input.Wrapper` and copies the look of Mantine's `Input`
 so it sits in a Mantine form beside a `TextInput`. It works with
 `@mantine/form`'s `getInputProps` (`value`, `onChange`, `error`). An `error`
 prop wins over the checker's message. Its ref has `validate()`.
+The editable element gets the label as its accessible name
+(`aria-labelledby`), and an error sets `aria-invalid` and links the message
+(`aria-describedby`); a `contenteditable` element is not named by `for`.
 `RisorPreview` is `useRisorRun` and `RisorResult` in a `Paper`, with the
 same optional `run`.
 
@@ -286,7 +302,7 @@ a plain file and the editor theme is CodeMirror's own `EditorView.theme`.
 | `risor` | The suite, as today. `tokens`: unit tests over every class, and the cover test over every program of the suite. CI packs the package. |
 | `@risor/service` | `node --test` on `localService`: position conversion with astral characters, the JSON tree, `describeSample` (with the cases of the site's `typeOfJSON`). The worker client against a fake `Worker`: timeout, restart, re-sent environments, superseded requests. |
 | `@risor/codemirror` | `node --test` with an `EditorState` (no DOM): decorations for each class, lint ranges in UTF-16, single-line filter. |
-| `@risor/react`, `@risor/mantine` | Server rendering to a string; one browser test in Playwright over `examples/react-vite`: type, see a mark, accept a completion, validate on submit, run, see the tree, stop a run that loops. A size check: the main-thread bundle of `RisorInput` without CodeMirror and React is at most 20 KB gzipped. |
+| `@risor/react`, `@risor/mantine` | Server rendering to a string; one browser test in Playwright over `examples/react-vite`: type, see a mark, accept a completion, validate on submit, run, see the tree, stop a run that loops. A size check: esbuild bundles `RisorInput` with CodeMirror, React and Mantine external, so it measures the Risor packages and `risor/tokens`. It is at most 20 KB gzipped. |
 
 CI gains one job, `web`, that runs `npm ci`, `build`, `test` and the
 Playwright test, on changes to `ts/` or `web/`.
@@ -296,14 +312,16 @@ Playwright test, on changes to `ts/` or `web/`.
 - One version for all packages, the alpha's: `3.0.0-alpha.N` (PRD R-7). A
   script sets it in every `package.json` and the internal dependency ranges.
 - A GitHub Actions workflow publishes on the tag `v3.0.0-alpha.N` with
-  `npm publish --provenance --tag alpha`, after the `web` job passes.
+  `npm publish --provenance --tag alpha`, after the `web` job passes. No
+  version is `latest` until 3.0.0, so installs name the tag:
+  `npm install risor@alpha`.
 - Until the first publish, the site depends on the packages through a local
   link for development and stays on its vendored copy in production.
 
 ### Order of work, one pull request each
 
 1. This PRD and spec.
-2. `ts/`: the build, `exports`, `tokens` and `risor/tokens`. (Built.)
+2. `ts/`: the build, `exports`, `tokens` and `risor/tokens`. (#631.)
 3. `@risor/service` and `@risor/codemirror`.
 4. `@risor/react` and `examples/react-vite`.
 5. `@risor/mantine`.
@@ -358,8 +376,9 @@ Playwright test, on changes to `ts/` or `web/`.
    it does not block the build.
 2. **Names.** `risor` and `@risor/*` (PRD question 1). The owner claims
    them on npm before step 6.
-3. **Mantine range.** Peer `>=7.17`, tested on 7.17 and the latest (PRD
-   question 4). Leaning to the range: the site is on 7.
+3. **Mantine range.** Peer `>=7.17` (PRD question 4). Tests run on 7.17
+   today; a run on the latest waits for the owner's answer. Leaning to the
+   range: the site is on 7.
 4. **Should a description with functions compile** and fail only at a call
    it cannot make (f01 5.4 item 4)? A spec change, for the owner (PRD
    question 6). The `run` callback does not depend on it.

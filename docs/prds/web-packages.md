@@ -81,8 +81,7 @@ Secondary users:
 | Concept | Definition | Relation |
 | --- | --- | --- |
 | Risor package (`risor`) | The language for JavaScript: run, check, format, complete, hover. | The TypeScript implementation in `ts/`, built and published. |
-| Environment description | JSON that says which variables, functions and types a host gives a program. | Already exists (F1 5.3). The server makes it; the browser reads it. |
-| Environment description | (above) | The one way to tell every package what a program may use. Made by Go's `Env.Describe()`, by `createEnv(...).describe()`, or from sample JSON by `describeSample`. |
+| Environment description | JSON that says which variables, functions and types a host gives a program. | Already exists (F1 5.3). The one way to tell every package what a program may use. Made by Go's `Env.Describe()`, by `createEnv(...).describe()`, or from sample JSON by `describeSample`. |
 | Risor service | Checks, completes, hovers, formats and runs Risor away from the page's main thread, and ends a run that does not stop. | New, in `@risor/service`. Replaces the site's `useRunner` and worker. |
 | Risor editor | A code editor for Risor with colours, completion, hover, error marks and format. | New. A CodeMirror 6 extension, wrapped for React (and later Vue). |
 | Risor input | A form field for one expression, with a label, a description and an error, in Mantine's style. | New, in `@risor/mantine`. The editor in the shape of a form control. |
@@ -139,8 +138,12 @@ Acceptance:
 - [ ] `environment` takes a description and nothing else. A value that is
       not a description is a console error that names the prop, and the
       field checks against an empty environment.
-- [ ] The field's code on the main thread, without CodeMirror, is at most
-      20 KB gzipped. The rest of Risor loads in the worker.
+- [ ] The Risor code the field adds to the main thread (the Risor packages
+      and `risor/tokens`, with CodeMirror, React and Mantine left out) is
+      at most 20 KB gzipped. The rest of Risor loads in the worker.
+- [ ] The editable element's accessible name is the label. An error sets
+      `aria-invalid="true"` on it and links the message with
+      `aria-describedby`.
 - [ ] The field renders on the server (SSR) as a plain text box with the
       value, and becomes the editor on the client.
 
@@ -211,8 +214,8 @@ program.run({ order: { total: 120 } }); // true
 
 Acceptance:
 
-- [ ] `npm install risor` works in Node 22 and later, Deno, Bun, and every
-      bundler that reads `exports`, with type declarations.
+- [ ] `npm install risor@alpha` works in Node 22 and later, Deno, Bun,
+      and every bundler that reads `exports`, with type declarations.
 - [ ] The package has no dependencies. Its main entry imports no `node:`
       module. (`risor/testing`, the F9 binding, reads files and is for
       Node.)
@@ -330,8 +333,8 @@ program.
    worker, so the page's first paint does not wait for it. The main thread
    loads `risor/tokens` (12 KB) for colours.
 4. **Mantine versions.** The site uses Mantine 7.17; Mantine is at 9.8.
-   Recommendation: `@risor/mantine` supports 7 and later in its peer range,
-   tested with 7 and the latest. Open: or upgrade the site to the latest and
+   Recommendation: `@risor/mantine` supports `>=7.17` in its peer range,
+   tested with 7.17 and the latest. Open: or upgrade the site to the latest and
    support only that.
 5. **Vue demand.** No Vue user is known, but the owner asked for Vue. It
    is the last step of the plan, after the React API has settled.
