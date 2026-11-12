@@ -135,7 +135,10 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   today). The timer starts when the run is sent to a worker that has
   answered once. A new worker gets each environment's `open` before any
   other request, so the first answer comes once the worker has loaded, and
-  its download and start do not count against the run. A worker that fails
+  its download and start, up to `loadTimeoutMs`, do not count against the
+  run. Runs go one at a time per service: a run is sent only after the run
+  before it settles, so its timer never counts time spent behind another
+  run, even when a host calls `run` again before the last one ends. A worker that fails
   to load fails every call (`onerror`). A worker that does not answer
   within `loadTimeoutMs` (default 30,000 ms) is ended, and every pending
   call fails; the next call starts a new worker. A value `postMessage`

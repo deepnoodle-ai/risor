@@ -123,6 +123,9 @@ export class Engine {
 
   run(id: number, text: string, vars: Record<string, unknown> = {}, options: RunOptions = {}): RunResult {
     const h = this.get(id);
+    // A bad description was logged when the environment opened, and h.env is
+    // then the empty environment. The run uses it, as check does (PRD UC-1):
+    // the developer's mistake is on the console, not in the user's result.
     if (h.noRun) return { ok: false, stage: "declare", problems: [h.noRun] };
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let env = h.runners.get(timeoutMs);
