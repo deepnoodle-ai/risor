@@ -1,6 +1,6 @@
 {
   "name": "@deepnoodle/risor",
-  "version": "0.0.0",
+  "version": "3.0.0-alpha.1",
   "description": "Risor, a small expression language that a host program embeds: the TypeScript implementation",
   "license": "Apache-2.0",
   "homepage": "https://risor.io",

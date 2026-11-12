@@ -1,6 +1,6 @@
 {
   "name": "@deepnoodle/risor-mantine",
-  "version": "0.0.0",
+  "version": "3.0.0-alpha.1",
   "description": "Mantine components for Risor: a checked expression input and a result preview",
   "license": "Apache-2.0",
   "repository": {
@@ -35,8 +35,8 @@
     "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "@deepnoodle/risor-codemirror": "0.0.0",
-    "@deepnoodle/risor-react": "0.0.0"
+    "@deepnoodle/risor-codemirror": "3.0.0-alpha.1",
+    "@deepnoodle/risor-react": "3.0.0-alpha.1"
   },
   "peerDependencies": {
     "@mantine/core": ">=7.17",
