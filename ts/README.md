@@ -7,8 +7,10 @@ Risor is a small expression language that a host program embeds. The host
 gives it data and gets a value back. Typical uses are a condition in a
 workflow step, a template, a query over JSON, and a config file.
 
-This package is the TypeScript implementation. It has no dependencies, imports
-no Node module, and runs in Node 22.18 and later, Deno, Bun and browsers. The
+This package is the TypeScript implementation. It has no dependencies. Its
+main entry, `risor`, and `risor/tokens` import no Node module, and run in Node
+22.18 and later, Deno, Bun and browsers. `risor/testing`, the runner for case
+files, reads files and needs Node. The
 same language has implementations in Go and Rust; a conformance suite makes
 the three agree.
 
@@ -19,23 +21,25 @@ npm install risor
 ## Run a program
 
 ```ts
-import { createEnv } from "risor";
+import { createEnv, parse } from "risor";
 
 const env = createEnv({ vars: { order: "{total: float, items: {sku: string}[]}" } });
-const program = env.compile(`order.total > 100 && len(order.items) > 0`);
+const program = env.compile(parse(`order.total > 100 && len(order.items) > 0`));
 
 program.run({ order: { total: 120, items: [{ sku: "A1" }] } }); // true
 ```
 
-`compile` checks the program against the declared variables. A checked program
+`parse` reads the text, and `compile` checks the program against the declared
+variables. Given variables that have their declared types, a checked program
 cannot fail with an unknown name, a missing field, a null or a wrong kind. A
-program that does not check throws a `RisorError` with its diagnostics:
+program that does not parse or check throws a `RisorError` with its
+diagnostics:
 
 ```ts
 import { RisorError } from "risor";
 
 try {
-  env.compile(`order.totl > 100`);
+  env.compile(parse(`order.totl > 100`));
 } catch (e) {
   if (e instanceof RisorError) console.log(e.diagnostics[0].code); // "no-field"
 }
@@ -48,7 +52,7 @@ Steps, allocation, a deadline and a depth limit bound every run:
 ```ts
 const env = createEnv({ vars: { n: "int" }, limits: { steps: 10_000, allocation: 100_000, deadlineMs: 50 } });
 try {
-  env.compile("range(n).map(i => i * i)").run({ n: 1_000_000 });
+  env.compile(parse("range(n).map(i => i * i)")).run({ n: 1_000_000 });
 } catch (e) {
   if (e instanceof RisorError) console.log(e.diagnostics[0].code); // "steps-exceeded": a limit error, never a hung page
 }

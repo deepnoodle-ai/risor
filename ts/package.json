@@ -27,6 +27,8 @@
     "./dist/library/groups.js",
     "./dist/library/math.js"
   ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "risor-source": "./src/index.ts",
