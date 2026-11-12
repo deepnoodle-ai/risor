@@ -11,8 +11,8 @@
   "dependencies": {
     "@mantine/core": "7.17.8",
     "@mantine/hooks": "7.17.8",
-    "@deepnoodle/risor-mantine": "3.0.0-alpha.1",
-    "@deepnoodle/risor-react": "3.0.0-alpha.1",
+    "@deepnoodle/risor-mantine": "3.0.0-alpha.2",
+    "@deepnoodle/risor-react": "3.0.0-alpha.2",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

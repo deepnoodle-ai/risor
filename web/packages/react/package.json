@@ -1,6 +1,6 @@
 {
   "name": "@deepnoodle/risor-react",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
   "description": "React components for Risor: an editor with errors as you type, completion and hover, and a result view",
   "license": "Apache-2.0",
   "repository": {
@@ -35,8 +35,8 @@
     "prepack": "cp ../../../LICENSE LICENSE"
   },
   "dependencies": {
-    "@deepnoodle/risor-codemirror": "3.0.0-alpha.1",
-    "@deepnoodle/risor-service": "3.0.0-alpha.1"
+    "@deepnoodle/risor-codemirror": "3.0.0-alpha.2",
+    "@deepnoodle/risor-service": "3.0.0-alpha.2"
   },
   "peerDependencies": {
     "@codemirror/autocomplete": "^6.18.0",
