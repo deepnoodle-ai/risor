@@ -1,0 +1,59 @@
+{
+  "name": "@risor/react",
+  "version": "0.0.0",
+  "description": "React components for Risor: an editor with errors as you type, completion and hover, and a result view",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepnoodle-ai/risor.git",
+    "directory": "web/packages/react"
+  },
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "risor-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./styles.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "styles.css",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\""
+  },
+  "dependencies": {
+    "@risor/codemirror": "0.0.0",
+    "@risor/service": "0.0.0"
+  },
+  "peerDependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/commands": "^6.7.0",
+    "@codemirror/lint": "^6.8.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.35.0",
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tsx": "^4.23.15"
+  }
+}

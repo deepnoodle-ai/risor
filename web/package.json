@@ -9,9 +9,9 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror",
+    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror -w @risor/react",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test -w @risor/service -w @risor/codemirror"
+    "test": "npm test -w @risor/service -w @risor/codemirror -w @risor/react"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

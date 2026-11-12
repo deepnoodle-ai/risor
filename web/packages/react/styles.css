@@ -1,0 +1,90 @@
+/* @risor/react: optional styles. Every colour is a CSS variable. Set
+   --risor-bg, --risor-fg and the others on any parent to change them; when
+   none is set, the light or dark default (--risor-d-*) applies. An editor
+   with colorScheme "light" or "dark" uses that scheme's defaults; "auto"
+   follows prefers-color-scheme. */
+
+.risor-editor, .risor-result, .risor-diagnostics {
+  --risor-d-border: #d0d7de;
+  --risor-d-bg: #ffffff;
+  --risor-d-fg: #1f2328;
+  --risor-d-muted: #656d76;
+  --risor-d-error: #cf222e;
+  --risor-d-focus: #0969da;
+  --risor-d-property: #0a3069;
+  --risor-d-string: #0a7a32;
+  --risor-d-number: #0550ae;
+}
+.risor-editor-dark {
+  --risor-d-border: #30363d;
+  --risor-d-bg: #0d1117;
+  --risor-d-fg: #e6edf3;
+  --risor-d-muted: #8d96a0;
+  --risor-d-error: #ff7b72;
+  --risor-d-focus: #4493f8;
+}
+@media (prefers-color-scheme: dark) {
+  .risor-editor:not(.risor-editor-light), .risor-result, .risor-diagnostics {
+    --risor-d-border: #30363d;
+    --risor-d-bg: #0d1117;
+    --risor-d-fg: #e6edf3;
+    --risor-d-muted: #8d96a0;
+    --risor-d-error: #ff7b72;
+    --risor-d-focus: #4493f8;
+    --risor-d-property: #a5d6ff;
+    --risor-d-string: #7ee787;
+    --risor-d-number: #79c0ff;
+  }
+}
+
+.risor-editor {
+  border: 1px solid var(--risor-border, var(--risor-d-border));
+  border-radius: 6px;
+  background: var(--risor-bg, var(--risor-d-bg));
+  color: var(--risor-fg, var(--risor-d-fg));
+  overflow: hidden;
+}
+.risor-editor:focus-within {
+  border-color: var(--risor-focus, var(--risor-d-focus));
+  box-shadow: 0 0 0 1px var(--risor-focus, var(--risor-d-focus));
+}
+.risor-editor-invalid { border-color: var(--risor-error, var(--risor-d-error)); }
+.risor-editor .cm-editor { background: transparent; }
+.risor-editor .cm-editor.cm-focused { outline: none; }
+.risor-editor-fallback {
+  padding: 4px 8px;
+  font-family: var(--risor-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: pre-wrap;
+  color: var(--risor-fg, var(--risor-d-fg));
+}
+.risor-editor-single .cm-content { white-space: pre; }
+
+.risor-result, .risor-diagnostics {
+  font-family: var(--risor-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.875em;
+  color: var(--risor-fg, var(--risor-d-fg));
+}
+.risor-result-running { opacity: 0.6; }
+.risor-result-type, .risor-result-usage { color: var(--risor-muted, var(--risor-d-muted)); margin-top: 6px; }
+.risor-result-stage { color: var(--risor-error, var(--risor-d-error)); font-weight: 600; margin-bottom: 4px; }
+.risor-value summary { cursor: pointer; list-style: revert; }
+.risor-v-children { padding-left: 1.25em; }
+.risor-v-more {
+  font: inherit;
+  color: var(--risor-focus, var(--risor-d-focus));
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.risor-v-key { color: var(--risor-property, var(--risor-d-property)); }
+.risor-v-string { color: var(--risor-string, var(--risor-d-string)); }
+.risor-v-number, .risor-v-bool, .risor-v-null { color: var(--risor-number, var(--risor-d-number)); }
+.risor-v-summary, .risor-v-punct { color: var(--risor-muted, var(--risor-d-muted)); }
+
+.risor-diagnostics { list-style: none; margin: 0; padding: 0; }
+.risor-diagnostic { margin: 4px 0; }
+.risor-diagnostic-code { color: var(--risor-error, var(--risor-d-error)); }
+.risor-diagnostic-place { color: var(--risor-muted, var(--risor-d-muted)); }
+.risor-diagnostic-frame { margin: 2px 0 0; color: var(--risor-muted, var(--risor-d-muted)); }
+.risor-diagnostic-trace { margin: 2px 0 0; color: var(--risor-muted, var(--risor-d-muted)); }
