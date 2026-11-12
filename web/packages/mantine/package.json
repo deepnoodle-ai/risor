@@ -1,5 +1,5 @@
 {
-  "name": "@risor/mantine",
+  "name": "@deepnoodle/risor-mantine",
   "version": "0.0.0",
   "description": "Mantine components for Risor: a checked expression input and a result preview",
   "license": "Apache-2.0",
@@ -33,8 +33,8 @@
     "test": "TSX_TSCONFIG_PATH=../../tsconfig.base.json node --conditions=risor-source --import tsx --test --test-reporter=spec \"test/**/*.test.tsx\""
   },
   "dependencies": {
-    "@risor/codemirror": "0.0.0",
-    "@risor/react": "0.0.0"
+    "@deepnoodle/risor-codemirror": "0.0.0",
+    "@deepnoodle/risor-react": "0.0.0"
   },
   "peerDependencies": {
     "@mantine/core": ">=7.17",

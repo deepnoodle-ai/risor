@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CheckOptions, Description, Problem, RunResult } from "@risor/service";
+import type { CheckOptions, Description, Problem, RunResult } from "@deepnoodle/risor-service";
 import { useRisorEnvironment, useRisorService } from "./context.tsx";
 
 export interface UseRisorCheckOptions extends CheckOptions {

@@ -10,9 +10,9 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror -w @risor/react -w @risor/mantine --if-present",
+    "build": "npm run build -w @deepnoodle/risor -w @deepnoodle/risor-service -w @deepnoodle/risor-codemirror -w @deepnoodle/risor-react -w @deepnoodle/risor-mantine --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test -w @risor/service -w @risor/codemirror -w @risor/react -w @risor/mantine --if-present",
+    "test": "npm test -w @deepnoodle/risor-service -w @deepnoodle/risor-codemirror -w @deepnoodle/risor-react -w @deepnoodle/risor-mantine --if-present",
     "e2e": "playwright test -c examples/react-vite/playwright.config.ts",
     "size": "node scripts/size.ts"
   },

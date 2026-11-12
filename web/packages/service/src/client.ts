@@ -11,7 +11,7 @@
 //   stopped, and starts a new worker that gets every live environment and
 //   every call still waiting.
 
-import type { Description } from "risor";
+import type { Description } from "@deepnoodle/risor";
 import { DEFAULT_TIMEOUT_MS } from "./defaults.ts";
 import type { Request, Response } from "./protocol.ts";
 import type { CheckOptions, Completion, FormatResult, Hover, Problem, RisorEnvironment, RisorService, RunOptions, RunResult } from "./types.ts";
@@ -107,8 +107,8 @@ class WorkerService implements RisorService {
     w.onmessage = (e) => this.receive(e.data);
     w.onerror = (e) => {
       const detail = (e as ErrorEvent).message ? `: ${(e as ErrorEvent).message}` : "";
-      this.close(`the Risor worker failed${detail}. If your bundler cannot load a worker from a package, build @risor/service/worker yourself and pass workerService({ worker })`);
-      if (typeof console !== "undefined") console.error(`@risor/service: ${this.closed}`);
+      this.close(`the Risor worker failed${detail}. If your bundler cannot load a worker from a package, build @deepnoodle/risor-service/worker yourself and pass workerService({ worker })`);
+      if (typeof console !== "undefined") console.error(`@deepnoodle/risor-service: ${this.closed}`);
     };
     this.worker = w;
     if (this.loadTimer) clearTimeout(this.loadTimer);

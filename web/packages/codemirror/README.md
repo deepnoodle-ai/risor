@@ -1,4 +1,4 @@
-# @risor/codemirror
+# @deepnoodle/risor-codemirror
 
 [Risor](https://github.com/deepnoodle-ai/risor) for CodeMirror 6: colours from
 Risor's own lexer, errors as you type, completion, hover, format
@@ -7,13 +7,13 @@ Risor's own lexer, errors as you type, completion, hover, format
 > Risor v3 is an alpha. This API will change before 3.0.
 
 ```sh
-npm install @risor/codemirror @codemirror/state @codemirror/view @codemirror/autocomplete @codemirror/lint
+npm install @deepnoodle/risor-codemirror @codemirror/state @codemirror/view @codemirror/autocomplete @codemirror/lint
 ```
 
 ```ts
 import { EditorView, basicSetup } from "codemirror";
-import { risor, validateRisor } from "@risor/codemirror";
-import { describeSample } from "@risor/service";
+import { risor, validateRisor } from "@deepnoodle/risor-codemirror";
+import { describeSample } from "@deepnoodle/risor-service";
 
 const view = new EditorView({
   parent: document.querySelector("#editor")!,
@@ -34,7 +34,7 @@ const problems = await validateRisor(view);
 
 | Option | Default | Does |
 | --- | --- | --- |
-| `environment` | empty | A description (see `@risor/service`) |
+| `environment` | empty | A description (see `@deepnoodle/risor-service`) |
 | `expected` | none | The type the text must have, as type text |
 | `singleLine` | `false` | Newlines become spaces; Enter calls `onRun` |
 | `service` | a shared worker service | Where checks and completions run |

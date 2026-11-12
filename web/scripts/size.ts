@@ -10,7 +10,7 @@ import { gzipSync } from "node:zlib";
 const LIMIT = 20 * 1024;
 
 const r = await build({
-  stdin: { contents: 'export { RisorInput } from "@risor/mantine";', resolveDir: import.meta.dirname, loader: "js" },
+  stdin: { contents: 'export { RisorInput } from "@deepnoodle/risor-mantine";', resolveDir: import.meta.dirname, loader: "js" },
   bundle: true,
   minify: true,
   format: "esm",

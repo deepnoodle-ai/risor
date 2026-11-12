@@ -1,13 +1,13 @@
-# @risor/react
+# @deepnoodle/risor-react
 
 React components for [Risor](https://github.com/deepnoodle-ai/risor): an editor
 with errors as you type, completion and hover, and a view of a run's result.
-Unstyled except for one optional CSS file. A Mantine package, `@risor/mantine`, is planned (#634).
+Unstyled except for one optional CSS file. A Mantine package, `@deepnoodle/risor-mantine`, is planned (#634).
 
 > Risor v3 is an alpha. This API will change before 3.0.
 
 ```sh
-npm install @risor/react
+npm install @deepnoodle/risor-react
 ```
 
 CodeMirror and React are peer dependencies, so the page has one copy of
@@ -16,9 +16,9 @@ each. npm 7 and later install them; with pnpm or Yarn, add
 
 ```tsx
 import { useRef, useState } from "react";
-import { describeSample, RisorEditor, RisorResult, useRisorRun } from "@risor/react";
-import type { RisorEditorHandle } from "@risor/react";
-import "@risor/react/styles.css";
+import { describeSample, RisorEditor, RisorResult, useRisorRun } from "@deepnoodle/risor-react";
+import type { RisorEditorHandle } from "@deepnoodle/risor-react";
+import "@deepnoodle/risor-react/styles.css";
 
 const sample = { order: { total: 120.5, items: [{ sku: "A1" }] } };
 const environment = describeSample(sample);

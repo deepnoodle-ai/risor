@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { sharedService } from "@risor/codemirror";
-import type { Description, RisorEnvironment, RisorService } from "@risor/service";
+import { sharedService } from "@deepnoodle/risor-codemirror";
+import type { Description, RisorEnvironment, RisorService } from "@deepnoodle/risor-service";
 
 const ServiceContext = createContext<RisorService | null>(null);
 

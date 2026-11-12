@@ -2,10 +2,10 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
-import { describeSample, localService } from "@risor/service";
+import { describeSample, localService } from "@deepnoodle/risor-service";
 import { colourDecorations, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics, validateRisor } from "../src/index.ts";
 import type { EditorView } from "@codemirror/view";
-import type { RisorService } from "@risor/service";
+import type { RisorService } from "@deepnoodle/risor-service";
 
 /** Each decorated range as `class:text`. */
 function marks(text: string): string[] {

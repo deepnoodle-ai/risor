@@ -1,5 +1,5 @@
 {
-  "name": "@risor/service",
+  "name": "@deepnoodle/risor-service",
   "version": "0.0.0",
   "description": "Check, complete, hover, format and run Risor off the page's main thread",
   "license": "Apache-2.0",
@@ -37,6 +37,6 @@
     "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "risor": "0.0.0"
+    "@deepnoodle/risor": "0.0.0"
   }
 }

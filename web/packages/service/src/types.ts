@@ -5,7 +5,7 @@
 // do. Lines and columns start at 1 and count code points, as Risor prints
 // them in messages.
 
-import type { Description } from "risor";
+import type { Description } from "@deepnoodle/risor";
 
 export type { Description };
 

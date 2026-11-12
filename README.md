@@ -138,7 +138,7 @@ TypeScript's types do not exist at run time, so a TypeScript host declares
 the type in Risor's type syntax. It looks like a TypeScript type.
 
 ```ts
-import { createEnv, parse } from "risor";
+import { createEnv, parse } from "@deepnoodle/risor";
 
 const env = createEnv({ vars: { user: "{name: string, age: int}" } });
 const prog = env.compile(parse("user.age >= 18")); // checks the program

@@ -43,7 +43,7 @@
 
 // The public surface is exactly that of 05 Part E (ruling R200), in the
 // TypeScript column. Everything else in src/ is private. The case-file runner
-// is the separate entry point "risor/testing".
+// is the separate entry point "@deepnoodle/risor/testing".
 
 // E.3 The environment.
 export { createEnv, Env, descriptionText } from "./host/api.ts";

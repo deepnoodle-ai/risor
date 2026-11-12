@@ -3,7 +3,7 @@
 // calls it on the main thread does not load the checker. A test compares it
 // with createEnv(...).describe().
 
-import type { Description } from "risor";
+import type { Description } from "@deepnoodle/risor";
 
 const RESERVED = new Set(
   "true false null const if else in not try catch match as is nil let var for while do break continue return function throw finally import".split(" "),

@@ -1,17 +1,17 @@
-# @risor/service
+# @deepnoodle/risor-service
 
 Check, complete, hover, format and run [Risor](https://github.com/deepnoodle-ai/risor)
-off the page's main thread. Framework-free: `@risor/codemirror` is built on it,
-and `@risor/react` (#633) and `@risor/mantine` (#634) follow.
+off the page's main thread. Framework-free: `@deepnoodle/risor-codemirror` is built on it,
+and `@deepnoodle/risor-react` (#633) and `@deepnoodle/risor-mantine` (#634) follow.
 
 > Risor v3 is an alpha. This API will change before 3.0.
 
 ```sh
-npm install @risor/service
+npm install @deepnoodle/risor-service
 ```
 
 ```ts
-import { describeSample, workerService } from "@risor/service";
+import { describeSample, workerService } from "@deepnoodle/risor-service";
 
 const service = workerService();             // one web worker, shared
 const env = service.environment(describeSample({ order: { total: 120.5 } }));
@@ -55,7 +55,7 @@ instead, and return the same `RunResult` shape.
 - **The worker** is loaded with
   `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })`,
   which Vite, webpack 5 and Rollup understand. If your bundler does not,
-  build `@risor/service/worker` yourself and pass
+  build `@deepnoodle/risor-service/worker` yourself and pass
   `workerService({ worker: () => new Worker(yourUrl, { type: "module" }) })`.
 - `localService()` runs on the main thread, for Node and tests.
 

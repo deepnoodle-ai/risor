@@ -1,4 +1,4 @@
-/* @risor/react: optional styles. Every colour is a CSS variable. Set
+/* @deepnoodle/risor-react: optional styles. Every colour is a CSS variable. Set
    --risor-bg, --risor-fg and the others on any parent to change them; when
    none is set, the light or dark default (--risor-d-*) applies. An editor
    with colorScheme "light" or "dark" uses that scheme's defaults; "auto"

@@ -8,20 +8,20 @@ gives it data and gets a value back. Typical uses are a condition in a
 workflow step, a template, a query over JSON, and a config file.
 
 This package is the TypeScript implementation. It has no dependencies. Its
-main entry, `risor`, and `risor/tokens` import no Node module, and run in Node
-22.18 and later, Deno, Bun and browsers. `risor/testing`, the runner for case
-files, reads files and needs Node. The
-same language has implementations in Go and Rust; a conformance suite makes
-the three agree.
+main entry, `@deepnoodle/risor`, and `@deepnoodle/risor/tokens` import no
+Node module, and run in Node 22.18 and later, Deno, Bun and browsers.
+`@deepnoodle/risor/testing`, the runner for case files, reads files and needs
+Node. The same language has implementations in Go and Rust; a conformance
+suite makes the three agree.
 
 ```sh
-npm install risor
+npm install @deepnoodle/risor
 ```
 
 ## Run a program
 
 ```ts
-import { createEnv, parse } from "risor";
+import { createEnv, parse } from "@deepnoodle/risor";
 
 const env = createEnv({ vars: { order: "{total: float, items: {sku: string}[]}" } });
 const program = env.compile(parse(`order.total > 100 && len(order.items) > 0`));
@@ -36,7 +36,7 @@ program that does not parse or check throws a `RisorError` with its
 diagnostics:
 
 ```ts
-import { RisorError } from "risor";
+import { RisorError } from "@deepnoodle/risor";
 
 try {
   env.compile(parse(`order.totl > 100`));
@@ -66,7 +66,7 @@ try {
 | `env.complete(text, { line, column })` | Completion candidates at a position of a text that need not parse |
 | `env.hover(text, { line, column })` | The type, signature and doc of the name at a position |
 | `env.describe()`, `Env.fromDescription(json)` | An environment as JSON, so a browser can check text against a server's environment |
-| `tokens(text)`, from `risor/tokens` | Coloured ranges for an editor, from the lexer only (about 12 KB gzipped). A call of this binding, not of the specification |
+| `tokens(text)`, from `@deepnoodle/risor/tokens` | Coloured ranges for an editor, from the lexer only (about 12 KB gzipped). A call of this binding, not of the specification |
 
 Positions count code points, not UTF-16 units.
 

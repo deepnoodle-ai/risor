@@ -1,4 +1,4 @@
-// Colours from Risor's own lexer (risor/tokens), as mark decorations. Not a
+// Colours from Risor's own lexer (@deepnoodle/risor/tokens), as mark decorations. Not a
 // Lezer grammar: the colours always agree with the lexer the conformance
 // suite tests. The whole text is lexed on each change; Risor texts are
 // expressions and configs, and 20 KB lexes in about 3 ms.
@@ -7,9 +7,9 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
-import { tokens } from "risor/tokens";
-import type { TokenClass } from "risor/tokens";
-import { TextIndex } from "@risor/service";
+import { tokens } from "@deepnoodle/risor/tokens";
+import type { TokenClass } from "@deepnoodle/risor/tokens";
+import { TextIndex } from "@deepnoodle/risor-service";
 
 const CLASSES: TokenClass[] = [
   "keyword", "constant", "name", "function", "property", "number", "string",

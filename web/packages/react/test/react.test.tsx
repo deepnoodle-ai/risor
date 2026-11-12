@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToString } from "react-dom/server";
-import { localService } from "@risor/service";
+import { localService } from "@deepnoodle/risor-service";
 import { RisorEditor, RisorProvider, RisorResult, RisorValue } from "../src/index.ts";
 
 describe("server rendering", () => {

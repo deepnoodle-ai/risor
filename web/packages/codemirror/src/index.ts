@@ -1,6 +1,6 @@
-// @risor/codemirror: Risor for CodeMirror 6. One extension, `risor(options)`,
+// @deepnoodle/risor-codemirror: Risor for CodeMirror 6. One extension, `risor(options)`,
 // gives colours, errors as you type, completion, hover, format and a run
-// key. It works in any framework; @risor/react (#633) wraps it, and a Vue
+// key. It works in any framework; @deepnoodle/risor-react (#633) wraps it, and a Vue
 // package is planned.
 //
 // The extension's options do not change after it is made. To change the
@@ -14,9 +14,9 @@ import type { Diagnostic } from "@codemirror/lint";
 import { EditorState, Facet, Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, keymap, ViewPlugin } from "@codemirror/view";
-import { workerService } from "@risor/service";
-import { tokens } from "risor/tokens";
-import type { Description, Problem, RisorEnvironment, RisorService } from "@risor/service";
+import { workerService } from "@deepnoodle/risor-service";
+import { tokens } from "@deepnoodle/risor/tokens";
+import type { Description, Problem, RisorEnvironment, RisorService } from "@deepnoodle/risor-service";
 import { colours, risorTheme } from "./colours.ts";
 
 export { colourDecorations, risorTheme } from "./colours.ts";

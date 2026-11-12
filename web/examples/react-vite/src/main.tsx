@@ -1,15 +1,15 @@
 // One page that uses every package: a checked condition field in a Mantine
 // form (UC-1), a preview against sample data (UC-2), and a plain editor
-// with a result view from @risor/react.
+// with a result view from @deepnoodle/risor-react.
 
 import { StrictMode, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button, Code, Container, Group, MantineProvider, SegmentedControl, SimpleGrid, Stack, Text, Textarea, Title } from "@mantine/core";
 import "@mantine/core/styles.css";
-import { describeSample, RisorInput, RisorPreview } from "@risor/mantine";
-import type { Description, RisorInputHandle } from "@risor/mantine";
-import "@risor/mantine/styles.css";
-import { RisorEditor, RisorResult, useRisorRun } from "@risor/react";
+import { describeSample, RisorInput, RisorPreview } from "@deepnoodle/risor-mantine";
+import type { Description, RisorInputHandle } from "@deepnoodle/risor-mantine";
+import "@deepnoodle/risor-mantine/styles.css";
+import { RisorEditor, RisorResult, useRisorRun } from "@deepnoodle/risor-react";
 
 const SAMPLE = {
   order: { id: "A-1001", total: 182.5, items: [{ sku: "KB-1", qty: 2, price: 45 }, { sku: "MS-3", qty: 1, price: 92.5 }], coupon: null },

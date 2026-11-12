@@ -47,7 +47,7 @@ test("the preview runs in the worker; with a host function it says to use run", 
 
 test("the playground: a result tree, and a long run ends with a limit error while the page stays responsive", async ({ page }) => {
   // The deadline and the worker restart are tested with a fake worker in
-  // @risor/service: a program cannot hang past its own deadline here.
+  // @deepnoodle/risor-service: a program cannot hang past its own deadline here.
   await page.goto("/");
   const result = page.locator(".risor-result").last();
   await expect(result.locator(".risor-v-key").first()).toBeVisible();

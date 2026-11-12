@@ -1,9 +1,9 @@
-// The engine: the service's calls over the `risor` package, synchronous.
+// The engine: the service's calls over the `@deepnoodle/risor` package, synchronous.
 // The worker runs one; localService wraps one in promises. It loads all of
 // Risor, so the main entry imports it only through localService.
 
-import { createEnv, Env, format, jsonText, parse, RisorError } from "risor";
-import type { Description, Diagnostic, Span } from "risor";
+import { createEnv, Env, format, jsonText, parse, RisorError } from "@deepnoodle/risor";
+import type { Description, Diagnostic, Span } from "@deepnoodle/risor";
 import { TextIndex } from "./positions.ts";
 import type { CheckOptions, Completion, FormatResult, Hover, Problem, RunOptions, RunResult } from "./types.ts";
 
@@ -63,7 +63,7 @@ export class Engine {
         const message = e instanceof RisorError
           ? diagnosticsOf(e)[0].message
           : `The environment is not a description (${(e as Error).message}). Pass the JSON that Env.Describe() or env.describe() makes.`;
-        if (typeof console !== "undefined") console.error(`@risor/service: ${message}`);
+        if (typeof console !== "undefined") console.error(`@deepnoodle/risor-service: ${message}`);
       }
     }
     const fns = description && (Object.keys(description.functions ?? {}).length > 0 || Object.values(description.opaque ?? {}).some((m) => Object.keys(m).length > 0));
@@ -79,7 +79,7 @@ export class Engine {
 
   private get(id: number): Held {
     const h = this.held.get(id);
-    if (!h) throw new Error(`@risor/service: no environment ${id}`);
+    if (!h) throw new Error(`@deepnoodle/risor-service: no environment ${id}`);
     return h;
   }
 

@@ -1,5 +1,5 @@
 {
-  "name": "@risor/codemirror",
+  "name": "@deepnoodle/risor-codemirror",
   "version": "0.0.0",
   "description": "Risor for CodeMirror 6: colours, errors as you type, completion, hover and format",
   "license": "Apache-2.0",
@@ -17,8 +17,8 @@
     "test": "node --conditions=risor-source --test --test-reporter=spec \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "@risor/service": "0.0.0",
-    "risor": "0.0.0"
+    "@deepnoodle/risor-service": "0.0.0",
+    "@deepnoodle/risor": "0.0.0"
   },
   "peerDependencies": {
     "@codemirror/autocomplete": "^6.18.0",

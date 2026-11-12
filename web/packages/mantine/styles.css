@@ -1,6 +1,6 @@
-/* @risor/mantine: the editor in the shape of Mantine's Input. Uses Mantine's
+/* @deepnoodle/risor-mantine: the editor in the shape of Mantine's Input. Uses Mantine's
    own CSS variables, so it follows the theme and the colour scheme. */
-@import "@risor/react/styles.css";
+@import "@deepnoodle/risor-react/styles.css";
 
 .risor-editor.risor-mantine-input {
   --risor-border: var(--mantine-color-default-border);

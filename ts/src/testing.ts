@@ -1,4 +1,4 @@
-// "risor/testing": the binding of package F9 (f09 7.1, 7.3). It runs a case
+// "@deepnoodle/risor/testing": the binding of package F9 (f09 7.1, 7.3). It runs a case
 // file inside the host's own test framework, and imports none.
 
 import { readFileSync, writeFileSync } from "node:fs";
