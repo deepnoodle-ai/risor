@@ -90,7 +90,8 @@ function print(t: JType): string {
   if (t.record) {
     // Fields in code point order, as Risor prints a record type.
     const fs = [...t.record.fields].sort((x, y) => compareCodePoints(x[0], y[0])).map(([k, x]) => {
-      const name = isName(k) ? k : JSON.stringify(k);
+      // A key that is a Word prints bare, reserved or not (05 types, printing).
+      const name = WORD.test(k) ? k : JSON.stringify(k);
       return `${name}${t.record!.optional.has(k) ? "?" : ""}: ${print(x)}`;
     });
     alts.push(`{${fs.join(", ")}}`);

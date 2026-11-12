@@ -39,6 +39,11 @@ describe("describeSample", () => {
       "{a: int, b: float, c: {x: int, y?: string}[], d: any[], e: null}");
   });
 
+  test("a key that is a word prints bare, even a reserved one", () => {
+    assert.equal(typeOfJSON({ match: 1, "a b": 2 }), '{"a b": int, match: int}');
+    assert.equal(createEnv({ vars: { x: "{match: int}" } }).describe().variables.x, "{match: int}");
+  });
+
   test("is the description createEnv gives for the same variables", () => {
     const sample = { order: { total: 1.5, items: [{ sku: "a" }] }, n: 3 };
     const d = describeSample(sample, { groups: ["math", "json"] });
@@ -175,6 +180,7 @@ class FakeWorker implements WorkerLike {
     FakeWorker.made++;
   }
   postMessage(m: Request): void {
+    structuredClone(m); // throws for a value a real worker cannot receive
     this.received.push(m);
     if (m.op === "run" && FakeWorker.hang) return;
     setTimeout(() => {
@@ -261,6 +267,41 @@ describe("workerService", () => {
     const ps = await check;
     assert.equal(ps!.length, 1);
     assert.notEqual(current, first);
+    s.dispose();
+  });
+
+  test("a value the worker cannot receive gives a run result, not a rejection", async () => {
+    const s = workerService({ worker: () => new FakeWorker() });
+    const env = s.environment(describeSample({ a: 1 }));
+    const r = await env.run("a", { a: () => 1 } as unknown as Record<string, unknown>);
+    assert.equal(!r.ok && r.stage, "run");
+    assert.match(!r.ok ? r.problems[0].message : "", /cannot be sent to the worker/);
+    assert.deepEqual(await env.check("a + 1"), []); // the service still works
+    s.dispose();
+  });
+
+  test("a deadline past setTimeout's range does not stop the run at once", async () => {
+    const s = workerService({ worker: () => new FakeWorker() });
+    const env = s.environment(describeSample({ a: 1 }));
+    const r = await env.run("a", { a: 1 }, { timeoutMs: 3_000_000_000 }); // about 35 days
+    assert.ok(r.ok);
+    s.dispose();
+  });
+
+  test("a worker that does not load in time fails what is pending; the next call gets a new worker", async () => {
+    let made = 0;
+    class Stalled extends FakeWorker {
+      override postMessage(m: Request): void {
+        this.received.push(m);
+      }
+    }
+    const s = workerService({ worker: () => (made++ === 0 ? new Stalled() : new FakeWorker()), loadTimeoutMs: 20 });
+    const env = s.environment(describeSample({ a: 1 }));
+    const [ps, r] = await Promise.all([env.check("a + 1"), env.run("a", { a: 1 })]);
+    assert.match(ps![0].message, /did not load within 20 ms/);
+    assert.equal(r.ok, false);
+    assert.deepEqual(await env.check("a + 1"), []);
+    assert.equal(made, 2);
     s.dispose();
   });
 
