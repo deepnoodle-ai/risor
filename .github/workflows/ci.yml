@@ -131,6 +131,16 @@ jobs:
       - name: Test
         run: npm test
 
+      # PRD UC-1: Risor's code on the page's main thread, without React,
+      # Mantine and CodeMirror, stays under its limit.
+      - name: Main-thread size
+        run: npm run size
+
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 15

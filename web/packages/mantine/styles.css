@@ -1,0 +1,22 @@
+/* @risor/mantine: the editor in the shape of Mantine's Input. Uses Mantine's
+   own CSS variables, so it follows the theme and the colour scheme. */
+@import "@risor/react/styles.css";
+
+.risor-editor.risor-mantine-input {
+  --risor-border: var(--mantine-color-default-border);
+  --risor-bg: var(--mantine-color-body);
+  --risor-fg: var(--mantine-color-text);
+  --risor-muted: var(--mantine-color-dimmed);
+  --risor-error: var(--mantine-color-error);
+  --risor-focus: var(--mantine-primary-color-filled);
+  --risor-font-mono: var(--mantine-font-family-monospace);
+  border-radius: var(--mantine-radius-default);
+  min-height: var(--input-height, 36px);
+  display: flex;
+  align-items: center;
+}
+.risor-editor.risor-mantine-input > div:last-child { flex: 1; min-width: 0; }
+.risor-editor.risor-mantine-input:focus-within { box-shadow: none; border-color: var(--risor-focus); }
+.risor-editor.risor-mantine-input.risor-editor-invalid { border-color: var(--mantine-color-error); }
+.risor-editor.risor-mantine-input .cm-content { padding: 6px 0; }
+.risor-mantine-preview .risor-result { --risor-fg: var(--mantine-color-text); --risor-muted: var(--mantine-color-dimmed); --risor-error: var(--mantine-color-error); }
