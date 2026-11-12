@@ -43,7 +43,7 @@ describe("describeSample", () => {
     const sample = { order: { total: 1.5, items: [{ sku: "a" }] }, n: 3 };
     const d = describeSample(sample, { groups: ["math", "json"] });
     const variables = Object.fromEntries(Object.entries(sample).map(([k, v]) => [k, typeOfJSON(v)]));
-    assert.deepEqual(d, createEnv({ variables, groups: ["math", "json"] }).describe());
+    assert.deepEqual(d, createEnv({ vars: variables, groups: ["math", "json"] }).describe());
     assert.deepEqual(describeSample({}), createEnv().describe());
   });
 
