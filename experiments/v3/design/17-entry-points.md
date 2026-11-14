@@ -150,9 +150,12 @@ its types already.
 **The evaluation.** `02-evaluation.md` gains this section.
 
 1. The **needs** of an entry point are the top-level `const` lines whose names
-   its body refers to, and the needs of each `const`-bound lambda among them,
-   to any depth. A `const` line whose pattern binds several names is needed
-   when any of them is. Type lines are never evaluated.
+   its body or its parameter defaults refer to; then, to any depth, the lines
+   that the value of each needed line refers to. A lambda's value includes its
+   body and its defaults. So in `const a = 10; const b = a + 1; export const f
+   = (n: int = b): int => n;` the needs of `f` are `b` and `a`. A `const` line
+   whose pattern binds several names is needed when any of them is. Type lines
+   are never evaluated.
 2. A call evaluates the needed `const` lines that are not lambdas, in text
    order, as a program evaluates them. It evaluates no other `const` line and
    not the result expression.
@@ -252,15 +255,16 @@ same text for one type.
 | A record | `{"type":"object"}`, with `properties` (each field's schema) when it has a field, `required` (the required keys, in code point order) when one is required, and `additionalProperties` by its rest: `false` for `never`, absent for `any`, `SchemaOf(R)` otherwise. So `map<T>` is `{"type":"object","additionalProperties":SchemaOf(T)}` |
 | Several alternatives | `{"anyOf":[...]}`, each alternative's schema in the order of printing (`05-types.md` 3.9, `null` last). A tagged union (F5) is this row: each record has its tag as a required field with a `const` or an `enum` |
 | An opaque type, anywhere in T | Refused: `bad-type`, "an opaque type has no JSON Schema" |
-| A field's description | `"description"` in that field's schema. When the schema is `false`, the description is dropped |
+| A field's description | `"description"` in that field's schema. When the schema is `false` (a field of type `never`), the description is dropped: `false` has no keys |
 | A recursive named type (`18` 4) | Written once, by its name, under a top-level `$defs`, and referred to as `{"$ref":"#/$defs/Name"}` at each occurrence, the root included. F1 already reads such a schema back (`18` 4.1 rule 5), so the law holds |
 
 1. **No bounds.** `int` gives no `minimum` or `maximum`. A value outside the
    safe range fails conformance (`not-conforming`), so the host learns of it.
 2. **The law.** For every type T made from type text, with no opaque type,
    `TypeFromSchema(SchemaOf(T))` with no option (F1 4) is T, field
-   descriptions included. A type with a fill or a closable mark (F1 4) comes
-   only from a schema with options and is outside the law.
+   descriptions included, except the description of a field of type `never`.
+   A type with a fill or a closable mark (F1 4) comes only from a schema with
+   options and is outside the law.
 3. **F1 3.8 reads `description`.** The `description` of a property's own
    schema object becomes the field's description. A description under a
    `$ref` target is not read, as F1 4.3 item 1 reads `default`.
