@@ -1453,6 +1453,11 @@ func Load[T any](ctx context.Context, env *Env, x *Expr, vars Vars, dst *T) erro
 
 ### B.4 Host functions
 
+> **Superseded by Part E** (R201) where they disagree. The Go binding's
+> `Function` is `{Name, Type, Impl}` with the signature as text (E.3). The
+> registration of any Go function that this section and S4 describe is built
+> as helpers by `19-13`: `risor.Func`, `risor.Methods` and `risor-bind`.
+
 ```go
 // Function declares a host function. It is a Decl.
 type Function struct {
@@ -1491,6 +1496,9 @@ type CallCheck struct{ Args []Arg; Span Span }
   `c.Context()`. Scope-dependent typing is a redeclaration in a child `Env`.
 
 ### B.5 Diagnostics
+
+> **Superseded by Part E** (R201) where they disagree. A nested Risor error's
+> message is ruled by `20-9`.
 
 ```go
 // Error is the only error type this package returns.
@@ -1558,6 +1566,8 @@ position (`expr:check.go:18-20`, `:185-191`). v2's lexer counts runes
 
 ### B.6 Templates
 
+> **Superseded by Part E** (R201) where they disagree.
+
 ```go
 func ParseTemplate(text string, opts ...ParseOption) (*Template, error)
 
@@ -1575,6 +1585,9 @@ expr has a separate `Template.Check` and `Template.Render` (`expr:check.go:76`,
 (`risor:internal/tmpl/string_template.go:57`).
 
 ### B.7 Conveniences of the Go binding
+
+> **Superseded by Part E** (R201) where they disagree. `TypeOf` and the helpers of
+> `19-13` are what the binding offers.
 
 These derive declarations from Go types by reflection. They are outside the
 model (`O:P5`); `Describe` writes their result as type text.

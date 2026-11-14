@@ -295,7 +295,7 @@ enforced. The name of the feature and its documentation must say "type".
 | Tagged unions: `{type: "a", x: int} \| {type: "b", y: string}` | A type has one alternative per kind (`03:2.1`), so the two records join. This plan gives the feature its first consumer. | Its own plan, since written and accepted: `09-tagged-unions.md` (D47) |
 | Recursive types: a tree, a comment thread | They end the bound on the walk's depth and on the checker's type depth, and they are the first cyclic structure in the design (R3). Write `any` at the point of recursion. | Its own plan |
 | Value constraints: a range, a length, a pattern | A value-level type system (`03:2.1`, "Refinements"). | Not planned |
-| Annotations: `const o: Order = x` | Already reserved (`02:8.1`, question 8). An annotation is a claim checked statically. `as` is a test. They are different things and both are useful. | A minor version, with `type` lines |
+| Annotations: `const o: Order = x` | Already reserved (`02:8.1`, question 8). An annotation is a claim checked statically. `as` is a test. They are different things and both are useful. | Moved forward by D53: with `type` lines and entry points, in F16 (`17`) |
 | Generic named types: `Page<T>` | No user generics (`03:2.1`). | Not planned |
 
 ## 4. Changes to the other documents
