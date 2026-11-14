@@ -5,8 +5,8 @@ The owner chose self-recursion over the two independent reviews of #640 and
 #641, which both preferred bounded library entries alone. The owner also
 accepted `match` guards. Sub-decisions 18-1, 18-2, 18-3, 18-4, 18-6, 18-9,
 18-10 and 18-11 are settled as stated. The others are recommendations the
-owner has not yet confirmed. Nothing here is built. The spec text is in sections 3 to 6 in
-a form ready to move into the package chapter.
+owner has not yet confirmed. Nothing here is built. The spec text is in
+sections 3 to 6 in a form ready to move into the package chapter.
 
 **Evidence.** **(R)** read in the specification or a sibling document at the
 place cited. **(ran)** run with the Go CLI built from `main` at `aeaaf1f`
@@ -70,7 +70,7 @@ others.
 | # | Rule | Replaces |
 | --- | --- | --- |
 | 1 | The name of a `const`-bound lambda is in scope in its own body, its parameter defaults included. A `const` whose value is not a lambda keeps rule 6: `const x = x + 1;` reads an outer `x` | `01-language.md` 5 rule 6, for lambdas only |
-| 2 | A lambda is **recursive** when its body, or a lambda written inside its body, calls its own name or passes its name as a lambda argument | New term |
+| 2 | A lambda is **recursive** when its body or a parameter default, or a lambda written inside either, calls its own name or passes its name as a lambda argument. So `const f = (n = f()): int => n;` is recursive | New term |
 | 3 | A recursive lambda must give a type to every parameter and to its result. A parameter with a default still needs a type. Otherwise the static rule `recursion-needs-types` fails, on the first reference to its own name | New static rule, `01-language.md` 14.4 |
 | 4 | A lambda can call only names bound before it or itself. So two lambdas cannot call each other | Follows from `01-language.md` 5 rule 3 |
 | 5 | D34 stands. A parameter cannot be called, and a lambda cannot be passed to a `const`-bound lambda. A recursive lambda may pass its own name to a library entry: `n.children.flatMap(walk)` | — |
@@ -121,7 +121,7 @@ a function that calls itself without one (M).
 | Steps | A self-call charges as any call by name: 1 step, then its patterns and body (`02-evaluation.md` 11.2) |
 | Depth | As any call by name (`02-evaluation.md` 8.4): 1 plus its nesting depth within the body, while it is in progress. So `n.children.flatMap(walk)` inside `walk` adds the `flatMap` call's measure and then 1 for each level |
 | Limit reached | `depth-exceeded` at the call that passes the limit, after its step and before its parameters are bound (`02-evaluation.md` 8.4 item 7) |
-| Frames | An implementation may give a fixed place to the parameters and names of a lambda that is not recursive, as today. A recursive lambda needs a place for each call in progress |
+| Frames | A recursive lambda, and every lambda written inside its body or defaults, needs a place for its parameters and names for each call in progress. An inner `g` that calls the enclosing `f` can be entered again through `f` before an earlier call of `g` ends. Any other lambda may keep a fixed place, as today |
 
 `02-evaluation.md` 8.5 item 3 already bounds an evaluator's recursion by the
 depth limit `D` plus 100 for the source. That bound does not change. What
