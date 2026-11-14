@@ -147,6 +147,14 @@ run is:
 | Environment | SHA-256 of the text of its description (F1 5.3) |
 | Limits | Steps, allocation and depth, as in the description |
 | Entry | For a call of an entry point (`17`): its name. Absent for a whole program |
+| Invocation | A key the host gives each run: the same key on a replay of that run, a new one for any other run |
+
+The first five parts name the program and its setting. They do not name its
+inputs: two calls of one entry with different arguments, or two runs with
+different variables, have the same first five parts. The invocation key
+tells them apart. The host chooses it, because arguments and variables can
+hold opaque values that have no text to hash. A host that keeps its inputs
+with the journal may also compare them on replay.
 
 The hash is named so that two implementations agree on the key. It is not a
 security claim. A host without F1 may use any key that changes when the
@@ -223,7 +231,7 @@ rest of the handle (R95).
 | Matter | Rule |
 | --- | --- |
 | Budget | The child charges the parent's step and unit counters directly. Its limits are, for each, the smaller of the parent's remaining amount and the child's own environment's limit |
-| Depth | The child starts at the parent's current depth count plus 1, the call it is made from. Its own depth limit is the smaller of the parent's remaining depth and its environment's |
+| Depth | The child counts its depth from 0, as a run does. Its depth limit is the smaller of its environment's limit and the parent's remaining depth from `remaining()`, which already counts the host call in progress. So a parent at depth 6 of 10 gives a child a limit of 4, measured from the child's own 0 |
 | Deadline and cancellation | Shared with the parent. A cancelled parent cancels the child |
 | A child limit | When the child passes a limit of its own environment, it fails with that code and the parent goes on. The host function sees the failure |
 | A parent limit | When the child passes the parent's remaining amount, the child fails with that code, and the parent run fails with the same code as soon as the host function returns, whatever it returns |
@@ -270,20 +278,34 @@ New `02-evaluation.md` 10.4, **Prefetch**:
    may call a `read` function ahead, for later elements, at the same time as
    it evaluates earlier ones.
 2. A prefetched call's charges are recorded, not made. Its outcome is kept.
-3. When the reference evaluation reaches a call of the same function with
-   `==` arguments, the binding charges the 1 step of the call, makes the
-   recorded charges in order, and gives the kept outcome. Then 10.1 items 1
-   and 2 hold as if the call were made there.
-4. A kept outcome that no reference call uses is dropped, with its charges.
+   Its charges are still bounded: the handle refuses a charge, and the
+   prefetched call is dropped, when the recorded charges of every kept and
+   running prefetch, with this one, would pass what the run has left. So
+   prefetch cannot build a result that the reference call could not pay for,
+   and many prefetches at once cannot pass the run's budget together.
+3. **A write ends every prefetch.** When any call of a function or method
+   marked `write` starts, in the reference evaluation or in a nested run,
+   every kept outcome is dropped and every running prefetch is cancelled and
+   dropped. No prefetch starts while a `write` call is in progress. A `read`
+   function may give a result that depends on host state, and a write may
+   change that state. So a kept outcome is used only when no write started
+   between its start and its use.
+4. When the reference evaluation reaches a call of the same function with
+   `==` arguments, and a kept outcome for it survives rule 3, the binding
+   charges the 1 step of the call, makes the recorded charges in order, and
+   gives the kept outcome. Then 10.1 items 1 and 2 hold as if the call were
+   made there.
+5. A kept outcome that no reference call uses is dropped, with its charges.
    This happens when the arguments differ, when a failure or a limit ends the
    entry earlier, or when the run ends.
-5. A prefetched call gets the run's cancellation signal. A call handle used
+6. A prefetched call gets the run's cancellation signal. A call handle used
    for prefetch refuses `remaining()`, `runWithin` and the suspension
    sentinel: a `read` function that needs them is not prefetched. A
    prefetched call that returns the sentinel is dropped.
-6. Prefetch never changes the value, the usage or the interactions of a run.
+7. Prefetch never changes the value, the usage or the interactions of a run.
    It may change only the wall-clock time, and the count of calls the host
-   sees.
+   sees. A suite case tests rule 3: `xs.map(x => { const _ = w.setText(x);
+   w.text() })` with `xs = ["a", "b"]` gives `["a", "b"]` in every binding.
 
 Not every binding can prefetch. A TypeScript host function is synchronous
 (D18), so the TypeScript binding does not (inference: it would need an
@@ -297,14 +319,17 @@ host function over a list.
 | Matter | Rule |
 | --- | --- |
 | Go form | `risor.Batch(name, fn, opts...)`, where `fn` is `func(ctx context.Context, x T) (R, error)`. It gives a `Function` typed `(xs: T[]) => R[] !` |
-| Running | The items run at the same time, at most `opts.Parallel` at once (default 8). Each gets its own record of charges |
+| Running | At most `opts.Parallel` items run at once. Each gets its own record of charges. The default is 8 for `read` and 1 for `write`: with 1, the items run one by one in list order |
+| Parallel writes | `opts.Parallel` above 1 with `write` is a promise, like `read`, that no item's result or effect depends on another's. Nothing checks it. Without that promise, a counter that each item increments gives values in the order the scheduler picks |
 | Charges | After every item ends, the records are made through the call handle in list order |
 | Errors | The first error in list order is the call's error. Items after it still ran |
 | Effect | The effect given in the options, `write` by default |
 
 With `Batch` a host writes `weather.currentAll(cities)` once, for any number
-of functions, and keeps its determinism: the charges and the result are in
-list order.
+of functions. The charges and the result are in list order. That keeps the
+run deterministic only when the items are: `read` items, `write` items run one
+by one, or `write` items under the promise above. The run sees one host call,
+so its interactions (3.1) hold either way.
 
 ### 4.5 Why lambdas still do not reach host functions (19-10)
 
