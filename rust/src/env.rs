@@ -304,7 +304,7 @@ pub fn is_name(s: &str) -> bool {
         && crate::syntax::token::is_name(s)
 }
 
-const RESERVED_NAMESPACES: [&str; 4] = ["json", "time", "math", "base64"];
+const RESERVED_NAMESPACES: [&str; 5] = ["json", "time", "math", "base64", "regexp"];
 
 /// A named type's declaration (F4 3.1).
 #[derive(Clone)]
