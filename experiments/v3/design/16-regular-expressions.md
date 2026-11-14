@@ -149,8 +149,8 @@ do not (2.1).
 | e+ | L1: e; `split L1, L3`; L3:. Lazy: `split L3, L1` |
 | e? | `split L1, L2`; L1: e; L2:. Lazy: `split L2, L1` |
 | e{n} | e, n times |
-| e{n,} | e, n times; then e* |
-| e{n,m} | e, n times; then m − n nested e?: `(e(e)?)?` for m − n = 2 |
+| e{n,} | e, n times; then e*. Lazy: then lazy e* |
+| e{n,m} | e, n times; then m − n nested e?: `(e(e)?)?` for m − n = 2. Lazy: each nested e? is lazy, so `a{1,3}?` on `aaa` matches `a` |
 | ( e ) for group k | `save 2k`; e; `save 2k+1` |
 | (?: e ) | e |
 
@@ -309,22 +309,25 @@ parameter is data, and is checked when it arrives.
 
 | Entry | Steps | Units |
 | --- | --- | --- |
-| `test`, `find`, `findAll`, `split` | `sz(pattern) + (n + v) / 8` | `wm` plus the units of the result |
+| `test`, `find`, `findAll`, `split` | `sz(pattern) + n / 8 + v / 8` | `wm` plus the units of the result |
 | `replaceAll` | the same, plus `sz(replacement) + sz(result)` | `wm + 1 + sz(result)` |
-| `replaceWith` | the same as `replaceAll`, plus each call of f | the same, plus each call of f |
+| `replaceWith` | the same as `test`, plus `sz(result)`, plus each call of f | `wm + 1 + sz(result)`, plus each call of f |
 | `escape` | `sz(s) + sz(result)` | `1 + sz(result)` |
 
 1. n is the pattern's size (3.4). v is the number of visits of 3.4 in all the
-   searches of the call. `/ 8` rounds down. The divisor is to be calibrated
-   before release (16-9).
+   searches of the call. Each `/ 8` rounds down on its own, so `n / 8 + v / 8`
+   is not `(n + v) / 8`: with n = 5 and v = 3 it is 0. A suite case has
+   `n mod 8 + v mod 8` of 8 or more. The divisor is to be calibrated before
+   release (16-9).
 2. `wm`, the working memory, is `1 + (n × (2 + 2c)) / 64`, rounded down, where
    c is the number of capturing groups. It is charged once, before the first
    search: two thread lists of n entries, each with its slots.
 3. **Order.** The arguments are tested and the call's step charged
    (`04-library.md` 4.4). Then `sz(pattern) + n / 8` is charged and the pattern
    compiled; a bad pattern fails here. Then `wm`. Then the searches charge one
-   step for every 8 visits as they make them, so a limit is reached at the
-   same visit in every implementation. Each match's result units are charged
+   step at every eighth visit as they make them, counted from the first
+   search of the call, so a limit is reached at the same visit in every
+   implementation. Each match's result units are charged
    before it is built.
 4. A constant pattern is charged at every call, as one that is not. An
    implementation may compile it once; the count does not change.
@@ -382,7 +385,8 @@ regexp.replaceWith(r"(?<user>[\w.]+)@(?<host>[\w.]+)", text,
 | `go/env.go:335`, and the TypeScript and Rust lists of reserved namespaces | — | Add `regexp`, with a suite case for `reserved-namespace` |
 | `suite/README.md` | — | List the new files |
 
-Counts that move: library entries (Core 53; all packages 78 to 85); reserved
+Counts that move: library entries (Core 53; all packages 78 to 85 with F15
+alone; F17 adds 2 more, `00` section 4, "Where the five plans meet"); reserved
 namespaces (4 to 5); check codes (29 to 30, with F15); templates of
 `invalid-argument` (14 to 16, with F15); record fields (one new: `pattern`).
 
