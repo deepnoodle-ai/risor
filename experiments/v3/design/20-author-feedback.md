@@ -123,9 +123,20 @@ That failure carries load. A run does not trust a declared type (`03:` 3.4.8
 item 1). Where host data breaks its type, the run must fail with the code of
 what it found, and "never gives a wrong value" (`03:` 3.4.8 item 2). If `.` gave
 null for any absent key, a field the type calls required but the data lacks
-would read as null and flow on as a value. Under `??`, the author has said that
-null is expected and given the value to use. So the narrow rule keeps 3.4.8 and
-still accepts the TypeScript text.
+would read as null and flow on as a value. The narrow rule confines that to
+one place, where the author has said that absence is expected and given the
+value to use.
+
+**An exception to 3.4.8 item 2.** The narrow rule does not keep 3.4.8 for a
+field the type calls required. On a host record declared `{id: int}` that
+lacks `id`, `x.id ?? 0` gives `0` and no `missing-field`. The rule cannot be
+limited to optional and unlisted fields: it would then depend on a type, and
+rule 3 above, with R55, forbids that. So 3.4.8 item 2 gains an exception:
+"except a coalesced read under `??` (`01:` 6.6), which gives the
+default for an absent key whatever the declared type says." The value given
+is the author's own default, not a value made from data. The owner settled
+absence under `??` (D56); this exception is what that ruling costs, and it is
+named so the owner can confirm it (20-1).
 
 **20-2, the reach.** A computed key, `m[k] ?? d`, is left out. Its type rule
 (`05:` 9.2, second row) joins every field type, and the key is not known, so the
@@ -194,7 +205,8 @@ fix. The first rows:
 | `undefined` | name | `use null` |
 | `await` | function | `remove await: a host call gives its value directly` |
 | `includes` | method of a list or a string | `use the operator in: x in xs` |
-| `push`, `unshift` | method of a list | `values never change: build a new list with [...xs, x]` |
+| `push` | method of a list | `values never change: build a new list with [...xs, x]` |
+| `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
 | `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
 | `concat` | method of a list | `use spread: [...xs, ...ys]` |
 | `indexOf` | method of a list or a string | `use in, or find(...)` |
@@ -205,14 +217,17 @@ A row of place "name" applies to an `undefined-name`; "name and field" to an
 
 **The lookup.** A diagnostic of one of these four kinds takes its hint by the
 first row of this table that gives one. When none does, it keeps its present
-template.
+template. For an `undefined-name` N followed by a `.f` step, row 1 looks for
+the form `N.f` (place "name and field") first, then row 2 runs, and only then
+does row 1 look for N alone (place "name"). So `Math.round(x)` gives `use
+round(...)`, and `Math.foo` gives the `Math` row's fix.
 
 | # | Diagnostic | Looks for | Gives |
 | --- | --- | --- | --- |
 | 1 | Any of the four | A row of `foreign-names.json` with that written form and place | Its fix |
 | 2 | `undefined-name` N, followed by a `.f` step | `N.f` in a `wrong` list | The entry's form |
 | 3 | `undefined-function` n | n in a `wrong` list; else n as the name of a method entry | The entry's form |
-| 4 | `no-method` n on a list, a string or a map | n in the `wrong` list of a method of that receiver kind; else in the `wrong` list of a function; else n as the name of a function entry | The entry's form |
+| 4 | `no-method` n on a list, a string, a map, an int or a float | n in the `wrong` list of a method of that receiver kind; else in the `wrong` list of a function; else n as the name of a function entry | The entry's form |
 | 5 | `kind`, template `field-read`, field n | n in the `wrong` list of a function | The entry's form |
 
 1. **The entry's form** is the clause `use f(...)` for a function entry `f`, and
@@ -372,8 +387,10 @@ no layout, the text is the RFC 3339 form of F6 7.3 as today.
 | Fails | `invalid-argument`, form `year-range`, as today; form `bad-layout`: a letter outside quotes that is not a token |
 
 **The tokens** are a subset of the Unicode LDML date field patterns (from
-memory: Unicode Technical Standard #35, part 4). A run of one letter is read as
-one token, longest first.
+memory: Unicode Technical Standard #35, part 4). A maximal run of one letter
+outside quotes is one token. It must be a token of the table exactly, or it
+is `bad-layout`: a run is never split. So `MMMMM` and `yy` are `bad-layout`.
+A quote with no closing quote is `bad-layout`.
 
 | Token | Gives | Example |
 | --- | --- | --- |
