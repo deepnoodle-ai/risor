@@ -246,11 +246,16 @@ impl Program {
         let root = self.frames[self.parsed.ast.root.index()];
         let n = nvars + root.size as usize;
         // A program with no slots and no variables takes no buffers.
-        let slots = if n > 0 {
+        let any = nvars > 0 || !self.place.is_empty();
+        let slots = if any {
             SLOTS.with(|c| c.take())
         } else {
             Vec::new()
         };
+        let mut display = DISPLAY.with(|c| c.take());
+        display.clear();
+        display.resize(self.max_depth + 1, 0);
+        display[0] = nvars;
         let mut run = Run {
             p: self,
             ast: &self.parsed.ast,
@@ -258,11 +263,8 @@ impl Program {
             // The variables as they are read, then the program's frame;
             // each call pushes its own frame after them (F17 11.5).
             slots,
-            display: {
-                let mut d = vec![0; self.max_depth + 1];
-                d[0] = nvars;
-                d
-            },
+            display,
+            cb_frames: Vec::new(),
             vars_read: Bits::new(nvars),
             vars_missing: Bits::new(nvars),
             m: Meter {
@@ -286,10 +288,12 @@ impl Program {
         // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
         let result = run.eval(self.parsed.ast.root);
-        if n > 0 {
+        if any {
             let slots = recast(std::mem::take(&mut run.slots));
             SLOTS.with(|c| c.set(slots));
         }
+        let display = std::mem::take(&mut run.display);
+        DISPLAY.with(|c| c.set(display));
         let mut scratch = std::mem::take(&mut run.scratch);
         if scratch.capacity() > 0 && scratch.capacity() <= 65536 {
             scratch.clear();
@@ -311,6 +315,8 @@ impl Program {
 pub(crate) struct Callback<'h> {
     l: NodeId,
     frame: Frame,
+    /// For the fast path: where the frame the entry's calls share starts.
+    base: usize,
     #[allow(clippy::type_complexity)]
     fast: Option<(&'h [Option<u32>], NodeId, Option<&'h code::Code>)>,
 }
@@ -362,6 +368,9 @@ pub(crate) struct Run<'h> {
     /// those of the code in which the lambda was written, since a lambda
     /// runs only where it is in scope and never outlives that code.
     display: Vec<usize>,
+    /// The frames that library entries in progress share among the calls
+    /// of their callbacks, with the entry of `display` each replaced.
+    cb_frames: Vec<(Frame, usize)>,
     /// The variables asked of the host, and those it did not have: a run
     /// asks for each name at most once (`03-host.md` 3.4.1).
     vars_read: Bits,
@@ -2016,7 +2025,10 @@ impl<'h> Run<'h> {
         let measure = self.p.measure[s.index()] as u32;
         let mut vals = Args::new();
         self.args(args, &mut vals)?;
-        match self.lib_method(idx, recv, vals.as_slice(), span, measure) {
+        let mark = self.cb_frames.len();
+        let r = self.lib_method(idx, recv, vals.as_slice(), span, measure);
+        self.end_callbacks(mark);
+        match r {
             Ok(v) => Ok(Some(v)),
             Err(f) => Err(f),
         }
@@ -2204,7 +2216,10 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         let mut vals = Args::new();
         self.args(args, &mut vals)?;
-        self.lib_function(i, vals.as_slice(), span, measure)
+        let mark = self.cb_frames.len();
+        let r = self.lib_function(i, vals.as_slice(), span, measure);
+        self.end_callbacks(mark);
+        r
     }
 
     /// A call of a host function: the arguments, the call's step, then the
@@ -2283,7 +2298,12 @@ impl<'h> Run<'h> {
 
     /// A lambda passed to a library entry, resolved once for all the calls
     /// the entry makes of it.
-    pub(crate) fn callback(&self, l: NodeId) -> Callback<'h> {
+    ///
+    /// The calls an entry makes of a lambda never overlap, so on the fast
+    /// path they share one frame (F17 11.5): it is pushed here, each call
+    /// binds its names in it again, and the caller of the entry drops it
+    /// when the entry ends, by `end_callbacks`.
+    pub(crate) fn callback(&mut self, l: NodeId) -> Callback<'h> {
         let p = self.p;
         let fast = match (p.params.get(l.index()), self.ast.kind(l)) {
             (Some(Some(slots)), NodeKind::Lambda { body, .. }) => Some((
@@ -2293,10 +2313,29 @@ impl<'h> Run<'h> {
             )),
             _ => None,
         };
+        let frame = p.frames[l.index()];
+        let mut base = 0;
+        if fast.is_some() && frame.size > 0 {
+            let saved = self.push_frame(frame);
+            base = self.display[frame.depth as usize];
+            self.cb_frames.push((frame, saved));
+        }
         Callback {
             l,
-            frame: p.frames[l.index()],
+            frame,
+            base,
             fast,
+        }
+    }
+
+    /// The end of a library entry: the frames its callbacks share, pushed
+    /// since `mark`, are dropped, whether the entry gave a value or failed.
+    #[inline(always)]
+    fn end_callbacks(&mut self, mark: usize) {
+        while self.cb_frames.len() > mark {
+            if let Some((f, saved)) = self.cb_frames.pop() {
+                self.pop_frame(f, saved);
+            }
         }
     }
 
@@ -2321,13 +2360,10 @@ impl<'h> Run<'h> {
         let Some((slots, body, code)) = cb.fast else {
             return self.invoke_for(entry, index, cb.l, &mut [a, b], measure, span);
         };
-        let saved = match self.enter2(cb.frame, slots, a, b, measure, span) {
-            Ok(s) => s,
-            Err(f) => return Err(traced(f, span, entry, index)),
-        };
-        let r = self.body(body, code, measure);
-        self.pop_frame(cb.frame, saved);
-        match r {
+        if let Err(f) = self.enter2(cb, slots, a, b, measure, span) {
+            return Err(traced(f, span, entry, index));
+        }
+        match self.body(body, code, measure) {
             Ok(v) => Ok(v),
             Err(f) => Err(traced(f, span, entry, index)),
         }
@@ -2349,13 +2385,10 @@ impl<'h> Run<'h> {
             let mut args = args;
             return self.invoke_for(entry, index, cb.l, &mut args, measure, span);
         };
-        let saved = match self.enter3(cb.frame, slots, args, measure, span) {
-            Ok(s) => s,
-            Err(f) => return Err(traced(f, span, entry, index)),
-        };
-        let r = self.body(body, code, measure);
-        self.pop_frame(cb.frame, saved);
-        match r {
+        if let Err(f) = self.enter3(cb, slots, args, measure, span) {
+            return Err(traced(f, span, entry, index));
+        }
+        match self.body(body, code, measure) {
             Ok(v) => Ok(v),
             Err(f) => Err(traced(f, span, entry, index)),
         }
@@ -2384,23 +2417,22 @@ impl<'h> Run<'h> {
     #[cfg_attr(not(debug_assertions), inline(always))]
     fn enter2(
         &mut self,
-        frame: Frame,
+        cb: &Callback<'h>,
         slots: &[Option<u32>],
         a: Value<'h>,
         b: Value<'h>,
         measure: u32,
         span: Range,
-    ) -> R<'h, usize> {
+    ) -> R<'h, ()> {
         if let Err(f) = self.enter(measure, span) {
             value::release(a);
             value::release(b);
             return Err(f);
         }
-        let saved = self.push_frame(frame);
-        let base = self.display[frame.depth as usize];
+        let base = self.share(cb);
         self.bind(base, slots, 0, a);
         self.bind(base, slots, 1, b);
-        Ok(saved)
+        Ok(())
     }
 
     /// `enter2` for three arguments.
@@ -2408,24 +2440,35 @@ impl<'h> Run<'h> {
     #[cfg_attr(not(debug_assertions), inline(always))]
     fn enter3(
         &mut self,
-        frame: Frame,
+        cb: &Callback<'h>,
         slots: &[Option<u32>],
         [a, b, c]: [Value<'h>; 3],
         measure: u32,
         span: Range,
-    ) -> R<'h, usize> {
+    ) -> R<'h, ()> {
         if let Err(f) = self.enter(measure, span) {
             value::release(a);
             value::release(b);
             value::release(c);
             return Err(f);
         }
-        let saved = self.push_frame(frame);
-        let base = self.display[frame.depth as usize];
+        let base = self.share(cb);
         self.bind(base, slots, 0, a);
         self.bind(base, slots, 1, b);
         self.bind(base, slots, 2, c);
-        Ok(saved)
+        Ok(())
+    }
+
+    /// The frame a callback's calls share, made the frame of its depth for
+    /// this call: a call in between of another lambda of that depth set its
+    /// own and set it back, so this is a store of what is there already.
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn share(&mut self, cb: &Callback<'h>) -> usize {
+        if cb.frame.size > 0 {
+            self.display[cb.frame.depth as usize] = cb.base;
+        }
+        cb.base
     }
 
     /// Argument `i` into its parameter's slot. A lambda declares at most as
@@ -2456,7 +2499,8 @@ impl<'h> Run<'h> {
     /// 1): the entry of its depth in `display` is set to it, and the entry
     /// it replaces is kept for `pop_frame`. A lambda that binds no name has
     /// no frame: nothing reads one.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn push_frame(&mut self, f: Frame) -> usize {
         if f.size == 0 {
             return 0;
@@ -2470,12 +2514,20 @@ impl<'h> Run<'h> {
     /// The end of a call: its frame is dropped, and the entry of its depth
     /// set back. A failure ends it too, so the names of the calls it leaves
     /// keep their values (F17 11.5 item 3).
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn pop_frame(&mut self, f: Frame, saved: usize) {
         if f.size == 0 {
             return;
         }
         let base = std::mem::replace(&mut self.display[f.depth as usize], saved);
+        self.drop_slots(base);
+    }
+
+    /// The slots from `base` on, released. Out of line: it is no part of
+    /// the frame that is live while a lambda runs.
+    #[inline(never)]
+    fn drop_slots(&mut self, base: usize) {
         while self.slots.len() > base {
             if let Some(v) = self.slots.pop() {
                 value::release(v);
@@ -2920,13 +2972,15 @@ impl Rendering {
 
 // The buffers of a run, kept by the thread from one run to the next, empty,
 // so that a run allocates none of them again: the slots, taken by a run that
-// has any, and the text buffer of templates, taken at a template's first
-// use. A buffer of `'static` values serves a run of any lifetime.
+// has any, the display of frames (F17 11.5), and the text buffer of
+// templates, taken at a template's first use. A buffer of `'static` values
+// serves a run of any lifetime.
 thread_local! {
     static SLOTS: std::cell::Cell<Vec<Value<'static>>> = const {
         std::cell::Cell::new(Vec::new())
     };
     static SCRATCH: std::cell::Cell<String> = const { std::cell::Cell::new(String::new()) };
+    static DISPLAY: std::cell::Cell<Vec<usize>> = const { std::cell::Cell::new(Vec::new()) };
 }
 
 /// An empty vector of another element type, with the same allocation: a

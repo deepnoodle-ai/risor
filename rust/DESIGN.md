@@ -58,7 +58,7 @@ grouped by the sections E.3 to E.8.
 | `src/number.rs` | S2 | Arithmetic of 6.2, number to text and text to number |
 | `src/host.rs` | S2 | `Host`, `View`, `HostList`, `HostMap`, `Vars`, `Data`, `OpaqueRef` |
 | `src/env.rs` | S2 | `Env`, `EnvBuilder`, `Limits`, host functions and methods, the `declare` errors |
-| `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
+| `src/compile.rs` | S2 | Name resolution to slots and their places in each call's frame, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
 | `src/eval/code.rs` | — | The compiled form of the hot node kinds: a tree of closures built with the program, which the walk tries first |
 | `src/eval/lib.rs` | S3 | The library entries: the 53 of Core, the 6 queries of F7 and `walk` of F17; the entries of the groups (F6, F13) run in `eval/groups.rs`. The argument tests of every entry from its record's signature, and the table of formulas of all 79, which a test holds equal to the record files |
@@ -188,14 +188,43 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
 - Compile resolves every name once: to a variable of the environment, to a
   slot of a scope, to a library entry or host function, or to a `const`-bound
   lambda. Static rules are reported from the same walk.
-- At run time a scope is a frame of slots. A lambda is never a value
-  (`01-language.md` 8.1): it is called by name or passed to the library, and it
-  cannot outlive the scope it was written in. So a lambda is its `NodeId` and
-  a pointer to the frame it was written in, and a call pushes one frame for
-  its parameters whose parent is that frame. No lambda has two calls in
-  progress, since a name is not in scope in its own value.
-- Frames are `Rc` so that a lambda handed to a library entry can hold its
-  defining frame while the entry calls it.
+- **Each call has a frame** (F17 11.5). The resolver numbers every slot of
+  the program once, for the checker, and also gives it a place
+  (`compile::Place`): the depth of its frame and its index there. The
+  program's frame has depth 0; a lambda's frame is one deeper than the frame
+  of the code it is written in, and holds its parameters and every name its
+  body binds, blocks and `catch` included. A run keeps one buffer: the
+  variables the program reads, then the program's frame, then a frame for
+  each call in progress, pushed and dropped in order.
+- **The display.** `Run::display` holds, for each depth, where the frame on
+  the chain of the code now running starts. A slot is read at
+  `display[depth] + index`. A call of a lambda of depth `k` pushes its frame,
+  sets `display[k]` to it, and sets the old entry back when it ends, on a
+  failure too, so `catch` finds the names of its own call as they were. The
+  entries below `k` need no change: a lambda runs only where it is in scope,
+  by name or as an argument written there, and never outlives the code in
+  which it was evaluated (`02-evaluation.md` 11.1), so at its call they are
+  already those of the code it was written in. A self-call sets `display[k]`
+  to its own frame and gives back its caller's; a lambda written inside a
+  call reads that call's frame, whatever deeper calls of the same lambda
+  have done. A lambda that binds no name has no frame. A lambda is still
+  its `NodeId`: it needs no pointer to a frame. There is one path for every
+  program, with or without a self-reference; no slot has a fixed place.
+- **A library entry's calls share a frame.** The calls an entry makes of
+  its lambda never overlap, so on the fast path (plain parameters) they
+  share one: `Run::callback` pushes it, each call binds its names in it
+  again and sets the display entry to it, and the caller of the entry
+  (`method`, `call_lib`) drops every such frame the entry pushed, whether it
+  gave a value or failed (`end_callbacks`). A lambda with patterns or
+  defaults gets a frame for each call, as a call by name does.
+- **Measured** (`examples/bench.rs`, the 31 programs of `suite/bench`, three
+  interleaved rounds, medians, release, aarch64 macOS): a frame pushed and
+  dropped for every call cost 13.6% in the geometric mean against fixed
+  places, up to 54% (`heavy/reduce_10k`); with the shared frame of a library
+  entry and the display kept by the thread between runs, 4.7%. The largest
+  costs left are 15% to 19%, in `filter` and `map` over 10,000 elements and
+  `sortBy` (`lists-10k`); the noise between rounds is a few percent. No
+  fixed-place path is kept.
 
 ### The meter
 
@@ -240,10 +269,12 @@ functions.
   subtree is at most 48 levels deep. Above that, the walk runs the node as
   before.
 - **Lambdas.** For a lambda whose parameters are all plain names,
-  `Program::params` holds their slots, so a call binds them without the walk
-  of patterns. Arguments are moved into the slots, not copied.
+  `Program::params` holds the index of each one's slot in the lambda's
+  frame, so a call binds them without the walk of patterns. Arguments are
+  moved into the slots, not copied. A closure that reads a slot holds its
+  place.
 - **Per-run cost.** A value is 24 bytes (an opaque value is behind `Rc`). A
-  run's slots and the variables it reads share one buffer; that buffer and
+  run's frames and the variables it reads share one buffer; that buffer and
   the text buffer of templates are kept by the thread from one run to the
   next, empty. A run asks the host for each variable once, as before
   (`03-host.md` 3.4.1), with two bit sets for read and missing. A library
@@ -271,8 +302,8 @@ and macOS usually has 8 MiB.
 
 | Depth limit | Optimized | Unoptimized |
 | --- | --- | --- |
-| 200, the default | 1 MiB (2.6 times the need) | 2 MiB (2.0 times) |
-| 400, the largest | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
+| 200, the default | 1 MiB (2.5 times the need) | 2 MiB (1.9 times) |
+| 400, the largest | 2 MiB (2.8 times) | 4 MiB (2.1 times) |
 
 **Measured.** rustc 1.100.0 (the pinned toolchain), aarch64 macOS; optimized
 is the release profile and unoptimized the dev profile. The least stack, to
@@ -280,13 +311,21 @@ is the release profile and unoptimized the dev profile. The least stack, to
 the thread starts. The worst form is a chain of lambdas that each take a
 pattern parameter (`({v}) => ...`) and call the next through `mapValues`, the
 last nesting 98 map literals (`{a: ...}.a`). `sortBy` and `some` cost 0 to 4%
-less; `filter` and `reduce`, 4 to 17% less.
+less; `filter` and `reduce`, 4 to 17% less (measured before F17 step E1).
 
 | Work | Optimized | Unoptimized |
 | --- | --- | --- |
 | Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 83 KiB | 611 KiB |
-| Run the worst form at depth limit 200 | 387 KiB | 1,043 KiB |
-| Run the worst form at depth limit 400 | 691 KiB | 1,859 KiB |
+| Run the worst form at depth limit 200 | 404 KiB | 1,092 KiB |
+| Run the worst form at depth limit 400 | 724 KiB | 1,940 KiB |
+| Self-recursion (F17 11.6) at depth limit 200: by name, through `map`, through `flatMap` | 180, 244, 260 KiB | 372, 676, 756 KiB |
+| The same at depth limit 400 | 372, 500, 532 KiB | 756, 1,364, 1,524 KiB |
+
+Frames for each call (F17 11.5) raised the worst form from 387 and 691 KiB
+optimized, 1,043 and 1,859 KiB unoptimized, by 4% to 5%: a call by name
+keeps its frame's place while its body runs. The frame helpers are inlined
+only when `debug_assertions` is off, and the drop of a frame's slots is out
+of line, for the reason the last item below gives.
 
 The cost of one unit: the stack of a chain at the limit divided by the limit,
 optimized at depth 400 and unoptimized at depth 200, so it carries a share of
@@ -342,9 +381,11 @@ one link past the limit. It also runs `walk` (F17): a chain of nodes whose
 deepest callback runs at the limit, with the nesting limit in its body, and
 one node past it; data nested to the limit, and one level past; and walks
 inside walks, each link calling the one before from its walk's callback, to
-the limit and one link past. It runs each limit on a thread of two thirds of the
-stated figure, so the figure has a margin of 1.5. CI runs it unoptimized and
-optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
+the limit and one link past; and the three forms of self-recursion of F17
+11.6, a typed lambda that calls itself by name, through `map` and through
+`flatMap`, each call adding 1, to the limit and one call past. It runs each
+limit on a thread of two thirds of the stated figure, so the figure has a
+margin of 1.5. CI runs it unoptimized and optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
 and overflows on 12/16 (aarch64 and x86_64 macOS).
 
 ## Known departures from the work bound
@@ -696,8 +737,29 @@ A plain text error has no cause: its text is already the message.
   `reduce`, whose R is the `Var`, this is the rule as before.
 - **The runner**: `PACKAGES` holds 17 before 12, so a file named
   `until-f17-` is not run; `recursion_package` runs
-  `suite/recursion/`, its `tools-` files among them, and
-  `library_recursion_cases` the record's cases.
+  `suite/recursion/`, its `tools-` and `e1-` files among them, and
+  `library_recursion_cases` the record's cases. F17 is offered as steps E0
+  and E1 together (R254).
+
+### Step E1: typed self-recursion
+
+- **The static rule** (`compile.rs`): `is_typed` reads F17 11.1 from the
+  text: a result annotation, and an annotation or a function type on every
+  parameter, whatever the annotation resolves to. A reference of a lambda
+  to its own name is `SelfRef` and `recursion-needs-types` only when the
+  lambda is not typed; a typed lambda's self-call is a `CallLambda` and its
+  name as an argument a `LambdaRef`, so `arity`, `lambda-to-lambda` and
+  `not-a-value` test it as any reference, and a compile without the type
+  rules runs it.
+- **The checker** (`check/mod.rs`, `check_once`): a typed lambda is always
+  checked once (F16 3.4). Before its defaults and body are checked, its
+  result type is set to its result annotation (`never` when a static rule
+  refused it), so a self-call there is a use of a lambda checked once:
+  arguments fitted, the result type, no second check of the body, and no
+  count against 20.2 or 20.3.
+- **Evaluation**: a self-call is a call by name, with the depth test before
+  its frame is pushed; nothing else is new. Each call's own names are the
+  frames of "Scopes and lambdas" above.
 
 ## Package F16, slice D1: annotations and type lines
 

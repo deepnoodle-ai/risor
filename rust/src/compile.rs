@@ -1,10 +1,10 @@
 //! Compile: name resolution and the static rules (`05-types.md` 22).
 //!
 //! One walk over the tree resolves every name and every call, gives every
-//! binding a fixed slot (`02-evaluation.md` 11.1: no lambda is entered while
-//! an earlier call of it is in progress, so each binding may have one fixed
-//! place for the whole run), computes the depth measure of each call (8.4),
-//! and reports the static diagnostics.
+//! binding a slot and the place a run keeps it in (a frame for each call,
+//! F17 11.5: a typed lambda may call itself, so a binding has no fixed place
+//! for the whole run), computes the depth measure of each call (8.4), and
+//! reports the static diagnostics.
 //!
 //! What opens no level is walked by a loop, so the walk's recursion is
 //! bounded by the source nesting.
