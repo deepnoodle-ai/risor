@@ -411,11 +411,12 @@ order. A binding gives the same contents in its own types.
 8. **Methods of opaque values are not in `calls`.** A call of a method of an
    opaque type is a `MethodCall` that resolution leaves a method call.
    Analysis has no environment, so it cannot tell it from a call of a library
-   method. When its receiver is a free `Ident`, as in `w.text()`, it is
-   reported by the second row with the `namespace` `w`, which the host drops
-   by item 3, since `w` is a variable and not a namespace. On any other
-   receiver it is not reported at all: the `.text()` of `w.child().text()`,
-   and `v.text()` in `const v = w; v.text()`. An opaque value's state belongs
+   method. When its receiver is a free `Ident` and the call is not optional,
+   as in `w.text()`, it is reported by the second row with the `namespace`
+   `w`, which the host drops by item 3, since `w` is a variable and not a
+   namespace. In every other case it is not reported at all: an optional
+   call, `w?.text()`, which the second row leaves out, the `.text()` of
+   `w.child().text()`, and `v.text()` in `const v = w; v.text()`. An opaque value's state belongs
    to the host and may change between runs and within one (`03-host.md` 3.4.6
    item 6). So a host that caches results on this report treats a program
    that may read an opaque value as volatile: two runs with the same report

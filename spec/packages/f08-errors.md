@@ -837,7 +837,9 @@ A program cannot see one: it never reaches a run.
 
 1. **Length.** Each call in progress counts at least 1 against the depth limit
    (`02-evaluation.md` 8.4), so a trace has at most as many entries as the depth
-   limit, and at most 400 (`03-host.md` 3.6.1). It is never cut.
+   limit, and at most 400 (`03-host.md` 3.6.1). The trace of `depth-exceeded`
+   may hold one entry more, 401 at most: the call whose own depth test failed
+   is in progress from that test (4.1 item 2). It is never cut.
 2. **Cost.** None. A trace is not a value of the language, and a program cannot
    read it. Building it charges no step and no unit, and a run that does not
    fail builds none.
