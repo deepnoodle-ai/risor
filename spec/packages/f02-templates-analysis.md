@@ -645,3 +645,4 @@ implementation that offers F2 writes it.
 | --- | --- |
 | F7, queries | The star step `[*]` and `?.[*]` in a path. A star is a step of the path and does not stop it (`experiments/v3/design/05-host-api.md` A.8). In the JSON form a star is the object `{"star": true}`, which no key can equal. A method call after a star ends the path |
 | F8, errors | The targeted `parse` codes, at the spans this chapter gives for Core's codes |
+| F17, recursion and guards | No rule. A guard is an expression of the tree, so its reads and calls are reported as any are, and `walk` is a function of the library (`spec/packages/f17-recursion.md` 6) |

@@ -473,7 +473,9 @@ later package adds nodes with new numbers and never renumbers one.
    number 32 is `Each` (the projection `xs[*]`). Both belong to follow-on
    packages.
 3. In Core, `Match` always has a subject, and every `Arm` has literals or is the
-   default. An `Arm` with a test is not in Core.
+   default. A `match` with no subject, whose arms are tests, is not in the
+   language (9.3 item 8). An `Arm` with a guard, `"a" if (c) => e`, is not in
+   Core: follow-on F17 adds the field `guard` to node 25.
 4. In Core, the `form` of a `String` is `"`, `'` or `` ` ``, and the `form` of a
    `Template` is `` ` ``.
 5. `Bad` stands for text after a `parse` diagnostic. A tree that holds `Bad` is
@@ -1050,7 +1052,8 @@ Patterns stand in `const` lines, in parameters and nowhere else.
 5. If no arm is chosen, the `match` fails with `no-match`.
 6. Cases compare with `==`, never by truthiness. `match n { 0 => "none", _ =>
    "some" }` tests for the number zero.
-7. An arm binds no name, and there are no guards.
+7. An arm binds no name. In Core there are no guards; follow-on F17 adds
+   them.
 8. A `match` without a subject is not in the language (3.4).
 9. These are static rules (14.4): a literal listed twice; an arm after `_`. A
    literal is listed twice when it is equal by `==` (6.7) to an earlier literal
@@ -1339,6 +1342,7 @@ diagnostic. A lexical diagnostic comes first (2.11).
 | `!x as T`, `!x is T`, `a == !x is T`: `as` or `is` whose left operand is a `!` expression written without parentheses. `as` and `is` stand at the level of a comparison operator, and their left operand is what a comparison's would be. So in `a + !x as T` the left operand is `a + !x`, and the error is the row above, at the `as` | `unexpected-token` | The `!` |
 | A projection, `xs[*]` or `xs?.[*]` | `unexpected-token` | The `*` |
 | `match {`, with no subject | `unexpected-token` | The `{` |
+| A guard on a `match` arm: `match x { 1 if (c) => 2 }` | `unexpected-token` | The `if` |
 | `===`, `!==` | `unexpected-token` | The token |
 | `x = 1` | `unexpected-token` | The `=` |
 | `x += 1`, `x ++`, and the other tokens of the last row of 2.3 | `unexpected-token` | The token |
@@ -1465,6 +1469,7 @@ and changes nothing else. Its chapter is the home of its rules.
 | F4, checked conversion | The tests `x as T` and `x is T`, at the level of comparison, with a type written in the program. Node 31, `As`. The code `bad-type-text`. It replaces the rows of 14.3 for `as` and `is` | `spec/packages/f04-conversion.md` |
 | F7, queries | The steps `[*]` and `?.[*]` of a chain, and the node `Each`. It replaces the rows of 14.3 for these texts | `spec/packages/f07-queries.md` |
 | F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 58 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
+| F17, recursion and guards | A guard on a `match` arm, `"a" if (c) => e`: the field `guard` of node 25, `Arm`. It changes 9.3 items 3, 7 and 9, and replaces the row of 14.3 for a guard | `spec/packages/f17-recursion.md` 2 to 4 |
 
 1. Where this chapter calls such a text an error, it speaks of Core alone: the
    rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use them.

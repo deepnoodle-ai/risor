@@ -59,7 +59,7 @@ sites), `spec/packages/f02-templates-analysis.md` (analysis paths),
    version marker.
 2. With this package an implementation offers 59 library entries: the 53 of
    Core and the 6 that this package adds. The list methods are 27 and the map
-   methods 4. With F6 it offers 67, and with F13 78.
+   methods 4. With F6 it offers 67, with F13 78, and with F17 79.
 
 ### 1.4 Packages this one requires
 

@@ -36,7 +36,7 @@ records file of a group, the shared failures).
 ### 1.2 Packages this one requires
 
 Packages are offered in a fixed order, each only with every package before it:
-F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F12. So an
+F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F17, F12. So an
 implementation that offers F13 offers every package before it, F6 among them.
 
 ### 1.3 Version
