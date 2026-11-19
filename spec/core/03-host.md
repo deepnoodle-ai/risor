@@ -113,18 +113,23 @@ other.
 | Limits apply to each event, so a slow handler cannot freeze the host | 3.6 |
 | One compiled program serves every event, so a run per event costs no compile | 3.2.2 |
 
-**The poisoned run.** A host that must stop a run at once, without waiting
-for the next test of the cancellation signal, keeps a flag for the run.
+**The poisoned run.** A host that must cut a run off from the host at once,
+without waiting for the next test of the cancellation signal, keeps a flag
+for the run.
 
-1. A host function that must stop the run sets the flag and returns an error.
+1. A host function that must cut the run off sets the flag and returns an
+   error.
 2. Every later host call of that run returns an error at once, and does
    nothing else.
 3. When the run ends, the host discards its outcome, whatever it is, if the
    flag is set.
-4. A `catch` may catch the first error (3.5.3), but nothing the program does
-   after it reaches the host.
-5. The host may also cancel the run, which then stops within one test interval
-   of steps (3.6.1 item 3).
+4. The flag does not stop the run. A `catch` may catch the first error
+   (3.5.3), and the program may then go on computing. Nothing it does reaches
+   the host.
+5. Cancellation stops the run, within one test interval of steps (3.6.1 item
+   3), so the host also cancels it. Without cancellation the run ends where
+   its limits end it. A host that turns the step limit off and sets no
+   deadline has no bound on that.
 
 ## 3.3 The environment
 
