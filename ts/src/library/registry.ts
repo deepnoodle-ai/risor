@@ -22,13 +22,17 @@ export interface Param {
   type: TypeNode | null;
 }
 
-/** A lambda passed to an entry. The entry charges the 2 steps of the element, then calls it. */
+/**
+ * A lambda passed to an entry. The entry charges the 2 steps of the element,
+ * then calls it. An entry calls it from the entry's own frame, not from a
+ * helper: each frame between the two is native stack that every level of a
+ * recursion through the entry spends again (src/index.ts, STACK).
+ */
 export interface Callback {
   params: number;
-  call(args: unknown[]): unknown;
-  /** call([a, b]) */
+  /** Call the lambda with the arguments (a, b). */
   call2(a: unknown, b: unknown): unknown;
-  /** call([a, b, c]) */
+  /** Call the lambda with the arguments (a, b, c). */
   call3(a: unknown, b: unknown, c: unknown): unknown;
   /** Package F8: the library call that calls it, for the trace, and its calls so far (f08 4.2). */
   trace?: { span: Span; name: string; count: number };
