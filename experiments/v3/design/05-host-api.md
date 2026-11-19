@@ -371,8 +371,8 @@ functions exactly as far as they charge (`O:L8`).
 The first three can be set or turned off; depth can only be set. Source nesting
 cannot be set: whether a text is a program must not depend on the host. The five
 codes of the first four rows have class `limit`, and `catch` does not catch them
-(A.6). The specification also fixes the largest depth a host may set (1,000 by R20;
-400 by D58 and R206, which track B of `14` 5.3 carries into the
+(A.6). The specification also fixes the largest depth a host may set (1,000 by
+R20; 400 by D58 and R206, which track B of `14` 5.3 carries into the
 specification), so that every implementation can state the stack it needs for
 2D + 100 levels. The defaults:
 
