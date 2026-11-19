@@ -5,8 +5,18 @@
 // Every binding has one fixed slot for the whole run (02 11.1): no lambda is
 // entered while an earlier call of it is in progress. Long flat forms (a chain
 // of binary operators, a chain of steps, an `else` chain, `const` lines) are
-// compiled and run by loops, so no host stack is spent on their length; a
-// short chain (NEST_MAX) is nested closures.
+// compiled and run by loops, so no host stack is spent on their length.
+//
+// Stack. A call costs the depth count 1 plus its nesting depth (02 8.4), and
+// what opens no level costs nothing, so the host stack that one unit of the
+// count may take is set by what runs between a lambda's body and a call in
+// it at nesting depth 0. That is kept to a few frames (see src/index.ts,
+// STACK): a chain of operands that open no level is evaluated in one
+// closure, a spine (Compiler.spine), which runs the method calls in it in
+// place (a short chain that calls nothing at nesting depth 0 is nested
+// closures, NEST_MAX); a library entry calls a lambda from its own frame
+// (LambdaCallback); code in an operand is called in place, not through `ev`;
+// a call by name runs the body from its own closure.
 //
 // Speed. The closures of one kind share one function literal, so the engine
 // sees every site of a kind at once: calls between closures are indirect.
@@ -28,11 +38,24 @@ import type { ArithOp } from "./ops.ts";
 import type { Run } from "./run.ts";
 import type { Counts, Resolution, Target } from "./static.ts";
 import { libraryFunction, method as libraryMethod } from "../library/registry.ts";
-import type { Callback, Entry } from "../library/registry.ts";
+import type { CallContext, Callback, Entry, Impl } from "../library/registry.ts";
 import { paramAt, testArgs } from "../library/args.ts";
 
 export type Code = (r: Run) => unknown;
 type Binder = (r: Run, v: unknown) => void;
+/** A step of a spine (Compiler.spine): applied to the value so far. */
+type Step = (r: Run, v: unknown) => unknown;
+
+/**
+ * A step of a spine: `f`, or the method call `m`, which the spine runs in
+ * place. `end`: the index after the last step of the step's chain, where a
+ * SHORT from it goes on, with null.
+ */
+interface SpineStep {
+  f: Step | null;
+  m: MethodCode | null;
+  end: number;
+}
 
 /** What a host function's implementation is given (03 3.5.2). */
 export interface CallHandle {
@@ -74,7 +97,6 @@ const NAME_UNUSED = -2;
 interface LambdaCode {
   params: ParamCode[];
   body: Code;
-  bodyOp: Operand;
   n: number;
   /**
    * At most three parameters, each a name with no default: the slots of the
@@ -89,10 +111,10 @@ interface LambdaCode {
 const SHORT: unique symbol = Symbol("short");
 
 /**
- * A chain of binary operators, or of steps, up to this long is compiled into
- * nested closures, one for each operator or step. A longer chain runs in a
- * loop, so the host stack a chain spends stays small (01 13.2 bounds the
- * nesting of the source).
+ * A path of field reads from a constant, a slot or a variable up to this long,
+ * then a chain of binary operators up to this long, is compiled into nested
+ * closures, one for each read or operator, which is faster than a spine. A
+ * longer one is a spine, which runs in a loop.
  */
 const NEST_MAX = 4;
 
@@ -209,13 +231,18 @@ interface Operand {
   span: Span | null;
 }
 
-const NO_CODE: Code = () => null;
-
 function codeOperand(c: Code): Operand {
   return { k: 0, c, v: null, s: 0, name: "", span: null };
 }
 
-/** The value of an operand. */
+/**
+ * The value of an operand.
+ *
+ * STACK. Where an operand may be code, the code is called in place, as
+ * `o.k === 0 ? o.c(r) : ev(r, o)`, so that no frame of `ev` sits under it
+ * while it runs: a call it makes, and so a recursion, would spend that frame
+ * at every level (src/index.ts).
+ */
 function ev(r: Run, o: Operand): unknown {
   switch (o.k) {
     case 0:
@@ -332,47 +359,47 @@ function binaryOp(op: A.Binary["op"], a: Operand, b: Operand, span: Span): Code 
   switch (op) {
     case "&&":
       return (r) => {
-        const v = ev(r, a);
-        return truthyQ(r, v) ? ev(r, b) : v;
+        const v = a.k === 0 ? a.c(r) : ev(r, a);
+        return truthyQ(r, v) ? (b.k === 0 ? b.c(r) : ev(r, b)) : v;
       };
     case "||":
       return (r) => {
-        const v = ev(r, a);
-        return truthyQ(r, v) ? v : ev(r, b);
+        const v = a.k === 0 ? a.c(r) : ev(r, a);
+        return truthyQ(r, v) ? v : b.k === 0 ? b.c(r) : ev(r, b);
       };
     case "??":
       return (r) => {
-        const v = ev(r, a);
-        return v === null || v === undefined ? ev(r, b) : v;
+        const v = a.k === 0 ? a.c(r) : ev(r, a);
+        return v === null || v === undefined ? (b.k === 0 ? b.c(r) : ev(r, b)) : v;
       };
     case "==":
-      return (r) => opEq(r, ev(r, a), ev(r, b), span);
+      return (r) => opEq(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "!=":
-      return (r) => !opEq(r, ev(r, a), ev(r, b), span);
+      return (r) => !opEq(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "<":
-      return (r) => opLt(r, ev(r, a), ev(r, b), span);
+      return (r) => opLt(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "<=":
-      return (r) => opLe(r, ev(r, a), ev(r, b), span);
+      return (r) => opLe(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case ">":
-      return (r) => opGt(r, ev(r, a), ev(r, b), span);
+      return (r) => opGt(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case ">=":
-      return (r) => opGe(r, ev(r, a), ev(r, b), span);
+      return (r) => opGe(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "in":
-      return (r) => contains(r, "in", ev(r, a), ev(r, b), span);
+      return (r) => contains(r, "in", a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "not-in":
-      return (r) => !contains(r, "not in", ev(r, a), ev(r, b), span);
+      return (r) => !contains(r, "not in", a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "+":
-      return (r) => opAdd(r, ev(r, a), ev(r, b), span);
+      return (r) => opAdd(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "-":
-      return (r) => opSub(r, ev(r, a), ev(r, b), span);
+      return (r) => opSub(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "*":
-      return (r) => opMul(r, ev(r, a), ev(r, b), span);
+      return (r) => opMul(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "/":
-      return (r) => opDiv(r, ev(r, a), ev(r, b), span);
+      return (r) => opDiv(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     case "%":
-      return (r) => opRem(r, ev(r, a), ev(r, b), span);
+      return (r) => opRem(r, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
     default:
-      return (r) => arith(r, op as ArithOp, ev(r, a), ev(r, b), span);
+      return (r) => arith(r, op as ArithOp, a.k === 0 ? a.c(r) : ev(r, a), b.k === 0 ? b.c(r) : ev(r, b), span);
   }
 }
 
@@ -380,39 +407,39 @@ function binaryOp(op: A.Binary["op"], a: Operand, b: Operand, span: Span): Code 
 function binaryStep(op: A.Binary["op"], b: Operand, span: Span): (r: Run, x: unknown) => unknown {
   switch (op) {
     case "&&":
-      return (r, x) => (truthyQ(r, x) ? ev(r, b) : x);
+      return (r, x) => (truthyQ(r, x) ? (b.k === 0 ? b.c(r) : ev(r, b)) : x);
     case "||":
-      return (r, x) => (truthyQ(r, x) ? x : ev(r, b));
+      return (r, x) => (truthyQ(r, x) ? x : b.k === 0 ? b.c(r) : ev(r, b));
     case "??":
-      return (r, x) => (x === null || x === undefined ? ev(r, b) : x);
+      return (r, x) => (x === null || x === undefined ? (b.k === 0 ? b.c(r) : ev(r, b)) : x);
     case "==":
-      return (r, x) => opEq(r, x, ev(r, b), span);
+      return (r, x) => opEq(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "!=":
-      return (r, x) => !opEq(r, x, ev(r, b), span);
+      return (r, x) => !opEq(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "<":
-      return (r, x) => opLt(r, x, ev(r, b), span);
+      return (r, x) => opLt(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "<=":
-      return (r, x) => opLe(r, x, ev(r, b), span);
+      return (r, x) => opLe(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case ">":
-      return (r, x) => opGt(r, x, ev(r, b), span);
+      return (r, x) => opGt(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case ">=":
-      return (r, x) => opGe(r, x, ev(r, b), span);
+      return (r, x) => opGe(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "in":
-      return (r, x) => contains(r, "in", x, ev(r, b), span);
+      return (r, x) => contains(r, "in", x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "not-in":
-      return (r, x) => !contains(r, "not in", x, ev(r, b), span);
+      return (r, x) => !contains(r, "not in", x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "+":
-      return (r, x) => opAdd(r, x, ev(r, b), span);
+      return (r, x) => opAdd(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "-":
-      return (r, x) => opSub(r, x, ev(r, b), span);
+      return (r, x) => opSub(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "*":
-      return (r, x) => opMul(r, x, ev(r, b), span);
+      return (r, x) => opMul(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "/":
-      return (r, x) => opDiv(r, x, ev(r, b), span);
+      return (r, x) => opDiv(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     case "%":
-      return (r, x) => opRem(r, x, ev(r, b), span);
+      return (r, x) => opRem(r, x, b.k === 0 ? b.c(r) : ev(r, b), span);
     default:
-      return (r, x) => arith(r, op as ArithOp, x, ev(r, b), span);
+      return (r, x) => arith(r, op as ArithOp, x, b.k === 0 ? b.c(r) : ev(r, b), span);
   }
 }
 
@@ -477,11 +504,10 @@ class Compiler {
       return { dflt, bind, slot };
     });
     const body = this.expr(l.body);
-    const bodyOp = this.operand(l.body, body);
     this.lambdaLevel = saved;
     const simple = params.length <= 3 && params.every((p) => p.slot !== PATTERN && p.dflt === null);
     const slotAt = (i: number) => (simple && i < params.length ? params[i].slot : NAME_UNUSED);
-    const lc: LambdaCode = { params, body, bodyOp, n: l.params.length, simple, s0: slotAt(0), s1: slotAt(1), s2: slotAt(2) };
+    const lc: LambdaCode = { params, body, n: l.params.length, simple, s0: slotAt(0), s1: slotAt(1), s2: slotAt(2) };
     this.codes.set(l, lc);
     return lc;
   }
@@ -608,7 +634,14 @@ class Compiler {
         };
       }
       case "Binary":
-        return this.binary(e);
+      case "As":
+      case "OptChain":
+      case "Member":
+      case "Index":
+      case "MethodCall":
+      case "Call":
+      case "Each":
+        return this.spine(e);
       case "Cond":
         return this.cond(e);
       case "Block": {
@@ -619,36 +652,21 @@ class Compiler {
         return this.match(e);
       case "Try":
         return this.tryExpr(e);
-      case "OptChain":
-      case "Member":
-      case "Index":
-      case "MethodCall":
-      case "Call":
-        return this.chain(e);
-      case "As":
-        return this.asExpr(e);
-      case "Each": {
-        const code = this.each(e);
-        // A first star `?.[*]` on null makes its chain null (f07 3.1 item 2).
-        return (r) => {
-          const v = code(r);
-          return v === SHORT ? null : v;
-        };
-      }
       case "Bad":
         throw new Error("a Bad node is never compiled");
     }
   }
 
   /**
-   * A projection (package F7, f07 3, 4): level by level, element by element,
-   * into one list whose units are charged once at the end. SHORT: a first
-   * star `?.[*]` found null.
+   * A projection (package F7, f07 3, 4), as a step of a spine applied to its
+   * receiver: level by level, element by element, into one list whose units
+   * are charged once at the end. SHORT: a first star `?.[*]` found null, which
+   * makes the chain null (f07 3.1 item 2).
    */
-  private each(e: A.Each): Code {
-    type Level = { optional: boolean; starSpan: Span; reads: ((r: Run, v: unknown) => unknown)[]; next: Level | null };
+  private project(e: A.Each): Step {
+    type Level = { optional: boolean; starSpan: Span; reads: Step[]; next: Level | null };
     const level = (p: A.Each): Level => {
-      const reads: ((r: Run, v: unknown) => unknown)[] = [];
+      const reads: Step[] = [];
       let next: Level | null = null;
       for (const s of p.reads) {
         if (s.kind === "Each") next = level(s);
@@ -657,9 +675,6 @@ class Compiler {
       return { optional: p.optional, starSpan: p.starSpan, reads, next };
     };
     const first = level(e);
-    const ex = e.x!;
-    // The chain before the first star is one chain with it: an optional step there that finds null makes it null.
-    const x = ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall" ? this.chain(ex, true) : this.expr(ex);
     const visit = (r: Run, recv: unknown, lv: Level, out: unknown[], isFirst: boolean): boolean => {
       const k = r.kind(recv);
       if (k === "null") {
@@ -687,9 +702,7 @@ class Compiler {
       }
       return true;
     };
-    return (r) => {
-      const recv = x(r);
-      if (recv === SHORT) return SHORT;
+    return (r, recv) => {
       const out: unknown[] = [];
       if (!visit(r, recv, first, out, true)) return SHORT;
       r.alloc(1 + out.length);
@@ -697,23 +710,20 @@ class Compiler {
     };
   }
 
-  /** `x as T`, `x is T` (package F4, f04 5.1, 5.2). */
-  private asExpr(e: A.As): Code {
-    const x = this.expr(e.x);
+  /** `as T`, `is T` (package F4, f04 5.1, 5.2), as a step of a spine applied to the value tested. */
+  private asStep(e: A.As): Step {
     const t = this.res.asTypes.get(e);
     if (t === undefined || t === null) throw new Error("a program type that did not resolve is never compiled");
     const span = e.span;
     if (e.form === "is") {
-      return (r) => {
-        const v = x(r);
+      return (r, v) => {
         const base = r.depth;
         const f = conformWalk(v, t, r.walkCtx());
         r.depth = base;
         return f === null;
       };
     }
-    return (r) => {
-      const v = x(r);
+    return (r, v) => {
       const base = r.depth;
       const f = conformWalk(v, t, r.walkCtx());
       r.depth = base;
@@ -799,7 +809,7 @@ class Compiler {
         const p = parts[i];
         if (typeof p === "string") out.add(p);
         else {
-          const v = ev(r, p);
+          const v = p.k === 0 ? p.c(r) : ev(r, p);
           if (typeof v === "string") out.add(v);
           else render(r, v, span, out);
         }
@@ -917,45 +927,6 @@ class Compiler {
     };
   }
 
-  /** A left-associative chain of binary operators, compiled and run by a loop. */
-  private binary(e: A.Binary): Code {
-    const spine: A.Binary[] = [];
-    let x: A.Expr = e;
-    while (x.kind === "Binary" && x.op !== "**") {
-      spine.push(x);
-      x = x.x;
-    }
-    if (spine.length === 0) {
-      // `**`: right-associative; its left operand is a chain or a primary.
-      const a = this.expr(e.x);
-      const b = this.expr(e.y);
-      const span = e.span;
-      return (r) => {
-        const va = a(r);
-        return arith(r, "**", va, b(r), span);
-      };
-    }
-    spine.reverse();
-    const first = this.operand(x, this.expr(x));
-    if (spine.length <= NEST_MAX) {
-      let left = first;
-      let code: Code = NO_CODE;
-      for (const n of spine) {
-        code = binaryOp(n.op, left, this.operandOf(n.y), n.span);
-        left = codeOperand(code);
-      }
-      return code;
-    }
-    // A longer chain runs in a loop, so it spends no host stack on its length.
-    const steps = spine.map((n) => binaryStep(n.op, this.operandOf(n.y), n.span));
-    const n = steps.length;
-    return (r) => {
-      let acc = ev(r, first);
-      for (let i = 0; i < n; i++) acc = steps[i](r, acc);
-      return acc;
-    };
-  }
-
   /** `? :` and `if`, with every `else` part in one loop. */
   private cond(e: A.Cond): Code {
     const tests: Code[] = [];
@@ -971,7 +942,8 @@ class Compiler {
       const test = this.operand(e.test, tests[0]);
       const then = this.operand(e.then, thens[0]);
       const other = this.operand(c, otherwise);
-      return (r) => (truthyQ(r, ev(r, test)) ? ev(r, then) : ev(r, other));
+      return (r) =>
+        truthyQ(r, test.k === 0 ? test.c(r) : ev(r, test)) ? (then.k === 0 ? then.c(r) : ev(r, then)) : other.k === 0 ? other.c(r) : ev(r, other);
     }
     return (r) => {
       for (let i = 0; i < tests.length; i++) {
@@ -1053,72 +1025,145 @@ class Compiler {
     return 1 + (level - this.lambdaLevel);
   }
 
-  /** A chain: its primary, then each step left to right (02 2.3). */
-  /** `raw`: an optional step that finds null gives SHORT, for the chain a projection goes on (f07 3.1). */
-  private chain(e: A.Expr, raw = false): Code {
-    const steps: A.Expr[] = [];
-    // Only the outermost node of a chain is an OptChain: an inner one is a
-    // chain of its own, written in parentheses (01 7.4 rule 5).
-    let x: A.Expr = e.kind === "OptChain" ? e.x : e;
-    for (;;) {
-      if (x.kind === "Member" && this.res.constants.has(x)) break; // the read of a constant is a primary
-      if (x.kind === "Member" || x.kind === "Index") {
-        steps.push(x);
-        x = x.x;
-      } else if (x.kind === "MethodCall") {
-        if (this.res.targets.has(x)) break; // a call of a namespace is a primary
-        steps.push(x);
-        x = x.x;
-      } else break;
+  /**
+   * A spine: an expression whose evaluation starts with an operand that
+   * opens no level (01 13.1, f04 2.8, f07 2.5): the left operand of a binary
+   * operator, `**`, `as` or `is`, the receiver of a step or a method call, the
+   * receiver of a projection. Its core is the innermost such operand. The
+   * spine evaluates the core, then applies each step to the value so far, in
+   * the order of 02 2.2 and 2.3.
+   *
+   * A chain is the steps of one chain node (an OptChain, or a step that has
+   * none): a step that gives SHORT makes its chain null, and the steps after
+   * the chain go on from there (01 7.4 rule 5, f07 3.1 item 2).
+   *
+   * STACK. The whole spine runs in one closure, and a method call in it is
+   * run in place, not by a closure of its own: a call that the core or a step
+   * makes runs with this one frame under it, however long the spine.
+   */
+  private spine(e: A.Expr): Code {
+    // The nodes of the spine, outermost first, each with its chain (-1: none).
+    const nodes: { n: A.Expr; chain: number }[] = [];
+    let chains = 0;
+    let x: A.Expr = e;
+    peel: for (;;) {
+      switch (x.kind) {
+        case "Binary":
+        case "As":
+          nodes.push({ n: x, chain: -1 });
+          x = x.x;
+          continue;
+        case "OptChain":
+        case "Member":
+        case "Index":
+        case "MethodCall":
+        case "Each": {
+          if (this.isPrimary(x)) break peel;
+          // Only the outermost node of a chain is an OptChain: an inner one is a
+          // chain of its own, written in parentheses (01 7.4 rule 5).
+          const chain = chains++;
+          let y: A.Expr = x.kind === "OptChain" ? x.x : x;
+          while ((y.kind === "Member" || y.kind === "Index" || y.kind === "MethodCall" || (y.kind === "Each" && y.x !== null)) && !this.isPrimary(y)) {
+            nodes.push({ n: y, chain });
+            y = y.x!;
+          }
+          // A projection with no receiver is a later star, which the parser puts
+          // only among the reads of another projection (f07 3); reached here, it
+          // would make the peel loop for ever.
+          if (y.kind === "Each" && y.x === null) throw new Error("a projection with no receiver is never an operand");
+          x = y;
+          continue;
+        }
+        default:
+          break peel;
+      }
     }
-    steps.reverse();
-    let primary: Code;
-    if (x.kind === "Each") primary = this.each(x);
-    else if (x.kind === "Member" && this.res.constants.has(x)) {
+    // The core, then the steps in the order they apply.
+    let core: Code;
+    if (x.kind === "Member" && this.res.constants.has(x)) {
       // f06 5.3: the read of a constant charges nothing.
       const value = this.res.constants.get(x)!;
-      primary = () => value;
-    } else primary = x.kind === "Call" || x.kind === "MethodCall" ? this.call(x) : this.expr(x);
-    if (steps.length === 0 && x.kind !== "Each") return primary;
-    if (steps.length <= NEST_MAX) {
-      // Each step is a closure around the code before it. `mayShort`: the code so far can give SHORT.
-      let code = primary;
-      let mayShort = x.kind === "Each";
-      let first = true;
-      for (const s of steps) {
-        code = s.kind === "Member" && !mayShort ? this.memberOn(first ? this.operand(x, primary) : codeOperand(code), s) : this.stepOn(code, this.step(s), mayShort);
-        first = false;
-        if ((s.kind === "Member" || s.kind === "Index" || s.kind === "MethodCall") && s.optional) mayShort = true;
-      }
-      if (!mayShort || raw) return code;
-      return (r) => {
-        const v = code(r);
-        return v === SHORT ? null : v;
-      };
+      core = () => value;
+    } else core = x.kind === "Call" || x.kind === "MethodCall" ? this.call(x) : this.expr(x);
+    if (nodes.length === 0) return core;
+    const first = this.operand(x, core);
+    nodes.reverse();
+    const n = nodes.length;
+    // A short path of field reads from a constant, a slot or a variable
+    // (`a.b.c`), then a short chain of binary operators (`a.b * 2 + 1`), is a
+    // closure for each, around the one before, which is faster than a loop.
+    // With such a core, nothing at nesting depth 0 calls: the reads call
+    // nothing, and a call in a right operand is one level deeper, which pays
+    // for the frames of the operators under it. A single binary operator is
+    // one closure whatever its left operand: one frame, as a spine is.
+    let reads = 0;
+    let ops = 0;
+    if (first.k !== 0) {
+      while (reads < n && reads < NEST_MAX && nodes[reads].n.kind === "Member" && !(nodes[reads].n as A.Member).optional) reads++;
+      while (reads + ops < n && ops < NEST_MAX && nodes[reads + ops].n.kind === "Binary") ops++;
     }
-    // A longer chain runs in a loop, so it spends no host stack on its length.
-    const codes = steps.map((s) => this.step(s));
-    const short = raw ? SHORT : null;
-    const first = this.operand(x, primary);
-    const n = codes.length;
+    if (reads + ops === n || (n === 1 && nodes[0].n.kind === "Binary")) {
+      let left = first;
+      for (let i = 0; i < reads; i++) left = codeOperand(this.memberOn(left, nodes[i].n as A.Member));
+      for (let i = reads; i < n; i++) {
+        const b = nodes[i].n as A.Binary;
+        left = codeOperand(binaryOp(b.op, left, this.operandOf(b.y), b.span));
+      }
+      return left.c;
+    }
+    // The end of each step's chain, in one pass from the last step: the steps
+    // of a chain are next to one another, so a step's end is the next step's
+    // when both are of one chain, and its own index plus 1 otherwise.
+    const ends = new Array<number>(n);
+    for (let i = n - 1; i >= 0; i--) {
+      const chain = nodes[i].chain;
+      ends[i] = chain >= 0 && i + 1 < n && nodes[i + 1].chain === chain ? ends[i + 1] : i + 1;
+    }
+    const steps: SpineStep[] = nodes.map(({ n: node }, i) => ({
+      f: node.kind === "MethodCall" ? null : this.spineStep(node),
+      m: node.kind === "MethodCall" ? this.methodCode(node) : null,
+      end: ends[i],
+    }));
     return (r) => {
-      let v = ev(r, first);
-      if (v === SHORT) return short;
+      let v = first.k === 0 ? first.c(r) : ev(r, first);
       for (let i = 0; i < n; i++) {
-        v = codes[i](r, v);
-        if (v === SHORT) return short;
+        const s = steps[i];
+        const m = s.m;
+        if (m === null) v = s.f!(r, v);
+        else {
+          // A method call (02 2.3, 11.3): the entry runs from this frame.
+          const c = m.enter(r, v);
+          v = c === null ? SHORT : c.impl(c);
+        }
+        if (v === SHORT) {
+          v = null;
+          i = s.end - 1;
+        }
       }
       return v;
     };
   }
 
-  /** A step after the code before it. */
-  private stepOn(prev: Code, step: (r: Run, v: unknown) => unknown, mayShort: boolean): Code {
-    if (!mayShort) return (r) => step(r, prev(r));
-    return (r) => {
-      const v = prev(r);
-      return v === SHORT ? SHORT : step(r, v);
-    };
+  /** A node of a chain's kind that is a primary: the read of a constant, a call of a namespace. */
+  private isPrimary(x: A.Expr): boolean {
+    return (x.kind === "Member" && this.res.constants.has(x)) || (x.kind === "MethodCall" && this.res.targets.has(x));
+  }
+
+  /** A step of a spine that is not a method call. */
+  private spineStep(n: A.Expr): Step {
+    switch (n.kind) {
+      case "Member":
+      case "Index":
+        return this.step(n);
+      case "Each":
+        return this.project(n);
+      case "As":
+        return this.asStep(n);
+      case "Binary":
+        return binaryStep(n.op, this.operandOf(n.y), n.span);
+      default:
+        throw new Error(`a ${n.kind} is not a step`);
+    }
   }
 
   /** A field step on a value quickMap does not class. */
@@ -1148,7 +1193,7 @@ class Compiler {
     const cost = 1 + size(name);
     const slow = this.memberSlow(s);
     return (r) => {
-      const v = ev(r, prev);
+      const v = prev.k === 0 ? prev.c(r) : ev(r, prev);
       const q = quickMap(r, v);
       if (q === 0) return slow(r, v);
       r.charge(cost);
@@ -1161,7 +1206,8 @@ class Compiler {
     };
   }
 
-  private step(s: A.Expr): (r: Run, v: unknown) => unknown {
+  /** A read: a field step or an index step, applied to the value before it. */
+  private step(s: A.Expr): Step {
     if (s.kind === "Member") {
       const { name, optional, span } = s;
       const cost = 1 + size(name);
@@ -1223,7 +1269,7 @@ class Compiler {
         return c;
       };
     }
-    return this.methodStep(s as A.MethodCall);
+    throw new Error(`a ${s.kind} is not a read`);
   }
 
   /** An argument that is a lambda: a Lambda node, or the name of a const-bound lambda. */
@@ -1262,14 +1308,14 @@ class Compiler {
           return { eval: () => [], lambdas };
         case 1: {
           const [a] = vs;
-          return { eval: (r) => [ev(r, a)], lambdas };
+          return { eval: (r) => [a.k === 0 ? a.c(r) : ev(r, a)], lambdas };
         }
         case 2: {
           const [a, b] = vs;
           return {
             eval: (r) => {
-              const x = ev(r, a);
-              return [x, ev(r, b)];
+              const x = a.k === 0 ? a.c(r) : ev(r, a);
+              return [x, b.k === 0 ? b.c(r) : ev(r, b)];
             },
             lambdas,
           };
@@ -1281,7 +1327,8 @@ class Compiler {
       for (let i = 0; i < n; i++) {
         const c = codes[i];
         if (c.kind === "value") {
-          out[i] = ev(r, c.op!);
+          const op = c.op!;
+          out[i] = op.k === 0 ? op.c(r) : ev(r, op);
           continue;
         }
         if (c.inPlace) r.charge(1);
@@ -1292,7 +1339,8 @@ class Compiler {
     return { eval: evalArgs, lambdas };
   }
 
-  private methodStep(s: A.MethodCall): (r: Run, v: unknown) => unknown {
+  /** A method call, as a step of a spine, which runs it in place (spine()). */
+  private methodCode(s: A.MethodCall): MethodCode {
     const { name, optional, span } = s;
     const nargs = s.args.length;
     const shapes = s.args.map((a) => this.lambdaArg(a));
@@ -1307,7 +1355,6 @@ class Compiler {
     }
     // The shape test (02 2.3, 04 2.2) of a receiver of the library's kinds is fixed by the call:
     // the entry, or the failure the test gives.
-    type Plan = { entry: Entry; fail: null } | { entry: null; fail: () => RunFailure };
     const plan = (k: Kind): Plan => {
       const entry = k === "string" || k === "list" || k === "map" ? (gone(k) ? undefined : libraryMethod(k, name)) : undefined;
       if (entry === undefined) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "method", { kind: k, name }) };
@@ -1326,30 +1373,7 @@ class Compiler {
     };
     const plans = new Map<Kind, Plan>();
     for (const k of ["bool", "number", "string", "list", "map"] as const) plans.set(k, plan(k));
-    const listPlan = plans.get("list")!;
-    const stringPlan = plans.get("string")!;
-    return (r, v) => {
-      const k = kindQ(r, v);
-      if (k === "null") {
-        if (optional) return SHORT;
-        throw new RunFailure("null-operand", span, "method", { name });
-      }
-      if (k === "opaque") {
-        const t = r.cls.opaqueName(v);
-        const host = t === null ? undefined : env.methods.get(t)?.get(name);
-        if (host === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: k, name });
-        const counts = host.counts;
-        if (nargs < counts.min || nargs > counts.max) throw new RunFailure("wrong-kind", span, "count", { count: nargs, name });
-        for (let i = 0; i < nargs; i++) {
-          if (shapes[i] !== null) throw new RunFailure("wrong-kind", span, "not-callback", { count: i + 1, name });
-        }
-        const vals = args(r);
-        return callHost(r, host, [v, ...vals], name, span);
-      }
-      const p = k === "list" ? listPlan : k === "string" ? stringPlan : plans.get(k)!;
-      if (p.fail !== null) throw p.fail();
-      return callEntry(r, p.entry, v, args(r), span, name, lambdas);
-    };
+    return new MethodCode(span, name, lambdas, optional, nargs, shapes, args, env.methods, plans);
   }
 
   /** A call by name, or a call of a namespace (`MethodCall` resolved as a `Call`). */
@@ -1363,18 +1387,37 @@ class Compiler {
         const node = this.res.lambdas[target.id];
         const codesOf = this.codes;
         const name = this.res.lambdaNames?.get(target.id) ?? "";
+        // 02 11.2. The body runs from this closure's frame, with no other
+        // under it (STACK in src/index.ts).
         return (r) => {
           const vals = args(r);
           r.charge(1);
+          const lc = codesOf.get(node)!;
           // f08 4.1: a call by name is in progress from its depth test to its end.
-          return invoke(r, codesOf.get(node)!, vals, measure, span, name, null);
+          r.depth += measure;
+          try {
+            r.testDepth(r.depth);
+            const ps = lc.params;
+            for (let i = 0; i < ps.length; i++) bindParam(r, ps[i], i < vals.length ? vals[i] : null);
+            const out = lc.body(r);
+            r.depth -= measure;
+            return out;
+          } catch (x) {
+            // f08 4.1: the trace is built as the failure unwinds, from the outermost in.
+            if (x instanceof RunFailure) x.trace.unshift({ span, name, index: null });
+            throw x;
+          }
         };
       }
       case "library": {
         const entry = libraryFunction(target.name)!;
         if (entry.impl === null) this.missing.add(target.name);
         const name = target.name;
-        return (r) => callEntry(r, entry, undefined, args(r), span, name, lambdas);
+        const site: EntrySite = { span, name, lambdas };
+        return (r) => {
+          const c = enterEntry(r, entry, undefined, args(r), site);
+          return c.impl(c);
+        };
       }
       case "host": {
         const host = this.env.functions.get(target.name);
@@ -1395,44 +1438,26 @@ function bindParam(r: Run, p: ParamCode, v: unknown): void {
   else if (p.slot === PATTERN) p.bind(r, v);
 }
 
-/** Call a const-bound lambda (02 11.2) or a lambda passed to the library (5.6). */
-function invoke(r: Run, lc: LambdaCode, args: unknown[], measure: number, span?: Span, name?: string, index?: number | null): unknown {
-  r.depth += measure;
-  try {
-    r.testDepth(r.depth);
-    const ps = lc.params;
-    for (let i = 0; i < ps.length; i++) bindParam(r, ps[i], i < args.length ? args[i] : null);
-    const out = ev(r, lc.bodyOp);
-    r.depth -= measure;
-    return out;
-  } catch (x) {
-    // f08 4.1: the trace is built as the failure unwinds, from the outermost in.
-    if (span !== undefined && x instanceof RunFailure) x.trace.unshift({ span, name: name!, index: index ?? null });
-    throw x;
-  }
+/** Bind the parameters of a lambda that is not simple to a, b and c, and any more to null (02 11.2). */
+function bindArgs(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown): void {
+  const ps = lc.params;
+  const n = ps.length;
+  if (n > 0) bindParam(r, ps[0], a);
+  if (n > 1) bindParam(r, ps[1], b);
+  if (n > 2) bindParam(r, ps[2], c);
+  for (let i = 3; i < n; i++) bindParam(r, ps[i], null);
 }
 
-/** `invoke` with the arguments (a, b, c): what `invoke(r, lc, [a, b, c], ...)` does. */
-function invoke3(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown, measure: number, span?: Span, name?: string, index?: number | null): unknown {
-  r.depth += measure;
-  try {
-    r.testDepth(r.depth);
-    const ps = lc.params;
-    const n = ps.length;
-    if (n > 0) bindParam(r, ps[0], a);
-    if (n > 1) bindParam(r, ps[1], b);
-    if (n > 2) bindParam(r, ps[2], c);
-    for (let i = 3; i < n; i++) bindParam(r, ps[i], null);
-    const out = ev(r, lc.bodyOp);
-    r.depth -= measure;
-    return out;
-  } catch (x) {
-    if (span !== undefined && x instanceof RunFailure) x.trace.unshift({ span, name: name!, index: index ?? null });
-    throw x;
-  }
-}
-
-/** A lambda passed to the library or to a host function. */
+/**
+ * A lambda passed to the library (02 5.6, 11.3).
+ *
+ * STACK. A library entry calls a lambda through call2 or call3, and each runs
+ * the body from its own frame: between the entry's frame and the body's there
+ * is this one frame and nothing else. So the two are written out in full
+ * rather than one calling the other, and binding a parameter that is not a
+ * plain name (bindArgs) returns before the body runs. test/deep.test.ts
+ * measures what this saves.
+ */
 class LambdaCallback implements Callback {
   readonly params: number;
   trace: { span: Span; name: string; count: number } | undefined = undefined;
@@ -1447,54 +1472,177 @@ class LambdaCallback implements Callback {
     this.measure = measure;
   }
 
-  call(args: unknown[]): unknown {
-    // f08 4.1: the library call is in progress while this call is; its index is the call's position.
-    const tr = this.trace;
-    return tr === undefined ? invoke(this.r, this.lc, args, this.measure) : invoke(this.r, this.lc, args, this.measure, tr.span, tr.name, tr.count++);
-  }
-
-  /** call([a, b]) */
+  /** The call with the arguments (a, b): the depth test, the parameters, the body (02 8.4 item 7, 11.2). */
   call2(a: unknown, b: unknown): unknown {
-    return this.call3(a, b, null);
-  }
-
-  /** call([a, b, c]) */
-  call3(a: unknown, b: unknown, c: unknown): unknown {
     const r = this.r;
     const lc = this.lc;
-    if (!lc.simple) {
-      const tr = this.trace;
-      return tr === undefined ? invoke3(r, lc, a, b, c, this.measure) : invoke3(r, lc, a, b, c, this.measure, tr.span, tr.name, tr.count++);
-    }
-    // What invoke3 does, for parameters that are names with no default.
+    // f08 4.1, 4.2: the library call is in progress while this call is; its index is the call's position.
     const tr = this.trace;
     const index = tr === undefined ? 0 : tr.count++;
-    const measure = this.measure;
-    r.depth += measure;
+    r.depth += this.measure;
     try {
       if (r.depth > r.depthLimit) r.testDepth(r.depth);
-      const slots = r.slots;
-      if (lc.s0 >= 0) slots[lc.s0] = a;
-      if (lc.s1 >= 0) slots[lc.s1] = b;
-      if (lc.s2 >= 0) slots[lc.s2] = c;
-      const out = ev(r, lc.bodyOp);
-      r.depth -= measure;
+      if (lc.simple) {
+        if (lc.s0 >= 0) r.slots[lc.s0] = a;
+        if (lc.s1 >= 0) r.slots[lc.s1] = b;
+        if (lc.s2 >= 0) r.slots[lc.s2] = null;
+      } else this.bind2(a, b);
+      const out = lc.body(r);
+      r.depth -= this.measure;
       return out;
     } catch (x) {
-      if (tr !== undefined && x instanceof RunFailure) x.trace.unshift({ span: tr.span, name: tr.name, index });
+      if (tr !== undefined) this.traced(x, index);
       throw x;
     }
   }
+
+  /** The call with the arguments (a, b, c), as call2. */
+  call3(a: unknown, b: unknown, c: unknown): unknown {
+    const r = this.r;
+    const lc = this.lc;
+    const tr = this.trace;
+    const index = tr === undefined ? 0 : tr.count++;
+    r.depth += this.measure;
+    try {
+      if (r.depth > r.depthLimit) r.testDepth(r.depth);
+      if (lc.simple) {
+        if (lc.s0 >= 0) r.slots[lc.s0] = a;
+        if (lc.s1 >= 0) r.slots[lc.s1] = b;
+        if (lc.s2 >= 0) r.slots[lc.s2] = c;
+      } else bindArgs(r, lc, a, b, c);
+      const out = lc.body(r);
+      r.depth -= this.measure;
+      return out;
+    } catch (x) {
+      if (tr !== undefined) this.traced(x, index);
+      throw x;
+    }
+  }
+
+  // Each of these takes at most two arguments, so that a call of it from
+  // call2 needs no list of registers in call2's frame.
+
+  /** bindArgs with (a, b, null). */
+  private bind2(a: unknown, b: unknown): void {
+    bindArgs(this.r, this.lc, a, b, null);
+  }
+
+  /** f08 4.1: a failure leaving call `index` of the lambda gets the library call's entry in its trace. */
+  private traced(x: unknown, index: number): void {
+    const tr = this.trace!;
+    if (x instanceof RunFailure) x.trace.unshift({ span: tr.span, name: tr.name, index });
+  }
 }
 
-/** A call of a library entry, after its receiver and arguments (04 2.2, 2.6, 4.4). `lambdas`: the positions of its lambda arguments. */
-function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], span: Span, name: string, lambdas: number[]): unknown {
+/** What does not change between the runs of a call of a library entry. `lambdas`: the positions of its lambda arguments. */
+interface EntrySite {
+  span: Span;
+  name: string;
+  lambdas: number[];
+}
+
+/** A call of a library entry, ready to make: `c.impl(c)`. */
+interface EntryCall extends CallContext {
+  impl: Impl;
+}
+
+/**
+ * A call of a library entry, after its receiver and arguments, up to the
+ * entry's own work (04 2.2, 2.6, 4.4): the tests of the arguments, the call's
+ * step. It returns the call, which the caller makes, so that this frame is
+ * not under the entry's while the entry calls a lambda.
+ */
+function enterEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], site: EntrySite): EntryCall {
+  const { span, name, lambdas } = site;
   testArgs(r, entry, args, span, name);
   r.charge(1);
-  if (entry.impl === null) throw new RunFailure("internal-error", span, "default");
+  const impl = entry.impl;
+  if (impl === null) throw new RunFailure("internal-error", span, "default");
   // f08 4.1, 4.2: the entry is in progress while a call of its lambda is; the index is the element's position, in visit order.
   for (let i = 0; i < lambdas.length; i++) (args[lambdas[i]] as LambdaCallback).trace = { span, name, count: 0 };
-  return entry.impl({ run: r, span, name, receiver, args });
+  return { impl, run: r, span, name, receiver, args };
+}
+
+/**
+ * The shape test of a method call (02 2.3, 04 2.2) for a receiver of one of
+ * the library's kinds, which the call fixes: the entry, or the failure.
+ */
+type Plan = { entry: Entry; fail: null } | { entry: null; fail: () => RunFailure };
+
+/** The "entry" of a call of a method of an opaque type, made already: its receiver is the result. */
+const hostResult: Impl = (c) => c.receiver;
+
+/** A method call, a step of a spine (Compiler.spine runs it). */
+class MethodCode implements EntrySite {
+  readonly span: Span;
+  readonly name: string;
+  readonly lambdas: number[];
+  readonly optional: boolean;
+  readonly nargs: number;
+  /** For each argument, its shape when it is a lambda, or null. */
+  readonly shapes: ({ params: number } | null)[];
+  readonly args: (r: Run) => unknown[];
+  readonly methods: CompileEnv["methods"];
+  readonly plans: Map<Kind, Plan>;
+  private readonly list: Plan;
+  private readonly string: Plan;
+
+  constructor(
+    span: Span,
+    name: string,
+    lambdas: number[],
+    optional: boolean,
+    nargs: number,
+    shapes: ({ params: number } | null)[],
+    args: (r: Run) => unknown[],
+    methods: CompileEnv["methods"],
+    plans: Map<Kind, Plan>,
+  ) {
+    this.span = span;
+    this.name = name;
+    this.lambdas = lambdas;
+    this.optional = optional;
+    this.nargs = nargs;
+    this.shapes = shapes;
+    this.args = args;
+    this.methods = methods;
+    this.plans = plans;
+    this.list = plans.get("list")!;
+    this.string = plans.get("string")!;
+  }
+
+  /**
+   * The call after its receiver `v` (02 2.3, 11.3), up to the entry's own
+   * work: the call to make, or null when the call is optional and `v` is null
+   * (the chain's SHORT). A method of an opaque type is called here, as it
+   * calls no lambda; the call returned gives its result.
+   */
+  enter(r: Run, v: unknown): EntryCall | null {
+    const k = kindQ(r, v);
+    if (k === "null") {
+      if (this.optional) return null;
+      throw new RunFailure("null-operand", this.span, "method", { name: this.name });
+    }
+    if (k === "opaque") return { impl: hostResult, run: r, span: this.span, name: this.name, receiver: opaqueMethod(r, v, this), args: [] };
+    const p = k === "list" ? this.list : k === "string" ? this.string : this.plans.get(k)!;
+    if (p.entry === null) throw p.fail();
+    return enterEntry(r, p.entry, v, this.args(r), this);
+  }
+}
+
+/** A method call on a value of an opaque type, after its receiver (02 2.3, 11.4). */
+function opaqueMethod(r: Run, v: unknown, m: MethodCode): unknown {
+  const { span, name, nargs, shapes, args } = m;
+  const t = r.cls.opaqueName(v);
+  const host = t === null ? undefined : m.methods.get(t)?.get(name);
+  if (host === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: "opaque", name });
+  const counts = host.counts;
+  if (nargs < counts.min || nargs > counts.max) throw new RunFailure("wrong-kind", span, "count", { count: nargs, name });
+  for (let i = 0; i < nargs; i++) {
+    if (shapes[i] !== null) throw new RunFailure("wrong-kind", span, "not-callback", { count: i + 1, name });
+  }
+  const vals = args(r);
+  return callHost(r, host, [v, ...vals], name, span);
 }
 
 /** A call of a host function or of a method of an opaque type (02 11.4, 03 3.5). */
