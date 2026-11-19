@@ -1454,9 +1454,11 @@ func Load[T any](ctx context.Context, env *Env, x *Expr, vars Vars, dst *T) erro
 ### B.4 Host functions
 
 > **Superseded by Part E** (R201) where they disagree. The Go binding's
-> `Function` is `{Name, Type, Impl}` with the signature as text (E.3). The
-> registration of any Go function that this section and S4 describe is built
-> as helpers by `19-13`: `risor.Func`, `risor.Methods` and `risor-bind`.
+> `Function` is `{Name, Type, Impl}` with the signature as text (E.3). There
+> is no `Rule` and no `Native`. The registration of any Go function that this
+> section and S4 describe is planned as helpers by `19-13`: `risor.Func`,
+> `risor.Methods`, and the generator `risor-bind` as a follow-up. None is
+> built yet.
 
 ```go
 // Function declares a host function. It is a Decl.
@@ -1497,8 +1499,9 @@ type CallCheck struct{ Args []Arg; Span Span }
 
 ### B.5 Diagnostics
 
-> **Superseded by Part E** (R201) where they disagree. A nested Risor error's
-> message is ruled by `20-9`.
+> **Superseded by Part E** (R201) where they disagree: E.8 has the
+> diagnostics and the three renderings. A nested Risor error's message is
+> ruled by `20-9`, a Core amendment not yet built.
 
 ```go
 // Error is the only error type this package returns.
@@ -1566,7 +1569,9 @@ position (`expr:check.go:18-20`, `:185-191`). v2's lexer counts runes
 
 ### B.6 Templates
 
-> **Superseded by Part E** (R201) where they disagree.
+> **Superseded by Part E** (R201) where they disagree: E.5 has the template
+> surface, with `IsSingle`, `Part` and `Program` in place of `Single` and
+> `Expr`.
 
 ```go
 func ParseTemplate(text string, opts ...ParseOption) (*Template, error)
@@ -1586,8 +1591,11 @@ expr has a separate `Template.Check` and `Template.Render` (`expr:check.go:76`,
 
 ### B.7 Conveniences of the Go binding
 
-> **Superseded by Part E** (R201) where they disagree. `TypeOf` and the helpers of
-> `19-13` are what the binding offers.
+> **Superseded by Part E** (R201) where they disagree. The binding offers
+> `TypeOf` and the other conveniences of E.1 row 5; `Fields`, `Bind`,
+> `Opaque` and `Method(name, impl)` are not its surface (E.3 has
+> `OpaqueType` and `Method(type, name, f)`). The helpers of `19-13` are
+> planned, not built.
 
 These derive declarations from Go types by reflection. They are outside the
 model (`O:P5`); `Describe` writes their result as type text.
