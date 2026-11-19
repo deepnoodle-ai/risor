@@ -735,7 +735,7 @@
       1,
       6
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
    ]
   }
@@ -773,7 +773,7 @@
       1,
       9
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
    ]
   }

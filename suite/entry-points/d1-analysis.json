@@ -1,0 +1,7 @@
+[
+  {"name": "a type line holds no read", "source": "type Order = {id: string}; order.id", "expect": {"analysis": {"calls": [], "literal": false, "names": ["order"], "refs": [{"name": "order", "path": ["id"], "span": [1, 28, 1, 36]}], "segments": null}}},
+  {"name": "an annotation holds no read", "source": "const f = (x: Order): Order => x; f(input)", "expect": {"analysis": {"calls": [], "literal": false, "names": ["input"], "refs": [{"name": "input", "path": [], "span": [1, 37, 1, 42]}], "segments": null}}},
+  {"name": "a type name in an annotation is not a read even when a value has its name", "source": "const f = (x: Order) => Order; 1", "expect": {"analysis": {"calls": [], "literal": false, "names": ["Order"], "refs": [{"name": "Order", "path": [], "span": [1, 25, 1, 30]}], "segments": null}}},
+  {"name": "a const line's annotation holds no read", "source": "const n: int = input.n; n", "expect": {"analysis": {"calls": [], "literal": false, "names": ["input"], "refs": [{"name": "input", "path": ["n"], "span": [1, 16, 1, 23]}], "segments": null}}},
+  {"name": "an Fn annotation holds no read or call", "source": "const g = (f: (a: int) => int, n) => n; g(1, input)", "expect": {"analysis": {"calls": [], "literal": false, "names": ["input"], "refs": [{"name": "input", "path": [], "span": [1, 46, 1, 51]}], "segments": null}}}
+]

@@ -1,0 +1,16 @@
+[
+  {"name": "a type line", "format": "type   Order={id:string,qty:int};o", "expect": {"formatted": "type Order = {id: string, qty: int};\no\n"}},
+  {"name": "type lines and const lines keep their order", "format": "const a=1;type Pair={a:int,b:int};const p:Pair={a,b:2};p.a", "expect": {"formatted": "const a = 1;\ntype Pair = {a: int, b: int};\nconst p: Pair = {a, b: 2};\np.a\n"}},
+  {"name": "a const line's annotation", "format": "const x:int|null=1;x", "expect": {"formatted": "const x: int | null = 1;\nx\n"}},
+  {"name": "a parameter's annotation keeps the parentheses", "format": "const f=(x:int)=>x;f(1)", "expect": {"formatted": "const f = (x: int) => x;\nf(1)\n"}},
+  {"name": "a result annotation keeps the parentheses", "format": "const f=(x):int=>x;f(1)", "expect": {"formatted": "const f = (x): int => x;\nf(1)\n"}},
+  {"name": "a parameter's annotation and default", "format": "const f=(x:int=1,y:string=\"a\"):string=>y;f()", "expect": {"formatted": "const f = (x: int = 1, y: string = \"a\"): string => y;\nf()\n"}},
+  {"name": "an Fn annotation on one line", "format": "const g=(f:(a:int,b:string)=>bool,n)=>n;0", "expect": {"formatted": "const g = (f: (a: int, b: string) => bool, n) => n;\n0\n"}},
+  {"name": "an Fn with no parameters", "format": "const g=(f:()=>unknown)=>1;0", "expect": {"formatted": "const g = (f: () => unknown) => 1;\n0\n"}},
+  {"name": "an annotated lambda as an argument", "format": "xs.map((x:int)=>x+1)", "expect": {"formatted": "xs.map((x: int) => x + 1)\n"}},
+  {"name": "the parentheses of a parameter with no annotation are dropped", "format": "xs.map((x)=>x)", "expect": {"formatted": "xs.map(x => x)\n"}},
+  {"name": "a type line's record type stays on one line", "format": "type Order = {id: string, customer: {name: string, email: string}, lines: {sku: string, qty: int}[]};\n1", "expect": {"formatted": "type Order = {id: string, customer: {name: string, email: string}, lines: {sku: string, qty: int}[]};\n1\n"}},
+  {"name": "a comment after a type line", "format": "type Id = string; // the id\n1", "expect": {"formatted": "type Id = string; // the id\n1\n"}},
+  {"name": "a blank line between type lines is kept", "format": "type Aa = int;\n\ntype Bb = string;\n1", "expect": {"formatted": "type Aa = int;\n\ntype Bb = string;\n1\n"}},
+  {"name": "an annotated lambda that does not fit", "format": "const total = (order: {lines: {qty: int, price: float}[]}, rate: float = 0.2): float => order.lines.map(l => l.qty * l.price).sum() * (1 + rate);\ntotal({lines: []})", "expect": {"formatted": "const total = (\n  order: {lines: {qty: int, price: float}[]},\n  rate: float = 0.2,\n): float => order.lines.map(l => l.qty * l.price).sum() * (1 + rate);\ntotal({lines: []})\n"}}
+]

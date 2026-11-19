@@ -341,39 +341,6 @@
    }
   },
   {
-   "name": "A8",
-   "source": "const f = x => f(x); f(1)",
-   "expect": {
-    "analysis": {
-     "names": [],
-     "refs": [],
-     "calls": [
-      {
-       "name": "f",
-       "namespace": null,
-       "span": [
-        1,
-        16,
-        1,
-        20
-       ],
-       "args": [
-        [
-         1,
-         18,
-         1,
-         19
-        ]
-       ],
-       "lambda": true
-      }
-     ],
-     "literal": false,
-     "segments": null
-    }
-   }
-  },
-  {
    "name": "A9",
    "source": "{a: 1, b: [true, null], c: -2.5}",
    "expect": {

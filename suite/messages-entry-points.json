@@ -1,0 +1,77 @@
+[
+  {
+    "code": "name-clash",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a type of the environment, and a type line cannot declare it again"
+    },
+    "cases": [
+      {
+        "name": "name-clash",
+        "types": [
+          {
+            "name": "Order",
+            "type": "{id: string}"
+          }
+        ],
+        "source": "type Order = {id: int}; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "name-clash",
+              "span": [
+                1,
+                6,
+                1,
+                11
+              ],
+              "message": "Order is a type of the environment, and a type line cannot declare it again"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "arg-mismatch",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "found": "type"
+    },
+    "templates": {
+      "fn-value": "{name} passes {found} to a parameter that takes a function"
+    },
+    "when": {
+      "fn-value": "A lambda argument of a library function, or of a method on any, whose parameter has an Fn annotation. name is the function; found is the type of the value passed there"
+    },
+    "cases": [
+      {
+        "name": "arg-mismatch: fn-value",
+        "env": "{xs: int[]}",
+        "source": "xs.map((f: (n: int) => int) => 1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                12,
+                1,
+                27
+              ],
+              "message": "map passes int to a parameter that takes a function"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

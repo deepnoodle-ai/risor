@@ -1,0 +1,6 @@
+[
+  {"name": "A8: a lambda's own name is bound in its body", "source": "const f = x => f(x); f(1)", "expect": {"analysis": {"calls": [], "literal": false, "names": [], "refs": [], "segments": null}}},
+  {"name": "a lambda's own name is not a call in its body", "source": "const f = x => f(x); 1", "expect": {"analysis": {"calls": [], "literal": false, "names": [], "refs": [], "segments": null}}},
+  {"name": "a lambda's own name as a lambda argument is not a read", "source": "const f = xs => xs.map(f); f([1])", "expect": {"analysis": {"calls": [], "literal": false, "names": [], "refs": [], "segments": null}}},
+  {"name": "a value's own name is still free in its value", "source": "const v = v + 1; v", "expect": {"analysis": {"calls": [], "literal": false, "names": ["v"], "refs": [{"name": "v", "path": [], "span": [1, 11, 1, 12]}], "segments": null}}}
+]

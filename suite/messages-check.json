@@ -1873,6 +1873,38 @@
     ]
   },
   {
+    "code": "recursion-needs-types",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is this lambda's own name, and a lambda cannot refer to itself"
+    },
+    "cases": [
+      {
+        "name": "recursion-needs-types",
+        "source": "const f = n => f(n - 1); f(3)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "recursion-needs-types",
+              "span": [
+                1,
+                16,
+                1,
+                17
+              ],
+              "message": "f is this lambda's own name, and a lambda cannot refer to itself"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "code": "non-exhaustive",
     "phase": "check",
     "since": "3.0",

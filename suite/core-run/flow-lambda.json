@@ -28,8 +28,6 @@
   {"name": "lambda: a body that is a map literal", "source": "const mk = x => {id: x}; mk(3)", "expect": {"value": {"id": 3}, "steps": 2, "allocated": 3}},
   {"name": "lambda: a body that is a block", "source": "const f = x => { const y = x + 1; y * y }; f(2)", "expect": {"value": 9, "steps": 4, "allocated": 0}},
   {"name": "lambda: one const-bound lambda calls another", "source": "const inc = x => x + 1; const twice = x => inc(inc(x)); twice(1)", "expect": {"value": 3, "steps": 7, "allocated": 0}},
-  {"name": "lambda: an inner lambda of the same name calls the outer one", "source": "const f = x => x + 1; { const f = x => f(x) * 2; f(3) }", "expect": {"value": 8, "steps": 6, "allocated": 0}},
-  {"name": "lambda: no recursion, the name is not in scope in its own body", "source": "const f = n => n <= 0 ? 0 : f(n - 1); f(3)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 29, 1, 30]}]}},
   {"name": "lambda: a call by name with too few arguments is arity", "source": "const add = (a, b) => a + b; add(1)", "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 30, 1, 36]}]}},
   {"name": "lambda: a call by name with too many arguments is arity", "source": "const add = (a, b) => a + b; add(1, 2, 3)", "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 30, 1, 42]}]}},
   {"name": "lambda: a parameter with a default may be left out of a call by name", "source": "const f = (a, b = 1, c = 2) => a + b + c; f(10)", "expect": {"value": 13, "steps": 4, "allocated": 0}},

@@ -1,0 +1,9 @@
+[
+  {"name": "errors/errors-core-texts: core-run/parse-follow-on: a typed parameter in an argument", "source": "[1].map((x: int) => x)", "expect": {"allocated":4,"steps":4,"type":"int[]","value":[1]}},
+  {"name": "errors/errors-core-texts: core-run/parse-follow-on: a typed const line", "source": "const n: int = 1; n", "expect": {"allocated":0,"steps":0,"type":"int","value":1}},
+  {"name": "errors/errors-core-texts: core-run/parse-follow-on: text a later package covers: type Name = T", "source": "type Name = T", "expect": {"diagnostics":[{"code":"bad-type-text","message":"a type name has two characters or more, and T has one","span":[1,13,1,14]}],"phase":"parse"}},
+  {"name": "errors/parse-targeted: type-annotation: a parameter in an argument", "source": "[1].map((x: int) => x)", "expect": {"allocated":4,"steps":4,"type":"int[]","value":[1]}},
+  {"name": "errors/parse-targeted: type-annotation: a const line", "source": "const n: int = 1; n", "expect": {"allocated":0,"steps":0,"type":"int","value":1}},
+  {"name": "errors/parse-targeted: type-annotation: a second parameter", "source": "const f = (a, b: int) => a; 1", "expect": {"allocated":0,"steps":1,"type":"int","value":1}},
+  {"name": "errors/parse-targeted: type-declaration: type", "source": "type Name = T", "expect": {"diagnostics":[{"code":"bad-type-text","message":"a type name has two characters or more, and T has one","span":[1,13,1,14]}],"phase":"parse"}}
+]

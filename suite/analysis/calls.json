@@ -391,36 +391,6 @@
    }
   },
   {
-   "name": "a lambda's own name is free in its body",
-   "source": "const f = x => f(x); f(1)",
-   "expect": {
-    "analysis": {
-     "names": [],
-     "calls": [
-      {
-       "name": "f",
-       "namespace": null,
-       "span": [
-        1,
-        16,
-        1,
-        20
-       ],
-       "args": [
-        [
-         1,
-         18,
-         1,
-         19
-        ]
-       ],
-       "lambda": true
-      }
-     ]
-    }
-   }
-  },
-  {
    "name": "a call in a parameter default is inside the lambda",
    "source": "xs.map((x, i = pick()) => x)",
    "expect": {

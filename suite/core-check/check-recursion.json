@@ -1,0 +1,5 @@
+[
+  {"name": "a call of its own name has type never", "source": "const f = x => f(x) + \"a\"; f(1)", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,16,1,17]}],"phase":"check"}},
+  {"name": "a call of its own name is no use: the lambda is checked as unused", "source": "const f = x => f(x.a); 1", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,16,1,17]}],"phase":"check"}},
+  {"name": "its own name as a lambda argument is not checked", "source": "const f = xs => xs.map(f); f([1])", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,24,1,25]}],"phase":"check"}}
+]
