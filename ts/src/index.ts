@@ -19,13 +19,37 @@
 //
 // Positions are code-point offsets everywhere (src/syntax/source.ts).
 //
-// STACK (02 8.4, 01 13.2). The evaluator recurses only where the text opens a
-// nesting level, through calls in progress, and in walks; long flat forms run
-// in loops. The deepest programs within the limits (depth limit 1,000 reached
-// by calls at nesting 0 plus a walk; 100 levels of source nesting) run with a
-// V8 stack of 600 KB; test/deep.test.ts runs them with 700 KB. Node's default
-// is 984 KB, so no option is needed. A stack overflow, should a host run with
-// less, is reported as `internal-error`, never thrown to the host.
+// STACK (02 8.4, 01 13.2, 03 3.9.1). The evaluator recurses only where the
+// text opens a nesting level, through calls in progress, and in walks; long
+// flat forms run in loops. So the native stack a run needs grows with its
+// depth count. A unit of the count costs the most where each call goes
+// through a library entry that calls a lambda: the forms of
+// test/fixtures/deep-forms.ts, of which `heaviest` adds every operand that
+// opens no level. src/eval/compile.ts (Stack) says how the cost is kept down.
+//
+// Measured (ran), each program in a fresh process or worker, on an Apple M4
+// Max: the V8 stack a program needs in Node 22.22.3 (V8 12.4) at depth limit
+// 400 and at 1,000, the cost of a unit between the two, and the deepest limit
+// (of at most 1,000) at which it runs in a Chrome 158 Web Worker, whose stack
+// a page cannot set:
+//
+//   program                  Node 400  Node 1,000  a unit   Chrome worker
+//   calls by name              107 KB      199 KB  0.15 KB  1,000
+//   a walk                     142 KB      348 KB  0.34 KB  not measured
+//   deep-forms.ts `map`        226 KB      496 KB  0.45 KB  1,000
+//   deep-forms.ts `heaviest`   281 KB      638 KB  0.60 KB  783
+//
+// Of 28 such forms, none needed more in Node than `heaviest`; in the Chrome
+// worker the least was 771 (a like form with minBy). In a Firefox 159 worker
+// every form ran at 1,000; in a WebKit 27.2 worker `heaviest` ran at 779 and
+// the least was 697, for a call under four binary operators (Playwright's
+// builds). On the main thread of each browser, every form ran at 1,000.
+// Node's default stack is 984 KB, so no option is needed.
+// test/deep.test.ts runs calls and a walk at limit 1,000 and the forms at 400
+// with a 656 KB stack; web/examples/react-vite/e2e/deep.spec.ts runs the forms
+// in a Chrome worker at 400, and under 200 levels of themselves. A stack
+// overflow, should a host run with less, is reported as `internal-error`,
+// never thrown to the host.
 //
 // MEMORY (02 8.5 item 2). On 64-bit V8 (pointer-compressed JS values), the heap
 // memory a run creates as values of the language is bounded by 256 bytes per
