@@ -92,20 +92,26 @@ func VarRecord(recordType string) Decl {
 }
 
 // Function declares a host function. Name is "slug", or "geo.distance" in a
-// namespace. Type is its signature in type text.
+// namespace. Type is its signature in type text. Func makes one from a Go
+// function (bind.go).
 type Function struct {
 	Name string
 	Type string
 	Impl Native
+	// bind is set by Func and Methods.
+	bind *derivation
 }
 
 func (f Function) apply(e *Env) { e.addFunc(f) }
 
 // OpaqueType declares an opaque type and its methods. Each method's Type is
-// its signature in type text, without the receiver.
+// its signature in type text, without the receiver. Methods makes one from
+// a Go type (bind.go).
 type OpaqueType struct {
 	Name    string
 	Methods map[string]Function
+	// bind is set by Methods.
+	bind *opaqueBinding
 }
 
 func (o OpaqueType) apply(e *Env) { e.addOpaque(o) }
@@ -332,7 +338,7 @@ func (e *Env) errf(code, msg string) {
 	e.errs = append(e.errs, Diagnostic{Phase: PhaseDeclare, Code: code, Message: msg})
 }
 
-var reservedNamespaces = map[string]bool{"json": true, "time": true, "math": true, "base64": true}
+var reservedNamespaces = map[string]bool{"json": true, "time": true, "math": true, "base64": true, "regexp": true}
 
 var opaqueNameRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]+$`)
 
@@ -444,6 +450,9 @@ func (e *Env) parseSig(what, text string) (*typetext.Sig, bool) {
 }
 
 func (e *Env) addFunc(f Function) {
+	if !e.bound(f.Name, f) {
+		return
+	}
 	ns, name, ok := e.parseFuncName(f.Name)
 	if !ok {
 		return
@@ -470,8 +479,16 @@ func (e *Env) addOpaque(o OpaqueType) {
 		return
 	}
 	e.own["o:"+o.Name] = true
+	if o.bind != nil {
+		for _, x := range o.bind.errs {
+			e.errf(x.code, x.msg)
+		}
+	}
 	od := &opaqueDecl{name: o.Name, methods: map[string]*funcDecl{}}
 	for m, f := range o.Methods {
+		if !e.bound(o.Name+"."+m, f) {
+			continue
+		}
 		sig, ok := e.parseSig(o.Name+"."+m, f.Type)
 		if !ok {
 			continue
@@ -488,6 +505,9 @@ func Method(typeName, method string, f Function) Decl {
 		od, ok := e.opaque[typeName]
 		if !ok {
 			e.errf(diag.CodeBadSignature, fmt.Sprintf("%s.%s: %s is not a declared opaque type", typeName, method, typeName))
+			return
+		}
+		if !e.bound(typeName+"."+method, f) {
 			return
 		}
 		sig, ok := e.parseSig(typeName+"."+method, f.Type)

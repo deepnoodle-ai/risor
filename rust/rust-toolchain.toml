@@ -1,0 +1,6 @@
+# The compiler and lints that CI and local builds use. Raise the version in
+# a pull request of its own, and fix what the new lints report there.
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

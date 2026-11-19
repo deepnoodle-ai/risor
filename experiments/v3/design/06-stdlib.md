@@ -53,6 +53,8 @@ documents by section, and `07:` to `13:` are the plans.
    `fail(message, data?)` (D48).
 8. **Regular expressions are left out of 3.0 (T4).** The namespace is reserved
    and a linear-time subset is written down as the candidate for 3.1.
+   D52 planned them as a package and was withdrawn on 2026-11-19, so this
+   stands (D9). Only the reservation of `regexp` ships.
 9. **Nothing in the library is nondeterministic.** No clock, random source,
    locale or time zone. The current time is data the host supplies. Times are
    numbers: seconds since the Unix epoch.
@@ -922,6 +924,12 @@ be a tagged union (`09`): the test reads the tag, then one variant.
 
 #### Regular expressions: out of 3.0 (T4)
 
+> **D9 stands.** D52 planned regular expressions as a package (F15) and was
+> withdrawn on 2026-11-19: three hand-written matchers would have to stay
+> identical, and `glob` (`21` 2.6) covers the common shapes. The namespace
+> `regexp` is reserved in Core. The subset below stays a candidate for a later
+> minor version.
+
 **Recommendation: leave regular expressions out of the 3.0 specification.
 Reserve the namespace `regexp`. Add them in a minor version, from the subset
 below, when the TypeScript matcher exists and all three implementations pass one
@@ -970,7 +978,7 @@ but their default syntax differs, so the subset must be pinned for them too
 
 | Absent | Write instead, or why not |
 | --- | --- |
-| `includes`, `contains`, `has` | `in` |
+| `includes`, `contains`, `has` | `in`. A check message names it (`20` 3.3) |
 | `indexOf`, `findIndex` | No consumer. JavaScript's `-1` would be a sentinel, and null would be the same text with another meaning. `find`, `in`, and `split` with a list pattern cover the uses |
 | `at(i)` | `xs?.[i]`, `first`, `last` |
 | A comparator for `sort` | `sortBy`, with a key and a direction: see the lists |

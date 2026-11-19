@@ -24,7 +24,7 @@ export const SUPPORTED_VERSIONS: ReadonlySet<string> = new Set(["3.0"]);
 export const CHECK_CLASSES: ReadonlySet<string> = new Set(["constant-condition", "dynamic", "index", "divide", "value", "host"]);
 
 /** Namespaces reserved for the library (03 3.3.3 item 3). */
-export const RESERVED_NAMESPACES: ReadonlySet<string> = new Set(["json", "time", "math", "base64"]);
+export const RESERVED_NAMESPACES: ReadonlySet<string> = new Set(["json", "time", "math", "base64", "regexp"]);
 
 export interface Limits {
   steps: number | null; // null: off

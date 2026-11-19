@@ -5,7 +5,10 @@ The decisions of section 7 were taken as recommended, and `15-build-rulings.md`
 records them and every ruling made since. The plan refines the order of work
 in `00-overview.md` 5.2 and differs from it in three places, listed in section
 8. Three things joined Core run after the plan was written (`15` R9, R10 and
-R19): the static rules, the parser of type text, and opaque types.
+R19): the static rules, the parser of type text, and opaque types. On
+2026-11-19 section 5 gained packages F16 to F19 and section 5.3, which orders
+the work after the alpha as tracks A to F, from the owner's decisions of that
+day (D52 to D58 in `00` section 4).
 
 It answers two questions. What is built first, and in which order. And where
 the line is between **Core** functionality and **follow-on** functionality.
@@ -197,6 +200,17 @@ needs a checker. Before M8 it lands in Go only.
 | F10 | **Config files** (`12`) | The JSON text of a result. `Decode`, `Load`. A closed type from a schema. `eval --format json`, `check --type` | F1, F4, F5 | 280 | the closed type |
 | F11 | **The typed layer** (`04` Part B, D22) | Speed on Go structs. No change in any result | Core check, F1 | 600 | none |
 | F12 | **Tools** | `eval`, `check`, `fmt`, the REPL, the editor grammar, completion and hover | F8 for the renderings | 500 for completion and hover, and the commands | none |
+| F13 | **Math functions** (R132) | The eleven transcendental entries of `math`, at 200 steps a call (R172) | F6 | built | signatures only |
+| F14 | **Host facts** (R178) | A host's statement that one of a group of variables is not null, `someNotNull` | Core check | built | all of it |
+| F16 | **Entry points and annotations** (`17`, D53) | In three slices. D1: annotations on parameters, results and `const` lines, `type` lines, the syntax of an `Fn` parameter. D2: `export const`, a program with no result, the Call stage. D3: doc comments as descriptions, `SchemaOf`, `Doc` on host declarations | F1, F4, F8. D3 also needs F17's recursive types | parser, checker and `SchemaOf`: see `17` 8 | annotated lambdas, `bad-export`, descriptions |
+| F17 | **Recursion, function parameters and guards** (`18`, D54, D57) | Typed self-recursion, recursive named types, function parameters, `walk`, `match` guards, in steps E0 to E3 | F4; slice D1 of F16 | about 300 in the checker, 200 in the evaluator | coinductive Fits, Equal and Join; function parameters |
+| F18 | **Host opaque interfaces** (`19-12`, D55) | Interfaces declared by the host, with `implements` and `extends`. A design track in this round, not built | F1, F4 | see `19` 10 | Fits, Join and method lookup |
+| F19 | **Author feedback** (`20`, D56) | Hints from tables, `foreign-names.json`, normative `wrong` lists, the texts of `maybe-absent`, two targeted parse codes | F6, F8 | see `20` 4 | the hint templates |
+
+There is no F15: regular expressions were withdrawn (D52), and the number is
+not given to another package, as F11 keeps its number with no chapter
+(R193). Package numbers are not renumbered. The Go helpers of `19-13` are a
+convenience of the Go binding, with no package number (track C).
 
 ### 5.1 Why this order
 
@@ -208,6 +222,11 @@ needs a checker. Before M8 it lands in Go only.
 | The checker is ported after F5, not before | F5 completes the rules over the type representation. A port before it is a port twice |
 | F7 and F8 after the port | Their check sides are small, and by then they land in three checkers at once |
 | F11 late | It changes speed and no result. It needs real programs from the first host to measure against |
+| The Core amendments of track B before every package of 5.3 | They change existing outcomes, so every later case is written against them, and the first `go/` tag waits for them |
+| F16, F17 and F19 before F12 in the order of offering | Each adds text that `fmt`, hover and completion must know: annotations, doc comments, guards, entry points |
+| Slice D1 of F16 before F17 | Recursion and function parameters need annotations and `type` lines. The scope rule of a lambda's own name waits for D1, so no build asks for types it cannot parse |
+| F17 before slices D2 and D3 | Recursion and function parameters do not need entry points or schemas, and `SchemaOf` (D3) needs recursive types (E2) |
+| F18 last, and only when designed | It is a design track in this round (`19` 5.2) |
 | F12 last | Tools show what exists. `fmt` must know every string form |
 
 ### 5.2 If three of everything proves too much
@@ -217,6 +236,224 @@ in this order, last built first: F12's editor support, F11, F10, F9, the
 `time`, `math` and `base64` groups of F6. R9 is the other fallback: one
 checker shared as WebAssembly (`00` 2.8). Neither is proposed.
 
+### 5.3 After the alpha: tracks A to F
+
+`main` at `aeaaf1fd` implements Core and F1 to F14 in Go, TypeScript and Rust,
+and the browser packages are published (`@deepnoodle/risor`, `-service`,
+`-codemirror`, `-react`, `-mantine`, tag `npm-v3.0.0-alpha.2`). This section
+orders what follows, from the owner's decisions of 2026-11-19 (D52 to D58,
+`00` section 4). It replaces the order first given to D52 to D56.
+
+**Two facts about releases.**
+
+1. There is no `go/v3.0.0-alpha.N` tag yet. The only Go tag is
+   `v3.0.0-alpha.1`, at the old root path (R200). The first `go/` tag is cut
+   after the Core amendments of track B.
+2. The workflow engine, the first real host (step 8 of `00` 5.2; `15`
+   section 15), is the acceptance check for the Core amendments. It is ported
+   onto the amended Core, and its own tests and its soundness fuzz test pass,
+   before that tag.
+
+**When a track is done.** Each track covers its whole surface, and lands in
+all three implementations before it is done. The parts:
+
+| Part | Holds |
+| --- | --- |
+| The specification | `spec/core/`, or the package's chapter |
+| The suite | Cases for every rule, in Core's directories or the package's |
+| The parser | The new syntax, with its parse codes and spans |
+| The static rules | Every rule that reads only the text (`05-types.md` 22) |
+| The checker | The type rules |
+| The evaluator | Values, steps, units and depth |
+| The formatter (F12) | Prints the new syntax |
+| Analysis (F2) | Names, paths and calls of the new forms |
+| Hover and completion (F12) | The new names, types and descriptions |
+| Token highlighting | The token classes of the TypeScript lexer that the web packages read (`@deepnoodle/risor/tokens`, used by `@deepnoodle/risor-codemirror`) |
+| The fuzz generators | `fuzz/` generates the new forms, so the differential and soundness fuzzers reach them |
+| The three implementations | Go, TypeScript and Rust, merged |
+
+A track with no syntax, such as track C, says which parts do not apply.
+
+**The tracks, in order.**
+
+| Track | Work | Plan |
+| --- | --- | --- |
+| A | Unblock PR #642 and reconcile PR #643 | — |
+| B | The stack test and the Core amendments; then the first `go/` tag | `19`, `20`, D58 |
+| C | Go S4 helpers, beside the others | `19-13` |
+| D1 | Annotations, `type` lines, the syntax of an `Fn` parameter; the scope rule of a lambda's own name | `17`, `18` 3.1 |
+| E | Recursion, function parameters, `walk`, `match` guards, in steps E0 to E3 | `18` |
+| D2 | `export const` entry points and the Call stage | `17` |
+| D3 | Doc comments, `SchemaOf`, `Doc` | `17` |
+| F | Author feedback; expression features; the design of host interfaces; v2 maintenance | `20`, `21`, `19-12` |
+
+**The slices and the order of offering. Open.** `03-host.md` 3.11 item 2
+offers each package whole, and only with all before it. Tracks D1, E, D2 and
+D3 build F17 between the first and second slices of F16, and E0 may come
+before D1, so a runner that offered packages whole could not run F17's cases
+when track E is done. A recommendation, not settled: when track D1 lands,
+3.11 item 2 names the slices in the order they are built, `..., F14, F16 D1,
+F17, F16 D2, F16 D3, F19, F12`, and each slice's cases stand in files of
+their own in F16's directory. If E0 goes before D1, its cases wait until F17
+is offered. The owner is asked.
+
+**Track A: unblock PR #642 and reconcile PR #643.**
+
+1. Merge PR #642, which reserves `regexp` in Core. It waits on one Rust
+   clippy lint, `needless_range_loop` under Rust 1.100, at
+   `rust/src/syntax/parser.rs:2309`.
+2. Reconcile PR #643: plan 16 removed (D52), plans 17 to 20 trimmed to D53
+   to D56 as the owner left them, D57 and D58 settled, `21` revised, and
+   this section. That PR carries it.
+3. F8 3.1 item 2 says `suite/messages-parse.json` has 96 templates. The file
+   has 58 codes and 97 templates (ran, 2026-11-19). The chapter is corrected
+   in track B.
+
+**Track B: the stack test and the Core amendments.**
+
+1. **The stack test, a C1 gate.** D58 settled 400 on the measurements of `00`
+   section 4. What remains is to run the deepest forms at 400, and at the
+   fallback of 300, with 1.5 times headroom: TypeScript on Node, and in Chrome,
+   Firefox and Safari, each on the main thread and in a Web Worker; Rust in
+   debug and release builds on the thread the binding documents. The forms:
+   - a chain of `const` lambdas that reaches the limit by direct calls, as
+     the D58 measurement used; typed self-recursion,
+     `const d = (n: int): int => n == 0 ? 0 : d(n - 1); d(N)`, which costs 1
+     of depth for each call, joins the test at step E1;
+   - the same chains through `map` and through `flatMap`;
+   - a call at the limit that then renders or compares a value nested to the
+     limit, reaching 2D + 100 levels (`02-evaluation.md` 8.5 item 3).
+
+   By the measurements the TypeScript binding has less than 1.5 times
+   headroom at either number in a Web Worker, so it first spends fewer frames
+   on a call through a library entry (`18` 9). If it still cannot meet 400,
+   the fallback of 300 is taken. If 300 fails the same test, the limit is
+   the largest multiple of 50 that passes it, and not below the default of
+   200. The default already passes: 1.5 times 200 is 300, and the worst
+   measured form ran to 435. (A ruling to record, not yet seen by the
+   owner.)
+2. **The Core amendments**, in one pull request, in `spec/core/`,
+   `suite/core-run/`, `suite/core-check/`, `go/`, `ts/` and `rust/`:
+   - absence under `??` for every operand of a chain but the last (`20` 3.1),
+     with `no-field` kept on a closed record. The suite pins a union receiver
+     (flat(U)), `a?.b.c ?? d` with no key `b` (`null-operand`) and
+     `xs[*].f ?? d` (an `Each` node, not a coalesced read). The owner is asked
+     to confirm the exception to `03-host.md` 3.4.8 item 2;
+   - the interactions in determinism (`19-1`): `02-evaluation.md` 9,
+     `03-host.md` 3.6.2 and 3.9.1;
+   - the host's ownership of opaque state, the aliasing duty, and the note on
+     F2's calls (`19-11`): `03-host.md` 3.4.6 and 3.5.4, F2 3.6;
+   - a plain first paragraph on big integers in `03-host.md` 3.4.4 (`19-14`);
+   - hosts that live long, with the poisoned run, in a new informative
+     `03-host.md` 3.2.5 (`19-15`);
+   - a nested Risor error's message, cause and data (`20-9`);
+   - the largest depth of D58 in `03-host.md` 3.3.4, 3.6.1, 3.9.1 and the
+     schema of 3.10.11, and the stack test's rule in 3.9.1;
+   - F8 3.1 item 2: 96 becomes 97;
+   - no change to the description of an environment (F1 5.3): its flat map
+     of methods on each opaque entry stays, so interfaces can come later as
+     the top-level keys `interfaces` and `implements` (`19` 5.2).
+
+   Core stays at 19 run codes. The scope rule of a lambda's own name is not
+   in this pull request: it lands with track D1.
+3. **The acceptance check and the tag.** The workflow engine is ported onto
+   the amended Core. Then the first `go/v3.0.0-alpha.N` tag is cut.
+
+**Track C: Go S4 helpers (`19-13`), beside the others.** It lives in `go/`
+alone: no specification text, no suite case, nothing in TypeScript or Rust.
+`risor.Func`, `risor.Methods[T]`, `Function.Reflective()`, with the rules of
+`19` 6.1 for initialisms, colliding names, Go interface types and parameter
+names. `cmd/risor-bind` is an optional follow-up. `05-host-api.md` B.4 to
+B.7 already say that Part E replaced them.
+
+**Track D1: annotations, `type` lines and the syntax of an `Fn` parameter**
+(F16, first slice; `17` 3.1, 3.2, 3.4).
+
+- The grammar of `17` 3.1: type lines with names of two characters or more;
+  annotations on a `const` line, a parameter and a result; an `Fn` on a
+  parameter only, as a name with no default; a result annotation never an
+  `Fn`.
+- The checker: a lambda with every parameter typed is checked once against
+  its annotations; others at each use, as now. `02-evaluation.md` 8.4 item 10
+  is amended (`17` 3.4).
+- **The Core amendment timed with D1:** a `const`-bound lambda's name is in
+  scope in its own body and defaults (`01-language.md` 5 rule 6), and the
+  static rule `recursion-needs-types` (`18` 3.1). The static codes go from 11
+  to 12, Core's check codes from 27 to 28 and the catalog from 29 to 30, in
+  `05-types.md` 16.1, 22.1 and the binding order of 22.7, and in F2 3.2's
+  table of free names.
+- `type-annotation` and `type-declaration` narrow, with new texts (`17` 3.1).
+  The text of `type-declaration` names `type Name = {...}` for `interface`.
+- Until step E3, a parameter with an `Fn` keeps Core's static rules: it
+  cannot be called (`call-of-parameter`) and takes no lambda
+  (`lambda-to-lambda`). Step E1 lands before the alpha that carries D1 is
+  tagged, so no release accepts the types of a self-reference and refuses the
+  self-reference (my reading; `18` 3.1).
+
+**Track E: recursion, function parameters, `walk` and guards** (F17; `18`).
+
+| Step | Work | Needs |
+| --- | --- | --- |
+| E0 | `walk` with an explicit stack; `match` guards (`18` 5, 6) | Nothing. It may go before D1 |
+| E1 | Typed self-recursion (`18` 3). Per-call frames become the reference path in every evaluator, and every implementation runs the whole suite in frame mode; fixed places stay only as an optimization for a program with no recursive lambda and no `Fn` parameter, and only if benchmarks show it is needed (`18` 8). The stack test gains self-recursion | D1 |
+| E2 | Recursive named types in programs, recursive `$ref` in F1, self-referential structs in Go's `TypeOf`, superseding R112. Coinductive Fits, Equal and Join with a normative order of visits, a bound of 4,096 pairs, and the shortcut for one name on both sides (`18` 4) | D1, F4 |
+| E3 | Function parameters (D57, `18` 7): the static rules of 7.1, the review's (a) to (d) among them; checking by 7.3; the costs of 7.4; the hints of 7.2; the `apply` case of `18` 8 | D1, E1 |
+
+Two things to record with track E:
+
+- **Depth is counted in levels, not calls** (`02-evaluation.md` 8.4).
+  `1 + f(n - 1)` costs 2 for each call and `f(n - 1) + 1` costs 1. A typical
+  tree recursion through `map` costs 2 to 3 for each level, so the default of
+  200 allows roughly 66 to 100 levels (`18` 3.3).
+- **A known gap.** An `Fn` type has no type variable, because one-letter type
+  names stay reserved, so a reusable `sumBy(xs, f)` uses `any`, and a host
+  that rejects `dynamic` sites refuses it. The planned answer is additive and
+  not settled: type variables in a non-recursive lambda's annotations, solved
+  at each call by `05-types.md` 13.4 to 13.6, with the body checked at each
+  use (13.9). A recommendation (`18` 7.6); not in track E.
+
+**Track D2: `export const` entry points and the Call stage** (F16, second
+slice; `17` 3.3, 3.5).
+
+- `export const name = (p: T, q: U = d): R => e;`, and a program with no
+  result when it has an export.
+- The Call stage: list a program's entry points and call one by name, each
+  call one bounded run with its arguments conformed (F4), keeping nothing
+  between calls. Calling by record.
+- An entry point has no `Fn` parameter: `bad-export`, since a host cannot
+  pass a function (S3).
+- **A ruling to record:** beside an `export const`, a top-level `const` that
+  binds no name (`const _ = ...;`) is `bad-export`. No entry point can need
+  it, so it would be skipped in silence (`17` 3.3, 17-15).
+- `export-statement` narrows, with a new text (`17` 3.1). The `declare` codes
+  `no-result` and `no-input-record`.
+
+**Track D3: doc comments and `SchemaOf`** (F16, third slice; `17` 3.6 to
+3.8).
+
+- `SchemaOf(T)` in F1, with the law `TypeFromSchema(SchemaOf(T))` is T, and
+  `$defs` and `$ref` for recursive types (E2). It reverses R114.
+- `/** ... */` doc comments as descriptions; `Doc` on `Function` and
+  `OpaqueType`; hover gives it, reversing R188.
+- Descriptions travel through identity only: no rule of Join or Meet
+  combines them (`17` 3.6).
+
+**Track F: author feedback, expression features, the design of interfaces.**
+
+1. **F19** (`20`): the `wrong` lists made normative, `foreign-names.json`, the
+   hint templates, the texts of `maybe-absent`, and the parse codes
+   `async-await` and `statement-sequence`. The hints for `interface` and for
+   an unannotated callback parameter come with D1 and E3 (`20` 3.3).
+2. **Expression features** (`21` 2.5 to 2.8): an explanation of a result
+   ("why was this false?"), `glob(text, pattern)`, a guide for moving off
+   expr, and compile and run benchmarks against expr. Each new feature needs
+   a short plan of its own first, and takes its package number then.
+3. **Host opaque interfaces** (`19-12`, F18): advance the design against the
+   fynerisor scene prototype of #641, with `interfaces` and `implements` as
+   top-level keys of the description. No source-level `interface`: a program
+   keeps `type Name = {...}` for exact records.
+4. **v2, beside the rest:** review the `v2` branch and tag `v2.3`.
+
 ## 6. After 3.0
 
 Already decided or ruled in the other documents. Listed so that the line has
@@ -225,13 +462,14 @@ three sides.
 | Feature | Where it is ruled | Reserved in Core |
 | --- | --- | --- |
 | Imports | `12` 3.9, D50: a minor version | `import` |
-| `type` lines and annotations | D40: a minor version | `type` as a contextual word |
 | Comprehensions | D51: a minor version, on evidence | `[for` and `{for` are errors |
-| Regular expressions | D9 | the `regexp` namespace |
 | Loops, reassignment, early `return` | D36: deferred | `let`, `var`, the loop words, `return` |
 | Raising a caught error again unchanged; a pattern in `catch ( )` | `10` | `throw` |
-| Structural patterns in `match`, bindings and guards | D10 | — |
-| Recursive types | not planned yet | — |
+| Structural patterns and bindings in `match` | D10. Guards come in F17 (D54) | — |
+| Regular expressions | D9; D52 withdrawn | the `regexp` namespace |
+| Type variables in a lambda's annotations | `18` 7.6: a recommendation, not settled | the one-letter type names |
+| A function passed to a host function; a callback that outlives its run | S3, kept by D55 (`19` 4) and D57 | — |
+| What D55 and D56 dropped | `19` 8 and `20` 6: not planned. Each would only add, except the run code `suspended`, which cannot be added after 3.0 (`03-host.md` 3.7.4 item 4) | — |
 | An asynchronous run in TypeScript | D18 | — |
 
 ## 7. What the owner settles at M0
