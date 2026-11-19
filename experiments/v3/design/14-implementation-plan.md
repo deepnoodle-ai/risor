@@ -464,7 +464,7 @@ three sides.
 | Regular expressions | D9; D52 withdrawn | the `regexp` namespace |
 | Type variables in a lambda's annotations | `18` 7.6: a recommendation, not settled | the one-letter type names |
 | A function passed to a host function; a callback that outlives its run | S3, kept by D55 (`19` 4) and D57 | — |
-| What D55 and D56 dropped, but `suspended` | `19` 8 and `20` 6: not planned. Each would only add | — |
+| What D55 and D56 dropped | `19` 8 and `20` 6: not planned. Each would only add, except the run code `suspended`, which cannot be added after 3.0 (`03-host.md` 3.7.4 item 4) | — |
 | An asynchronous run in TypeScript | D18 | — |
 
 ## 7. What the owner settles at M0
