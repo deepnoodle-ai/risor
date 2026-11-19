@@ -18,6 +18,43 @@
 //! assert_eq!(risor::json_text(&p.run(&vars).unwrap()).unwrap(), "42");
 //! # let _ = NoVars;
 //! ```
+//!
+//! # Stack
+//!
+//! A run recurses on the thread that calls it, as deep as the depth limit
+//! ([`Limits::depth`]) allows. A stack overflow aborts the process, and no
+//! limit of the language can catch it, so give a run a thread with at least
+//! this much stack:
+//!
+//! | Depth limit | Optimized build | Unoptimized build |
+//! | --- | --- | --- |
+//! | 200, the default | 1 MiB | 2 MiB |
+//! | 400 | 2 MiB | 4 MiB |
+//! | 1,000 | 3 MiB | 8 MiB |
+//!
+//! Each figure is at least 1.5 times what the deepest program that limit
+//! allows was measured to need. The figures for 200 and 400 are tested on two
+//! thirds of the stack; `DESIGN.md` has the measurements. Parsing needs less.
+//!
+//! A thread that Rust spawns has 2 MiB unless it asks for more. A host that
+//! runs programs on threads with less, or at a higher limit, runs each on a
+//! thread of its own:
+//!
+//! ```
+//! use risor::{parse, CompileOptions, Env, NoVars};
+//! let env = Env::builder().build().unwrap();
+//! let x = parse("[1, 2, 3].map(n => n * 2)").unwrap();
+//! let p = env.compile(&x, CompileOptions::default()).unwrap();
+//! let text = std::thread::scope(|s| {
+//!     std::thread::Builder::new()
+//!         .stack_size(2 << 20)
+//!         .spawn_scoped(s, || risor::json_text(&p.run(&NoVars).unwrap()))
+//!         .unwrap()
+//!         .join()
+//!         .unwrap()
+//! });
+//! assert_eq!(text.unwrap(), "[2,4,6]");
+//! ```
 
 #![forbid(unsafe_code)]
 

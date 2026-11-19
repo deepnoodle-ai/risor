@@ -365,51 +365,174 @@ fn nested(depth: usize) -> Data {
     d
 }
 
-/// The deepest programs the limits allow: a walk at depth
-/// 1,000, calls in progress, and the nesting limit, run on a thread with the
-/// stack `DESIGN.md` states for this build.
+/// The stack `DESIGN.md` (Stack) states that a run needs at the depth limit
+/// `depth`, in this build.
+fn stated_stack(depth: u32) -> usize {
+    let mib = match (cfg!(debug_assertions), depth) {
+        (false, 200) => 1,
+        (false, 400) | (true, 200) => 2,
+        (true, 400) => 4,
+        _ => panic!("no stated stack at depth {depth}"),
+    };
+    mib << 20
+}
+
+/// `e` inside 98 levels of `{a: ...}.a`, inside a lambda: the source nesting
+/// limit, of the kind that costs the most stack.
+fn in_maps(e: &str) -> String {
+    let mut s = e.to_string();
+    for _ in 0..98 {
+        s = format!("{{a: {s}}}.a");
+    }
+    s
+}
+
+/// A chain of `n` lambdas: `f0`, then each `link` with `{P}` the one before;
+/// then `top` with `{N}` the last.
+fn chain(f0: &str, link: &str, top: &str, n: usize) -> String {
+    let mut src = format!("const f0 = {f0};\n");
+    for i in 1..n {
+        let l = link.replace("{P}", &format!("f{}", i - 1));
+        src.push_str(&format!("const f{i} = {l};\n"));
+    }
+    src.push_str(&top.replace("{N}", &format!("f{}", n - 1)));
+    src
+}
+
+/// The deepest programs the limits allow, at the depth limits 200 and 400:
+/// a walk, calls by name, and calls of lambdas by library entries, with the
+/// source nesting limit inside the last call. Each runs on a thread with two
+/// thirds of the stack `DESIGN.md` states for this build, so the stated
+/// figure has a margin of 1.5 (`03-host.md` 3.9.1).
 #[test]
 fn the_deepest_programs_run_within_the_stated_stack() {
-    // Measured: 2 MiB optimized and 4 MiB unoptimized at depth 1,000.
-    let stack = if cfg!(debug_assertions) { 6 } else { 3 } << 20;
-    std::thread::Builder::new()
-        .stack_size(stack)
-        .spawn(|| {
-            let env = Env::builder()
-                .var_record("{v: any, w: any}")
-                .limits(Limits {
-                    depth: 1000,
-                    ..Limits::default()
-                })
-                .build()
-                .unwrap();
-            let v = vars(&[("v", nested(1000)), ("w", nested(1000))]);
-            assert_eq!(outcome(&program(&env, "v == w"), &v), Ok("true".into()));
-            assert!(outcome(&program(&env, "len(string(v))"), &v).is_ok());
-            let v2 = vars(&[("v", nested(1001)), ("w", nested(1001))]);
-            assert_eq!(
-                outcome(&program(&env, "v == w"), &v2),
-                Err("depth-exceeded".into())
-            );
-            // 1,000 calls in progress, each through a lambda of its own, at the
-            // nesting limit of the source inside the last one.
-            let mut src = String::from("const f0 = x => x;\n");
-            for i in 1..1000 {
-                src.push_str(&format!("const f{i} = x => f{}(x);\n", i - 1));
-            }
-            let deep = format!("{}1{}", "(".repeat(99), ")".repeat(99));
-            src.push_str(&format!("f999({deep})"));
-            assert_eq!(outcome(&program(&env, &src), &v), Ok("1".into()));
-            let mut src = format!("const g0 = x => {}x{};\n", "[".repeat(98), "]".repeat(98));
-            for i in 1..1000 {
-                src.push_str(&format!("const g{i} = x => g{}(x);\n", i - 1));
-            }
-            src.push_str("const r = g999(1); len(r)");
-            assert_eq!(outcome(&program(&env, &src), &v), Ok("1".into()));
+    for depth in [200, 400] {
+        std::thread::Builder::new()
+            .name(format!("depth {depth}"))
+            .stack_size(stated_stack(depth) / 3 * 2)
+            .spawn(move || deepest_programs(depth))
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+}
+
+fn deepest_programs(depth: u32) {
+    let d = depth as usize;
+    let env = Env::builder()
+        .var_record("{v: any, w: any}")
+        .limits(Limits {
+            depth,
+            ..Limits::default()
         })
-        .unwrap()
-        .join()
+        .build()
         .unwrap();
+    let v = vars(&[("v", nested(d)), ("w", nested(d))]);
+    let run = |src: &str| outcome(&program(&env, src), &v);
+    // A walk to the limit, and one level past it.
+    assert_eq!(run("v == w"), Ok("true".into()));
+    assert!(run("len(string(v))").is_ok());
+    let v2 = vars(&[("v", nested(d + 1)), ("w", nested(d + 1))]);
+    assert_eq!(
+        outcome(&program(&env, "v == w"), &v2),
+        Err("depth-exceeded".into())
+    );
+    // Calls by name to the limit, each through a lambda of its own: with the
+    // nesting limit in the argument of the first, and inside the last.
+    let parens = format!("{}1{}", "(".repeat(99), ")".repeat(99));
+    let src = chain("x => x", "x => {P}(x)", &format!("{{N}}({parens})"), d);
+    assert_eq!(run(&src), Ok("1".into()));
+    let brackets = format!("x => {}x{}", "[".repeat(98), "]".repeat(98));
+    let src = chain(&brackets, "x => {P}(x)", "const r = {N}(1); len(r)", d);
+    assert_eq!(run(&src), Ok("1".into()));
+    // Calls of lambdas by library entries: a lambda by name, an inline
+    // lambda, and lambdas with patterns, which bind their parameters by the
+    // general path. Each link adds 1, the inline lambda's 2, so the chain
+    // reaches the limit. One more link passes it: the failure unwinds from
+    // the deepest call, with a trace entry for each call in progress and for
+    // the call that failed its test (`f08-errors.md` 4.1).
+    let cases = [
+        (
+            "x => [x].map({P})[0]",
+            format!("x => {}", in_maps("x")),
+            "{N}(1)",
+            1,
+            "1",
+        ),
+        (
+            "x => [x].map(v => {P}(v))[0]",
+            format!("x => {}", in_maps("x")),
+            "[1].map(v => {N}(v))[0]",
+            2,
+            "1",
+        ),
+        (
+            "x => [x].flatMap({P})",
+            format!("x => [{}]", in_maps("x")),
+            "{N}(1)[0]",
+            1,
+            "1",
+        ),
+        (
+            "({v}) => [{v}].filter({P})[0].v",
+            format!("({{v}}) => {}", in_maps("v")),
+            "{N}({v: 1})",
+            1,
+            "1",
+        ),
+        (
+            "({v}) => [{v}].some({P})",
+            format!("({{v}}) => {}", in_maps("v")),
+            "{N}({v: 1})",
+            1,
+            "true",
+        ),
+        (
+            "({v}) => [{v}].sortBy({P})[0].v",
+            format!("({{v}}) => {}", in_maps("v")),
+            "{N}({v: 1})",
+            1,
+            "1",
+        ),
+        (
+            "({v}) => {a: {v}}.mapValues({P}).a",
+            format!("({{v}}) => {}", in_maps("v")),
+            "{N}({v: 1})",
+            1,
+            "1",
+        ),
+        (
+            "(a, {v}) => [{v}].reduce({P}, a)",
+            format!("(a, {{v}}) => {}", in_maps("v")),
+            "{N}(0, {v: 1})",
+            1,
+            "1",
+        ),
+    ];
+    for (link, f0, top, each, want) in cases {
+        let n = d / each;
+        let src = chain(&f0, link, top, n);
+        assert_eq!(run(&src), Ok(want.into()), "{link}");
+        let p = program(&env, &chain(&f0, link, top, n + 1));
+        let Err(f) = p.outcome(&v).result else {
+            panic!("{link}: past the limit, no failure");
+        };
+        assert_eq!(f.code, "depth-exceeded", "{link}");
+        assert_eq!(f.trace.len(), d + 1, "{link}");
+    }
+    // A failure in the deepest call, with the trace of every call.
+    let src = chain(
+        &format!("x => {}", in_maps("fail(\"deep\")")),
+        "x => [x].map({P})[0]",
+        "{N}(1)",
+        d,
+    );
+    let p = program(&env, &src);
+    let Err(f) = p.outcome(&v).result else {
+        panic!("no failure");
+    };
+    assert_eq!(f.code, "failed");
+    assert_eq!(f.trace.len(), d);
 }
 
 /// What opens no level costs no stack at run time either (13.2 rule 6).

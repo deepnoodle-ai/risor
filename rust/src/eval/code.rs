@@ -121,13 +121,16 @@ fn is_step(ast: &Ast, res: &[Res], n: NodeId) -> Option<NodeId> {
     }
 }
 
-/// A step of a chain: a field read, compiled, or another step by its node.
+/// A step of a chain: a field read, compiled; a method call or an index,
+/// by its node, called directly; or another step by its node.
 enum Step {
     Member {
         name: Box<str>,
         optional: bool,
         span: Range,
     },
+    Method(NodeId),
+    Index(NodeId),
     Node(NodeId),
 }
 
@@ -352,23 +355,31 @@ fn node(
                         optional: *optional,
                         span: ast.span(s),
                     },
+                    NodeKind::MethodCall { .. } => Step::Method(s),
+                    NodeKind::Index { .. } => Step::Index(s),
                     _ => Step::Node(s),
                 })
                 .collect();
             mk(move |r| {
                 let mut v = start(r)?;
                 for s in steps.iter() {
+                    // One result for every kind of step: in an unoptimized
+                    // build each would take a slot of this frame, which is
+                    // live while a method's lambda runs.
                     let next = match s {
                         Step::Member {
                             name,
                             optional,
                             span,
-                        } => r.member(v, name, *optional, *span)?,
-                        Step::Node(s) => r.step(*s, v)?,
+                        } => r.member(v, name, *optional, *span),
+                        Step::Method(s) => r.method(*s, v),
+                        Step::Index(s) => r.index_step(*s, v),
+                        Step::Node(s) => r.step(*s, v),
                     };
                     match next {
-                        Some(nv) => v = nv,
-                        None => return Ok(Value::Null),
+                        Ok(Some(nv)) => v = nv,
+                        Ok(None) => return Ok(Value::Null),
+                        Err(f) => return Err(f),
                     }
                 }
                 Ok(v)
