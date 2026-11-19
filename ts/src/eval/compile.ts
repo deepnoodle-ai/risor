@@ -2,10 +2,22 @@
 // of closures (no bytecode, no virtual machine). The closures evaluate in the
 // order of 02 section 2 and charge by sections 5 and 6.
 //
-// Every binding has one fixed slot for the whole run (02 11.1): no lambda is
-// entered while an earlier call of it is in progress. Long flat forms (a chain
-// of binary operators, a chain of steps, an `else` chain, `const` lines) are
-// compiled and run by loops, so no host stack is spent on their length.
+// Names (f17 11.5). Each call binds its own names: a call of a lambda makes a
+// frame, an array that holds the names its lambda binds (its parameters, and
+// the names of the `const` lines and `catch` of its body) at index 1 and up,
+// and at index 0 the frame of the call in which the lambda was evaluated. A
+// name is compiled to the number of links to follow from the frame of the call
+// in progress and an index. A lambda never outlives the call in which it was
+// evaluated (02 11.1), so a frame is only reached while its call is in
+// progress. The program's own names are bound once in a run, and are kept in
+// the run's slots, which every call reaches with no link. The calls a library
+// entry makes of one lambda never overlap, so they share one frame, made with
+// the lambda's callback. There is one path for every program: with no
+// self-reference, the frames hold what fixed slots would.
+//
+// Long flat forms (a chain of binary operators, a chain of steps, an `else`
+// chain, `const` lines) are compiled and run by loops, so no host stack is
+// spent on their length.
 //
 // Stack. A call costs the depth count 1 plus its nesting depth (02 8.4), and
 // what opens no level costs nothing, so the host stack that one unit of the
@@ -20,7 +32,7 @@
 //
 // Speed. The closures of one kind share one function literal, so the engine
 // sees every site of a kind at once: calls between closures are indirect.
-// The code is shaped by that. Constants, slots and variables are read in
+// The code is shaped by that. Constants, names and variables are read in
 // place (Operand) rather than by a closure; each operator has its own
 // closure with a fast path for the common kinds; a field of a map is read
 // with no general classification (quickMap, quickGet); a lambda whose
@@ -83,8 +95,9 @@ export interface CompileEnv {
 }
 
 /**
- * A parameter of a lambda. `slot`: the slot of a parameter that is a name
- * (NAME_UNUSED when the name is never read), or PATTERN when `bind` binds it.
+ * A parameter of a lambda. `slot`: the index in the lambda's frame of a
+ * parameter that is a name (NAME_UNUSED when the name is never read), or
+ * PATTERN when `bind` binds it.
  */
 interface ParamCode {
   bind: Binder;
@@ -100,19 +113,60 @@ interface LambdaCode {
   body: Code;
   n: number;
   /**
-   * At most three parameters, each a name with no default: the slots of the
-   * first three (NAME_UNUSED for a name never read or a parameter not there).
+   * At most three parameters, each a name with no default: the frame indexes
+   * of the first three (NAME_UNUSED for a name never read or a parameter not
+   * there).
    */
   simple: boolean;
   s0: number;
   s1: number;
   s2: number;
+  /** The size of the lambda's frame, its link included (f17 11.5). */
+  size: number;
+  /** The number of lambdas around it: the depth of the frame its frame links to, 0 for the program. */
+  depth: number;
+}
+
+/** A new frame of `size` entries for a call, linked to `link` (f17 11.5). */
+function newFrame(size: number, link: unknown): unknown[] {
+  switch (size) {
+    case 1:
+      return [link];
+    case 2:
+      return [link, null];
+    case 3:
+      return [link, null, null];
+    case 4:
+      return [link, null, null, null];
+    case 5:
+      return [link, null, null, null, null];
+    default: {
+      const f: unknown[] = [link, null, null, null, null];
+      for (let i = 5; i < size; i++) f.push(null);
+      return f;
+    }
+  }
+}
+
+/** The frame `hops` links out from `f`. */
+function up(f: unknown[], hops: number): unknown[] {
+  for (let i = 0; i < hops; i++) f = f[0] as unknown[];
+  return f;
+}
+
+/**
+ * Store a value at a place (f17 11.5): a slot of the program (place >= 0),
+ * or an index of the frame of the call in progress (place < 0, negated).
+ */
+function store(r: Run, place: number, v: unknown): void {
+  if (place >= 0) r.slots[place] = v;
+  else r.frame[-place] = v;
 }
 
 const SHORT: unique symbol = Symbol("short");
 
 /**
- * A path of field reads from a constant, a slot or a variable up to this long,
+ * A path of field reads from a constant, a name or a variable up to this long,
  * then a chain of binary operators up to this long, is compiled into nested
  * closures, one for each read or operator, which is faster than a spine. A
  * longer one is a spine, which runs in a loop.
@@ -217,23 +271,27 @@ function rangeFail(op: string, span: Span): never {
 }
 
 /**
- * An operand: compiled code (k 0), a constant (1), a slot (2) or a variable
- * of the environment (3). A constant, a slot or a variable is read in place,
- * with no call of a closure.
+ * An operand: compiled code (k 0), a constant (1), a slot of the program (2),
+ * a variable of the environment (3), a name of the frame of the call in
+ * progress (4), of the frame one link out from it (5), or of a frame `h`
+ * links out (6). A constant, a name or a variable is read in place, with no
+ * call of a closure.
  */
 interface Operand {
-  k: 0 | 1 | 2 | 3;
+  k: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   c: Code;
   v: unknown;
-  /** The slot, or the index of the variable. */
+  /** The slot, the index in the frame, or the index of the variable. */
   s: number;
+  /** The links to follow to the frame (k 5 and 6). */
+  h: number;
   /** The variable's name and span. */
   name: string;
   span: Span | null;
 }
 
 function codeOperand(c: Code): Operand {
-  return { k: 0, c, v: null, s: 0, name: "", span: null };
+  return { k: 0, c, v: null, s: 0, h: 0, name: "", span: null };
 }
 
 /**
@@ -243,6 +301,13 @@ function codeOperand(c: Code): Operand {
  * `o.k === 0 ? o.c(r) : ev(r, o)`, so that no frame of `ev` sits under it
  * while it runs: a call it makes, and so a recursion, would spend that frame
  * at every level (src/index.ts).
+ *
+ * SPEED. `ev` is inlined into the closures of the operators, and its size
+ * counts against what else the engine inlines there (the operator's own
+ * function, `charge`): a name of an outer frame, which is rarer, is read by a
+ * function of its own (measured with scripts/bench.ts: with it in `ev`, the
+ * engine stopped inlining `charge` and the operators into the closures, and
+ * `heavy/arith_10k` ran 10% to 25% slower).
  */
 function ev(r: Run, o: Operand): unknown {
   switch (o.k) {
@@ -252,9 +317,20 @@ function ev(r: Run, o: Operand): unknown {
       return o.v;
     case 2:
       return r.slots[o.s];
-    default:
+    case 4:
+      return r.frame[o.s];
+    case 3:
       return r.variable(o.s, o.name, o.span!);
+    default:
+      return outerName(r, o);
   }
+}
+
+/** A name of a frame `o.h` links out from the frame of the call in progress (k 5 and 6). */
+function outerName(r: Run, o: Operand): unknown {
+  let f = r.frame[0] as unknown[];
+  for (let i = 1; i < o.h; i++) f = f[0] as unknown[];
+  return f[o.s];
 }
 
 // The operators that take both operands, each with its fast path (01 6; 02 5.3).
@@ -452,6 +528,8 @@ class Compiler {
   private readonly codes = new Map<A.Lambda, LambdaCode>();
   /** The levels open at the first token of the lambda whose body is being compiled. */
   private lambdaLevel = 0;
+  /** The number of lambdas around the code being compiled: the depth of its frame (f17 11.5). */
+  private frameDepth = 0;
   /** The index of each variable of the environment the program reads. */
   private readonly varIndex = new Map<string, number>();
 
@@ -465,6 +543,49 @@ class Compiler {
   }
 
   // ---- bindings ----------------------------------------------------------
+
+  /**
+   * Where the name of slot `s` is stored, seen from the code being compiled
+   * (f17 11.5): a slot of the program (>= 0), or an index of the frame of the
+   * call in progress (< 0, negated). A name is bound only by code of its own
+   * frame.
+   */
+  private place(s: number): number {
+    const depth = this.res.slotDepth[s];
+    if (depth === 0) return this.res.slotIndex[s];
+    if (depth !== this.frameDepth) throw new Error("a name is bound only in its own frame");
+    return -this.res.slotIndex[s];
+  }
+
+  /** The index in the frame of the call in progress of slot `s`, a name its lambda binds. */
+  private frameIndex(s: number): number {
+    const p = this.place(s);
+    if (p >= 0) throw new Error("a parameter is a name of its lambda's frame");
+    return -p;
+  }
+
+  /** How code at this frame depth reads the name of slot `s`: as an operand (k 2, 4, 5 or 6). */
+  private nameOperand(s: number, o: Operand): void {
+    const depth = this.res.slotDepth[s];
+    if (depth === 0) {
+      o.k = 2;
+      o.s = this.res.slotIndex[s];
+      return;
+    }
+    o.s = this.res.slotIndex[s];
+    o.h = this.frameDepth - depth;
+    o.k = o.h === 0 ? 4 : o.h === 1 ? 5 : 6;
+  }
+
+  /** The frame a lambda `l` links to, from the code being compiled: null for a lambda of the program. */
+  private linkTo(l: A.Lambda): (r: Run) => unknown {
+    const depth = this.res.lambdaDepth.get(l)!;
+    if (depth === 0) return () => null;
+    const hops = this.frameDepth - depth;
+    if (hops === 0) return (r) => r.frame;
+    if (hops === 1) return (r) => r.frame[0];
+    return (r) => up(r.frame, hops);
+  }
 
   constLine(k: A.Const): Code {
     if (k.value.kind === "Lambda") {
@@ -483,8 +604,17 @@ class Compiler {
           return null;
         };
       }
+      const w = this.place(s);
+      if (w < 0) {
+        const i = -w;
+        return (r) => {
+          const x = v(r);
+          r.frame[i] = x;
+          return null;
+        };
+      }
       return (r) => {
-        r.slots[s] = v(r);
+        r.slots[w] = v(r);
         return null;
       };
     }
@@ -497,18 +627,25 @@ class Compiler {
 
   private lambda(l: A.Lambda): LambdaCode {
     const saved = this.lambdaLevel;
+    const savedDepth = this.frameDepth;
     this.lambdaLevel = l.level;
+    // f17 11.5: its parameters, defaults and body run in the frame of its call.
+    const depth = this.res.lambdaDepth.get(l)!;
+    this.frameDepth = depth + 1;
     const params = l.params.map((p): ParamCode => {
       const dflt = p.default === null ? null : this.expr(p.default);
       const bind = this.pattern(p.pattern);
-      const slot = p.pattern.kind === "NamePat" ? (this.res.slots.get(p.pattern) ?? NAME_UNUSED) : PATTERN;
+      const s = p.pattern.kind === "NamePat" ? this.res.slots.get(p.pattern) : undefined;
+      const slot = p.pattern.kind === "NamePat" ? (s === undefined ? NAME_UNUSED : this.frameIndex(s)) : PATTERN;
       return { dflt, bind, slot };
     });
     const body = this.expr(l.body);
     this.lambdaLevel = saved;
+    this.frameDepth = savedDepth;
     const simple = params.length <= 3 && params.every((p) => p.slot !== PATTERN && p.dflt === null);
     const slotAt = (i: number) => (simple && i < params.length ? params[i].slot : NAME_UNUSED);
-    const lc: LambdaCode = { params, body, n: l.params.length, simple, s0: slotAt(0), s1: slotAt(1), s2: slotAt(2) };
+    const size = this.res.frameSize.get(l)!;
+    const lc: LambdaCode = { params, body, n: l.params.length, simple, s0: slotAt(0), s1: slotAt(1), s2: slotAt(2), size, depth };
     this.codes.set(l, lc);
     return lc;
   }
@@ -518,8 +655,9 @@ class Compiler {
       case "NamePat": {
         const s = this.res.slots.get(p);
         if (s === undefined) return () => {};
+        const w = this.place(s);
         return (r, v) => {
-          r.slots[s] = v;
+          store(r, w, v);
         };
       }
       case "MapPat":
@@ -531,15 +669,16 @@ class Compiler {
 
   private mapPattern(p: A.MapPat): Binder {
     const span = p.span;
+    const placeOf = (s: number | undefined) => (s === undefined ? undefined : this.place(s));
     const fields = p.fields.map((f) => ({
       key: f.key,
       keySize: size(f.key),
-      slot: this.res.slots.get(f),
+      slot: placeOf(this.res.slots.get(f)),
       dflt: f.default === null ? null : this.expr(f.default),
       span: f.span,
     }));
     const named = new Set(p.fields.map((f) => f.key));
-    const restSlot = p.rest === null ? undefined : this.res.slots.get(p.rest);
+    const restSlot = p.rest === null ? undefined : placeOf(this.res.slots.get(p.rest));
     const hasRest = p.rest !== null;
     return (r, v) => {
       const q = quickMap(r, v);
@@ -557,7 +696,7 @@ class Compiler {
           if (f.dflt !== null) val = f.dflt(r);
           else if (val === ABSENT) throw new RunFailure("missing-field", f.span, "pattern", { name: f.key, key: f.key });
         }
-        if (f.slot !== undefined) r.slots[f.slot] = val;
+        if (f.slot !== undefined) store(r, f.slot, val);
       }
       if (hasRest) {
         const keys = mapKeys(v as object).filter((key) => !named.has(key));
@@ -565,19 +704,20 @@ class Compiler {
         r.alloc(1 + 2 * keys.length);
         const m = new RMap();
         for (const key of keys) m.set(key, mapGet(v as object, key));
-        if (restSlot !== undefined) r.slots[restSlot] = m;
+        if (restSlot !== undefined) store(r, restSlot, m);
       }
     };
   }
 
   private listPattern(p: A.ListPat): Binder {
     const span = p.span;
+    const placeOf = (s: number | undefined) => (s === undefined ? undefined : this.place(s));
     const elems = p.elems.map((e) => ({
-      slot: this.res.slots.get(e.pat),
+      slot: placeOf(this.res.slots.get(e.pat)),
       dflt: e.default === null ? null : this.expr(e.default),
       span: e.span,
     }));
-    const restSlot = p.rest === null ? undefined : this.res.slots.get(p.rest);
+    const restSlot = p.rest === null ? undefined : placeOf(this.res.slots.get(p.rest));
     const hasRest = p.rest !== null;
     return (r, v) => {
       const k = r.kind(v);
@@ -592,14 +732,14 @@ class Compiler {
           if (e.dflt !== null) val = e.dflt(r);
           else if (val === ABSENT) throw new RunFailure("index-range", e.span, "pattern", { index: i, length: xs.length });
         }
-        if (e.slot !== undefined) r.slots[e.slot] = val;
+        if (e.slot !== undefined) store(r, e.slot, val);
       }
       if (hasRest) {
         const m = Math.max(0, xs.length - elems.length);
         r.charge(m);
         r.alloc(1 + m);
         const out = xs.slice(elems.length);
-        if (restSlot !== undefined) r.slots[restSlot] = out;
+        if (restSlot !== undefined) store(r, restSlot, out);
       }
     };
   }
@@ -740,8 +880,21 @@ class Compiler {
     if (ref === undefined) throw new Error(`unresolved name ${e.name}`);
     const span = e.span;
     if (ref.k === "slot") {
-      const s = ref.slot;
-      return (r) => r.slots[s];
+      // f17 11.5: a name of the program, of the call in progress, or of a call a few links out.
+      const o = codeOperand(() => null);
+      this.nameOperand(ref.slot, o);
+      const s = o.s;
+      switch (o.k) {
+        case 2:
+          return (r) => r.slots[s];
+        case 4:
+          return (r) => r.frame[s];
+        default: {
+          const h = o.h;
+          if (h === 1) return (r) => (r.frame[0] as unknown[])[s];
+          return (r) => up(r.frame, h)[s];
+        }
+      }
     }
     if (ref.k === "var") {
       const name = ref.name;
@@ -772,8 +925,7 @@ class Compiler {
       case "Ident": {
         const ref = this.res.refs.get(e);
         if (ref !== undefined && ref.k === "slot") {
-          o.k = 2;
-          o.s = ref.slot;
+          this.nameOperand(ref.slot, o);
         } else if (ref !== undefined && ref.k === "var") {
           o.k = 3;
           o.s = this.varSlot(ref.name);
@@ -987,11 +1139,13 @@ class Compiler {
 
   private tryExpr(e: A.Try): Code {
     const body = this.expr(e.body);
-    const slot = this.res.catchSlots.get(e);
+    const catchSlot = this.res.catchSlots.get(e);
+    const slot = catchSlot === undefined ? undefined : this.place(catchSlot);
     const named = e.name !== null;
     const handler = this.expr(e.handler);
     return (r) => {
       const depth = r.depth;
+      const frame = r.frame;
       let failure: RunFailure;
       try {
         return body(r);
@@ -999,7 +1153,9 @@ class Compiler {
         if (!(x instanceof RunFailure) || !caught(x.code)) throw x;
         failure = x;
       }
+      // 02 8.4 item 8, f17 11.5 item 3: the calls the failure passed through are over.
       r.depth = depth;
+      r.frame = frame;
       if (named) {
         // The error value (02 12.4): all its steps, then all its units.
         const message = messageOf(failure, r.cls);
@@ -1015,7 +1171,7 @@ class Compiler {
           ["message", message],
           ["path", path],
         ]);
-        if (slot !== undefined) r.slots[slot] = ev;
+        if (slot !== undefined) store(r, slot, ev);
       }
       return handler(r);
     };
@@ -1196,6 +1352,23 @@ class Compiler {
     const cost = 1 + size(name);
     const slow = this.memberSlow(s);
     const absentNull = s.optional || this.res.coalesced.has(s);
+    if (prev.k === 5 && prev.h === 1) {
+      // A field of a name of the frame one link out, `x.id` in `xs.map(x => ys.filter(y => y.id == x.id))`:
+      // read in place (SPEED at ev).
+      const at = prev.s;
+      return (r) => {
+        const v = (r.frame[0] as unknown[])[at];
+        const q = quickMap(r, v);
+        if (q === 0) return slow(r, v);
+        r.charge(cost);
+        const g = quickGet(v as object, q, name);
+        if (g === ABSENT) {
+          if (absentNull) return null;
+          throw new RunFailure("missing-field", span, "field", { name });
+        }
+        return readQ(r, g, span);
+      };
+    }
     return (r) => {
       const v = prev.k === 0 ? prev.c(r) : ev(r, prev);
       const q = quickMap(r, v);
@@ -1297,9 +1470,11 @@ class Compiler {
   private args(args: A.Arg[], measure: number): { eval: (r: Run) => unknown[]; lambdas: number[] } {
     const codes = args.map((a) => {
       const la = this.lambdaArg(a);
-      if (la === null) return { kind: "value" as const, op: this.operandOf(a as A.Expr), lc: null, id: null, inPlace: false, params: 0 };
+      if (la === null) return { kind: "value" as const, op: this.operandOf(a as A.Expr), lc: null, id: null, inPlace: false, params: 0, link: null };
       const lc = la.lambda !== null ? this.lambda(la.lambda) : null;
-      return { kind: "lambda" as const, op: null, lc, id: la.id, inPlace: la.lambda !== null, params: la.params };
+      // f17 11.5 item 2: its calls' frames link to the frame of the call in which it was evaluated.
+      const link = this.linkTo(la.lambda ?? this.res.lambdas[la.id!]);
+      return { kind: "lambda" as const, op: null, lc, id: la.id, inPlace: la.lambda !== null, params: la.params, link };
     });
     const lambdas: number[] = [];
     codes.forEach((c, i) => {
@@ -1339,7 +1514,7 @@ class Compiler {
           continue;
         }
         if (c.inPlace) r.charge(1);
-        out[i] = new LambdaCallback(r, c.lc ?? codesOf.get(named[c.id!])!, c.params, measure);
+        out[i] = new LambdaCallback(r, c.lc ?? codesOf.get(named[c.id!])!, c.params, measure, c.link!(r));
       }
       return out;
     };
@@ -1394,8 +1569,11 @@ class Compiler {
         const node = this.res.lambdas[target.id];
         const codesOf = this.codes;
         const name = this.res.lambdaNames?.get(target.id) ?? "";
+        const link = this.linkTo(node);
         // 02 11.2. The body runs from this closure's frame, with no other
-        // under it (STACK in src/index.ts).
+        // under it (STACK in src/index.ts). f17 11.5: the call binds its
+        // names in a frame of its own, which links to the frame of the call
+        // in which the lambda was evaluated; a self-call is such a call.
         return (r) => {
           const vals = args(r);
           r.charge(1);
@@ -1404,9 +1582,12 @@ class Compiler {
           r.depth += measure;
           try {
             r.testDepth(r.depth);
+            const caller = r.frame;
+            r.frame = newFrame(lc.size, link(r));
             const ps = lc.params;
             for (let i = 0; i < ps.length; i++) bindParam(r, ps[i], i < vals.length ? vals[i] : null);
             const out = lc.body(r);
+            r.frame = caller;
             r.depth -= measure;
             return out;
           } catch (x) {
@@ -1441,7 +1622,7 @@ class Compiler {
 /** Bind one parameter of a lambda: its default first when the argument is null (02 11.2). */
 function bindParam(r: Run, p: ParamCode, v: unknown): void {
   if (v === null && p.dflt !== null) v = p.dflt(r);
-  if (p.slot >= 0) r.slots[p.slot] = v;
+  if (p.slot >= 0) r.frame[p.slot] = v;
   else if (p.slot === PATTERN) p.bind(r, v);
 }
 
@@ -1464,6 +1645,14 @@ function bindArgs(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown): v
  * rather than one calling the other, and binding a parameter that is not a
  * plain name (bindArgs) returns before the body runs. test/deep.test.ts
  * measures what this saves.
+ *
+ * FRAME (f17 11.5). The entry's calls of the lambda never overlap, so they
+ * share one frame, made here, which links to the frame of the call in which
+ * the lambda was evaluated. Each call binds the names again. A call makes
+ * that frame the one in progress, and when it ends puts back the frame of the
+ * code that called the entry, which was in progress when the callback was
+ * made: kept here, not on the stack, as STACK asks. A failure that `catch`
+ * stops puts back the frame of the `try`.
  */
 class LambdaCallback implements Callback {
   readonly params: number;
@@ -1471,12 +1660,16 @@ class LambdaCallback implements Callback {
   private readonly r: Run;
   private readonly lc: LambdaCode;
   private readonly measure: number;
+  private readonly frame: unknown[];
+  private readonly caller: unknown[];
 
-  constructor(r: Run, lc: LambdaCode, params: number, measure: number) {
+  constructor(r: Run, lc: LambdaCode, params: number, measure: number, link: unknown) {
     this.r = r;
     this.lc = lc;
     this.params = params;
     this.measure = measure;
+    this.frame = newFrame(lc.size, link);
+    this.caller = r.frame;
   }
 
   /** The call with the arguments (a, b): the depth test, the parameters, the body (02 8.4 item 7, 11.2). */
@@ -1489,12 +1682,15 @@ class LambdaCallback implements Callback {
     r.depth += this.measure;
     try {
       if (r.depth > r.depthLimit) r.testDepth(r.depth);
+      const fr = this.frame;
+      r.frame = fr;
       if (lc.simple) {
-        if (lc.s0 >= 0) r.slots[lc.s0] = a;
-        if (lc.s1 >= 0) r.slots[lc.s1] = b;
-        if (lc.s2 >= 0) r.slots[lc.s2] = null;
+        if (lc.s0 >= 0) fr[lc.s0] = a;
+        if (lc.s1 >= 0) fr[lc.s1] = b;
+        if (lc.s2 >= 0) fr[lc.s2] = null;
       } else this.bind2(a, b);
       const out = lc.body(r);
+      r.frame = this.caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {
@@ -1512,12 +1708,15 @@ class LambdaCallback implements Callback {
     r.depth += this.measure;
     try {
       if (r.depth > r.depthLimit) r.testDepth(r.depth);
+      const fr = this.frame;
+      r.frame = fr;
       if (lc.simple) {
-        if (lc.s0 >= 0) r.slots[lc.s0] = a;
-        if (lc.s1 >= 0) r.slots[lc.s1] = b;
-        if (lc.s2 >= 0) r.slots[lc.s2] = c;
+        if (lc.s0 >= 0) fr[lc.s0] = a;
+        if (lc.s1 >= 0) fr[lc.s1] = b;
+        if (lc.s2 >= 0) fr[lc.s2] = c;
       } else bindArgs(r, lc, a, b, c);
       const out = lc.body(r);
+      r.frame = this.caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {

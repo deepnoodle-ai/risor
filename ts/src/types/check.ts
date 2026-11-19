@@ -13,6 +13,7 @@ import { compareText } from "../value/value.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Span } from "../syntax/source.ts";
 import type { Resolution } from "../eval/static.ts";
+import { typedLambda } from "../eval/static.ts";
 import type { SigNode, TypeNode } from "./typetext.ts";
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
@@ -581,6 +582,9 @@ class Checker {
       if (checkedOnce(l)) {
         // f16 3.4: checked once, where it is written, under the facts there; its sites are kept.
         // One check against 20.3, and its nesting where it is written against 20.2; a check-limit is on the whole lambda.
+        // Package F17 (f17 11.3): a typed lambda's result type is its result annotation, known before its body
+        // is checked, so a self-reference in the body has it.
+        if (typedLambda(l)) this.onceTypes.set(id, this.res.annTypes.get(l.result!) ?? NEVER);
         this.onceTypes.set(id, this.useLimit(l, l.level - 1, l.span) ? this.lambdaBody(l, [], f, "once") : NEVER);
         return f;
       }

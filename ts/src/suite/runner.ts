@@ -715,9 +715,18 @@ function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict
       const lit = a.report.literal;
       if (want === false || lit === false) same &&= want === false && lit === false;
       else same &&= plainEqual(lit.value, hostValue((want as JsonObject).value), CLASSIFIER);
-    } else same &&= JSON.stringify(found[k]) === JSON.stringify(want);
+    } else same &&= canonicalJson(found[k]) === canonicalJson(want);
   }
   return same ? v("pass") : v("fail", { differences: [{ field: "analysis", expected: ex.analysis, found }] });
+}
+
+/** JSON text with the keys of every object sorted: the keys of a JSON object have no order. */
+function canonicalJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) => {
+    if (x === null || typeof x !== "object" || Array.isArray(x)) return x;
+    const o = x as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+  });
 }
 
 function finish(c: Case, o: Outcome, unmatched: string[], v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
