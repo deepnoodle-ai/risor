@@ -32,7 +32,7 @@
 //
 // Speed. The closures of one kind share one function literal, so the engine
 // sees every site of a kind at once: calls between closures are indirect.
-// The code is shaped by that. Constants, slots and variables are read in
+// The code is shaped by that. Constants, names and variables are read in
 // place (Operand) rather than by a closure; each operator has its own
 // closure with a fast path for the common kinds; a field of a map is read
 // with no general classification (quickMap, quickGet); a lambda whose
@@ -166,7 +166,7 @@ function store(r: Run, place: number, v: unknown): void {
 const SHORT: unique symbol = Symbol("short");
 
 /**
- * A path of field reads from a constant, a slot or a variable up to this long,
+ * A path of field reads from a constant, a name or a variable up to this long,
  * then a chain of binary operators up to this long, is compiled into nested
  * closures, one for each read or operator, which is faster than a spine. A
  * longer one is a spine, which runs in a loop.
