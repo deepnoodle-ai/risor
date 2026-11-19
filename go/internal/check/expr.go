@@ -752,6 +752,13 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 				// counts against the limits of 20.2 and 20.3.
 				info.once = true
 				info.result = types.Never
+				if lam.Result != nil {
+					// The result type is the annotation, also for a call
+					// of its own name in its body (F17 11.3).
+					if t, ok := c.res.AnnTypes[lam.Result]; ok {
+						info.result = t
+					}
+				}
 				c.uses++
 				if c.uses > MaxUses || base+info.maxRel > MaxNesting {
 					c.m(useTmpl(c.uses), word("name", np.Name)).diag("check-limit", lam.Span())

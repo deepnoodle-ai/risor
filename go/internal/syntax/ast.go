@@ -301,6 +301,20 @@ type Param struct {
 // Annotated reports whether the parameter carries an annotation.
 func (p *Param) Annotated() bool { return p.Type != nil || p.Fn != nil }
 
+// Typed reports whether every parameter of the lambda and its result carry
+// a type (f17-recursion.md 11.1): such a lambda may refer to its own name.
+func (l *Lambda) Typed() bool {
+	if l.Result == nil {
+		return false
+	}
+	for _, p := range l.Params {
+		if !p.Annotated() {
+			return false
+		}
+	}
+	return true
+}
+
 // PFn is the function type of a parameter (f16-entry-points.md 2.1):
 // "(a: T, b: U) => R". Result is nil when the result is "unknown".
 type PFn struct {

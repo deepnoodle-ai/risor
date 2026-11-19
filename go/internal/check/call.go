@@ -234,7 +234,7 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		rejected := c.dyn(recvSpan)
 		for _, a := range m.Args {
 			if l, named := c.lambdaArg(a); l != nil {
-				if named && c.res.SelfRefs[a] {
+				if named && c.res.SelfRefs[a] && !l.Typed() {
 					continue // a reference to its own name is no use (13.9)
 				}
 				// An annotated parameter is given any, which fits it only
@@ -341,9 +341,11 @@ func (c *checker) use(at syntax.Node, l *syntax.Lambda) (int, bool) {
 
 // callLambda is a call by name of a const-bound lambda (13.9).
 func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node, fs facts) *types.Type {
-	if c.res.SelfRefs[n] {
+	if c.res.SelfRefs[n] && !l.Typed() {
 		// A reference to its own name (recursion-needs-types) is no use:
-		// its plain arguments are synthesized, and it has type never.
+		// its plain arguments are synthesized, and it has type never. A
+		// lambda whose parameters and result are typed is checked once,
+		// and its call of itself is checked as any call of it (F17 11.3).
 		c.synthPlain(args, fs)
 		return types.Never
 	}
@@ -576,7 +578,7 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 				}
 				continue
 			}
-			if named && c.res.SelfRefs[a] {
+			if named && c.res.SelfRefs[a] && !l.Typed() {
 				continue // a reference to its own name is no use (13.9)
 			}
 			lams = append(lams, lamArg{a, l, named, p.Fn})
