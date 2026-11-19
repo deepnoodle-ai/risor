@@ -1290,14 +1290,8 @@ class Compiler {
         if (m === null) v = s.f!(r, v);
         else {
           // A method call (02 2.3, 11.3): the entry runs from this frame.
-          // Its calls of a lambda leave that lambda's frame in progress (FRAME).
           const c = m.enter(r, v);
-          if (c === null) v = SHORT;
-          else {
-            const frame = r.frame;
-            v = c.impl(c);
-            r.frame = frame;
-          }
+          v = c === null ? SHORT : c.impl(c);
         }
         if (v === SHORT) {
           v = null;
@@ -1610,11 +1604,7 @@ class Compiler {
         const site: EntrySite = { span, name, lambdas };
         return (r) => {
           const c = enterEntry(r, entry, undefined, args(r), site);
-          // The entry's calls of a lambda leave that lambda's frame in progress (FRAME).
-          const frame = r.frame;
-          const out = c.impl(c);
-          r.frame = frame;
-          return out;
+          return c.impl(c);
         };
       }
       case "host": {
@@ -1659,10 +1649,10 @@ function bindArgs(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown): v
  * FRAME (f17 11.5). The entry's calls of the lambda never overlap, so they
  * share one frame, made here, which links to the frame of the call in which
  * the lambda was evaluated. Each call binds the names again. A call makes
- * that frame the one in progress and leaves it so: between the calls only the
- * entry runs, which reads no name, and the code that calls the entry puts its
- * own frame back when the entry returns. A failure that `catch` stops puts
- * back the frame of the `try`.
+ * that frame the one in progress, and when it ends puts back the frame of the
+ * code that called the entry, which was in progress when the callback was
+ * made: kept here, not on the stack, as STACK asks. A failure that `catch`
+ * stops puts back the frame of the `try`.
  */
 class LambdaCallback implements Callback {
   readonly params: number;
@@ -1671,6 +1661,7 @@ class LambdaCallback implements Callback {
   private readonly lc: LambdaCode;
   private readonly measure: number;
   private readonly frame: unknown[];
+  private readonly caller: unknown[];
 
   constructor(r: Run, lc: LambdaCode, params: number, measure: number, link: unknown) {
     this.r = r;
@@ -1678,6 +1669,7 @@ class LambdaCallback implements Callback {
     this.params = params;
     this.measure = measure;
     this.frame = newFrame(lc.size, link);
+    this.caller = r.frame;
   }
 
   /** The call with the arguments (a, b): the depth test, the parameters, the body (02 8.4 item 7, 11.2). */
@@ -1698,6 +1690,7 @@ class LambdaCallback implements Callback {
         if (lc.s2 >= 0) fr[lc.s2] = null;
       } else this.bind2(a, b);
       const out = lc.body(r);
+      r.frame = this.caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {
@@ -1723,6 +1716,7 @@ class LambdaCallback implements Callback {
         if (lc.s2 >= 0) fr[lc.s2] = c;
       } else bindArgs(r, lc, a, b, c);
       const out = lc.body(r);
+      r.frame = this.caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {
