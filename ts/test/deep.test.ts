@@ -1,7 +1,10 @@
-// 02 8.4, 01 13.2: the stack this binding needs. The deepest programs within the
-// limits run in a child process whose V8 stack is 700 KB, below Node's
-// default (984 KB). Measured: 600 KB suffices at depth limit 1,000, with the
-// trace of package F8 kept as a failure unwinds.
+// 02 8.4, 01 13.2, 03 3.9.1: the stack this binding needs. The deepest programs
+// within the limits run in a child process whose V8 stack is 656 KB, two
+// thirds of Node's default (984 KB), so they pass with 1.5 times headroom at
+// the default: calls by name and a walk at depth limit 1,000, 100 levels of
+// source nesting, and the forms of fixtures/deep-forms.ts, whose calls go
+// through a library entry that calls a lambda, at depth limit 400. What each
+// needs is measured in src/index.ts (STACK).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,9 +14,9 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-test("the deepest programs run with a 700 KB stack", () => {
-  const out = execFileSync(process.execPath, ["--stack-size=700", join(here, "fixtures", "deepest.ts")], { encoding: "utf8" });
-  assert.equal(out.trim(), "calls 200 ok calls 1000 ok walk 1000 ok nesting 100 ok");
+test("the deepest programs run with a 656 KB stack", () => {
+  const out = execFileSync(process.execPath, ["--stack-size=656", join(here, "fixtures", "deepest.ts")], { encoding: "utf8" });
+  assert.equal(out.trim(), "calls 200 ok calls 1000 ok walk 1000 ok nesting 100 ok map 400 ok flatMap 400 ok heaviest 400 ok");
 });
 
 test("long flat programs need no stack (01 13.2 rule 6)", async () => {
@@ -33,4 +36,7 @@ test("long flat programs need no stack (01 13.2 rule 6)", async () => {
   assert.equal(run("if (false) { 1 } " + "else if (false) { 2 } ".repeat(n) + "else { 3 }"), 3);
   assert.equal(run(Array.from({ length: n }, (_, i) => `const a${i} = ${i};`).join(" ") + ` a${n - 1}`), n - 1);
   assert.equal(run("true" + " && true".repeat(n)), true);
+  // A chain of method calls, and steps after an optional one: one spine (src/eval/compile.ts).
+  assert.equal(run("len([1]" + ".reverse()".repeat(n) + ")"), 1);
+  assert.equal(run("type(m" + "?.a".repeat(n) + ")"), "map");
 });

@@ -2,6 +2,7 @@
 // a child process with a small V8 stack. Prints one line per program.
 
 import { createEnv, execute, parse } from "../../src/host/api.ts";
+import { FORMS, VALUES, VARS, deepSource } from "./deep-forms.ts";
 
 /** depth - 1 calls in a chain, at nesting 0, then a walk of one level: the depth count reaches the limit. */
 function calls(depth: number): string {
@@ -41,4 +42,15 @@ function nesting(): string {
   return "ok";
 }
 
-console.log(["calls 200", calls(200), "calls 1000", calls(1000), "walk 1000", walk(1000), "nesting 100", nesting()].join(" "));
+/** A form of deep-forms.ts, its calls through a library entry, at the depth limit `depth`. */
+function form(name: string, depth: number): string {
+  const f = FORMS.find((x) => x.name === name)!;
+  const env = createEnv({ varRecord: VARS, limits: { depth, steps: null, allocation: null } });
+  const o = execute(env.compile(parse(deepSource(f, depth)), { check: false }), VALUES);
+  if (!o.ok) return o.diagnostic.code;
+  return JSON.stringify(o.value) === JSON.stringify(f.expect) ? "ok" : "wrong-value";
+}
+
+const out = ["calls 200", calls(200), "calls 1000", calls(1000), "walk 1000", walk(1000), "nesting 100", nesting()];
+for (const f of FORMS) out.push(`${f.name} 400`, form(f.name, 400));
+console.log(out.join(" "));
