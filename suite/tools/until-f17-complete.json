@@ -1,0 +1,91 @@
+{
+ "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+ "cases": [
+  {
+   "name": "every name at the start of an empty text",
+   "complete": "‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "items": [
+      {
+       "label": "items",
+       "kind": "variable",
+       "detail": "{id: string, qty: int}[]"
+      },
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      },
+      {
+       "label": "abs",
+       "kind": "function"
+      },
+      {
+       "label": "bool",
+       "kind": "function"
+      },
+      {
+       "label": "ceil",
+       "kind": "function"
+      },
+      {
+       "label": "fail",
+       "kind": "function"
+      },
+      {
+       "label": "fixed",
+       "kind": "function"
+      },
+      {
+       "label": "float",
+       "kind": "function"
+      },
+      {
+       "label": "floor",
+       "kind": "function"
+      },
+      {
+       "label": "int",
+       "kind": "function"
+      },
+      {
+       "label": "len",
+       "kind": "function"
+      },
+      {
+       "label": "max",
+       "kind": "function"
+      },
+      {
+       "label": "min",
+       "kind": "function"
+      },
+      {
+       "label": "range",
+       "kind": "function"
+      },
+      {
+       "label": "round",
+       "kind": "function"
+      },
+      {
+       "label": "string",
+       "kind": "function"
+      },
+      {
+       "label": "type",
+       "kind": "function"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
