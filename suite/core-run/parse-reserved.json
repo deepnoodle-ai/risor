@@ -1202,6 +1202,132 @@
    "expect": {
     "value": 2
    }
+  },
+  {
+   "name": "null before an arrow is a value, not a parameter",
+   "source": "[1].map(null => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "true before an arrow is a value",
+   "source": "const f = true => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       16,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "false before an arrow is a value",
+   "source": "[1].reduce((a, b) => 1, false => 2)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       31,
+       1,
+       33
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match before an arrow begins a match",
+   "source": "[1].map(match => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       15,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "if before an arrow begins an if",
+   "source": "[1].map(if => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "if-form",
+      "span": [
+       1,
+       12,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "try before an arrow begins a try",
+   "source": "[1].map(try => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "try-form",
+      "span": [
+       1,
+       13,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a word that begins no expression is reserved-word before an arrow",
+   "source": "[1].map(for => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       9,
+       1,
+       12
+      ]
+     }
+    ]
+   }
   }
  ]
 }
