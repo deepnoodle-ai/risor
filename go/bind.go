@@ -23,50 +23,7 @@ import (
 // functions (design 19-13, ruling S4). Func and Methods give the same
 // Function and OpaqueType values a host writes by hand: a signature as type
 // text and a Native. They add no rule to the language (03-host.md 3.3.1
-// item 7).
-//
-// A signature is derived from the Go function's type:
-//
-//	Go                                   Signature
-//	a first *Call or context.Context     not a parameter: it gets the call
-//	                                     handle, or the run's context
-//	each other parameter                 a parameter, its type by TypeOf
-//	                                     (F1 6.2), named a1, a2, ... or by
-//	                                     Params
-//	no result, (R)                       => null, => R
-//	(error), (R, error)                  => null !, => R !
-//
-// Refused, as declaration errors reported by NewEnv or With:
-//
-//	a value that is not a Go function, a variadic function, other
-//	results, a *Call that is not first, a Go type no row of F1 6.2
-//	covers, a Go interface type other than any (error is the
-//	failure mark only as the last result)            bad-type
-//	a parameter of a Go function type (3.5.1 item 3),
-//	Params with the wrong count or a bad name, two Go methods with
-//	one Risor name                                   bad-signature
-//	an option naming no method, a method name that
-//	is not a word                                    bad-name
-//
-// A Go interface type is refused so that a later declaration of opaque
-// interfaces (design 19-12) can give it a meaning. A host that wants such a
-// function writes its signature: when a Function from Func or Methods has a
-// Type that is not the derived one, that text is the signature, and the
-// Go function supplies only the implementation. The text must have the Go
-// function's count of parameters, none optional and none rest.
-//
-// At a call, each argument is converted to its Go parameter type: a value
-// of that Go type is passed as it is, an any parameter takes the value as
-// the run has it, and every other value is converted by the rules of
-// Decode (F10 6.4), except that an opaque value is passed to a parameter of
-// its own Go type. An argument that does not convert fails the call with
-// function-error, whose message names the argument. An error the function
-// returns fails it with function-error, and a panic with function-panic.
-// A result is returned to the run as a host value (03-host.md 3.4): an
-// integer past 2^53 - 1 fails the run with number-range where it is read.
-//
-// An adapted function charges nothing beyond the step of its call. One
-// that takes *Call charges through it, as a hand-written Native does.
+// item 7). fastpath_gen.go holds the adapters with no reflection.
 
 // FuncOption is an option of Func.
 type FuncOption interface{ funcOption() }
@@ -152,9 +109,48 @@ func (c *funcConfig) apply(opts []FuncOption) {
 }
 
 // Func declares a host function whose signature is derived from fn's Go
-// type, by the rules at the top of this file. Type holds the derived
-// signature as type text, and Impl an adapter. A derivation error is
-// reported by NewEnv or With, as a declaration error.
+// type. Type holds the derived signature as type text, and Impl an
+// adapter that calls fn.
+//
+//	Go                                Signature
+//	a first *Call or context.Context  not a parameter: fn gets the call
+//	                                  handle, or the run's context
+//	each other parameter              a parameter, its type TypeOf of its
+//	                                  Go type (F1 6.2), named a1, a2, ...
+//	                                  unless Params names it
+//	no result, R                      => null, => R
+//	error, (R, error)                 => null !, => R !
+//
+// What cannot be derived is a declaration error, which NewEnv or With
+// reports:
+//
+//   - bad-type: a value that is not a Go function, a variadic function,
+//     other results, a *Call that is not first, a Go type that no row of
+//     F1 6.2 covers, and a Go interface type other than any, at any depth
+//     (error is the failure mark only as the last result);
+//   - bad-signature: a parameter of a Go function type (03-host.md 3.5.1
+//     item 3), and Params with the wrong count or a name that is not a
+//     Name.
+//
+// A Go interface type is refused so that a later declaration of opaque
+// interfaces (design 19-12) can give it a meaning. To use one, write the
+// signature: when the Type of a Function from Func or Methods is not the
+// derived text, that text is the signature, and fn supplies only the
+// implementation. It must have fn's count of parameters, none optional
+// and none rest. The same way narrows a derived signature, such as
+// Order | null to Order.
+//
+// At a call, each argument is converted to its Go parameter type: a value
+// of that Go type is passed as it is, an opaque value among them; an any
+// parameter takes the value as the run has it; every other value is
+// converted by the rules of Decode (F10 6.4). An argument that does not
+// convert fails the call with function-error, whose message names the
+// argument; catch catches it. An error fn returns fails the call with
+// function-error, and a panic with function-panic. The result is returned
+// to the run as a host value (03-host.md 3.4), so an integer past
+// 2^53 - 1 fails the run with number-range where it is read. An adapted
+// function charges nothing beyond the step of its call; one that takes
+// *Call charges through it, as a hand-written Native does.
 //
 // The adapter uses no reflection when fn has one of these shapes, where
 // each parameter type is string, int, int64, float64, bool or any, and T
@@ -234,11 +230,14 @@ func (b *opaqueBinding) fail(code, format string, args ...any) {
 //   - An interface type T is refused: it is left to opaque interfaces
 //     (design 19-12).
 //
+// Besides the errors of Func, two Go methods with one Risor name are
+// bad-signature; an option that names no method of T, and a Risor name
+// that is not a word, are bad-name. NewEnv or With reports them.
+//
 // A method's adapter uses no reflection when, after its receiver, it
 // takes no parameter and returns nothing, error, T or (T, error), or
 // takes one parameter and returns nothing or error, with the types of
-// Func's list. For a value type S, each call copies the receiver. Errors
-// are reported by NewEnv or With, as declaration errors.
+// Func's list. For a value type S, each call copies the receiver.
 func Methods[T any](name string, opts ...MethodOption) OpaqueType {
 	return bindMethods[T](name, opts, true)
 }
@@ -260,7 +259,12 @@ func bindMethods[T any](name string, opts []MethodOption, useFast bool) OpaqueTy
 		ob.fail(diag.CodeBadType, "opaque type %s: %v does not implement risor.Opaque%s", name, rt, hint)
 		return o
 	}
-	if got := reflect.Zero(rt).Interface().(Opaque).OpaqueType(); got != name {
+	got, ok := zeroOpaqueName(rt)
+	if !ok {
+		ob.fail(diag.CodeBadType, "opaque type %s: OpaqueType of the zero %v panics; it must not read its receiver", name, rt)
+		return o
+	}
+	if got != name {
 		ob.fail(diag.CodeBadType, "opaque type %s: the values of %v name the opaque type %s", name, rt, got)
 		return o
 	}
@@ -356,6 +360,16 @@ func bindMethod(fv reflect.Value, name string, cfg funcConfig, fast func(any, *a
 	f.bind.reflective = true
 	f.Impl = a.reflective(fv)
 	return f
+}
+
+// zeroOpaqueName asks the opaque name of rt's zero value, as TypeOf does.
+func zeroOpaqueName(rt reflect.Type) (name string, ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	return reflect.Zero(rt).Interface().(Opaque).OpaqueType(), true
 }
 
 func recvAs[T any](a *adapter, args []any) (T, error) {
@@ -547,8 +561,15 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 	b.text = s.String()
 }
 
-// deriveIn derives the type of a parameter or a result as type text.
-func deriveIn(d *deriver, t reflect.Type) (string, error) {
+// deriveIn derives the type of a parameter or a result as type text. An
+// OpaqueType that reads its receiver panics on the zero value it is asked
+// of; that is an error of the type, not a crash of the host.
+func deriveIn(d *deriver, t reflect.Type) (text string, err error) {
+	defer func() {
+		if x := recover(); x != nil {
+			err = fmt.Errorf("%v: the opaque name of its zero value panics: %v", t, x)
+		}
+	}()
 	ty, err := d.nested(t)
 	if err == nil && types.Depth(ty) > types.MaxDepth {
 		err = fmt.Errorf("the type is deeper than %d", types.MaxDepth)

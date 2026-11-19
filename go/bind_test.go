@@ -214,6 +214,7 @@ func TestFuncDeclareErrors(t *testing.T) {
 		{risor.Func("f", func(m map[int]string) {}), "bad-type", "f: parameter 1: map[int]string: a map key must be a string, found int"},
 		{risor.Func("f", func() chan int { return nil }), "bad-type", "f: the result: chan int: no rule of the binding covers chan int"},
 		{risor.Func("f", func(s string, c *risor.Call) {}), "bad-type", "f: a *risor.Call is only the first parameter"},
+		{risor.Func("f", func(l *lazy) {}), "bad-type", "f: parameter 1: *risor_test.lazy: the opaque name of its zero value panics: runtime error: invalid memory address or nil pointer dereference"},
 		{risor.Func("f", func(g func(int) int) int { return 0 }), "bad-signature", "f: parameter 1 is a Go function, and a host function takes no function"},
 		{risor.Func("f", func(s fmt.Stringer) string { return "" }), "bad-type", "f: the Go interface type fmt.Stringer has no derived type: write the signature in Type"},
 		{risor.Func("f", func(w withIface) {}), "bad-type", "f: the Go interface type fmt.Stringer has no derived type: write the signature in Type"},
@@ -312,6 +313,11 @@ func TestFastAndReflectiveAgree(t *testing.T) {
 			v, _ := ctx.Value(key{}).(string)
 			return v == "on" && n > 0, nil
 		}, []string{`f(1)`, `f(0)`}},
+		{"f", func(ctx context.Context) (string, error) {
+			v, _ := ctx.Value(key{}).(string)
+			return v, nil
+		}, []string{`f()`}},
+		{"f", func(c *risor.Call) (int, error) { return 1, c.Charge(2) }, []string{`f()`}},
 		{"f", func(xs []int, m map[string]string) int { return len(xs) + len(m) }, []string{`f([1, 2], {a: "b"})`, `f([1, 2.5], {})`, `f([1], {a: 1})`, `f(null, {})`}},
 	}
 	ctx := context.WithValue(context.Background(), key{}, "on")
@@ -507,6 +513,35 @@ func TestMethodsReceiver(t *testing.T) {
 		"function-error environment: the receiver of method text: expected Label, found opaque {1 0}")
 }
 
+// pinger has a method that takes the run's context and no argument.
+type pinger struct{}
+
+type pingKey struct{}
+
+func (*pinger) OpaqueType() string { return "Pinger" }
+func (*pinger) Ping(ctx context.Context) (string, error) {
+	v, _ := ctx.Value(pingKey{}).(string)
+	return "pong " + v, nil
+}
+
+func TestMethodsLead(t *testing.T) {
+	for _, o := range []risor.OpaqueType{risor.Methods[*pinger]("Pinger"), risor.ReflectiveMethods[*pinger]("Pinger")} {
+		assert.Equal(t, o.Methods["ping"].Type, "() => string !")
+		env := newEnv(t, o, risor.Var("p", "Pinger"))
+		x, _ := risor.Parse("p.ping()")
+		prog, err := env.Compile(x)
+		assert.NoError(t, err)
+		out, err := prog.Run(context.WithValue(context.Background(), pingKey{}, "ok"), risor.Map{"p": &pinger{}})
+		assert.NoError(t, err)
+		assert.Equal(t, out, any("pong ok"))
+	}
+}
+
+// lazy's OpaqueType reads its receiver, which TypeOf and Methods forbid.
+type lazy struct{ name string }
+
+func (l *lazy) OpaqueType() string { return l.name }
+
 type clash struct{}
 
 func (*clash) OpaqueType() string { return "Clash" }
@@ -530,7 +565,7 @@ func TestMethodsDeclareErrors(t *testing.T) {
 		{risor.Methods[*label]("Lbl"), "bad-type", "opaque type Lbl: the values of *risor_test.label name the opaque type Label"},
 		{risor.Methods[fmt.Stringer]("Str"), "bad-type", "opaque type Str: fmt.Stringer is an interface type, not the Go type of opaque values"},
 		{risor.Methods[*strings.Builder]("Builder"), "bad-type", "opaque type Builder: *strings.Builder does not implement risor.Opaque"},
-		{risor.Methods[*clash]("Clash"), "bad-signature", "opaque type Clash: the methods URL and Url of *risor_test.clash are both named url"},
+		{risor.Methods[*lazy]("Lazy"), "bad-type", "opaque type Lazy: OpaqueType of the zero *risor_test.lazy panics; it must not read its receiver"}, {risor.Methods[*clash]("Clash"), "bad-signature", "opaque type Clash: the methods URL and Url of *risor_test.clash are both named url"},
 		{risor.Methods[*label]("Label", risor.Rename("Text", "url")), "bad-signature", "opaque type Label: the methods Text and URL of *risor_test.label are both named url"},
 		{risor.Methods[*label]("Label", risor.Rename("Text", "a-b")), "bad-name", `opaque type Label: "a-b", the name of method Text, is not a word`},
 		{risor.Methods[*label]("Label", risor.Skip("Nope")), "bad-name", "opaque type Label: *risor_test.label has no method Nope"},
