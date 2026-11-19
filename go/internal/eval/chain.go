@@ -113,6 +113,9 @@ const (
 type stepCode struct {
 	kind     stepKind
 	optional bool
+	// coalesce marks the last step of a coalesced read under ??
+	// (01-language.md 6.6): an absent key gives null, as for optional.
+	coalesce bool
 	name     string
 	size     int64
 	idx      code
@@ -252,6 +255,9 @@ loop:
 		goT = stepGoType(goT, sc)
 		steps = append(steps, sc)
 	}
+	if len(nodes) > 0 && c.res.Coalesced[nodes[0]] {
+		steps[len(steps)-1].coalesce = true
+	}
 	// F11: the leading field reads on a base of known Go type are planned.
 	if tc, k := c.typedChain(x, steps, func(k int) code {
 		if k == len(steps) {
@@ -344,7 +350,7 @@ func (r *run) member(s *stepCode, v any) any {
 // The map case has charged its step already.
 func (r *run) memberMore(s *stepCode, v any) any {
 	if _, ok := v.(map[string]any); ok {
-		if s.optional {
+		if s.optional || s.coalesce {
 			return nil
 		}
 		r.raise(fail("missing-field", "field", s.span, messages.Word("name", s.name)))
@@ -354,7 +360,7 @@ func (r *run) memberMore(s *stepCode, v any) any {
 		r.step(1 + s.size)
 		x, ok := value.Get(v, s.name)
 		if !ok {
-			if s.optional {
+			if s.optional || s.coalesce {
 				return nil
 			}
 			r.raise(fail("missing-field", "field", s.span, messages.Word("name", s.name)))
@@ -390,7 +396,7 @@ func (r *run) index(s *stepCode, v any) any {
 		r.step(1 + value.Size(key))
 		x, ok := value.Get(v, key)
 		if !ok {
-			if s.optional {
+			if s.optional || s.coalesce {
 				return nil
 			}
 			r.raise(fail("missing-field", "key", s.span, messages.Val("key", key)))

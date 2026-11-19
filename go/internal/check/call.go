@@ -54,6 +54,10 @@ loop:
 	if len(fs) > 0 {
 		p, isPath = c.pathOf(x)
 	}
+	// The last step of a coalesced read under ?? reads a record by the
+	// column of a coalesced read (9.2), which is the column "Optional" for
+	// the key; its receiver is tested as for a plain step.
+	coalesced := len(nodes) > 0 && c.res.Coalesced[nodes[0]]
 	skipped := false
 	var recv syntax.Node = x
 	for i := len(nodes) - 1; i >= 0; i-- {
@@ -85,12 +89,13 @@ loop:
 			c.m("receiver", ty("type", cur)).diag("kind", rs)
 			cur = types.Never
 		}
+		keyOptional := optional || (coalesced && i == 0)
 		switch s := s.(type) {
 		case *syntax.Member:
 			if isPath {
 				p.keys = append(p.keys, s.Name)
 			}
-			cur = c.readKey(cur, s.Name, s.NameSpan, rs, optional, isPath && fs.covers(p))
+			cur = c.readKey(cur, s.Name, s.NameSpan, rs, keyOptional, isPath && fs.covers(p))
 			if isPath {
 				cur = fs.apply(cur, p)
 			}
@@ -100,7 +105,7 @@ loop:
 				if isPath {
 					p.keys = append(p.keys, str.Value)
 				}
-				cur = c.readKey(cur, str.Value, s.Index.Span(), rs, optional, isPath && fs.covers(p))
+				cur = c.readKey(cur, str.Value, s.Index.Span(), rs, keyOptional, isPath && fs.covers(p))
 				if isPath { // a fact applies to a path only (10.4)
 					cur = fs.apply(cur, p)
 				}
