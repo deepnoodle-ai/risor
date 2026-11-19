@@ -81,8 +81,11 @@ func (g *Gen) walkCall(t *Ty, d int) ast.Expr {
 			return call(g.expr(et, d), g.walkFn(et, d), g.expr(g.randTy(1), d))
 		}
 	}
-	if r.IntN(3) == 0 {
-		// Any data: the children are a field of each node, or the node.
+	if r.IntN(3) == 0 && (g.loose || !g.opts.NoF4) {
+		// Any data: the children are a field of each node, or the node. A
+		// typed program writes the root `as any`, so that the reads of the
+		// callback are checked against any and not against whatever type the
+		// root's expression has.
 		g.push()
 		n, k := g.fresh("n"), g.fresh("k")
 		g.bindName(n, tyAny)
@@ -102,7 +105,11 @@ func (g *Gen) walkCall(t *Ty, d int) ast.Expr {
 			}
 		}
 		g.pop()
-		return call(g.expr(tyAny, d), lam)
+		root := g.expr(tyAny, d)
+		if !g.loose {
+			root = &ast.As{Form: "as", X: root, Type: "any"}
+		}
+		return call(root, lam)
 	}
 	return call(g.expr(et, d), g.walkFn(et, d))
 }
