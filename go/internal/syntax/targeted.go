@@ -279,7 +279,7 @@ func (p *parser) targetToken(e *Error) *Error {
 	case "F4.2.5":
 		return set("needs-parentheses", "not-test")
 	}
-	if e.Rule == "" && j > 0 && p.marked(j-1, mBranchEnd) && continuesOperand(t, next) { // 3.4 rule 4
+	if (e.Rule == "" || e.Rule == "cond") && j > 0 && p.marked(j-1, mBranchEnd) && continuesOperand(t, next) { // 3.4 rule 4
 		return set("needs-parentheses", "after-branch")
 	}
 	// 2.7: other text, in order.

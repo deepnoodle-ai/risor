@@ -574,8 +574,8 @@ On 2026-11-19, after a further review and #644, the owner withdrew D52,
 trimmed D54 to D56 and settled D57 and D58. These rulings record what follows.
 Each lands with the track of `14` 5.3 that it names. R214 to R221 record
 track B as built, R222 to R231 step E0 of track E, R232 to R246 slice D1, and
-R247 to R255 step E1. R240 to R246 were made when the three implementations
-of slice D1 were compared, and R255 when those of step E1 were.
+R247 to R256 step E1. R240 to R246 were made when the three implementations
+of slice D1 were compared, and R255 and R256 when those of step E1 were.
 
 | # | Ruling |
 | --- | --- |
@@ -632,4 +632,5 @@ of slice D1 were compared, and R255 when those of step E1 were.
 | R253 | **Depth through a library entry is the library call's measure alone.** `18` 3.3 says `n.children.flatMap(walk)` "adds the flatMap call's measure and then 1 for each level", which can be read as two for each level. `02-evaluation.md` 8.4 item 3 is the rule: the call that `flatMap` makes of the lambda adds the measure of the call of `flatMap`, and nothing more, so `[n - 1].flatMap(d)` at nesting depth 0 costs 1 for each call (F17 11.4 item 1; measured in Go, `suite/recursion/e1-run.json`). Step E1. |
 | R254 | **F17's step E1 is section 11 of its chapter,** appended, so that the citations of sections 1 to 10 stand. Its cases are the files `e1-` and `tools-e1-` of `suite/recursion/`. The chapter states that an implementation offering F17 offers steps E0 and E1; how later steps are offered stays open (`14` 5.3). Step E1. |
 | R255 | **In a completion list, a lambda's own name is a name of the scope that holds its `const` line.** F12 3.6 item 1 orders the candidates "from the innermost scope out, and in one scope in the order they are bound", and did not say where the own name of a `const`-bound lambda stands when the hole is in its body. Two implementations listed it with the names of its line's scope, at its place in the order bound; one listed it in a scope of its own, between the parameters and that scope. The `const` line binds the name (`01-language.md` 5 rules 4 and 6), so it belongs to that line's scope: in `const a = 1; const f = n => ‸` the order is `n`, `a`, `f`. F12 3.6 item 1 says so, and three cases of `suite/recursion/tools-e1-assist.json` hold it. Found when the implementations of step E1 were compared; the difference dates from slice D1. |
+| R256 | **Where D4 of F8 2.6 is given.** Two differences in the code of a `parse` error after the last branch of an `if` or the handler of a `try` (`01-language.md` 3.4 rule 4), both older than step E1. (1) In the first branch of `? :`, one implementation gave `unexpected-token` for `c ? try { 1 } catch { 2 } (1) : 3`, because it met the missing `:` before the rule; two gave `needs-parentheses`. The `try` is an `Expr` there, and rule 4 says what may follow one, so it is D4. (2) For a `not` that `in` does not follow, `try { 1 } catch { 2 } not x`, one implementation gave `needs-parentheses` and two `unexpected-token`. The operator is `not in`; a lone `not` continues no operand, so it stays `unexpected-token`. F8 2.6 items 3 and 4 say both, with the tokens at which D4 is given, and nine cases of `suite/errors/parse-precedence.json` hold them. The first was found by the differential fuzzer, the second by probes around it. |
 
