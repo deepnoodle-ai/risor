@@ -42,7 +42,8 @@ pub struct HostMethod {
 pub struct Limits {
     pub steps: Option<u64>,
     pub allocation: Option<u64>,
-    /// From 1 to 1,000.
+    /// From 1 to 1,000. The stack a run needs grows with it: the crate's
+    /// documentation (Stack) gives the figures.
     pub depth: u32,
     pub deadline: Option<Duration>,
 }
