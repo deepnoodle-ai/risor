@@ -1,6 +1,0 @@
-[
-  {"name": "lambda: an inner lambda of the same name calls the outer one", "source": "const f = x => x + 1; { const f = x => f(x) * 2; f(3) }", "expect": {"value": 8, "steps": 6, "allocated": 0}},
-  {"name": "lambda: no recursion, the name is not in scope in its own body", "source": "const f = n => n <= 0 ? 0 : f(n - 1); f(3)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 29, 1, 30]}]}},
-  {"name": "a const-bound lambda cannot call itself", "source": "const f = x => f(x); 1", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 16, 1, 17]}]}},
-  {"name": "a const-bound lambda's body does not see its own name", "source": "const f = x => f; 1", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 16, 1, 17]}]}}
-]

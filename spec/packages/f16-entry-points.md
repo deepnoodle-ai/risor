@@ -83,12 +83,13 @@ version number and no version marker.
    package may state messages.
 3. The cases of each slice stand in their own files. Those of slice D1 are the
    files of `suite/entry-points/` whose names begin `d1-` or `tools-d1-` (8).
-4. **An implementation that offers F17 or F12 and not yet this slice** keeps
-   passing the suite it passed: it does not run `suite/entry-points/` or load
-   `suite/messages-entry-points.json`, and it runs the files named
-   `until-f16-` (`03-host.md` 3.11 item 4; section 10). It does not pass the
-   new Core cases of section 5 until it has the Core amendment, which lands
-   with this slice.
+4. **An implementation that offers F17 or F12 and not yet this slice** does
+   not run `suite/entry-points/` or load `suite/messages-entry-points.json`,
+   and it does not pass the new Core cases of section 5: the Core amendment
+   lands with this slice. The cases it would still pass stood in files named
+   `until-f16-` (`03-host.md` 3.11 item 4). All three implementations offered
+   this slice in the change that added it, so those files were deleted
+   (3.11 item 5; section 10).
 
 ### 1.5 Open points
 
@@ -464,7 +465,7 @@ This row adds to the table of F12 3.13 item 3:
 | `suite/entry-points/d1-syntax.json` | The grammar of 2.1, the choices of 2.2, the lambda at each place it may stand, the errors of 2.5 with F8's messages |
 | `suite/entry-points/d1-run.json` | The static rules of 3.1, claims in a run without the type rules (3.2), costs (4), the Core rules of an `Fn` parameter |
 | `suite/entry-points/d1-check.json` | The checker of 3.3 and 3.4: fits, the lambdas checked once, at each use and with no use, the values the library passes |
-| `suite/entry-points/d1-earlier.json` | The texts of `suite/errors/until-f16-texts.json`, with this package's outcome (10) |
+| `suite/entry-points/d1-earlier.json` | The seven texts of 10 item 1, with this package's outcome |
 | `suite/entry-points/d1-analysis.json` | Analysis of type lines and annotations (6) |
 | `suite/entry-points/tools-d1-format.json` | The formatter of 7.1 (F12) |
 | `suite/entry-points/tools-d1-assist.json` | Completion and hover of 7.2 and 7.3 (F12) |
@@ -481,8 +482,7 @@ This row adds to the table of F12 3.13 item 3:
 3. It loads `suite/messages-entry-points.json` (9) and runs its cases checked,
    with the static codes of 3.1 item 11.
 4. A runner of an implementation that does not offer this package does not run
-   `suite/entry-points/`, does not load `suite/messages-entry-points.json`, and
-   runs the files named `until-f16-` (10).
+   `suite/entry-points/` and does not load `suite/messages-entry-points.json`.
 5. The Core cases of section 5 stand in `suite/core-run/static-recursion.json`,
    `suite/core-check/check-recursion.json` and `suite/analysis/scope.json`, and
    the case of `recursion-needs-types` in `suite/messages-check.json`.
@@ -529,8 +529,8 @@ message format.
 ## 10. Earlier cases
 
 1. **Texts this package makes programs.** Seven cases of `suite/errors/`
-   expected a `parse` diagnostic for an annotation or a type line, and move to
-   `suite/errors/until-f16-texts.json` (`03-host.md` 3.11 item 4):
+   expected a `parse` diagnostic for an annotation or a type line, and moved
+   to `suite/errors/until-f16-texts.json` (`03-host.md` 3.11 item 4):
    "core-run/parse-follow-on: a typed parameter in an argument",
    "core-run/parse-follow-on: a typed const line" and "core-run/parse-follow-on:
    text a later package covers: type Name = T" of `errors-core-texts.json`;
@@ -539,18 +539,21 @@ message format.
    type" of `parse-targeted.json`. `suite/entry-points/d1-earlier.json` holds
    the same texts with this package's outcome.
 2. **Texts the Core amendment changes** (section 5). Four cases of
-   `suite/core-run/` move to `suite/core-run/until-f16-scope.json`: "lambda:
+   `suite/core-run/` moved to `suite/core-run/until-f16-scope.json`: "lambda:
    an inner lambda of the same name calls the outer one" and "lambda: no
    recursion, the name is not in scope in its own body" of `flow-lambda.json`,
    "a const-bound lambda cannot call itself" of
    `static-undefined-function.json`, and "a const-bound lambda's body does not
    see its own name" of `static-undefined-name.json`. Two cases of
-   `suite/analysis/` move to `suite/analysis/until-f16-scope.json`: "A8" of
+   `suite/analysis/` moved to `suite/analysis/until-f16-scope.json`: "A8" of
    `examples.json` and "a lambda's own name is free in its body" of
    `calls.json`. The same texts, with the amended outcome, stand in the Core
    files of 8 item 5, and not in this package's directory: the rule is Core's,
    and an implementation that has it offers this slice (R207).
-3. **Messages.** The cases whose message is a text of 9.2 carry the new text:
+3. **The three `until-f16-` files were deleted** when every implementation
+   offered this slice (`03-host.md` 3.11 item 5), which was in the change
+   that added it.
+4. **Messages.** The cases whose message is a text of 9.2 carry the new text:
    in `suite/messages-parse.json`, `suite/errors/errors-core-texts.json`,
    `suite/errors/parse-targeted.json` and `suite/errors/parse-precedence.json`.
    Their codes and spans do not change.
