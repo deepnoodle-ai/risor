@@ -1067,6 +1067,10 @@ class Compiler {
             nodes.push({ n: y, chain });
             y = y.x!;
           }
+          // A projection with no receiver is a later star, which the parser puts
+          // only among the reads of another projection (f07 3); reached here, it
+          // would make the peel loop for ever.
+          if (y.kind === "Each" && y.x === null) throw new Error("a projection with no receiver is never an operand");
           x = y;
           continue;
         }
@@ -1107,11 +1111,19 @@ class Compiler {
       }
       return left.c;
     }
-    const steps: SpineStep[] = nodes.map(({ n: node, chain }, i) => {
-      let end = i + 1;
-      if (chain >= 0) while (end < n && nodes[end].chain === chain) end++;
-      return { f: node.kind === "MethodCall" ? null : this.spineStep(node), m: node.kind === "MethodCall" ? this.methodCode(node) : null, end };
-    });
+    // The end of each step's chain, in one pass from the last step: the steps
+    // of a chain are next to one another, so a step's end is the next step's
+    // when both are of one chain, and its own index plus 1 otherwise.
+    const ends = new Array<number>(n);
+    for (let i = n - 1; i >= 0; i--) {
+      const chain = nodes[i].chain;
+      ends[i] = chain >= 0 && i + 1 < n && nodes[i + 1].chain === chain ? ends[i + 1] : i + 1;
+    }
+    const steps: SpineStep[] = nodes.map(({ n: node }, i) => ({
+      f: node.kind === "MethodCall" ? null : this.spineStep(node),
+      m: node.kind === "MethodCall" ? this.methodCode(node) : null,
+      end: ends[i],
+    }));
     return (r) => {
       let v = first.k === 0 ? first.c(r) : ev(r, first);
       for (let i = 0; i < n; i++) {
