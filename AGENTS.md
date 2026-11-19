@@ -96,10 +96,11 @@ The design is in `experiments/v3/design/`. Read `00-overview.md` first.
 | `07` to `13` | One feature each: checked conversion (`as`, `is`), strings, tagged unions, errors, testing, config files, queries |
 | `14-implementation-plan.md` | Core and the follow-on packages, the milestones, the rules of the work |
 | `15-build-rulings.md` | Every ruling made while building: decisions taken, design rules changed, new rules |
-| `16` to `20` | One feature each, from the review of issues #640 and #641: regular expressions, entry points and annotations, recursion and `match` guards, host calls and replay, feedback to authors |
+| `17` to `20` | One feature each, from the review of issues #640 and #641: entry points and annotations, recursion and function parameters, host calls, feedback to authors |
 
-A plan (`07` to `13`, `16` to `20`) is the authority for its feature. `02` to `06` carry its
-rules and cite it.
+A plan (`07` to `13`, `17` to `20`) is the authority for its feature. `02` to
+`06` carry its rules and cite it. There is no `16`: regular expressions were
+withdrawn (D52).
 
 ## The specification, the suite and the implementations
 

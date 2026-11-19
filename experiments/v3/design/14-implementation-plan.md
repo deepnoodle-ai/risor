@@ -197,7 +197,6 @@ needs a checker. Before M8 it lands in Go only.
 | F10 | **Config files** (`12`) | The JSON text of a result. `Decode`, `Load`. A closed type from a schema. `eval --format json`, `check --type` | F1, F4, F5 | 280 | the closed type |
 | F11 | **The typed layer** (`04` Part B, D22) | Speed on Go structs. No change in any result | Core check, F1 | 600 | none |
 | F12 | **Tools** | `eval`, `check`, `fmt`, the REPL, the editor grammar, completion and hover | F8 for the renderings | 500 for completion and hover, and the commands | none |
-| F15 | **Regular expressions** (`16`, D52) | The group `regexp`: 7 entries, one specified matcher, groups typed from constant patterns, `bad-pattern` | F3, F6 | about 900 | the typing of constant patterns |
 | F16 | **Entry points and annotations** (`17`, D53) | `export const`, parameter and result annotations, `type` lines, doc comments as descriptions, the Call stage, `SchemaOf`, `Doc` on host declarations | F1, F4, F8 | parser, checker and `SchemaOf`: see `17` 8 | annotated lambdas, `bad-export`, descriptions |
 | F17 | **Recursion and guards** (`18`, D54) | Typed self-recursion, recursive named types, `iterate`, `walk`, `match` guards | F4, F16 | about 250 in the checker, 120 in the evaluator | coinductive Fits, Equal and Join |
 | F18 | **Host calls** (`19`, D55) | `remaining()`, `runWithin`, `callWithin`, effect marks and `readOnly`, prefetch, `Batch`, opaque interfaces, `risor.Func`, `risor.Methods`, `risor-bind`, `bigInts`, `,string` | F1, F2, F4, F6, F16 | see `19` 9 | opaque interfaces |
@@ -221,7 +220,7 @@ Risor error's message, and the scope of a lambda's own name. `00` section 4,
 | F7 and F8 after the port | Their check sides are small, and by then they land in three checkers at once |
 | F11 late | It changes speed and no result. It needs real programs from the first host to measure against |
 | Core amendments of D52 to D56 first | They change existing outcomes, so every later case is written against them |
-| F15 to F19 before F12 | Each adds text that `fmt`, hover and completion must know: annotations, doc comments, guards, entry points |
+| F16 to F19 before F12 | Each adds text that `fmt`, hover and completion must know: annotations, doc comments, guards, entry points |
 | F16 before F17 and F18 | Recursion needs annotations and `type` lines. `callWithin` runs an entry point |
 | F18's prefetch last within F18 | It is optional for every binding and the one part whose bug would break determinism silently (`19` 9). The TypeScript binding does not build it |
 | F12 last | Tools show what exists. `fmt` must know every string form |

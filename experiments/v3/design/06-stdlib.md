@@ -53,7 +53,8 @@ documents by section, and `07:` to `13:` are the plans.
    `fail(message, data?)` (D48).
 8. **Regular expressions are left out of 3.0 (T4).** The namespace is reserved
    and a linear-time subset is written down as the candidate for 3.1.
-   Reversed by D52: package F15, planned in `16`, which revises the subset.
+   D52 planned them as a package and was withdrawn on 2026-11-19, so this
+   stands (D9). Only the reservation of `regexp` ships.
 9. **Nothing in the library is nondeterministic.** No clock, random source,
    locale or time zone. The current time is data the host supplies. Times are
    numbers: seconds since the Unix epoch.
@@ -923,9 +924,11 @@ be a tagged union (`09`): the test reads the tag, then one variant.
 
 #### Regular expressions: out of 3.0 (T4)
 
-> **Reversed by D52.** Regular expressions come as package F15. `16` revises
-> the subset, the entries, the cost and the matcher below, and is the
-> authority for them.
+> **D9 stands.** D52 planned regular expressions as a package (F15) and was
+> withdrawn on 2026-11-19: three hand-written matchers would have to stay
+> identical, and `glob` (`21` 2.6) covers the common shapes. The namespace
+> `regexp` is reserved in Core. The subset below stays a candidate for a later
+> minor version.
 
 **Recommendation: leave regular expressions out of the 3.0 specification.
 Reserve the namespace `regexp`. Add them in a minor version, from the subset
@@ -1045,7 +1048,7 @@ else that is valid in both means the same, or is a compile error.
 | `time` | 3 functions | off | No consumer today |
 | `json` | 2 functions | off | `parse` returns `any`. Under a strict host its result is used only after `as` or `is` (`07`) |
 | `base64` | 2 functions | off | No consumer today |
-| `regexp` | 7 in F15 (`16`, D52) | reserved | 2.8 |
+| `regexp` | none in 3.0 | reserved | 2.8 |
 
 - **A group is a namespace** (S1). Every opt-in entry is written `group.name`.
   An author can tell from the text which entries are opt-in, and a group adds
