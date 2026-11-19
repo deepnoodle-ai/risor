@@ -698,13 +698,6 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 					out[f.Span] = true
 				}
 			}
-		case *syntax.ListPat:
-			// The same for an element of a parameter's list pattern.
-			if c.dynSites[n.Span()] {
-				for _, e := range n.Elems {
-					out[e.Span] = true
-				}
-			}
 		case *syntax.Each:
 			// The receiver of a step of a projection is the chain up to the
 			// step before it, at that step's span, or x for the first star
