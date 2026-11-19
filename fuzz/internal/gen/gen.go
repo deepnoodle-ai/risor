@@ -30,6 +30,8 @@ type Options struct {
 	NoF3 bool
 	// NoF17 leaves out the guards and the calls of walk of package F17.
 	NoF17 bool
+	// NoF16 leaves out the type lines and annotations of package F16.
+	NoF16 bool
 	// Exclude names library entries not to call, by name.
 	Exclude map[string]bool
 }
@@ -76,6 +78,8 @@ type Gen struct {
 	tryBody int
 	sound   bool // the soundness mode: use the variables more, divide by them
 	f17     bool // the program has a form of package F17
+	f16     bool // the program has a form of package F16
+	types   []ast.TypeLine
 
 	// Packages F4 and F5.
 	declared map[string]*types.Type // the declared type of each variable
@@ -139,6 +143,7 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 		c.Prog = nil
 	}
 	c.F17 = g.f17
+	c.F16 = g.f16
 	c.NoCheck = r.IntN(100) < opts.NoCheckShare
 	share := opts.LimitShare
 	if share == 0 {
@@ -389,11 +394,13 @@ func (g *Gen) program() *ast.Program {
 		// Smaller programs, so that a site and its failure stand out.
 		p.Consts = g.consts(g.r.IntN(3), 2)
 		p.Result = g.expr(g.randTy(2), 3)
+		p.Types = g.types
 		return p
 	}
 	p.Consts = g.consts(g.r.IntN(5), 3)
 	p.Result = g.expr(g.randTy(2), 4)
 	p.Semi = g.r.IntN(5) == 0
+	p.Types = g.types
 	return p
 }
 
@@ -431,7 +438,11 @@ func (g *Gen) constLine(d int) *ast.Const {
 			name = g.ns
 		}
 		g.bindName(name, t)
-		return &ast.Const{Pat: &ast.NamePat{Name: name}, Value: v}
+		k := &ast.Const{Pat: &ast.NamePat{Name: name}, Value: v}
+		if g.annotChance(6) {
+			k.Type = g.annot(t) // F16
+		}
+		return k
 	}
 }
 
@@ -459,7 +470,21 @@ func (g *Gen) lambdaConst(d int) *ast.Const {
 	}
 	lam.Body = g.expr(sig.result, d)
 	g.pop()
-	if n == 1 && lam.Params[0].Default == nil && r.IntN(2) == 0 {
+	if g.annotChance(3) { // F16: annotations on the parameters and the result
+		for i := range lam.Params {
+			if r.IntN(3) > 0 {
+				lam.Params[i].Type = g.annot(sig.params[i])
+			}
+		}
+		if r.IntN(3) == 0 {
+			lam.Result = g.annot(sig.result)
+		}
+	}
+	annotated := lam.Result != ""
+	for _, p := range lam.Params {
+		annotated = annotated || p.Type != ""
+	}
+	if n == 1 && lam.Params[0].Default == nil && !annotated && r.IntN(2) == 0 {
 		lam.Bare = lam.Params[0].Pat.(*ast.NamePat).Name
 	}
 	name := g.fresh("f")

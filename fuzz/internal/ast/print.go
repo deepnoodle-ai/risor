@@ -63,6 +63,7 @@ func Level(e Expr) int {
 // Print writes a program as source text.
 func Print(p *Program) string {
 	var w printer
+	w.typeLines(p.Types)
 	w.consts(p.Consts)
 	w.expr(p.Result, LevelExpr)
 	if p.Semi {
@@ -129,6 +130,7 @@ func (w *printer) span(start [2]int) Span { return Span{start[0], start[1], w.li
 // PrintSpans writes a program and gives the span of every node.
 func PrintSpans(p *Program) (string, []NodeSpan) {
 	w := printer{rec: true, line: 1, col: 1, spans: map[Expr]Span{}, lamBodies: map[string]Span{}}
+	w.typeLines(p.Types)
 	w.consts(p.Consts)
 	w.expr(p.Result, LevelExpr)
 	if p.Semi {
@@ -137,10 +139,20 @@ func PrintSpans(p *Program) (string, []NodeSpan) {
 	return w.b.String(), w.nodes
 }
 
+// typeLines writes the type lines of package F16.
+func (w *printer) typeLines(ts []TypeLine) {
+	for _, t := range ts {
+		w.s("type " + t.Name + " = " + t.Type + "; ")
+	}
+}
+
 func (w *printer) consts(cs []*Const) {
 	for _, c := range cs {
 		w.s("const ")
 		pats := w.pattern(c.Pat)
+		if c.Type != "" {
+			w.s(": " + c.Type)
+		}
 		w.s(" = ")
 		w.expr(c.Value, LevelExpr)
 		w.s("; ")
@@ -452,12 +464,18 @@ func (w *printer) expr(e Expr, need int) {
 						w.nodes = append(w.nodes, ns)
 					}
 				}
+				if p.Type != "" {
+					w.s(": " + p.Type)
+				}
 				if p.Default != nil {
 					w.s(" = ")
 					w.expr(p.Default, LevelExpr)
 				}
 			}
 			w.s(")")
+			if e.Result != "" {
+				w.s(": " + e.Result)
+			}
 		}
 		w.s(" => ")
 		w.expr(e.Body, LevelExpr)
