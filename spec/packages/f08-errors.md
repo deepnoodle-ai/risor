@@ -714,7 +714,7 @@ is the type the checker gives at that place, as named.
 |  | `size` | `the type here has more than 100000 parts` | 05-types.md 20.7; a program type (F4 6.1) |
 | `duplicate-case` | `default` | `{text} is listed twice in this match` |  |
 | `unreachable-arm` | `default` | `this arm comes after _ and is never chosen` |  |
-| `recursion-needs-types` | `default` | `{name} is this lambda's own name, and a lambda cannot refer to itself` |  |
+| `recursion-needs-types` | `default` | `{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name` |  |
 | `non-exhaustive` | `default` | `the match has no _ arm and does not cover every value of type {type}` |  |
 | `result-mismatch` | `result` | `expected {expected}, found {found}` | A place of failure (05-types.md 15.1). expected is the type there; found is the type of the expression there |
 |  | `missing` | `required field {key} has no entry` | A map with no entry for a required field. key is the least such key |

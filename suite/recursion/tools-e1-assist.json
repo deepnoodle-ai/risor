@@ -1,0 +1,12 @@
+{
+  "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+  "cases": [
+    {"name": "hover on a call of its own name gives the result type", "hover": "const f = (n: int): int[] => n <= 0 ? [] : ‸f(n - 1); f(3)", "expect": {"hover": {"kind": "lambda", "span": [1, 44, 1, 45], "type": "int[]", "signature": null, "doc": null, "declaration": [1, 7, 1, 8]}}},
+    {"name": "hover on a call of it after its line", "hover": "const f = (n: int): int[] => n <= 0 ? [] : f(n - 1); ‸f(3)", "expect": {"hover": {"kind": "lambda", "span": [1, 54, 1, 55], "type": "int[]", "signature": null, "doc": null, "declaration": [1, 7, 1, 8]}}},
+    {"name": "hover on its own name given to flatMap", "hover": "const f = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(‸f); f(3)", "expect": {"hover": {"kind": "lambda", "span": [1, 60, 1, 61], "type": null, "signature": null, "doc": null, "declaration": [1, 7, 1, 8]}}},
+    {"name": "hover on a call of its own name in a lambda inside it", "hover": "const f = (n: int): string => n <= 0 ? \"\" : [n].map(k => ‸f(k - 1))[0]; f(2)", "expect": {"hover": {"kind": "lambda", "span": [1, 58, 1, 59], "type": "string", "signature": null, "doc": null, "declaration": [1, 7, 1, 8]}}},
+    {"name": "hover on a call of its own name with no result type is never", "hover": "const f = (n: int) => n <= 0 ? 0 : ‸f(n - 1); f(3)", "expect": {"hover": {"kind": "lambda", "span": [1, 36, 1, 37], "type": "never", "signature": null, "doc": null, "declaration": [1, 7, 1, 8]}}},
+    {"name": "its own name is a candidate in its body", "complete": "const fact = (n: int): int => n <= 1 ? 1 : n * fa‸", "expect": {"completion": {"span": [1, 48, 1, 50], "items": [{"label": "fact", "kind": "lambda", "detail": null, "insert": "fact"}, {"label": "fail", "kind": "function", "detail": "(message: string, data?: any) => never !", "insert": "fail"}]}}},
+    {"name": "its own name is a candidate in a default", "complete": "const fact = (n: int = fa‸", "expect": {"completion": {"span": [1, 24, 1, 26], "items": [{"label": "fact", "kind": "lambda", "detail": null, "insert": "fact"}, {"label": "fail", "kind": "function", "detail": "(message: string, data?: any) => never !", "insert": "fail"}]}}}
+  ]
+}
