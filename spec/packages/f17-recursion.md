@@ -85,14 +85,14 @@ type, sites, diagnostics, value and usage it has without this package.
 2. **How the steps of F17 are offered is open** (`14` 5.3). F17 as this
    chapter states it holds step E0 only, and an implementation that offers it
    offers that step. Step E0 needs no part of F16.
-3. **An implementation that offered F12 before this chapter was written.** It
-   offers F17 when it can. Until then it keeps passing the suite it passed:
-   it does not run `suite/recursion/` or load `suite/library-recursion.json`,
-   and it runs `suite/tools/until-f17-complete.json`, which holds the one
-   case of `suite/tools/` whose outcome F17 changes (10). That is why the
-   cases of F17's forms in the formatter and in assist stand in this
-   package's directory, in files whose names begin `tools-` (8), and not in
-   `suite/tools/`.
+3. **F12 was offered before this chapter was written,** and F17 stands before
+   it in the order. So the cases of F17's forms in the formatter and in assist
+   stand in this package's directory, in files whose names begin `tools-` (8),
+   and not in `suite/tools/`: a runner runs them only when it offers F12. The
+   one case of `suite/tools/` whose outcome F17 changes stood in a file named
+   `until-f17-` while an implementation offered F12 and not F17 (10). Every
+   implementation offered F17 in the change that added it, so no
+   implementation offers F12 without it.
 
 ## 2. Guards: syntax
 
@@ -207,7 +207,9 @@ The row of `match` in `02-evaluation.md` 2.2 becomes:
 
 ### 4.1 The static rules
 
-These replace the rows of `05-types.md` 22.4 and 22.8 for `match`.
+These rows are those of `05-types.md` 22.4 and 22.8 for `match`, with what a
+guard adds. For a `match` with no guard they say what Core's rows say, so the
+package adds to the chapter's rules and changes none (`05-types.md` 23).
 
 | Rule | Text |
 | --- | --- |
@@ -352,8 +354,9 @@ These join the rules of `05-types.md` 11.2.
    deepest node whose `children` runs has depth L − 1. A node of depth L fails
    at its test.
 4. A value of host data that holds itself, as a list that is its own element,
-   stops at `depth-exceeded`. A value with many paths to its nodes stops at
-   the step limit.
+   cannot be walked for ever: the walk stops at `depth-exceeded`, unless the
+   step limit, the deadline or a failure of the callback stops it first. A
+   value with many paths to its nodes stops at the step limit.
 5. **The trace** (F8 4). The call of `walk` is in progress while a call of
    `children` is, as any library call of a lambda is. The `index` of its entry
    is the position in pre-order of the node that call was made for, from 0:
@@ -530,8 +533,9 @@ This package adds no template. Its failures use Core's templates:
 
 1. One case of `suite/tools/` lists every function of the environment, and
    `walk` joins that list: "every name at the start of an empty text" of
-   `suite/tools/complete.json`. It moves, with the header of its file, to
-   `suite/tools/until-f17-complete.json` (`03-host.md` 3.11 item 4).
+   `suite/tools/complete.json`. It moved, with the header of its file, to
+   `suite/tools/until-f17-complete.json` (`03-host.md` 3.11 item 4), and that
+   file was deleted when every implementation offered F17 (3.11 item 5).
    `suite/recursion/tools-complete.json` holds the same text with this
    package's outcome.
 2. No other earlier case changes. No case of the suite calls `walk` or writes a

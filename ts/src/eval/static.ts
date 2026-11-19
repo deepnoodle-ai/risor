@@ -584,7 +584,8 @@ class Walker {
         own.push(l);
       }
       if (arm.guard === null) {
-        lits.push(...own);
+        // One at a time: a spread of a very wide arm would overflow the stack.
+        for (const l of own) lits.push(l);
         if (arm.isDefault) defaultSeen = true;
       } else this.expr(arm.guard);
       this.expr(arm.result);
