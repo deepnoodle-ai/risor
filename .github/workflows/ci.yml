@@ -152,11 +152,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The toolchain is pinned in rust/rust-toolchain.toml, so a new compiler
+      # release cannot fail a pull request that did not touch Rust.
       - name: Set up Rust
         run: |
-          rustup update stable
-          rustup default stable
-          rustup component add clippy
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
 
       # The workspace is the library and its derive crate, rust/derive. The
       # build uses the default features; the lint and the tests turn on every

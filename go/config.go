@@ -221,6 +221,12 @@ const (
 type decoder struct {
 	deriver *deriver
 	fails   []Diagnostic
+	// args is set for the arguments of an adapted function (bind.go): a
+	// value of the destination's Go type is taken as it is, opaque values
+	// among them, and an any destination takes a value with no copy.
+	args bool
+	// max is the most failures to report; 0 is decodeMaxFailures.
+	max int
 }
 
 var (
@@ -228,7 +234,12 @@ var (
 	jsonUnmarshaler = reflect.TypeFor[json.Unmarshaler]()
 )
 
-func (d *decoder) full() bool { return len(d.fails) >= decodeMaxFailures }
+func (d *decoder) full() bool {
+	if d.max > 0 {
+		return len(d.fails) >= d.max
+	}
+	return len(d.fails) >= decodeMaxFailures
+}
 
 func (d *decoder) fail(path []any, code, msg string) {
 	if d.full() {
@@ -246,9 +257,12 @@ func (d *decoder) fail(path []any, code, msg string) {
 
 // wrong is the template wrong of F4 4.4 against the type derived from rt.
 func (d *decoder) wrong(path []any, rt reflect.Type, v any) {
+	if d.deriver == nil {
+		d.deriver = &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}}
+	}
 	t, err := d.deriver.nested(rt)
 	expected := rt.String()
-	if err == nil {
+	if err == nil && !(d.args && rt.Kind() == reflect.Interface && rt.NumMethod() > 0) {
 		expected = t.String()
 	}
 	d.fail(path, "not-conforming", messages.Build("not-conforming", "wrong", messages.Word("expected", expected), messages.Val("found", v)))
@@ -276,13 +290,44 @@ func (d *decoder) decode(v any, dst reflect.Value, path []any, depth int) {
 		d.fail(path, "number-range", "the host number cannot enter the language")
 		return
 	}
+	if d.args {
+		if v != nil {
+			xv := reflect.ValueOf(v)
+			if xv.Type().AssignableTo(rt) {
+				dst.Set(xv)
+				return
+			}
+			if rt.Kind() == reflect.Pointer && xv.Type().AssignableTo(rt.Elem()) {
+				p := reflect.New(rt.Elem())
+				p.Elem().Set(xv)
+				dst.Set(p)
+				return
+			}
+		}
+		if rt.Kind() == reflect.Interface && rt.NumMethod() == 0 {
+			if v == nil {
+				dst.Set(reflect.Zero(rt))
+			} else {
+				dst.Set(reflect.ValueOf(v))
+			}
+			return
+		}
+	}
 	k := value.KindOf(v)
 	if k == value.OpaqueKind {
+		if d.args {
+			d.wrong(path, rt, v)
+			return
+		}
 		d.fail(path, "not-conforming", fmt.Sprintf("an opaque value of type %s is not data, and is not decoded", value.OpaqueTypeName(v)))
 		return
 	}
 	// An opaque Go type refuses every value (6.4 item 8).
 	if rt.Implements(opaqueIface) && !(rt.Kind() == reflect.Pointer && rt.Elem().Implements(opaqueIface)) {
+		if d.args {
+			d.wrong(path, rt, v)
+			return
+		}
 		d.fail(path, "not-conforming", fmt.Sprintf("%v is an opaque type, and no value is decoded into it", rt))
 		return
 	}

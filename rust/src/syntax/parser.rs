@@ -2306,8 +2306,7 @@ impl<'a> Parser<'a> {
         if let Some(o) = enclosing.filter(|&o| self.lambda_map(o) && !key_eq) {
             let mut depth = 0i32;
             let mut plain = true;
-            for k in o + 1..ti {
-                let x = &self.t[k];
+            for x in self.t.iter().take(ti).skip(o + 1) {
                 if Self::is_opener(x) {
                     depth += 1;
                 } else if matches!(x.tok, Tok::Punct(P::RParen | P::RBracket | P::RBrace)) {
