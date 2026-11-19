@@ -327,7 +327,13 @@ with `depth-exceeded`. No walk over host data loops for ever.
 2. Where a run reads a value that does not fit its declared type, the run
    fails with the code of what it found: `null-operand`, `wrong-kind`,
    `missing-field`, `number-range` or `no-match`. It never crashes and never
-   gives a wrong value.
+   gives a wrong value, except a coalesced read under `??` (`01-language.md`
+   6.6), which gives the default for an absent key whatever the declared type
+   says. On a host record declared `{id: int}` that lacks `id`, `x.id ?? 0`
+   gives 0 and no `missing-field`. The value given is the author's own
+   default, not a value made from data. The rule cannot be limited to fields
+   the type calls optional: it would then depend on a type, and a checked and
+   an unchecked run must give the same value (3.7.6 item 3).
 3. The run finds such a value only where it reads it.
 4. The class of the failure is given by 3.7.6.
 

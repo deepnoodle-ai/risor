@@ -1,0 +1,15 @@
+{
+ "env": "{s: Shape, ps: Shape | null, o: OpenShape}",
+ "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}, {"name": "OpenShape", "type": "{kind: \"circle\", r: float, ...} | {kind: \"rect\", h: float, w: float}"}],
+ "cases": [
+  {"name": "a field of one variant under ?? is a coalesced read of flat(U)", "source": "s.r ?? 0", "expect": {"type": "float", "sites": []}},
+  {"name": "a field of one variant under ??, read from a rect", "source": "s.r ?? 0", "vars": {"s": {"kind": "rect", "h": 3, "w": 2}}, "expect": {"value": 0, "steps": 1, "allocated": 0}},
+  {"name": "a field of one variant under ??, read from a circle", "source": "s.r ?? 0", "vars": {"s": {"kind": "circle", "r": 1.5}}, "expect": {"value": 1.5, "steps": 1, "allocated": 0}},
+  {"name": "fields of two variants in a chain of three operands", "source": "s.r ?? s.w ?? 0", "expect": {"type": "float", "sites": []}},
+  {"name": "a field of one variant with null added", "source": "s.r ?? null", "expect": {"type": "float | null", "sites": []}},
+  {"name": "a key that no variant lists, every variant exact, is no-field under ??", "source": "s.color ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 3, 1, 8]}]}},
+  {"name": "a key that no variant lists, one variant open, is any with no site under ??", "source": "o.color ?? 0", "expect": {"type": "any", "sites": []}},
+  {"name": "the same key read plain has its dynamic site", "source": "o.color", "expect": {"type": "any", "sites": [{"class": "dynamic", "span": [1, 1, 1, 2]}]}},
+  {"name": "a union that may be null is still maybe-null under ??", "source": "ps.r ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 1, 1, 3]}]}}
+ ]
+}

@@ -68,7 +68,7 @@ Types are in `05-types.md`.
 | Binary operator other than `&&`, `\|\|`, `??` | The left operand, the right operand, then the operator |
 | `a && b` | `a`. If `a` is falsy, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
 | `a \|\| b` | `a`. If `a` is truthy, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
-| `a ?? b` | `a`. If `a` is not null, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
+| `a ?? b` | `a`. If `a` is not null, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value. An operand that is a coalesced read (`01-language.md` 6.6) gives null, instead of failing with `missing-field`, when the key of its last step is absent from its receiver. It charges what the read charges (5.2) |
 | `c ? a : b` | `c`. Then `a` if `c` is truthy, else `b`. The other branch is not evaluated |
 | `if` | Each test in order, up to the first truthy one. Then the branch of that test, or the `else` branch if no test is truthy. No later test and no other branch is evaluated |
 | `match` | The subject, once. Then each arm in order: the subject is compared with `==` to each literal of the arm, left to right, and the arm stops at its first equal literal. The first arm with an equal literal, or the arm `_`, is taken. Then the result of the arm taken. No other result is evaluated. If no arm is taken, the failure `no-match` |

@@ -261,6 +261,11 @@ A projection is evaluated level by level, from level 1.
    one null.
 4. A plain read on a null receiver fails with `null-operand`, and a read on a
    receiver of a kind it does not accept fails with `wrong-kind`, as in Core.
+5. **Under `??`.** A projection is an `Each` node, so it is never a coalesced
+   read (`01-language.md` 6.6), and no read among its `reads` is one. So
+   `xs[*].a ?? d` fails with `missing-field` on an element without `a`, and its
+   check reports `maybe-absent` on an optional `a`, as without `??`. Write
+   `xs[*]?.a`, or `xs.map(x => x.a ?? d)`.
 
 ### 3.4 What follows a projection
 
