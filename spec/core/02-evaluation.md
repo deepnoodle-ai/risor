@@ -617,6 +617,18 @@ In this table `f` is a `const`-bound lambda.
 | `inc(inc(x))`, with `inc` a `const`-bound lambda, at the inner `inc` | 1: the outer `inc` is not in progress while its argument runs | 2: the inner `inc` stands inside the outer's `(`, 1 level, so 1 + 1. When it returns, the outer `inc` is tested at 1 + 0 = 1 |
 | ``xs.map(x => `${v}`)``, with `v` `[[1]]` | 1, and a walk, at the inner list | 3: `map` is 1, and the walk has entered the outer list and the inner list, 2 |
 
+**Levels, not calls.** This paragraph and its table are informative. The count
+is in levels of nesting, not in calls: where a call stands in its body changes
+what it costs. So a chain of calls written one way reaches the depth limit in
+half as many calls as the same chain written another way.
+
+| Body of a `const`-bound lambda, with `f` another one | What the body's calls add to the count while `f` runs |
+| --- | --- |
+| `f(x) + 1` | 1: `f` is the left operand of `+`, which opens no level |
+| `1 + f(x)` | 2: `f` stands inside the level of `+` |
+| `[x].map(f)[0]` | 1: the measure of the call of `map`, by item 3. `map` calls `f`, so no call by name adds more |
+| `xs.map(y => f(y))` | 2: 1 for the call of `map`, and 1 for the call of `f` by name in the lambda's body |
+
 ### 8.5 What the limits guarantee
 
 1. The work the language does in a run is at most a constant times the steps
@@ -630,7 +642,8 @@ In this table `f` is a `const`-bound lambda.
    implementation publishes its constants.
 3. An evaluator's recursion over the source, through every call in progress, is
    at most `D` + 100 levels, where `D` is the depth limit. A walk adds at most
-   `D` more. A run in all is at most 2`D` + 100 levels.
+   `D` more. A run in all is at most 2`D` + 100 levels: 500 at the default
+   limit, 200, and 900 at the largest, 400 (`03-host.md` 3.6.1).
 4. The limits do not cover a host function beyond what it charges, host data,
    live memory or the fixed state of a run. They are not a security boundary.
 

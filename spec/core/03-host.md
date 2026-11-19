@@ -201,7 +201,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A removed entry whose name names no entry of the library, in the version the environment has: `lenn`, `repeat` (a method is named with its kind), `string.map`, `list`, `number.abs`. Removing one entry twice, in one environment or in a child, is no error | `bad-name` |
 | A rejected class that is not a check class | `bad-class` |
-| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
+| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 400 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
@@ -405,7 +405,7 @@ host sets the limits as a declaration of the environment.
 | Steps | 1,000,000 | Set a whole number, or turn it off | `steps-exceeded` |
 | Allocation | 1,000,000 units | Set a whole number, or turn it off | `allocation-exceeded` |
 | Deadline | Off | Give it as a duration of wall-clock time, measured from the start of the run, or turn it off | `deadline-exceeded` |
-| Depth | 200 | Set a whole number from 1 to 1,000. It cannot be turned off | `depth-exceeded` |
+| Depth | 200 | Set a whole number from 1 to 400. It cannot be turned off | `depth-exceeded` |
 | Source nesting | 100 levels | Nothing. It is fixed | `nesting-exceeded`, of phase `parse` |
 
 1. A host cancels a run through the cancellation signal it passed to the run.
@@ -681,10 +681,25 @@ The limits make accidents cheap. They are not a sandbox for hostile code.
 
 **The stack a binding needs.** Each binding documents the stack that an
 optimized build needs to parse a program at the source nesting limit, and to
-run at the depth limits 200 and 1,000. It has a test that runs its deepest
-cases on a thread with that stack. A binding never answers a program or data
-within the limits with a stack overflow. This specification fixes no number of
-bytes for all bindings.
+run at the default depth limit, 200, and at the largest, 400 (3.6.1). It has a
+stack test. The test runs each of the deepest cases below at both depth
+limits, on a thread whose stack is the documented stack divided by 1.5, and
+passes. A binding never answers a program or data within the limits with a
+stack overflow. This specification fixes no number of bytes for all bindings.
+
+| Deepest case | What it reaches |
+| --- | --- |
+| Parse | A program that opens 100 levels of nesting (`01-language.md` 13.1), of every kind of level |
+| Calls by name | A chain of `const`-bound lambdas, each calling the one before by name, whose depth count passes the depth limit (`02-evaluation.md` 8.4) |
+| Calls that a library entry makes of a lambda | The same chain, where each link calls the one before through `map`, and in a second case through `flatMap`, at a cost of 1 to the depth count for each link: `const f1 = x => [x].map(f0)[0];`, `const f1 = x => [x].flatMap(f0);`. The depth count passes the depth limit |
+| A walk | A value nested to the depth limit, compared with `==` and rendered (`02-evaluation.md` 8.4 item 5) |
+
+The calls through a library entry are in the list because an evaluator spends
+more of its own stack on them than on a call by name (informative). Measured on
+`main` before they were listed: the TypeScript binding overflowed the default
+stack of Node at a depth of about 600 through `map`, and at about 435 in a
+browser's Web Worker, and the Rust binding aborted on a thread of 2 MiB at a
+depth of 1,000 through `map`. Only calls by name had been tested.
 
 ### 3.9.2 Versions
 
@@ -1101,7 +1116,7 @@ the static codes.
       "properties": {
         "steps": {"type": "integer", "minimum": 0},
         "allocation": {"type": "integer", "minimum": 0},
-        "depth": {"type": "integer", "minimum": 1, "maximum": 1000}
+        "depth": {"type": "integer", "minimum": 1, "maximum": 400}
       },
       "additionalProperties": false
     },
