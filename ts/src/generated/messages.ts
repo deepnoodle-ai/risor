@@ -1187,7 +1187,7 @@ export const CATALOG: CatalogEntry[] = [
       "name": "word"
     },
     "templates": {
-      "default": "{name} is this lambda's own name, and a lambda cannot refer to itself"
+      "default": "{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name"
     }
   },
   {
