@@ -109,9 +109,7 @@ And the forms of package F17, step E0 (`spec/packages/f17-recursion.md`):
   `children`, a lambda at `root`, a callback with three parameters, a result of
   any kind, and a walk with no bound.
 
-`-nof17` leaves the package out. Only Go offers F17 so far: run with `-nof17`
-to compare the three implementations on the other forms alone, or see the
-known differences below.
+`-nof17` leaves the package out.
 
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
@@ -177,10 +175,10 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 `outcome` command cannot turn a package off. A package gives some texts that
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
-Every implementation offers F1 to F8, and some offer more. `cmd/fuzz/known.go`
-counts apart a case with a form of F17 for which an implementation answers as
-one without F17 does: `unexpected-token` at the `if` of a guard, or
-`undefined-function` for `walk`. Every other difference is a finding. With F8 a parse or check diagnostic carries a message, and a run
+Every implementation offers F1 to F8, and some offer more. The generator writes
+only forms that every implementation offers, the guards and `walk` of F17 among
+them, so no difference is filtered: `cmd/fuzz/known.go` is where a form of a
+package that not every implementation offers would be counted apart. With F8 a parse or check diagnostic carries a message, and a run
 diagnostic a trace; each is compared among the implementations that write it
 (`spec/packages/f08-errors.md` 8).
 
