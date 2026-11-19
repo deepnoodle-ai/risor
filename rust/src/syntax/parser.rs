@@ -1978,11 +1978,19 @@ impl<'a> Parser<'a> {
         Err(self.tag(e, Rule::Key))
     }
 
-    /// 14.2 rule 1: a reserved word followed by `=>`, where an argument or
-    /// the value of a `const` may stand, is a parameter.
+    /// A reserved word followed by `=>`, where an argument or the value of a
+    /// `const` may stand. Only a `Name` or `_` before `=>` begins a lambda
+    /// (3.2 rule 5), so the place holds an `Expr`. A word that begins one
+    /// (14.2 rule 2: `true`, `false`, `null` and `match` an operand, `if` and
+    /// `try` an `Expr`) is read as that, and fails later, at the `=>` or
+    /// where its form does. Any other is `reserved-word` at the word.
     fn reserved_param(&self) -> R<()> {
+        const BEGINS_EXPR: [&str; 6] = ["true", "false", "null", "match", "if", "try"];
         let t = self.peek();
-        if t.word().is_some_and(is_reserved) && self.peek_n(1).is_punct(P::Arrow) {
+        if t.word()
+            .is_some_and(|w| is_reserved(w) && !BEGINS_EXPR.contains(&w))
+            && self.peek_n(1).is_punct(P::Arrow)
+        {
             return Err(self.reserved(t, Rule::Name));
         }
         Ok(())
