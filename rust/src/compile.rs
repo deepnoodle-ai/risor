@@ -928,27 +928,47 @@ impl Resolver<'_> {
         }
     }
 
+    /// The arms of a `match`, with `duplicate-case` and `unreachable-arm`
+    /// (22.8, as F17 4.1 states them with guards). A literal is compared
+    /// with the earlier literals of its own arm and with those of earlier
+    /// plain arms; a guarded arm may list again what an earlier guarded arm
+    /// lists. Only a plain `_` makes the arms after it unreachable.
     fn arms(&mut self, arms: &[NodeId]) {
         let mut seen: HashSet<LitKey> = HashSet::new();
         let mut after_default = false;
         for &a in arms {
-            let NodeKind::Arm { literals, result } = self.kind(a).clone() else {
+            let NodeKind::Arm {
+                literals,
+                guard,
+                result,
+            } = self.kind(a).clone()
+            else {
                 continue;
             };
             if after_default {
                 let span = self.span(a);
                 self.diag(code::STATIC[10], span, "default", &[]);
             }
+            let plain = guard.is_none();
             match literals {
-                None => after_default = true,
+                None => after_default |= plain,
                 Some(lits) => {
+                    let mut own: HashSet<LitKey> = HashSet::new();
                     for l in lits {
-                        if !seen.insert(lit_key(&l.lit)) {
+                        let k = lit_key(&l.lit);
+                        if seen.contains(&k) || !own.insert(k) {
                             let text = self.text(l.span);
                             self.diag(code::STATIC[9], l.span, "default", &[("text", text)]);
                         }
                     }
+                    if plain {
+                        seen.extend(own);
+                    }
                 }
+            }
+            // 22.4 with F17 4.1: the guard, then the result.
+            if let Some(g) = guard {
+                self.walk(g);
             }
             self.walk(result);
         }

@@ -2171,7 +2171,10 @@ impl<'h> Run<'h> {
                     Err(f) => Err(self.call_traced(f, id, span)),
                 }
             }
-            Res::CallLib(i) => self.call_lib(*i as usize, args, span),
+            Res::CallLib(i) => {
+                let measure = self.p.measure[id.index()] as u32;
+                self.call_lib(*i as usize, args, span, measure)
+            }
             Res::CallHost(i) => self.call_host(*i as usize, args, span),
             _ => Err(self.internal(span)),
         }
@@ -2179,10 +2182,16 @@ impl<'h> Run<'h> {
 
     /// A call of a library function: the arguments, then the entry.
     #[inline(never)]
-    fn call_lib(&mut self, i: usize, args: &'h [NodeId], span: Range) -> R<'h, Value<'h>> {
+    fn call_lib(
+        &mut self,
+        i: usize,
+        args: &'h [NodeId],
+        span: Range,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
         let mut vals = Args::new();
         self.args(args, &mut vals)?;
-        self.lib_function(i, vals.as_slice(), span)
+        self.lib_function(i, vals.as_slice(), span, measure)
     }
 
     /// A call of a host function: the arguments, the call's step, then the
@@ -2607,29 +2616,52 @@ impl<'h> Run<'h> {
 
     // ---- match and try ----------------------------------------------------
 
+    /// The arm a `match` takes, whose result the walk evaluates next. An
+    /// arm's guard is evaluated after a literal of it matched, or at `_`,
+    /// and the arm is taken when the guard is truthy (F17 3).
     fn match_arm(&mut self, span: Range, subject: NodeId, arms: &'h [NodeId]) -> R<'h, NodeId> {
         let s = self.eval(subject)?;
         for &a in arms {
-            let NodeKind::Arm { literals, result } = self.ast.kind(a) else {
+            let NodeKind::Arm {
+                literals,
+                guard,
+                result,
+            } = self.ast.kind(a)
+            else {
                 continue;
             };
             self.charge(1)?;
-            let Some(lits) = literals else {
-                return Ok(*result);
-            };
-            for l in lits {
-                let equal = match (&l.lit, &s) {
-                    (Lit::Str(x), Value::Str(y)) => {
-                        self.charge(lcp_size(x, y.as_str()))?;
-                        x == y.as_str()
+            let matched = match literals {
+                None => true,
+                Some(lits) => {
+                    let mut equal = false;
+                    for l in lits {
+                        equal = match (&l.lit, &s) {
+                            (Lit::Str(x), Value::Str(y)) => {
+                                self.charge(lcp_size(x, y.as_str()))?;
+                                x == y.as_str()
+                            }
+                            (Lit::Number(x), Value::Num(y)) => x == y,
+                            (Lit::Bool(x), Value::Bool(y)) => x == y,
+                            (Lit::Null, Value::Null) => true,
+                            _ => false,
+                        };
+                        if equal {
+                            break;
+                        }
                     }
-                    (Lit::Number(x), Value::Num(y)) => x == y,
-                    (Lit::Bool(x), Value::Bool(y)) => x == y,
-                    (Lit::Null, Value::Null) => true,
-                    _ => false,
-                };
-                if equal {
-                    return Ok(*result);
+                    equal
+                }
+            };
+            if !matched {
+                continue;
+            }
+            match guard {
+                None => return Ok(*result),
+                Some(g) => {
+                    if self.eval(*g)?.truthy() {
+                        return Ok(*result);
+                    }
                 }
             }
         }

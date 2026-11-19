@@ -323,7 +323,10 @@ fn children(k: &NodeKind) -> Vec<NodeId> {
             v.push(*subject);
             v.extend(arms);
         }
-        NodeKind::Arm { result, .. } => v.push(*result),
+        NodeKind::Arm { guard, result, .. } => {
+            v.extend(guard);
+            v.push(*result);
+        }
         NodeKind::Try { body, handler, .. } => v.extend([*body, *handler]),
         NodeKind::MapPat { fields, .. } => v.extend(fields.iter().filter_map(|f| f.default)),
         NodeKind::ListPat { elems, .. } => {
@@ -1055,13 +1058,21 @@ fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Range, q: char) -
             let mut others: Vec<String> = Vec::new();
             for &a in arms {
                 if let NodeKind::Arm {
-                    literals: Some(ls), ..
+                    literals: Some(ls),
+                    guard,
+                    ..
                 } = tree.kind(a)
                 {
+                    // F12 3.11 item 1 with F17 7.2: the strings another arm
+                    // with no guard lists are left out. The hole's own arm
+                    // leaves out none, and a guarded arm none.
+                    let own = ls.iter().any(|l| l.span == span);
+                    hit |= own;
+                    if own || guard.is_some() {
+                        continue;
+                    }
                     for l in ls {
-                        if l.span == span {
-                            hit = true;
-                        } else if let Lit::Str(s) = &l.lit {
+                        if let Lit::Str(s) = &l.lit {
                             others.push(s.clone());
                         }
                     }

@@ -384,7 +384,11 @@ impl<'p> Walker<'p> {
             NodeKind::Match { subject, arms } => {
                 out.push(Task::Visit(*subject, lam));
                 for &a in arms {
-                    if let NodeKind::Arm { result, .. } = self.kind(a) {
+                    if let NodeKind::Arm { guard, result, .. } = self.kind(a) {
+                        // F17 6: a guard's reads and calls, in source order.
+                        if let Some(g) = guard {
+                            out.push(Task::Visit(*g, lam));
+                        }
                         out.push(Task::Visit(*result, lam));
                     }
                 }
