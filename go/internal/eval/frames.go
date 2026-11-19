@@ -7,7 +7,7 @@ import (
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
 )
 
-// Frames (spec/packages/f17-recursion.md 6). Each call of a lambda has its
+// Frames (spec/packages/f17-recursion.md 11.5). Each call of a lambda has its
 // own frame: the parameters and the names its body binds, outside the
 // lambdas written inside it. A lambda reads an outer name from the frame
 // of the call where it was written, by the frame's link up. The program has
@@ -196,4 +196,28 @@ type fn struct {
 // enterFn pushes the frame of a call of a lambda handed to a library entry.
 func (r *run) enterFn(l *fn) (fp, base int) {
 	return r.enter(r.frameAt(l.hops), l.size)
+}
+
+// cbEnter makes current the frame of a library entry's next call of its
+// lambda. The calls an entry makes of a lambda never overlap: each ends
+// before the entry makes the next. So one frame serves them all. The first
+// call pushes it, and each later call binds its values again, as a call
+// binds its own names (f17-recursion.md 11.5 item 1): a name of the frame is
+// never read before the call binds it. cbLeave drops the frame when the
+// entry returns; a failure drops it with the frames a try restores.
+func (r *run) cbEnter(c *libCall, l *fn) {
+	if c.cb == l && r.fp == c.cbFP {
+		return
+	}
+	r.cbLeave(c)
+	c.cbSaveFP, c.cbSaveBase = r.enterFn(l)
+	c.cb, c.cbFP = l, r.fp
+}
+
+// cbLeave drops the frame of a library call's lambda, if it has one.
+func (r *run) cbLeave(c *libCall) {
+	if c.cb != nil {
+		r.leave(c.cbSaveFP, c.cbSaveBase)
+		c.cb = nil
+	}
 }

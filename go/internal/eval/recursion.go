@@ -45,7 +45,7 @@ func walk(r *run, c *libCall) any {
 		out = append(out, node)
 		m := c.measure + d
 		r.enterCall(m)
-		fp, base := r.enterFn(lam)
+		r.cbEnter(c, lam)
 		if lam.nparams > 0 {
 			lam.bind(r, 0, node, true)
 		}
@@ -56,7 +56,6 @@ func walk(r *run, c *libCall) any {
 			}
 		}
 		v := lam.body(r)
-		r.leave(fp, base)
 		r.depth -= m
 		switch value.KindOf(v) {
 		case value.Null:

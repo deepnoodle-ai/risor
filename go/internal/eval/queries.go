@@ -172,7 +172,7 @@ func mapValues(r *run, c *libCall) any {
 		r.step(2)
 		c.idx = i // F8 4.2 item 2: the key's position
 		r.enterCall(c.measure)
-		fp, base := r.enterFn(lam)
+		r.cbEnter(c, lam)
 		if lam.nparams > 0 {
 			lam.bind(r, 0, v, true)
 		}
@@ -180,7 +180,6 @@ func mapValues(r *run, c *libCall) any {
 			lam.bind(r, 1, k, true)
 		}
 		out[k] = lam.body(r)
-		r.leave(fp, base)
 		r.depth -= c.measure
 	}
 	r.libUnits(c, f)

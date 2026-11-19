@@ -41,6 +41,11 @@ type libCall struct {
 	ref   elemRef
 	rv    reflect.Value
 	rvSet bool
+	// cb is the lambda whose frame the call holds, between its calls of it,
+	// cbFP that frame, and cbSaveFP and cbSaveBase the frame to restore when
+	// the call drops it (frames.go, cbEnter).
+	cb                         *fn
+	cbFP, cbSaveFP, cbSaveBase int
 }
 
 type libFunc func(r *run, c *libCall) any
@@ -72,7 +77,9 @@ func (r *run) runEntry(c *libCall) any {
 	if f == nil {
 		r.raise(&failure{code: "internal-error", span: c.span, hasSpan: true})
 	}
-	return f(r, c)
+	v := f(r, c)
+	r.cbLeave(c)
+	return v
 }
 
 // fenv gives a record's formula the sizes of one call (04-library.md 4.2).
@@ -412,7 +419,7 @@ func (r *run) callback(c *libCall, lam *fn, e any, i int) any {
 	r.step(2)
 	c.idx = i
 	r.enterCall(c.measure)
-	fp, base := r.enterFn(lam)
+	r.cbEnter(c, lam)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, e, true)
 	}
@@ -423,7 +430,6 @@ func (r *run) callback(c *libCall, lam *fn, e any, i int) any {
 		}
 	}
 	v := lam.body(r)
-	r.leave(fp, base)
 	r.depth -= c.measure
 	return v
 }
@@ -433,7 +439,7 @@ func (r *run) callback2(c *libCall, lam *fn, a, e any, i int) any {
 	r.step(2)
 	c.idx = i
 	r.enterCall(c.measure)
-	fp, base := r.enterFn(lam)
+	r.cbEnter(c, lam)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, a, true)
 	}
@@ -447,7 +453,6 @@ func (r *run) callback2(c *libCall, lam *fn, a, e any, i int) any {
 		}
 	}
 	v := lam.body(r)
-	r.leave(fp, base)
 	r.depth -= c.measure
 	return v
 }
