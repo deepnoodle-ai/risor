@@ -94,6 +94,9 @@ type assist struct {
 	ty    *check.Types
 	names *static.Names
 	exp   *types.Type // the expected result, when it is a type
+	// cut is the cut of a hover that reads a repaired program: the tokens
+	// at it and after it are the repair's. It is -1 when the text parsed.
+	cut int
 }
 
 // analyze checks a repaired program (F12 3.3 item 4), ignoring its
@@ -1035,7 +1038,12 @@ func (a *assist) typesContext(hole syntax.Span) []Candidate {
 	}
 	if a.prog != nil {
 		for _, t := range a.prog.Types {
-			if t.Span.End <= hole.Start {
+			// A line that ends before the hole. The repair's tokens stand at
+			// the hole, so a line whose type is the hole, as in "type Pair
+			// = ‸", may end there too: it is not a candidate in its own type
+			// (F16 7.2 item 1).
+			inType := t.Type.Span.Start <= hole.Start && hole.End <= t.Type.Span.End
+			if t.Span.End <= hole.Start && !inType {
 				names[t.Name] = true
 			}
 		}
@@ -1117,7 +1125,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 		source = value.ReplaceInvalid(source)
 	}
 	f := syntax.NewFile(source)
-	a := &assist{e: e, src: f.Runes(), file: f}
+	a := &assist{e: e, src: f.Runes(), file: f, cut: -1}
 	off, ok := offsetOf(a.src, pos)
 	if !ok || off >= len(a.src) {
 		return nil
@@ -1151,7 +1159,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 			if k+1 < len(toks) && toks[k+1].Kind == syntax.LParen && toks[k+1].Start == we {
 				cut = toks[k+1].End
 			}
-			prog = a.repairAt(cut)
+			prog, a.cut = a.repairAt(cut), cut
 		}
 	} else {
 		if !isWordPart(a.src[off]) {
@@ -1186,7 +1194,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 		if !found {
 			return nil
 		}
-		prog = a.repairAt(cut)
+		prog, a.cut = a.repairAt(cut), cut
 	}
 	if prog == nil {
 		return nil
@@ -1305,7 +1313,7 @@ func (a *assist) hover(word syntax.Span) *Hover {
 	// A type name of a program type, or the name of a type line (F16 7.3).
 	for _, t := range a.prog.Types {
 		if t.NameSpan == word {
-			return a.typeHover(t.Name, t.Span.Start, sp)
+			return a.typeHover(t.Name, t, word.Start, sp)
 		}
 		if out = a.typeNameHover(t.Type, word, sp); out != nil {
 			return out
@@ -1366,8 +1374,9 @@ func (a *assist) hover(word syntax.Span) *Hover {
 				out = rec("variable")
 				out.Type = printed(a.typeOf(n))
 			case b.Kind == static.ConstLambda:
-				out = rec("name")
-				out.Type = printed(a.typeOf(n))
+				// A lambda argument, or a read as a value: a lambda is not
+				// a value, so it has no type (F12 3.13).
+				out = rec("lambda")
 				out.Declaration = lambdaName(b.Lambda)
 			default:
 				out = rec("name")
@@ -1425,7 +1434,7 @@ func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hov
 		switch p.Kind {
 		case syntax.PName:
 			if p.Span == word {
-				return a.typeHover(p.Text, p.Span.Start, sp)
+				return a.typeHover(p.Text, nil, p.Span.Start, sp)
 			}
 		case syntax.PMap, syntax.PParen:
 			if h := a.typeNameHover(p.Elem, word, sp); h != nil {
@@ -1446,15 +1455,19 @@ func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hov
 }
 
 // typeHover is the record of a type name read at offset at: the type that
-// the last type line before it declares, with that line's name as the
-// declaration; else the environment's named or opaque type, with no
-// declaration. A name nothing declares has no hover (F16 7.3).
-func (a *assist) typeHover(name string, at int, sp Span) *Hover {
+// the last type line that ends before it declares, with that line's name as
+// the declaration; else the environment's named or opaque type, with no
+// declaration. own is the type line whose name the word is, or nil. A name
+// nothing declares has no hover, nor has a line whose type the repair
+// supplied (F16 7.3).
+func (a *assist) typeHover(name string, own *syntax.TypeLine, at int, sp Span) *Hover {
 	h := &Hover{Kind: "type", Span: sp}
-	var line *syntax.TypeLine
-	for _, t := range a.prog.Types {
-		if t.Name == name && t.Span.Start <= at {
-			line = t
+	line := own
+	if own == nil {
+		for _, t := range a.prog.Types {
+			if t.Name == name && t.Span.End <= at {
+				line = t
+			}
 		}
 	}
 	env := a.names.Types
@@ -1462,6 +1475,9 @@ func (a *assist) typeHover(name string, at int, sp Span) *Hover {
 		if env != nil && (env.Opaque[name] || env.Named[name] != nil) {
 			line = nil // name-clash: the environment's type stands
 		}
+	}
+	if line != nil && a.cut >= 0 && line.Type.Span.End >= a.cut {
+		return nil // its type is the repair's: it declares nothing
 	}
 	switch {
 	case line != nil:

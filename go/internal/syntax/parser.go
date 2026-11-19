@@ -262,7 +262,9 @@ func (p *parser) program() *Program {
 // typeLineStart reports whether a type line of package F16 starts at the
 // start of a top-level line (f16-entry-points.md 2.1): the word type, a word
 // that begins with an upper-case letter, then "=". In a repaired text the
-// end of the text may stand for the "=" (F12 3.3).
+// end of the text may stand for the "=" (F12 3.3). There the word is the
+// hole, whatever the author has typed of it (F16 7.2 item 7): HoleText
+// begins with an upper-case letter.
 func (p *parser) typeLineStart() bool {
 	if !p.tok.isWord("type") {
 		return false

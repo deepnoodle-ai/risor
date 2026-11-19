@@ -833,14 +833,16 @@ func (b *builder) param(p *syntax.Param) part {
 	d := b.pattern(p.Pattern)
 	end := p.Pattern.Span().End
 	if p.Annotated() { // an annotation of package F16 (F12 2.13)
-		colon := b.ending(end) + 1
+		// The colon is written before the type, so that the last unit of
+		// the parameter is the annotation's last (F16 7.1 item 3).
+		c := b.tok(b.ending(end) + 1)
 		var t part
 		if p.Fn != nil {
 			t, end = b.pfn(p.Fn), p.Fn.Span.End
 		} else {
 			t, end = b.ptype(p.Type), p.Type.Span.End
 		}
-		d = []part{d, b.tok(colon), pSpace, t}
+		d = []part{d, c, pSpace, t}
 	}
 	if p.Default == nil {
 		return d
