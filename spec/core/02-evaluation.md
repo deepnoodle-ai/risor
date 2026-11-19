@@ -800,7 +800,7 @@ no message is built.
 | The map of four entries | 0 | 9 |
 | `code` | 0 | 0. A code is text of the specification |
 | `message` built from a template of the catalog | 1 + size of the message | 1 + size of the message |
-| `message` of `failed` or `function-error` | 0 | 0. It is the string `fail` was given, or the host's text, which already exists |
+| `message` of `failed` or `function-error` | 0 | 0. It is the string `fail` was given, or the host's text or the message of the inner diagnostic (`03-host.md` 3.5.3), which already exists |
 | `path` | 0 | 0. In Core it is null for every failure |
 | `data` | 0 | 0. It is the value `fail` was given, the same value and not a copy, or null |
 

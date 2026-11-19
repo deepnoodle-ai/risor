@@ -374,18 +374,37 @@ with `depth-exceeded`. No walk over host data loops for ever.
 | The function | The run sees | Class | `catch` |
 | --- | --- | --- | --- |
 | Returns a value | The value, as a host value (3.4) | — | — |
-| Returns an error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` at a `host` site; in a checked program, `environment` when the signature has no `!` (3.7.6) | Catches |
+| Returns an error that is a Risor diagnostic (item 5) | `function-error`, at the span of the call. The message is the message of the inner diagnostic, whole, with nothing added. The inner diagnostic is the diagnostic's `cause` | As the next row | Catches |
+| Returns any other error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` at a `host` site; in a checked program, `environment` when the signature has no `!` (3.7.6) | Catches |
 | Crashes: a panic, or a thrown value that is not an error | `function-panic`, at the span of the call | `host` | Passes |
 
 1. A value that a host function returns is read as any host value is. A
    result that does not fit the declared result type fails where it is read,
    as 3.4.8 says.
-2. A host function's error carries no `data`.
+2. A host function's error carries no `data`, also when it is a Risor
+   diagnostic whose own `data` is not null.
 3. What counts as an error and what counts as a crash is the binding's matter.
 4. The mark `!` is a promise. A function or method whose signature has no `!`
    returns no error. When one does, the run fails with `function-error` as
    above, and in a checked program its class is `environment`: the host broke
    its promise, as when a value breaks its declared type (`05-types.md` 18.4).
+5. **A Risor diagnostic as an error.** A host function may fail with a
+   failure of a binding of Risor: the failure of a nested run, or of any other
+   stage (3.2.1), or one the binding builds in its own type for such a
+   failure. That failure is a list of one or more diagnostics. Its first
+   diagnostic is the **inner diagnostic**. How a binding tells such an error
+   from any other is the binding's matter, as in item 3.
+6. Only the message changes. The code stays `function-error`, `catch` catches
+   it, and its class, span and `data` are those of the row "Returns any other
+   error". The inner diagnostic's code, class, span, path and data do not
+   reach the run.
+7. The message is taken from the inner diagnostic, one level down. When the
+   inner diagnostic is itself a `function-error` of a nested run, its message
+   is already the message below it, so a chain of nested runs gives the
+   innermost message. The binding's own text for its failure type, which may
+   hold a code and a span, is never the message. So a rendering of the outer
+   diagnostic (follow-on F8) does not repeat the inner one's code and span:
+   `error[function-error] 5:38-5:66: unknown city "Atlantis"`.
 
 ### 3.5.4 Duties of a host function
 
@@ -459,7 +478,7 @@ the list has the same phase. A run fails with exactly one diagnostic.
 | `help` | What to write instead | Optional | No |
 | `expected`, `found` | Two types in type text | Optional | No |
 | `fix` | A span and its replacement text | Optional | No |
-| `cause` | The host's own error, for `function-error` | Optional | No |
+| `cause` | The host's own error, for `function-error`. When that error is a Risor diagnostic, the inner diagnostic (3.5.3 item 5) | Optional | No |
 | An offset | A position in a unit of the implementation's choice | Optional | No |
 
 1. A diagnostic may carry further fields that a later package of the
@@ -536,8 +555,9 @@ codes.
 
 The message of `failed` is the first argument of `fail`, whole and not cut.
 The message of `function-error` is the text of the host's error, as the
-binding gives it, whole and not cut. Every other code has its message from the
-catalog (3.8).
+binding gives it, or, when that error is a Risor diagnostic, the message of the
+inner diagnostic (3.5.3), whole and not cut. Every other code has its message
+from the catalog (3.8).
 
 ### 3.7.6 The class of a run diagnostic
 
@@ -846,17 +866,18 @@ a function name to a stub.
 | Matter | Rule |
 | --- | --- |
 | Form | A signature text alone, which is a stub with no rows. Or an object `{"type": signature, "calls": [row, ...]}`. `type` may be left out when the base environment declares the name. `calls` may be left out, which gives no rows |
-| A row | An object. `args`: a list of JSON values, optional. Exactly one of `result`, a JSON value, and `error`, a string. Optional: `charge` and `allocate`, two whole numbers of 0 or more |
+| A row | An object. `args`: a list of JSON values, optional. Exactly one of `result`, a JSON value, and `error`, a string or a diagnostic object (item 5). Optional: `charge` and `allocate`, two whole numbers of 0 or more |
 | Matching | At each call the rows are tried in order. A row with no `args` matches every call. A row with `args` matches when the call has that many arguments and each argument is `==` to the row's value (`01-language.md`). The first row that matches answers |
-| Answer | The stub passes the row's `charge` to `charge(steps)`, then the row's `allocate` to `allocate(units)`, then answers. With `result`, it returns the value, supplied as a host value as `vars` are. With `error`, it returns an error whose text is the string |
+| Answer | The stub passes the row's `charge` to `charge(steps)`, then the row's `allocate` to `allocate(units)`, then answers. With `result`, it returns the value, supplied as a host value as `vars` are. With `error` a string, it returns an error whose text is the string. With `error` an object, it returns an error that is a Risor diagnostic (3.5.3 item 5): the failure of a run, in the binding's own type for one, with one diagnostic of phase `run`, the object's `code` and `message`, and no span |
 | No row matches | The stub returns an error. The case's verdict is `fail` with the difference `functions`, whatever the run then gives. A `try` in the program does not change this |
 | Where it is declared | In the case's environment. A name the base environment declares is replaced in the child only. With no `type`, the base's signature is kept and only the implementation is replaced |
 | Cost | Matching is the runner's work and charges nothing. A stubbed call costs the one step of any call, plus its row's `charge` steps, plus its row's `allocate` units. So the usage of a case does not depend on the implementation |
 
 1. A stub with `error` gives the run `function-error`, with the class of
    3.7.6: `host` when its signature has `!`. Its message is the string of
-   `error`. A stub with `error` whose signature has no `!` breaks the
-   precondition, so its case carries `"precondition": false` (3.10.3).
+   `error`, or the `message` of its object. A stub with `error` whose
+   signature has no `!` breaks the precondition, so its case carries
+   `"precondition": false` (3.10.3).
 2. **A method's stub.** A method of an opaque type, in `methods`, is stubbed
    like a host function, with one difference: the receiver is the first value
    of a row's `args`, and the method's arguments follow it. So a row of a
@@ -866,6 +887,12 @@ a function name to a stub.
    environment declares that method.
 4. A case cannot describe a function that crashes, or one that waits until it
    is cancelled. Each binding tests those with tests of its own.
+5. **A diagnostic object** is a JSON object with exactly two keys: `code`, a
+   string of lower-case words joined by `-` (the pattern of a code in
+   3.10.11), and `message`, a string. Example: `{"error": {"code": "failed",
+   "message": "unknown city \"Atlantis\""}}`. It stands for the failure of a
+   nested run, so a case can test 3.5.3 items 5 to 7. The code need not be a
+   code of 3.7.3: it does not reach the run.
 
 ### 3.10.5 How a case is run
 
@@ -954,8 +981,9 @@ Each element of `diagnostics` is an object with these fields.
    `missing-field`, `no-match`, `not-conforming` and `function-error`. A case
    with `"check": false` states instead the class of the column "not checked" of
    `05-types.md` 18.5, and every runner compares it for every code.
-9. For `function-error`, the message is the string of the stub's `error`. For
-   `failed`, it is the text given to `fail`.
+9. For `function-error`, the message is the string of the stub's `error`, or
+   the `message` of its diagnostic object. For `failed`, it is the text given
+   to `fail`.
 10. Step and unit counts are exact, for a result and for a run failure whose
     code is not a limit code. A case states them as whole numbers in `steps`
     and `allocated`. A case may leave either out, and then it is not compared.
@@ -1023,7 +1051,8 @@ verdict `invalid`.
    rule.
 8. A `file` that cannot be read.
 9. A key of `vars` that is not a field of `env`.
-10. A stub row with both `result` and `error`, or with neither.
+10. A stub row with both `result` and `error`, or with neither. An `error`
+    that is neither a string nor a diagnostic object of 3.10.4 item 5.
 11. A stub with no `type`, for a function or a method the base environment
     does not declare. A stub with no `type` whose name is a library entry is
     among these: a library entry is not a host function.
@@ -1141,7 +1170,14 @@ the static codes.
       "properties": {
         "args": {"type": "array", "items": {"$ref": "#/$defs/hostValue"}},
         "result": {"$ref": "#/$defs/hostValue"},
-        "error": {"type": "string"},
+        "error": {"oneOf": [
+          {"type": "string"},
+          {"type": "object",
+           "required": ["code", "message"],
+           "properties": {
+             "code": {"type": "string", "pattern": "^[a-z]+(-[a-z0-9]+)*$"},
+             "message": {"type": "string"}},
+           "additionalProperties": false}]},
         "charge": {"type": "integer", "minimum": 0},
         "allocate": {"type": "integer", "minimum": 0}
       },

@@ -882,7 +882,9 @@ with index 2, `total` `[2, 17, 2, 25]` with index null, and `map` `[1, 20, 1,
 2. A rendering is the same text, code point for code point, in every
    implementation.
 3. A rendering holds only the fields this section names. `help`, `fix`,
-   `expected`, `found`, `cause` and an offset are never written in it.
+   `expected`, `found`, `cause` and an offset are never written in it. A
+   `cause` that is a Risor diagnostic (`03-host.md` 3.5.3 item 5) is not
+   written either: the message of `function-error` is already its message.
 4. **A position** is written `L:C`, the line and the column (`03-host.md`
    3.7.7). **A span** is written `L1:C1-L2:C2`, always with all four numbers.
 5. **A path** is written from its steps, in order: a key that is a `Word`
