@@ -70,6 +70,57 @@ func TestDeadlineAndCancel(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Code, "cancelled")
 }
 
+// 03-host.md 3.5.3 items 5 to 7: a host function whose error is a failure of
+// Risor, such as a nested run's, gives function-error with the inner
+// diagnostic's message, keeps that failure as the cause, and carries no
+// data. A chain of nested runs gives the innermost message.
+func TestNestedRisorError(t *testing.T) {
+	inner, err := risor.NewEnv(risor.VarRecord("{city: string}"))
+	assert.NoError(t, err)
+	tool := compile(t, inner, `city == "Paris" ? 18 : fail("unknown city " + string(city), {city})`)
+	call := func(c *risor.Call, args []any) (any, error) {
+		v, err := tool.Run(c.Context(), risor.Map{"city": args[0]})
+		if err != nil {
+			return nil, fmt.Errorf("tool weather: %w", err) // found through wrapping
+		}
+		return v, nil
+	}
+	mid, err := risor.NewEnv(risor.VarRecord("{city: string}"),
+		risor.Function{Name: "weather", Type: "(city: string) => float !", Impl: call})
+	assert.NoError(t, err)
+	// The middle program calls weather, so its failure is a function-error
+	// whose own message came from the innermost run.
+	agent := compile(t, mid, "weather(city) + 1")
+	outer, err := risor.NewEnv(risor.Function{Name: "ask", Type: "(city: string) => float !",
+		Impl: func(c *risor.Call, args []any) (any, error) {
+			return agent.Run(c.Context(), risor.Map{"city": args[0]})
+		}})
+	assert.NoError(t, err)
+
+	d := runErr(t, mid, "weather(city)", risor.Map{"city": "Atlantis"})
+	assert.Equal(t, d.Code, "function-error")
+	assert.Equal(t, d.Message, "unknown city Atlantis")
+	var cause *risor.Error
+	assert.True(t, errors.As(d.Cause, &cause))
+	assert.Equal(t, cause.Diagnostics[0].Code, "failed")
+	assert.Equal(t, cause.Diagnostics[0].Data, any(map[string]any{"city": "Atlantis"}))
+
+	d = runErr(t, outer, `ask("Atlantis")`, nil)
+	assert.Equal(t, d.Code, "function-error")
+	assert.Equal(t, d.Message, "unknown city Atlantis")
+	assert.True(t, errors.As(d.Cause, &cause))
+	assert.Equal(t, cause.Diagnostics[0].Code, "function-error")
+
+	// The error value: the code and the message only; no data.
+	v := run(t, outer, `try { ask("Atlantis") } catch (e) { e }`, nil)
+	assert.Equal(t, v, any(map[string]any{"code": "function-error",
+		"message": "unknown city Atlantis", "path": nil, "data": nil}))
+	// Any other error keeps its text, and a diagnostic of another code has
+	// no cause.
+	d = runErr(t, outer, `fail("x")`, nil)
+	assert.Nil(t, d.Cause)
+}
+
 func TestHostFunctions(t *testing.T) {
 	env, err := risor.NewEnv(
 		risor.Function{Name: "boom", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {

@@ -268,6 +268,11 @@ func (st *stubState) native(name string, s *casefile.Stub) risor.Native {
 			if row.Error != nil {
 				return nil, errors.New(*row.Error)
 			}
+			if d := row.Diag; d != nil {
+				// 3.10.4 item 5: the failure of a nested run.
+				return nil, &risor.Error{Diagnostics: []risor.Diagnostic{
+					{Phase: risor.PhaseRun, Code: d.Code, Message: d.Message}}}
+			}
 			return row.Result, nil
 		}
 		if len(st.unmatched) == 0 {

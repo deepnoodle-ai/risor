@@ -1,10 +1,12 @@
 package eval
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"unicode/utf8"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/static"
@@ -627,10 +629,23 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 		r.raise(ff)
 	}
 	if err != nil {
-		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: err.Error(), ownMsg: true, cause: err}
+		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: hostErrorMessage(err), ownMsg: true, cause: err}
 		r.raise(ff)
 	}
 	return r.read(res, sp)
+}
+
+// hostErrorMessage is the message of a function-error (03-host.md 3.5.3):
+// the message of the inner diagnostic when the host's error is a Risor
+// failure (a *diag.Error, found through wrapping), else the error's text.
+// A nested function-error already holds the message below it, so one level
+// of unwrapping gives the innermost message.
+func hostErrorMessage(err error) string {
+	var de *diag.Error
+	if errors.As(err, &de) && de != nil && len(de.Diagnostics) > 0 {
+		return de.Diagnostics[0].Message
+	}
+	return err.Error()
 }
 
 func (r *run) safeCall(f HostFunc, c *Call, args []any) (res any, err error, crashed any) {

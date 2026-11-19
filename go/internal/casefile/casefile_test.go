@@ -68,6 +68,25 @@ func TestValid(t *testing.T) {
 }
 
 // 03-host.md 3.10.10, item by item.
+// 03-host.md 3.10.4 item 5: a row's error may be a diagnostic object.
+func TestStubDiagnostic(t *testing.T) {
+	f, err := load(t, `[{"name": "a", "source": "f()", "expect": {},
+		"functions": {"f": {"type": "() => int !", "calls": [{"error": {"code": "failed", "message": "no"}}]}}}]`)
+	assert.NoError(t, err)
+	row := f.Cases[0].Functions["f"].Calls[0]
+	assert.Nil(t, row.Error)
+	assert.Equal(t, *row.Diag, StubDiag{Code: "failed", Message: "no"})
+	assert.True(t, row.HasError())
+	for _, bad := range []string{
+		`{"code": "failed"}`, `{"message": "no"}`, `{"code": "failed", "message": "no", "data": 1}`,
+		`{"code": "Failed", "message": "no"}`, `{"code": "failed", "message": 1}`, `["no"]`,
+	} {
+		_, err := load(t, `[{"name": "a", "source": "f()", "expect": {},
+			"functions": {"f": {"type": "() => int !", "calls": [{"error": `+bad+`}]}}}]`)
+		assert.Error(t, err, bad)
+	}
+}
+
 func TestInvalid(t *testing.T) {
 	c := func(fields string) string {
 		return `[{"name": "x", "source": "1", ` + fields + `}]`
