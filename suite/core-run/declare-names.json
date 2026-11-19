@@ -12,6 +12,7 @@
   {"name": "a host function in the reserved namespace time", "functions": {"time.f": "(s: string) => string"}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
   {"name": "a host function in the reserved namespace math", "functions": {"math.f": "(s: string) => string"}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
   {"name": "a host function in the reserved namespace base64", "functions": {"base64.f": "(s: string) => string"}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
+  {"name": "a host function in the reserved namespace regexp", "functions": {"regexp.test": "(p: string, s: string) => bool"}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
   {"name": "a variable named with the reserved word match", "env": "{match: int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
   {"name": "a variable named with the reserved word if", "env": "{if: int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
   {"name": "a variable named with the reserved word let", "env": "{let: int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},

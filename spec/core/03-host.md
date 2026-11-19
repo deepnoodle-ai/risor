@@ -172,9 +172,10 @@ change the parent.
    `01-language.md`.
 2. A function name may have one namespace prefix, as in `geo.distance`. The
    namespace is not a value: a program that reads `geo` alone fails to check.
-3. The namespaces `json`, `time`, `math` and `base64` are reserved for the
-   library. A host function may not be declared in them, whatever the
-   environment enables.
+3. The namespaces `json`, `time`, `math`, `base64` and `regexp` are reserved
+   for the library. A host function may not be declared in them, whatever the
+   environment enables. `regexp` has no entries yet: it is held for a package
+   of regular expressions.
 4. An opaque type name is an upper-case letter followed by one or more of
    `A` to `Z`, `a` to `z`, `0` to `9` and `_`.
 5. A lambda parameter, a `const` name or a `catch` name equal to a name of the
@@ -192,7 +193,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | A variable, or a host function, named like a namespace that a host function of the environment uses: a variable or a function `geo` beside `geo.distance` | `name-clash` |
 | A host function named like a library function that the environment has. A removed function is not one it has (3.3.1, item 6). A host function named like a library method (`trim`) does not clash, and `geo.len` is a different name from `len` | `name-clash` |
 | Two opaque types with one name in one environment | `name-clash` |
-| A host function in the namespace `json`, `time`, `math` or `base64` | `reserved-namespace` |
+| A host function in the namespace `json`, `time`, `math`, `base64` or `regexp` | `reserved-namespace` |
 | A variable, a function or a namespace named with a reserved word of `01-language.md` | `bad-name` |
 | A variable, a function or a namespace whose name is not a `Name` of `01-language.md`, such as a field `"a-b"` of `env`, a variable or function `_`, or a function with two namespace prefixes (`a.b.c`) | `bad-name` |
 | An opaque type name not of the form of 3.3.3, item 4. One upper-case letter alone is a type variable of a signature | `bad-name` |

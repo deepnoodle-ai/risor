@@ -338,7 +338,7 @@ func (e *Env) errf(code, msg string) {
 	e.errs = append(e.errs, Diagnostic{Phase: PhaseDeclare, Code: code, Message: msg})
 }
 
-var reservedNamespaces = map[string]bool{"json": true, "time": true, "math": true, "base64": true}
+var reservedNamespaces = map[string]bool{"json": true, "time": true, "math": true, "base64": true, "regexp": true}
 
 var opaqueNameRe = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]+$`)
 
