@@ -49,6 +49,8 @@ export interface TypeLine {
   nameSpan: Span;
   type: TypeAnn;
   span: Span;
+  /** Package F12 with F16: the repair supplied the type, so the line declares nothing (f16 7.3 item 5). */
+  supplied?: true;
 }
 
 /** Package F16: a function type on a parameter, `(a: T) => R` (f16 2.1). Its words bind nothing. */
