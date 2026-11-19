@@ -1063,15 +1063,19 @@ fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Range, q: char) -
                     ..
                 } = tree.kind(a)
                 {
-                    // F12 3.11 item 1 with F17 7.2: the strings another arm
-                    // with no guard lists are left out. The hole's own arm
-                    // leaves out none, and a guarded arm none.
-                    let own = ls.iter().any(|l| l.span == span);
-                    hit |= own;
-                    if own || guard.is_some() {
-                        continue;
-                    }
-                    for l in ls {
+                    // F12 3.11 item 1 with F17 7.2 (R231): left out are the
+                    // strings another arm with no guard lists, and those the
+                    // earlier literals of the hole's own arm list, guard or
+                    // not, since written again they are `duplicate-case`. A
+                    // guarded other arm leaves out none.
+                    let at = ls.iter().position(|l| l.span == span);
+                    hit |= at.is_some();
+                    let listed = match at {
+                        Some(i) => &ls[..i],
+                        None if guard.is_some() => &ls[..0],
+                        None => &ls[..],
+                    };
+                    for l in listed {
                         if let Lit::Str(s) = &l.lit {
                             others.push(s.clone());
                         }
