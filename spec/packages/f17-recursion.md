@@ -164,8 +164,11 @@ inside two levels: the `{` of the arms and the `(` of the guard.
    1 if c => 2 }` stays `unexpected-token`. A guard is not an operand, so F8's
    row E7 does not apply after it, as it does not after a literal of an arm
    (F8 2.7 item 1): `match x { 1 if (c) = 2 }` stays `unexpected-token`. The
-   other rows apply as anywhere: `match x { 1 if (c) | 2 => 3 }` is
-   `bitwise-operator` by row E10, and the message of each code is F8's.
+   `(` of a guard is not the `(` of a parenthesized expression, so F8's row E9
+   does not apply inside it, as it does not in the test of an `if`: `match x {
+   1 if (c: int) => 2 }` is `unexpected-token` at the `:`. The other rows
+   apply as anywhere: `match x { 1 if (c) | 2 => 3 }` is `bitwise-operator`
+   by row E10, and the message of each code is F8's.
 
 ## 3. Guards: evaluation
 
@@ -476,7 +479,9 @@ guard is a place of the last row of its table.
    out a string because a guarded arm other than the hole's own arm lists it.
    A guarded arm covers nothing (4.2), so the string may be written again. So
    with a subject of type `"a" | "b"`, `match s { "a" if (c) => 1, "‸` lists
-   `a` and `b`.
+   `a` and `b`. A string that an earlier literal of the hole's own arm lists
+   is left out, as F12 3.11 item 1 says, whether or not that arm will have a
+   guard: written again it is `duplicate-case` (4.1).
 4. The token classes of the web packages do not change: `if` is a reserved
    word, and `walk` is a name.
 

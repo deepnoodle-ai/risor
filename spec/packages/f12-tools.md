@@ -748,7 +748,9 @@ When the hole is a string literal, the candidates are string values, kind
 1. The candidates are the strings of the literal sets among the alternatives of
    the string type, in code point order. For a `match`, a string another arm of
    that `match` already lists is left out; with F17, only a string another arm
-   with no guard lists (F17 7.2).
+   with no guard lists (F17 7.2). A string that an earlier literal of the
+   hole's own arm lists is left out too: written again it is `duplicate-case`.
+   So `match s { "a" | "‸` does not list `a`.
 2. The prefix is the hole's value, and the prefix span runs from after the
    opening quote to the position.
 3. A candidate's insert text is its value written as the content of a one-line
