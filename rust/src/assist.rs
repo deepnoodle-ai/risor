@@ -1063,18 +1063,17 @@ fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Range, q: char) -
                     ..
                 } = tree.kind(a)
                 {
-                    // F17 7.2: another arm leaves out its strings only when
-                    // it has no guard; the hole's own arm always does.
+                    // F12 3.11 item 1 with F17 7.2: the strings another arm
+                    // with no guard lists are left out. The hole's own arm
+                    // leaves out none, and a guarded arm none.
                     let own = ls.iter().any(|l| l.span == span);
                     hit |= own;
-                    if guard.is_some() && !own {
+                    if own || guard.is_some() {
                         continue;
                     }
                     for l in ls {
-                        if l.span != span {
-                            if let Lit::Str(s) = &l.lit {
-                                others.push(s.clone());
-                            }
+                        if let Lit::Str(s) = &l.lit {
+                            others.push(s.clone());
                         }
                     }
                 }

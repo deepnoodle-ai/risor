@@ -76,3 +76,30 @@ fn a_parameter_takes_the_first_check() {
     assert_eq!(crate::check::ty::print(&at[s as usize]), "int");
     assert_eq!(crate::check::ty::print(&pr.slots[s as usize]), "\"a\"");
 }
+
+/// F12 3.11 item 1 with F17 7.2: only a string another arm with no guard
+/// lists is left out. The hole's own arm leaves out none of its strings, and
+/// a guarded arm none.
+#[test]
+fn the_strings_of_a_match_arm() {
+    let env = Env::builder()
+        .var_record("{s: \"a\" | \"b\" | \"c\", c: bool}")
+        .build()
+        .unwrap();
+    let labels = |text: &str| -> Vec<String> {
+        let at = text.chars().position(|c| c == '‸').unwrap();
+        let src = text.replace('‸', "");
+        complete(&env, &src, &Expected::Nothing, at)
+            .items
+            .into_iter()
+            .map(|c| c.label)
+            .collect()
+    };
+    assert_eq!(labels("match s { \"a\" => 1, \"‸"), ["b", "c"]);
+    assert_eq!(labels("match s { \"a\" | \"‸"), ["a", "b", "c"]);
+    assert_eq!(labels("match s { \"a\" if (c) => 1, \"‸"), ["a", "b", "c"]);
+    assert_eq!(
+        labels("match s { \"a\" if (c) => 1, \"b\" => 2, \"‸"),
+        ["a", "c"]
+    );
+}
