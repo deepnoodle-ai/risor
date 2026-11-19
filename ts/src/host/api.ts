@@ -1251,7 +1251,7 @@ export class Template {
   part(index: number): Expr | undefined {
     const s = this.data.segments.filter((x) => x.kind === "part")[index] as { expr: import("../syntax/ast.ts").Expr } | undefined;
     if (s === undefined) return undefined;
-    return new Expr(this.source, { kind: "Program", consts: [], result: s.expr, span: { start: s.expr.span.start, end: s.expr.span.end } });
+    return new Expr(this.source, { kind: "Program", consts: [], types: [], result: s.expr, span: { start: s.expr.span.start, end: s.expr.span.end } });
   }
   /** The analysis of the template in a mode (f02 3.1 item 6). */
   analyze(mode: TemplateMode): Analysis {
@@ -1310,7 +1310,7 @@ export class Analysis {
       name: c.name,
       namespace: c.namespace,
       span: sp(c.span),
-      args: c.args.map((a) => (a.kind === "Lambda" ? undefined : new Expr(source, { kind: "Program", consts: [], result: a, span: { start: a.span.start, end: a.span.end } }))),
+      args: c.args.map((a) => (a.kind === "Lambda" ? undefined : new Expr(source, { kind: "Program", consts: [], types: [], result: a, span: { start: a.span.start, end: a.span.end } }))),
       argSpans: c.args.map((a) => sp(a.span)),
       inLambda: c.lambda,
     }));

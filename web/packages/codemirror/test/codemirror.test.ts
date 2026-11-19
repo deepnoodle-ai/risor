@@ -22,6 +22,9 @@ describe("colours", () => {
       "keyword:const", "operator:=", 'string:"😀"', "comment:// hi", "function:len", "operator:>", "number:1",
     ]);
   });
+  test("type is a keyword where it begins a type line, and a name elsewhere (package F16)", () => {
+    assert.deepEqual(marks("type Id = string; const type = 1; type"), ["keyword:type", "operator:=", "keyword:const", "operator:=", "number:1"]);
+  });
 });
 
 describe("toDiagnostics", () => {

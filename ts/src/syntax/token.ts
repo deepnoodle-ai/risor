@@ -36,6 +36,8 @@ export interface Token {
   blockError?: { code: string; start: number; end: number; template?: string };
   /** Package F12: a token that ends the text at a cut, or that the repair inserted there (f12 3.2, 3.3). */
   cut?: boolean;
+  /** Package F12: the text before the cut that a word hole replaces (f12 3.4), for f16 7.2 item 7. */
+  holePrefix?: string;
   /** A prefixed literal: its word, and the quote or backtick after it (01 2.3 rule 9, f08 2.5). */
   prefix?: { word: string; quote: string; triple: boolean };
 }

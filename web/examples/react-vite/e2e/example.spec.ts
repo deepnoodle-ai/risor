@@ -25,6 +25,17 @@ test("completion of a record's fields after a dot", async ({ page }) => {
   await expect(field(page)).toHaveText("order.total");
 });
 
+test("a type line: type is a keyword, and its name completes in an annotation (package F16)", async ({ page }) => {
+  await page.goto("/");
+  const editor = page.locator('[aria-label="Program"]');
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("type Pair = {a: int}; const p: Pa");
+  await expect(page.locator(".risor-t-keyword", { hasText: /^type$/ })).toBeVisible();
+  const list = page.locator(".cm-tooltip-autocomplete");
+  await expect(list.getByText("Pair", { exact: true })).toBeVisible();
+});
+
 test("a submit right after an error is typed is blocked by validate()", async ({ page }) => {
   await page.goto("/");
   await field(page).click();
