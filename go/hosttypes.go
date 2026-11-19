@@ -279,12 +279,19 @@ type deriver struct {
 	// done shares the type of a Go type met twice, so a type that uses one
 	// struct in many places is built once (05-types.md 20.7).
 	done map[reflect.Type]*types.Type
+	// strict is set for Func and Methods (bind.go): ifaces collects each
+	// interface type other than any, which they refuse.
+	strict bool
+	ifaces []reflect.Type
 }
 
 func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 	if rt == nil || rt.Kind() == reflect.Interface {
 		// F1 6.2: every interface type is any; the value it holds is presented
 		// by the rules of its own type, a nil interface as null.
+		if d.strict && rt != nil && rt.NumMethod() > 0 {
+			d.ifaces = append(d.ifaces, rt)
+		}
 		return types.Any, nil
 	}
 	if rt.Implements(opaqueIface) {
