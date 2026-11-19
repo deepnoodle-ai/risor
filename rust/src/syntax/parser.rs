@@ -2380,7 +2380,8 @@ impl<'a> Parser<'a> {
             _ => {}
         }
         // 3.4 rule 4: after the last branch of an `if` or the handler of a
-        // `try`, an operator or a step.
+        // `try`, an operator or a step. F8 2.6 item 3 (R256): `not` is an
+        // operator only when `in` follows it.
         if ti == self.if_end {
             let step = matches!(
                 t.tok,
@@ -2407,7 +2408,8 @@ impl<'a> Parser<'a> {
                         | P::Question
                         | P::LParen
                 )
-            ) || matches!(t.word(), Some("in" | "not" | "as" | "is"));
+            ) || matches!(t.word(), Some("in" | "as" | "is"))
+                || (t.is_word("not") && next.is_some_and(|n| n.is_word("in")));
             if step {
                 return at("needs-parentheses", "after-branch");
             }
