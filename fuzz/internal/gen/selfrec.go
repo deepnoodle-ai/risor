@@ -12,15 +12,16 @@ import (
 // number falls to 0, or the data runs out. Some reach the depth limit, and
 // some the step limit. Some pass their own name to map, flatMap, filter or
 // reduce. A loose case may leave a type out, which is
-// recursion-needs-types, or write a type that does not fit.
+// recursion-needs-types, or write a type that does not fit. The bodies are
+// trees, not text, so the soundness judge finds the node of every failure.
 
 // selfRec is one shape of a recursive lambda: its parameters' types, its
-// result's type, its body with %[1]s for its own name and %[2]s, %[3]s for
-// its parameters, and whether it may be called with any whole number.
+// result's type, and its body, built from its own name and its parameters'
+// names.
 type selfRec struct {
 	params []string
 	result string
-	body   string
+	body   func(g *Gen, self string, p []string) ast.Expr
 	// res is the generator's type of the result.
 	res *Ty
 	// ends is set when a call with any arguments of the parameters' types
@@ -30,29 +31,106 @@ type selfRec struct {
 	ends bool
 }
 
+func sid(n string) ast.Expr                  { return &ast.Ident{Name: n} }
+func snum(n int) ast.Expr                    { return &ast.Num{Text: fmt.Sprint(n)} }
+func sbin(op string, x, y ast.Expr) ast.Expr { return &ast.Binary{Op: op, X: x, Y: y} }
+func scond(t, a, b ast.Expr) ast.Expr        { return &ast.Cond{Test: t, Then: a, Else: b} }
+func scall(f string, args ...ast.Expr) ast.Expr {
+	return &ast.Call{Name: f, Args: args}
+}
+func smeth(x ast.Expr, m string, args ...ast.Expr) ast.Expr {
+	return &ast.MethodCall{X: x, Name: m, Args: args}
+}
+func slist(xs ...ast.Expr) *ast.List {
+	l := &ast.List{}
+	for _, x := range xs {
+		l.Items = append(l.Items, ast.Item{X: x})
+	}
+	return l
+}
+
+// done is p <= 0, the test of a number that falls.
+func done(p string) ast.Expr { return sbin("<=", sid(p), snum(0)) }
+
+// less is p - 1.
+func less(p string) ast.Expr { return sbin("-", sid(p), snum(1)) }
+
 var selfRecs = []selfRec{
 	// A number that falls to 0.
-	{[]string{"int"}, "int", "%[2]s <= 0 ? 0 : %[1]s(%[2]s - 1) + %[2]s", tyInt, true},
-	{[]string{"int"}, "int", "%[2]s <= 0 ? 1 : 2 * %[1]s(%[2]s - 1)", tyInt, true},
-	{[]string{"int", "int"}, "int", "%[2]s <= 0 ? %[3]s : %[1]s(%[2]s - 1, %[3]s + %[2]s)", tyInt, true},
-	{[]string{"int"}, "string", "%[2]s <= 0 ? \"\" : %[1]s(%[2]s - 1) + \"a\"", tyStr, true},
-	{[]string{"int"}, "int[]", "%[2]s <= 0 ? [] : [%[2]s, ...%[1]s(%[2]s - 1)]", listOf(tyInt, -1), true},
-	{[]string{"int"}, "int", "if (%[2]s <= 0) { 0 } else { const k = %[2]s - 1; %[1]s(k) + 1 }", tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), snum(0), sbin("+", scall(f, less(p[0])), sid(p[0])))
+	}, tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), snum(1), sbin("*", snum(2), scall(f, less(p[0]))))
+	}, tyInt, true},
+	{[]string{"int", "int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), sid(p[1]), scall(f, less(p[0]), sbin("+", sid(p[1]), sid(p[0]))))
+	}, tyInt, true},
+	{[]string{"int"}, "string", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), &ast.Str{Quote: '"'}, sbin("+", scall(f, less(p[0])), &ast.Str{Val: "a", Quote: '"'}))
+	}, tyStr, true},
+	{[]string{"int"}, "int[]", func(g *Gen, f string, p []string) ast.Expr {
+		l := slist(sid(p[0]))
+		l.Items = append(l.Items, ast.Item{Spread: true, X: scall(f, less(p[0]))})
+		return scond(done(p[0]), slist(), l)
+	}, listOf(tyInt, -1), true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		k := g.fresh("k")
+		return &ast.If{
+			Tests: []ast.Expr{done(p[0])},
+			Then:  []*ast.Branch{{Result: snum(0)}},
+			Else: &ast.Branch{
+				Consts: []*ast.Const{{Pat: &ast.NamePat{Name: k}, Value: less(p[0])}},
+				Result: sbin("+", scall(f, sid(k)), snum(1)),
+			},
+		}
+	}, tyInt, true},
 	// Its own name given to a library method.
-	{[]string{"int"}, "int", "%[2]s <= 0 ? 0 : [%[2]s - 1].map(%[1]s)[0] + 1", tyInt, true},
-	{[]string{"int"}, "int[]", "%[2]s <= 0 ? [0] : [%[2]s - 1].flatMap(%[1]s)", listOf(tyInt, -1), true},
-	{[]string{"int"}, "int[]", "%[2]s <= 0 ? [] : [%[2]s, %[2]s - 1].flatMap(x => x == %[2]s ? [x] : %[1]s(x))", listOf(tyInt, -1), true},
-	{[]string{"int"}, "bool", "%[2]s <= 0 ? true : len([%[2]s - 1].filter(%[1]s)) == 1", tyBool, true},
-	{[]string{"int", "int"}, "int", "%[3]s <= 0 ? %[2]s : [%[3]s - 1].reduce(%[1]s, %[2]s + %[3]s)", tyInt, true},
-	{[]string{"int"}, "int", "%[2]s <= 0 ? 0 : [%[2]s - 1].map(k => %[1]s(k) + %[2]s)[0]", tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), snum(0), sbin("+", &ast.Index{X: smeth(slist(less(p[0])), "map", sid(f)), I: snum(0)}, snum(1)))
+	}, tyInt, true},
+	{[]string{"int"}, "int[]", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), slist(snum(0)), smeth(slist(less(p[0])), "flatMap", sid(f)))
+	}, listOf(tyInt, -1), true},
+	{[]string{"int"}, "int[]", func(g *Gen, f string, p []string) ast.Expr {
+		x := g.fresh("x")
+		lam := &ast.Lambda{Bare: x, Body: scond(sbin("==", sid(x), sid(p[0])), slist(sid(x)), scall(f, sid(x)))}
+		return scond(done(p[0]), slist(), smeth(slist(sid(p[0]), less(p[0])), "flatMap", lam))
+	}, listOf(tyInt, -1), true},
+	{[]string{"int"}, "bool", func(g *Gen, f string, p []string) ast.Expr {
+		n := scall("len", smeth(slist(less(p[0])), "filter", sid(f)))
+		return scond(done(p[0]), &ast.Bool{V: true}, sbin("==", n, snum(1)))
+	}, tyBool, true},
+	{[]string{"int", "int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[1]), sid(p[0]), smeth(slist(less(p[1])), "reduce", sid(f), sbin("+", sid(p[0]), sid(p[1]))))
+	}, tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		k := g.fresh("k")
+		lam := &ast.Lambda{Bare: k, Body: sbin("+", scall(f, sid(k)), sid(p[0]))}
+		return scond(done(p[0]), snum(0), &ast.Index{X: smeth(slist(less(p[0])), "map", lam), I: snum(0)})
+	}, tyInt, true},
 	// The depth of data.
-	{[]string{"any"}, "int", "%[2]s is any[] ? %[2]s.map(%[1]s).reduce((a, b) => a + b, 1) : 1", tyInt, true},
-	{[]string{"any"}, "int", "%[2]s == null ? 0 : 1 + %[1]s(%[2]s?.next)", tyInt, true},
+	{[]string{"any"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		a, b := g.fresh("a"), g.fresh("b")
+		add := &ast.Lambda{Params: []ast.Param{{Pat: &ast.NamePat{Name: a}}, {Pat: &ast.NamePat{Name: b}}}, Body: sbin("+", sid(a), sid(b))}
+		sum := smeth(smeth(sid(p[0]), "map", sid(f)), "reduce", add, snum(1))
+		return scond(&ast.As{Form: "is", X: sid(p[0]), Type: "any[]"}, sum, snum(1))
+	}, tyInt, true},
+	{[]string{"any"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		next := &ast.Member{X: sid(p[0]), Name: "next", Opt: true}
+		return scond(sbin("==", sid(p[0]), &ast.Null{}), snum(0), sbin("+", snum(1), scall(f, next)))
+	}, tyInt, true},
 	// The depth limit, whatever the argument.
-	{[]string{"int"}, "int", "%[1]s(%[2]s + 1)", tyInt, true},
-	{[]string{"int"}, "int", "1 + %[1]s(%[2]s - 1)", tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scall(f, sbin("+", sid(p[0]), snum(1)))
+	}, tyInt, true},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return sbin("+", snum(1), scall(f, less(p[0])))
+	}, tyInt, true},
 	// The step limit: two calls of itself at each level.
-	{[]string{"int"}, "int", "%[2]s <= 0 ? 1 : %[1]s(%[2]s - 1) + %[1]s(%[2]s - 1)", tyInt, false},
+	{[]string{"int"}, "int", func(g *Gen, f string, p []string) ast.Expr {
+		return scond(done(p[0]), snum(1), sbin("+", scall(f, less(p[0])), scall(f, less(p[0]))))
+	}, tyInt, false},
 }
 
 // selfRecConst writes a const line of a recursive lambda, or nil. A lambda
@@ -73,11 +151,7 @@ func (g *Gen) selfRecConst(d int) *ast.Const {
 	for range s.params {
 		pnames = append(pnames, g.fresh("p"))
 	}
-	args := []any{name}
-	for _, p := range pnames {
-		args = append(args, p)
-	}
-	lam := &ast.Lambda{Result: s.result, Body: &ast.Raw{Text: fmt.Sprintf(s.body, args...)}}
+	lam := &ast.Lambda{Result: s.result, Body: s.body(g, name, pnames)}
 	for i, p := range pnames {
 		lam.Params = append(lam.Params, ast.Param{Pat: &ast.NamePat{Name: p}, Type: s.params[i]})
 	}

@@ -30,6 +30,7 @@ func soundness(cfg *config) int {
 		undecided                              int
 		withAs, withIs, withUnion              int // clean programs with an as, an is, a union variable
 		withF16                                int // clean programs with a form of package F16
+		withE1                                 int // clean programs with a recursive lambda (F17 step E1)
 	}
 	st := make([]stat, len(cfg.impls))
 	for i := range st {
@@ -79,6 +80,9 @@ func soundness(cfg *config) int {
 					}
 					if p.Cases[0].F16 {
 						st[k].withF16++
+					}
+					if p.Cases[0].E1 {
+						st[k].withE1++
 					}
 					if p.Careful {
 						st[k].carefulClean++
@@ -165,7 +169,7 @@ func soundness(cfg *config) int {
 		s := st[k]
 		fmt.Printf("  %s: %d programs, %d checked clean (%d of %d careful, %d of %d careless), %d undecided runs\n",
 			im.Name, s.programs, s.clean, s.carefulClean, s.careful, s.clean-s.carefulClean, s.programs-s.careful, s.undecided)
-		fmt.Printf("    clean programs with an as %d, with an is %d, with a literal set or union in a declared type %d, with a type line or an annotation %d\n", s.withAs, s.withIs, s.withUnion, s.withF16)
+		fmt.Printf("    clean programs with an as %d, with an is %d, with a literal set or union in a declared type %d, with a type line or an annotation %d, with a recursive lambda %d\n", s.withAs, s.withIs, s.withUnion, s.withF16, s.withE1)
 		fmt.Printf("    sites in clean programs: %s\n", counts(s.sites))
 		fmt.Printf("    runs of clean programs: %s\n", counts(s.runs))
 	}
