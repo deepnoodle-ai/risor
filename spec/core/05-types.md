@@ -403,7 +403,7 @@ Scopes nest. A name refers to the innermost binding of that name in scope.
 
 | Rule | Text |
 | --- | --- |
-| Order | A `const` name is in scope from the end of its `const` line to the end of its scope. A `const` value is checked before its names exist, so a name is not in scope in its own value. |
+| Order | A `const` name is in scope from the end of its `const` line to the end of its scope. A `const` value is checked before its names exist, so a name is not in scope in its own value. The name of a `const`-bound lambda is the exception: it is in scope in the lambda's body and defaults (`01-language.md` 5 rule 6), where a reference to it is `recursion-needs-types` (22.5). |
 | A default | A default in a pattern sees the names bound to its left in the same pattern (12). |
 | The handler | A name bound in the body of a `try` is not in scope in its handler. |
 | `_` | Binds nothing and cannot be read. |
@@ -1076,14 +1076,18 @@ because only a use gives the parameter types. A **use** is a call by name, or
 the name given as a lambda argument: at an `Fn` parameter, or to a method on an
 `any` receiver (13.3). A read of the name as a value is not a use: it is
 `not-a-value` (22.4), and it does not count as a reference for the row "No use"
-below.
+below. A reference of the lambda to its own name, in its body or in a default
+of its parameters (`01-language.md` 5 rule 6), is no use either: it is
+`recursion-needs-types` (22.5). A call there has type `never`, its plain
+arguments are synthesized, and nothing is checked at a lambda argument there.
+Such a reference counts against no limit of 20.
 
 | Use | Rule |
 | --- | --- |
 | A call `f(a1, ..., an)` | It must give at least the required count of 22.3 and no more arguments than parameters (`arity`, a static rule, 22.5; the call has type `never`, and each plain argument is synthesized). Each plain argument is synthesized where the call stands. A lambda argument is `lambda-to-lambda` (13.2), and its parameter has type `never`. Each parameter's pattern is bound to its argument's type, with defaults by 12.4. The body is then checked in the scope, and under the facts, where the lambda was written. The call's type is the body's type. |
 | f as a lambda argument at an `Fn` | Checked as if the lambda were written there, by 13.5 step 3, in the scope and under the facts where the lambda was written. |
 | f as an argument of a method on an `any` receiver | Checked as if the lambda were written there, by 13.3: every parameter is bound to `any` and the body is synthesized, in the scope and under the facts where the lambda was written. Its sites are kept. So in ``const f = () => ``.l; m.r(f)`` with `m` of type `any`, the body is checked and `.l` on a string is `kind`. |
-| No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to (a read of the name as a value does not count) is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
+| No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to (a read of the name as a value does not count, nor a reference in its own body or defaults) is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
 | Static diagnostics in the body | Reported once, where the text stands, by 22, whether the lambda has no use, one use or many. A check of the body by the type rules reports none. |
 | Limits | Each use counts against the limits of 20.2 and 20.3. Passing either is `check-limit` on the use, which then has type `never`. |
 
@@ -1218,16 +1222,17 @@ inferred one.
 
 ### 16.1 The codes of Core
 
-The check codes of Core are 27. Every one is an error. The column "Class" names
+The check codes of Core are 28. Every one is an error. The column "Class" names
 the check class for a code that is reported only when that class is rejected
 (17). The other codes are always reported. "Type afterwards" is the type of the
 node whose rule reports the code, unless the row names another; checking goes on
 with it.
 
-Eleven codes are **static codes**: `undefined-name`, `undefined-function`,
+Twelve codes are **static codes**: `undefined-name`, `undefined-function`,
 `not-a-value`, `call-of-parameter`, `lambda-to-lambda`, `duplicate-name`,
-`shadows-namespace`, `duplicate-key`, `arity`, `duplicate-case` and
-`unreachable-arm`. Section 22 reports them, and its rules decide when and where.
+`shadows-namespace`, `duplicate-key`, `arity`, `duplicate-case`,
+`unreachable-arm` and `recursion-needs-types`. Section 22 reports them, and
+its rules decide when and where.
 Two of them, `arity` and `not-a-value`, are also reported by the type rules at
 the arguments of a `MethodCall` (13.2, 13.5). The other 16 codes are reported by
 the type rules only.
@@ -1257,6 +1262,7 @@ the type rules only.
 | `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep (20.4); for a type over the size limit, the node of the table of 20.7: the expression, the call, or for a name bound by a pattern with a default, the value bound | | `never` |
 | `duplicate-case` | A `match` literal equal to an earlier one (22.8) | The later literal | | The literal is ignored. |
 | `unreachable-arm` | An arm after `_` (22.8) | The arm | | The arm is checked and joined. |
+| `recursion-needs-types` | A `const`-bound lambda refers to its own name in its body or its defaults (22.5) | Its first such reference: the name of the `Call`, or the `Ident` | | `never` for a `Call`. Plain arguments are synthesized; a lambda argument there is not checked. |
 | `non-exhaustive` | A `match` without `_` that does not cover its subject (11.2) | The whole `Match` | | The Join of the arms |
 | `result-mismatch` | The result does not fit the expected type (15) | Each place of failure (15.1) | | Unchanged |
 | `unchecked` | A `dynamic` site, when the class `dynamic` is rejected | The site | `dynamic` | `never` for the node on which the site is recorded |
@@ -1268,17 +1274,23 @@ a message prints a type, it prints it by 3.9.
 
 ### 16.2 Codes that are not in Core
 
-The catalog of 29 check codes has two that Core cannot report:
+The catalog of 30 check codes has two that Core cannot report:
 
 | Code | Raised by | Package |
 | --- | --- | --- |
 | `untagged-union` | Two or more records in the type after `as` or `is` that do not form a tagged union | F5 |
 | `never-conforms` | `x as T` where no value could pass | F4 |
 
+Package F16 adds one more, `name-clash`, in a catalog file of its own
+(`spec/packages/f16-entry-points.md` 9).
+
 These uses of Core codes also come only with a follow-on form, and are not in
 Core: `undefined-name` for a type name after `as` or `is`; `check-limit` for a
 type after `as` or `is`; `always-truthy` and `always-falsy` on an `x is T`;
-`kind`, `maybe-null` and `no-method` at a projection step.
+`kind`, `maybe-null` and `no-method` at a projection step; with F16,
+`undefined-name`, `check-limit` and `untagged-union` for a type in an
+annotation or a type line, `duplicate-name` for a type line, `result-mismatch`
+at an annotation, and `arg-mismatch` at an annotated parameter.
 
 ## 17. Check classes
 
@@ -1951,7 +1963,7 @@ the names of the environment (22.2). They need no type.
 | --- | --- |
 | Who applies them | Every implementation, when it compiles a program, whether or not it has a type checker. A program compiled "without a check" is compiled without the type rules, never without these. |
 | Phase | `check` |
-| Static diagnostic | A diagnostic that this section gives. Its code is one of the eleven static codes: `undefined-name`, `undefined-function`, `not-a-value`, `call-of-parameter`, `lambda-to-lambda`, `duplicate-name`, `shadows-namespace`, `duplicate-key`, `arity`, `duplicate-case`, `unreachable-arm`. |
+| Static diagnostic | A diagnostic that this section gives. Its code is one of the twelve static codes: `undefined-name`, `undefined-function`, `not-a-value`, `call-of-parameter`, `lambda-to-lambda`, `duplicate-name`, `shadows-namespace`, `duplicate-key`, `arity`, `duplicate-case`, `unreachable-arm`, `recursion-needs-types`. |
 | Not static | `arity` and `not-a-value` that the type rules give at the arguments of a `MethodCall` (13.2, 13.5). The method of a `MethodCall` is known only from the receiver's kind, so its count of arguments and the place of its lambda arguments are type rules. |
 | Message | Not specified in Core. The code and the span are. |
 
@@ -2049,6 +2061,22 @@ Then, by the callee:
 Every argument is walked by 22.4: a `Lambda` node by its row, an `Ident` that is
 a lambda argument not at all, any other argument as itself.
 
+**A reference to its own name.** A `const`-bound lambda L is in scope in its
+own body and defaults (22.7). A reference of L to its own name is a `Call`
+whose callee is L, or an `Ident` lambda argument (22.4) of a `Call` or a
+`MethodCall` whose innermost binding is L, that stands inside L's text: in its
+body, or in a default of one of its parameters. A read of the name as a value
+is not one: it is `not-a-value` (22.4).
+
+| Rule | Text |
+| --- | --- |
+| The diagnostic | `recursion-needs-types`, once for each L that has a reference, on the reference with the least start position: the name of the `Call`, or the `Ident` |
+| Other tests | Unchanged. A `Call` of L inside L is tested for its count and its lambda arguments by the tables above, and a lambda argument naming L inside L is tested as any lambda argument |
+| Typed or not | Every reference is this error, whatever L's parameters carry. Package F17, step E1, is to accept a reference of a lambda whose parameters and result are all annotated (`spec/packages/f16-entry-points.md` 3.1) |
+
+So `const f = n => f(n - 1); f(3)` is `recursion-needs-types` on the second
+`f`, and `const f = xs => xs.map(f); 1` on the `f` given to `map`.
+
 ### 22.6 Method calls
 
 A `MethodCall` that is not a call of a namespace (22.4): the receiver is walked,
@@ -2072,7 +2100,7 @@ of `04-library.md` 2.2, before any argument is evaluated. A failure is
 
 | Binding form | Order |
 | --- | --- |
-| `const n = Lambda;` | The `Lambda` is walked in the scope as it is before the line. Then n is bound, as a `const`-bound lambda. |
+| `const n = Lambda;` | n is bound first, as a `const`-bound lambda. Then the `Lambda` is walked, in the scope with n bound: n is in scope in its body and defaults (`01-language.md` 5 rule 6), where a reference to it is `recursion-needs-types` (22.5). |
 | `const p = e;`, any other | e is walked. Then the pattern p is bound, as value bindings. |
 | A `NamePat` | Its name is bound. |
 | A `MapPat` | Each field in order: its default first, if any, then its name is bound. Then the rest's name. |
@@ -2081,7 +2109,8 @@ of `04-library.md` 2.2, before any argument is evaluated. A failure is
 | `catch (err)` | `err` is bound in the handler's scope, as a value binding. |
 
 So a default sees the names to its left in the same pattern and the parameters
-to its left, and a name is not in scope in its own value.
+to its left, and a name is not in scope in its own value, but for the name of
+a `const`-bound lambda.
 
 ### 22.8 Map literals and `match`
 
@@ -2108,6 +2137,7 @@ The literals of an arm after `_` are compared too.
 | `duplicate-key` | The later key |
 | `duplicate-case` | The later literal |
 | `unreachable-arm` | The arm |
+| `recursion-needs-types` | The name of the `Call`; for a lambda argument, the `Ident` |
 
 ### 22.10 Order
 
@@ -2177,6 +2207,10 @@ where the row says otherwise.
 | S26 | `gate.items.map()` | None. The full checker reports `arity` 1:1-1:17, a type diagnostic (22.1), so the guarantee does not apply. |
 | S27 | `gate.items.map(t => t.nmae)` | None. The full checker reports `no-field` 1:23-1:27, a type diagnostic. |
 | S28 | `const inc = n => n + 1; [1, 2].map(inc)` | None: a lambda argument of a `MethodCall` is not tested by the static rules. |
+| S29 | `const f = n => f(n - 1); f(3)` | `recursion-needs-types` 1:16-1:17 |
+| S30 | `const f = x => f(x) + f(x); 1` | `recursion-needs-types` 1:16-1:17, once for the lambda |
+| S31 | `const f = x => [f]; 1` | `not-a-value` 1:17-1:18: a read of its own name is no reference |
+| S32 | `const x = 1; { const x = y => x + y; x(1) }` | `not-a-value` 1:31-1:32: the `x` of the body is the lambda |
 
 ## 23. What packages add
 
@@ -2196,4 +2230,5 @@ Its chapter is the home of its rules.
 | F8, errors, second part | A message template for every `check` code, with the types it prints | `spec/packages/f08-errors.md` 3 |
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
 | F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |
+| F16, entry points, slice D1 | Type lines and their static rules, with `name-clash`. Annotations: what a `const` line's, a parameter's and a result's annotation claim, the fits that test them, which `const`-bound lambdas are checked once where they are written, and the values the library passes to an annotated parameter | `spec/packages/f16-entry-points.md` 3 and 5 |
 | F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable | `spec/packages/f17-recursion.md` 4 and 5.6 |

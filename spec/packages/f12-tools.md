@@ -72,14 +72,16 @@ numbers without a file are of this chapter.
    6 bind the implementation that ships the CLI, the REPL or the editor
    grammar.
 2. Packages are offered in the order of `03-host.md` 3.11 item 2: F3, F1, F2,
-   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F17, F12. F12 is the last. So an
-   implementation that offers F12 offers every form of F3, F4 and F7, the
-   templates of F2, the groups of F6 with every function of F13, the renderings
-   of F8, the report of F9, the commands of F10, the host facts of F14, and the
-   guards and `walk` of F17. The formatter prints every one of those forms,
-   assist lists every library entry, and the cases of `suite/tools/` use them.
-   The cases of F17's forms in the formatter and in assist stand in
-   `suite/recursion/`, in its files named `tools-` (F17 1.4 item 3).
+   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16 slice D1, F17, F12. F12 is
+   the last. So an implementation that offers F12 offers every form of F3, F4
+   and F7, the templates of F2, the groups of F6 with every function of F13,
+   the renderings of F8, the report of F9, the commands of F10, the host facts
+   of F14, the type lines and annotations of F16, and the guards and `walk` of
+   F17. The formatter prints every one of those forms, assist lists every
+   library entry, and the cases of `suite/tools/` use them. The cases of F16's
+   and F17's forms in the formatter and in assist stand in
+   `suite/entry-points/` and `suite/recursion/`, in their files named `tools-`
+   (F16 1.4 item 4, F17 1.4 item 3).
 
 ### 1.4 Version
 
@@ -323,8 +325,8 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 
 | Node | Document |
 | --- | --- |
-| `Program` | For each `const` line and then the result: the document of it, then `H`. An empty line before an element as 2.9 says. Then the leading comments of the end of the text (2.12). The final `;` is not written |
-| `Const` | `"const" sp ‹pattern› sp "=" assigned(value) ";"` |
+| `Program` | For each `const` line and type line (F16 7.1), in the order of the text, and then the result: the document of it, then `H`. An empty line before an element as 2.9 says. Then the leading comments of the end of the text (2.12). The final `;` is not written |
+| `Const` | `"const" sp ‹pattern› sp "=" assigned(value) ";"`. With an annotation, F16 7.1 |
 | `Block` | `"{" i(H body) H "}"`, where body is the `const` lines and the result, separated by `H` and by empty lines as 2.9 says |
 | A branch of `if` or `try` | `"{" i(L body) L "}"`. A branch whose whole content is a `Block` is written with that block's `const` lines and result as its body: the two are one tree (`01-language.md` 4.2) |
 | `Cond`, form `if` | `g("if" sp "(" g(i(S ‹test›) S) ")" sp branch, then for each `else if`: sp "else" sp "if" sp "(" g(i(S ‹test›) S) ")" sp branch, then sp "else" sp branch)`. An `else` branch whose whole content is an `if` is written `else if`: the two are one tree |
@@ -338,7 +340,7 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 | `Map` | `seq("{", entries, "}")`. An entry: `key ":" assigned(value)`; a computed key is `"[" ‹k› "]"`; a shorthand entry is its name; a spread is `"..." ‹e›` |
 | `Call` | The name, then the arguments (2.10) |
 | A chain | 2.11 |
-| `Lambda` | params `sp "=>" assigned(body)`. params is the name, or `_`, when the lambda has one parameter whose pattern is a name or `_` and that has no default; else `seq("(", params, ")")`. A parameter is `‹pattern›`, then `sp "=" assigned(default)` when it has one |
+| `Lambda` | params `sp "=>" assigned(body)`. params is the name, or `_`, when the lambda has one parameter whose pattern is a name or `_` and that has no default, and the lambda has no annotation (F16 7.1); else `seq("(", params, ")")`. A parameter is `‹pattern›`, then `sp "=" assigned(default)` when it has one. Annotations of the parameters and the result: F16 7.1 |
 | `NamePat` | The name or `_` |
 | `MapPat` | `seq("{", fields and rest, "}")`. A field whose key is a word equal to its name is the name alone: `{a: a}` and `{a}` are one tree. Another field is `key ":" sp name`. A default is `sp "=" assigned(default)`. The rest is `"..." name` |
 | `ListPat` | `seq("[", elements and rest, "]")`. An element is the name or `_`, then its default as for a field |
@@ -617,7 +619,8 @@ by the **repair**.
    rule 5 says, from the tokens before the end: a `(` whose matching `)` is not
    among them begins a parenthesized expression. So in `(a, b = a` the `,` is an
    error before the end, and the repair fails. A completion there is the
-   fallback of 3.5 item 1.
+   fallback of 3.5 item 1. With F16, a `(` followed by a name or `_` and then
+   `:`, all before the end, begins a parameter list (F16 7.2 item 3).
 
 ### 3.4 The hole
 
@@ -641,7 +644,7 @@ The **context** is decided by where the hole stands in the repaired program.
 | An `Ident` | names (3.6) |
 | The name of a shorthand entry of a `Map` that has an expected record (3.9) | keys (3.9); otherwise names |
 | The word of a `Member` or a `MethodCall`, after `.` or `?.` | members of the receiver (3.7), or entries of a namespace (3.8) |
-| A type name in a program type (F4) | types (3.10) |
+| A type name in a program type (F4), and with F16 in an annotation or a type line | types (3.10) |
 | A string literal, as the literal of a `match` arm, as an operand of `==` or `!=`, or where a value has an expected type (3.9) | strings (3.11) |
 | A name that a pattern, a parameter or `catch` binds; a key of a pattern or of a record type; anywhere else | none: the empty list |
 
@@ -664,7 +667,9 @@ The candidates of the names context are, in this order:
    it would be in scope for an `Ident` there: a `const` name from the end of its
    line, a parameter in its lambda's body and in the defaults to its right, a
    pattern's name in the defaults to its right, the name of `catch` in its
-   handler. A `const` name is not in scope in its own value.
+   handler. A `const` name is not in scope in its own value, but for the name
+   of a `const`-bound lambda, which is in scope in its body and defaults
+   (`01-language.md` 5 rule 6).
 2. Each name once, at its innermost binding. `_` binds nothing.
 3. A const-bound lambda has the kind `lambda`; every other name bound in the
    program has the kind `name`.
@@ -733,6 +738,8 @@ from the outside in. A node no row reaches has none.
 In a program type, the candidates are the eight type words `any`, `bool`,
 `float`, `int`, `map`, `never`, `null` and `string`, the environment's named
 types (F4 3), and its opaque types, together in code point order, kind `type`.
+With F16 they include the names of the type lines that end before the hole
+(F16 7.2 item 1).
 
 ### 3.11 Strings
 
@@ -803,6 +810,7 @@ When the hole is a string literal, the candidates are string values, kind
 | The word of a `Member` | `field` | The printed type of the `Member` | null | null | null |
 | The `Ident` of a namespace | `namespace` | null | null | null | null |
 | A constant of a group (F6) | `constant` | Its printed type | null | The `doc` of its record | null |
+| A type name, or the name of a type line (F16) | `type` | F16 7.3 | null | null | F16 7.3 |
 
 4. `span` is the span of the word's token.
 5. `doc` comes only from a library record. A host function and a method of an
@@ -1156,7 +1164,7 @@ list of `propertyNames` of a case (not of the file), their properties in
       {"type": "object", "required": ["kind", "span"],
        "properties": {
          "kind": {"enum": ["name", "lambda", "variable", "function", "namespace",
-                           "field", "method", "constant"]},
+                           "field", "method", "constant", "type"]},
          "span": {"$ref": "#/$defs/span"},
          "type": {"type": ["string", "null"]},
          "signature": {"type": ["string", "null"]},

@@ -586,7 +586,7 @@ is tested here: the type is resolved in every compile.
    `untagged-union` for those that do not.
 4. **Static codes.** `untagged-union` and `check-limit` at a program type are
    static diagnostics. For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13,
-   in `suite/conversion/` the static codes are the eleven of Core and these
+   in `suite/conversion/` the static codes are the twelve of Core and these
    two. A case there that expects either expects it at a program type.
    Elsewhere `check-limit` is a type rule, as before.
 5. After a diagnostic of this section, the type rules give the `As` node the
@@ -778,7 +778,9 @@ a host value broke its declared type.
 | `always-truthy`, `always-falsy` | An `x is T` that the types decide (6.3) | The `As` node | `constant-condition` | `bool` |
 
 With this package the catalog's check codes that an implementation can report
-are 29: the 27 of `05-types.md` 16.1, `never-conforms` and `untagged-union`.
+are 30: the 28 of `05-types.md` 16.1, `never-conforms` and `untagged-union`.
+With F16 they are 31, with `name-clash` (`spec/packages/f16-entry-points.md`
+9.1).
 
 ## 7. The conformance function
 

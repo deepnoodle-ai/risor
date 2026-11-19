@@ -59,7 +59,7 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`) and F14
 | F8 4.2 item 2 | The index of a trace entry of `walk` (5.4) |
 | F12 2.8 | The document of a guard (7.1) |
 | F12 3.11 item 1 | A string listed only by guarded arms stays a candidate (7.2) |
-| `03-host.md` 3.11 item 2 | F17 is offered after F14 and before F12 (1.4) |
+| `03-host.md` 3.11 item 2 | F17 is offered after F16, slice D1, and before F12 (1.4) |
 
 No other rule changes. A program with no guard and no call of `walk` has the
 type, sites, diagnostics, value and usage it has without this package.
@@ -76,9 +76,10 @@ type, sites, diagnostics, value and usage it has without this package.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F17, F12. F16 and F19 take their places beside F17 when their
-   chapters are written: F14, F16, F17, F19, F12 (`15-build-rulings.md`
-   R211). So an implementation that offers F17 offers every package before
+   F13, F14, F16 slice D1, F17, F12. F19 takes its place beside F17 when its
+   chapter is written: F14, F16, F17, F19, F12 (`15-build-rulings.md` R211).
+   The place of F16's slice D1 is open (`spec/packages/f16-entry-points.md`
+   1.4). So an implementation that offers F17 offers every package before
    it, and the cases of this package may use their forms and their case
    fields: the tagged unions of F5, the trace of F8, the host facts of F14.
 2. **How the steps of F17 are offered is open** (`14` 5.3). F17 as this

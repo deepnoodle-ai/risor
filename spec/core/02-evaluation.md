@@ -600,12 +600,15 @@ one rounding, and must not compute in a wider format.
 9. Within these rules the count depends only on the text and on the values
    walked, so a run reaches the limit at the same call or the same level in
    every implementation.
-10. In a program that the type rules accepted, the calls in progress never add
-    more than 100 to the count: `05-types.md` 20.2 bounds the expanded nesting
-    of every use of a `const`-bound lambda, and the parser bounds the rest
-    (`01-language.md` 13.2). Such a program passes the default limit of 200
-    only in a walk of data. A program compiled without a check has no such
-    bound.
+10. In a program that the type rules accepted, and whose `const`-bound
+    lambdas are all checked at each use (`05-types.md` 13.9), the calls in
+    progress never add more than 100 to the count: `05-types.md` 20.2 bounds
+    the expanded nesting of every use of a `const`-bound lambda, and the
+    parser bounds the rest (`01-language.md` 13.2). Such a program passes the
+    default limit of 200 only in a walk of data. A program compiled without a
+    check has no such bound, and neither has a program with a lambda that
+    package F16 checks once, where it is written: that lambda is not expanded
+    at its uses (`spec/packages/f16-entry-points.md` 3.4).
 
 In this table `f` is a `const`-bound lambda.
 
@@ -855,4 +858,5 @@ own forms and changes no row above. Its chapter is the home of those rows.
 | F4, checked conversion | The conformance walk of `as` and `is`: its steps for each value visited and each key, its place in the depth count, the units of an error value's path | `spec/packages/f04-conversion.md` 4 and 5 |
 | F7, queries | The cost of a projection: a step for each element visited, and the units of its list. The cost of its seven entries | `spec/packages/f07-queries.md` 3 and 6 |
 | F5, tagged unions | The conformance walk against a union: the tag is read first, and a conforming value costs what its variant costs alone | `spec/packages/f05-unions.md` 7 |
+| F16, entry points, slice D1 | No cost. A type line and an annotation are not evaluated: they charge no step and no unit, and open no call (`spec/packages/f16-entry-points.md` 4) | `spec/packages/f16-entry-points.md` 4 |
 | F17, recursion and guards | A guard of a `match` arm: evaluated after a literal of its arm matched, it charges what its expression charges and adds no step of its own. The cost of `walk`, and its place in the depth count: its call of its callback for a node also counts the node's depth | `spec/packages/f17-recursion.md` 3 and 5 |

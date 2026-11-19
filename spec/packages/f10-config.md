@@ -831,7 +831,7 @@ with both `returns` and `returnsSchema` after the header rule.
 2. A runner of an implementation that does not offer F10 does not run
    `suite/config/`. For it the fields `returnsSchema` and `load` are unknown
    fields (`03-host.md` 3.10.10).
-3. In `suite/config/` the static codes are the eleven of Core and
+3. In `suite/config/` the static codes are the twelve of Core and
    `untagged-union`. `check-limit` is static only at a program type of F4
    (F4 6.1 item 4), after `as` or `is`; no case of the directory expects it
    there. Every other `check-limit`, such as a literal whose type is deeper
