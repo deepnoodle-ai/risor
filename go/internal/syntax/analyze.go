@@ -147,6 +147,14 @@ func pattern(p Pattern, lambda bool) []task {
 func (a *analyzer) consts(cs []*Const, result Node, lambda bool) []task {
 	var ts []task
 	for _, c := range cs {
+		// A const-bound lambda's name is in scope in its body and defaults
+		// (01-language.md 5 rule 6), so it is bound first.
+		if _, ok := c.Value.(*Lambda); ok && c.Type == nil {
+			if np, ok := c.Pattern.(*NamePat); ok && !np.Discard {
+				ts = append(ts, task{kind: tBind, name: np.Name}, visit(c.Value, lambda))
+				continue
+			}
+		}
 		ts = append(ts, visit(c.Value, lambda))
 		ts = append(ts, pattern(c.Pattern, lambda)...)
 	}

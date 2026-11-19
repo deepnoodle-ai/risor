@@ -740,18 +740,41 @@ func (c *checker) try(n *syntax.Try, fs facts) *types.Type {
 
 // constLine checks a const line (12.1).
 func (c *checker) constLine(k *syntax.Const, fs facts) {
-	if lam, ok := k.Value.(*syntax.Lambda); ok {
+	if lam, ok := k.Value.(*syntax.Lambda); ok && k.Type == nil {
 		if np, ok := k.Pattern.(*syntax.NamePat); ok && !np.Discard {
 			info := &lamInfo{facts: fs, base: c.base, lamDepth: c.lamDepth, maxRel: maxRel(lam)}
 			c.lambdas[lam] = info
-			if !c.used[lam] {
+			base := lam.Depth() - c.lamDepth + c.base
+			switch {
+			case checkedOnce(lam):
+				// Checked once, where it is written, with its parameters at
+				// their annotations; its sites are kept (F16 3.4). The check
+				// counts against the limits of 20.2 and 20.3.
+				info.once = true
+				info.result = types.Never
+				c.uses++
+				if c.uses > MaxUses || base+info.maxRel > MaxNesting {
+					c.m(useTmpl(c.uses), word("name", np.Name)).diag("check-limit", lam.Span())
+					return
+				}
+				c.withLambda(lam, info, base, func() {
+					c.bindArgs(lam, nil, nil, fs)
+					info.result = c.resultOf(lam, c.synth(lam.Body, fs), formAnnot)
+				})
+			case !c.used[lam]:
 				// No use: checked once, parameters any, sites dropped (13.9).
+				// An annotated parameter has its annotation, and a fit that
+				// used any holds (F16 3.4).
 				c.drop++
-				c.withLambda(lam, info, lam.Depth()-c.lamDepth+c.base, func() {
+				c.withLambda(lam, info, base, func() {
 					for _, p := range lam.Params {
-						c.bindParam(p, types.Any, true, info.facts)
+						if p.Annotated() {
+							c.bindAnnotated(p, info.facts, formResult)
+						} else {
+							c.bindParam(p, types.Any, true, info.facts)
+						}
 					}
-					c.synth(lam.Body, info.facts)
+					c.resultOf(lam, c.synth(lam.Body, info.facts), formResult)
 				})
 				c.drop--
 			}
@@ -759,6 +782,14 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 		}
 	}
 	v := c.synth(k.Value, fs)
+	if k.Type != nil { // an annotated const line (F16 3.3)
+		if t, ok := c.res.AnnTypes[k.Type]; ok {
+			c.fitForm(k.Value, v, t, formAnnot)
+			v = t
+		} else {
+			v = types.Never
+		}
+	}
 	c.bindPattern(k.Pattern, v, k.Value.Span(), fs)
 }
 

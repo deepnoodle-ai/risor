@@ -234,27 +234,34 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		rejected := c.dyn(recvSpan)
 		for _, a := range m.Args {
 			if l, named := c.lambdaArg(a); l != nil {
+				if named && c.res.SelfRefs[a] {
+					continue // a reference to its own name is no use (13.9)
+				}
+				// An annotated parameter is given any, which fits it only
+				// by a fit that used any (F16 3.4).
+				for _, p := range l.Params {
+					c.passed(p, types.Any, m.Name)
+				}
 				// A const-bound lambda named here is a use: every
 				// parameter any, sites kept, its body checked in the scope
 				// and under the facts where it was written (13.9).
 				if named {
+					if info := c.lambdas[l]; info != nil && info.once {
+						continue // checked once, where it was written (F16 3.4)
+					}
 					base, ok := c.use(a, l)
 					if !ok {
 						continue
 					}
 					info := c.lambdas[l]
 					c.withLambda(l, info, base, func() {
-						for _, p := range l.Params {
-							c.bindParam(p, types.Any, true, info.facts)
-						}
-						c.synth(l.Body, info.facts)
+						c.bindArgs(l, nil, types.Any, info.facts)
+						c.resultOf(l, c.synth(l.Body, info.facts), formAnnot)
 					})
 					continue
 				}
-				for _, p := range l.Params {
-					c.bindParam(p, types.Any, true, fs)
-				}
-				c.synth(l.Body, fs)
+				c.bindArgs(l, nil, types.Any, fs)
+				c.resultOf(l, c.synth(l.Body, fs), formAnnot)
 				continue
 			}
 			c.synth(a, fs)
@@ -334,6 +341,12 @@ func (c *checker) use(at syntax.Node, l *syntax.Lambda) (int, bool) {
 
 // callLambda is a call by name of a const-bound lambda (13.9).
 func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node, fs facts) *types.Type {
+	if c.res.SelfRefs[n] {
+		// A reference to its own name (recursion-needs-types) is no use:
+		// its plain arguments are synthesized, and it has type never.
+		c.synthPlain(args, fs)
+		return types.Never
+	}
 	min := 0
 	for i, p := range l.Params {
 		if p.Default == nil {
@@ -351,24 +364,134 @@ func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node
 			continue
 		}
 		ts[i] = c.synth(a, fs)
+		// An argument at an annotated parameter must fit it (F16 3.4).
+		c.fitParam(l.Params[i], a, ts[i], c.callName(n))
+	}
+	info := c.lambdas[l]
+	if info != nil && info.once {
+		return info.result // checked once, where it was written (F16 3.4)
 	}
 	base, ok := c.use(n, l)
 	if !ok {
 		return types.Never
 	}
-	info := c.lambdas[l]
 	var out *types.Type
 	c.withLambda(l, info, base, func() {
-		for i, p := range l.Params {
-			if i < len(ts) {
-				c.bindParam(p, ts[i], true, info.facts)
-			} else {
-				c.bindParam(p, types.Never, false, info.facts)
-			}
-		}
-		out = c.synth(l.Body, info.facts)
+		c.bindArgs(l, ts, nil, info.facts)
+		out = c.resultOf(l, c.synth(l.Body, info.facts), formAnnot)
 	})
 	return out
+}
+
+// fitParam fits an argument of a call by name to its parameter's
+// annotation (F16 3.4): through its form, and a fit that used any does not
+// hold. With a default, null is accepted too. A plain argument at a
+// parameter with an Fn is arg-mismatch, as at a library Fn (13.2).
+func (c *checker) fitParam(p *syntax.Param, a syntax.Node, t *types.Type, name string) {
+	switch {
+	case p.Fn != nil:
+		pn := ""
+		if np, ok := p.Pattern.(*syntax.NamePat); ok {
+			pn = np.Name
+		}
+		c.m("function", word("param", pn), word("name", name)).diag("arg-mismatch", a.Span())
+	case p.Type != nil:
+		want, ok := c.res.AnnTypes[p.Type]
+		if !ok {
+			return // the annotation has a static diagnostic
+		}
+		if p.Default != nil {
+			want = types.WithNull(want)
+		}
+		c.fitForm(a, t, want, formAnnotArg)
+	}
+}
+
+// passed checks a value of type q that the library, or a method on an any
+// receiver, passes to a parameter of a lambda argument (F16 3.4). It must
+// fit the parameter's annotation without a fit that used any; a parameter
+// with an Fn takes no value.
+func (c *checker) passed(p *syntax.Param, q *types.Type, name string) {
+	switch {
+	case p.Fn != nil:
+		c.m("fn-value", word("name", name), ty("found", q)).diag("arg-mismatch", p.Fn.Span)
+	case p.Type != nil:
+		want, ok := c.res.AnnTypes[p.Type]
+		if !ok {
+			return
+		}
+		if !fitsK(q, want, formAnnotArg) {
+			c.m("argument", ty("expected", want), ty("found", q)).diag("arg-mismatch", p.Type.Span)
+		}
+	}
+}
+
+// bindArgs binds the parameters of a lambda whose body is about to be
+// checked. An annotated parameter is bound to its annotation (F16 3.4).
+// Any other is bound by 12.4 to ts[i]; past the end of ts, to fill when it
+// is not nil, else as an omitted argument.
+func (c *checker) bindArgs(l *syntax.Lambda, ts []*types.Type, fill *types.Type, fs facts) {
+	for i, p := range l.Params {
+		switch {
+		case p.Annotated():
+			c.bindAnnotated(p, fs, formAnnot)
+		case i < len(ts):
+			c.bindParam(p, ts[i], true, fs)
+		case fill != nil:
+			c.bindParam(p, fill, true, fs)
+		default:
+			c.bindParam(p, types.Never, false, fs)
+		}
+	}
+}
+
+// bindAnnotated binds an annotated parameter to its annotation: a program
+// type, or never for an Fn and for a type with a static diagnostic. Its
+// default must fit the annotation (F16 3.3); k is formAnnot, or formResult
+// in the check of a lambda with no use.
+func (c *checker) bindAnnotated(p *syntax.Param, fs facts, k formKind) {
+	t, ok := types.Never, false
+	if p.Type != nil {
+		t, ok = c.res.AnnTypes[p.Type]
+		if !ok {
+			t = types.Never
+		}
+	}
+	if p.Default != nil {
+		d := c.synth(p.Default, fs)
+		if ok {
+			c.fitForm(p.Default, d, t, k)
+		}
+	}
+	c.bindPattern(p.Pattern, t, p.Pattern.Span(), fs)
+}
+
+// resultOf is the result type of a lambda whose body has type b: its
+// result annotation, which the body must fit (F16 3.3), or b.
+func (c *checker) resultOf(l *syntax.Lambda, b *types.Type, k formKind) *types.Type {
+	if l.Result == nil {
+		return b
+	}
+	t, ok := c.res.AnnTypes[l.Result]
+	if !ok {
+		return types.Never
+	}
+	c.fitForm(l.Body, b, t, k)
+	return t
+}
+
+// checkedOnce reports whether a const-bound lambda is checked once, where
+// it is written (F16 3.4): it carries an annotation, and every parameter
+// is annotated.
+func checkedOnce(l *syntax.Lambda) bool {
+	some := l.Result != nil
+	for _, p := range l.Params {
+		if !p.Annotated() {
+			return false
+		}
+		some = true
+	}
+	return some
 }
 
 type plainArg struct {
@@ -452,6 +575,9 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 					c.m("argument", word("name", c.callName(n)), word("param", p.Name)).diag("not-a-value", a.Span())
 				}
 				continue
+			}
+			if named && c.res.SelfRefs[a] {
+				continue // a reference to its own name is no use (13.9)
 			}
 			lams = append(lams, lamArg{a, l, named, p.Fn})
 			continue
@@ -571,37 +697,40 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 	}
 	lf := fs
 	base, depth := c.base, c.lamDepth
+	var once *lamInfo
 	if named {
-		b, ok := c.use(at, l)
-		if !ok {
-			return nil
+		if info := c.lambdas[l]; info != nil && info.once {
+			once = info // checked once, where it was written (F16 3.4)
+		} else {
+			b, ok := c.use(at, l)
+			if !ok {
+				return nil
+			}
+			lf, base, depth = info.facts, b, l.Depth()
 		}
-		info := c.lambdas[l]
-		lf, base, depth = info.facts, b, l.Depth()
 	}
 	var narrowed *types.Type
 	check := func() *types.Type {
+		// Each value passed to an annotated parameter must fit it (F16
+		// 3.4).
+		for i, p := range l.Params {
+			c.passed(p, qs[i], c.callName(name))
+		}
+		if once != nil {
+			return once.result
+		}
 		sb, sd := c.base, c.lamDepth
 		c.base, c.lamDepth = base, depth
 		defer func() { c.base, c.lamDepth = sb, sd }()
-		for i, p := range l.Params {
-			c.bindParam(p, qs[i], true, lf)
-		}
+		c.bindArgs(l, qs, nil, lf)
 		b := c.synth(l.Body, lf)
 		if narrows && len(l.Params) > 0 {
-			if np, ok := l.Params[0].Pattern.(*syntax.NamePat); ok && !np.Discard && l.Params[0].Default == nil {
-				if slot, ok := c.res.Slots[np]; ok && slot >= 0 {
-					t := c.slots[slot]
-					tf, _ := c.factsOf(l.Body)
-					if tf.covers(path{root: slot}) {
-						t = types.Nonnull(t)
-					}
-					t = tf.apply(t, path{root: slot}) // F4 6.5
-					narrowed = t
-				}
-			}
+			narrowed = c.narrowed(l, qs[0])
 		}
-		return b
+		return c.resultOf(l, b, formAnnot)
+	}
+	if once != nil && narrows && len(l.Params) > 0 {
+		narrowed = c.narrowed(l, qs[0])
 	}
 	dl, sl := len(c.diags), len(c.sites)
 	b := check()
@@ -654,18 +783,58 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 	return narrowed
 }
 
+// narrowed is the narrowed type N of 13.8, or nil when the first parameter
+// is not a name with no default. q is the element type. The true facts are
+// those of the body's last check. An annotated parameter narrows from q,
+// the type the values have, and not from its annotation (F16 3.4).
+func (c *checker) narrowed(l *syntax.Lambda, q *types.Type) *types.Type {
+	p := l.Params[0]
+	np, ok := p.Pattern.(*syntax.NamePat)
+	if !ok || np.Discard || p.Default != nil {
+		return nil
+	}
+	slot, ok := c.res.Slots[np]
+	if !ok || slot < 0 {
+		return nil
+	}
+	t := c.slots[slot]
+	if p.Annotated() {
+		t = q
+	}
+	tf, _ := c.factsOf(l.Body)
+	if tf.covers(path{root: slot}) {
+		t = types.Nonnull(t)
+	}
+	return tf.apply(t, path{root: slot}) // F4 6.5
+}
+
 type formKind uint8
 
 const (
 	formResult formKind = iota
 	formArg
+	// formAnnot and formAnnotArg are the fits of package F16 3.3: a value
+	// against an annotation, and an argument against an annotated
+	// parameter. A fit that used any does not hold there.
+	formAnnot
+	formAnnotArg
 )
 
+// strict reports whether a fit that used any fails (F16 3.3).
+func (k formKind) strict() bool { return k == formAnnot || k == formAnnotArg }
+
+// fitsK is Fits, or for a strict kind surely fits (F4 6.2).
+func fitsK(t, want *types.Type, k formKind) bool {
+	ok, used := types.Fits(t, want)
+	return ok && !(used && k.strict())
+}
+
 // fitForm is "e fits T through its form" (15.1), with the code of 15.2 at
-// each place of failure.
+// each place of failure. For the kinds of F16 3.3, a fit that used any is a
+// place of failure, with the template any.
 func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 	ok, used := types.Fits(t, want)
-	if ok {
+	if ok && !(used && k.strict()) {
 		if used {
 			c.dyn(e.Span())
 		}
@@ -676,9 +845,9 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 	// expected does not allow key.
 	fail := func(sp syntax.Span, at *types.Type, w *types.Type, expected *types.Type, key string) {
 		code, tmpl := "arg-mismatch", "argument"
-		if k == formResult {
+		if k == formResult || k == formAnnot {
 			code, tmpl = "result-mismatch", "result"
-		} else if at != nil && at.HasNull() && fits(types.Nonnull(at), w) {
+		} else if at != nil && at.HasNull() && fitsK(types.Nonnull(at), w, k) {
 			c.m("", ty("type", at)).diag("maybe-null", sp)
 			return
 		}
@@ -704,7 +873,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 			for _, it := range e.Items {
 				if s, ok := it.(*syntax.Spread); ok {
 					st := tyOf(s)
-					if ok, used := types.Fits(st, types.List(el)); !ok {
+					if ok, used := types.Fits(st, types.List(el)); !ok || (used && k.strict()) {
 						fail(s.Value.Span(), st, types.List(el), nil, "")
 					} else if used {
 						c.dyn(s.Value.Span())

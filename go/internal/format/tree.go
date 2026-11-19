@@ -27,14 +27,29 @@ func tree(b *strings.Builder, n syntax.Node, src []rune) {
 		w("nil")
 	case *syntax.Program:
 		w("(program")
-		for _, c := range n.Consts {
-			sub(c)
+		// The const lines and the type lines of F16, in the order of the text.
+		ci, ti := 0, 0
+		for ci < len(n.Consts) || ti < len(n.Types) {
+			if ti < len(n.Types) && (ci >= len(n.Consts) || n.Types[ti].Span.Start < n.Consts[ci].Span().Start) {
+				t := n.Types[ti]
+				w(" (typeline " + t.Name + " ")
+				ptypeTree(b, t.Type)
+				w(")")
+				ti++
+				continue
+			}
+			sub(n.Consts[ci])
+			ci++
 		}
 		sub(n.Result)
 		w(")")
 	case *syntax.Const:
 		w("(const")
 		sub(n.Pattern)
+		if n.Type != nil {
+			w(" ")
+			ptypeTree(b, n.Type)
+		}
 		sub(n.Value)
 		w(")")
 	case *syntax.Block:
@@ -153,11 +168,35 @@ func tree(b *strings.Builder, n syntax.Node, src []rune) {
 		for _, p := range n.Params {
 			sub(p)
 		}
+		if n.Result != nil {
+			w(" (result ")
+			ptypeTree(b, n.Result)
+			w(")")
+		}
 		sub(n.Body)
 		w(")")
 	case *syntax.Param:
 		w("(param")
 		sub(n.Pattern)
+		if n.Type != nil {
+			w(" ")
+			ptypeTree(b, n.Type)
+		}
+		if f := n.Fn; f != nil {
+			w(" (fn")
+			for _, q := range f.Params {
+				w(" (" + q.Name + " ")
+				ptypeTree(b, q.Type)
+				w(")")
+			}
+			w(" ")
+			if f.Result != nil {
+				ptypeTree(b, f.Result)
+			} else {
+				w("unknown")
+			}
+			w(")")
+		}
 		if n.Default != nil {
 			sub(n.Default)
 		}

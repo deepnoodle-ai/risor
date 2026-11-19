@@ -207,6 +207,19 @@ func (t *PType) String() string {
 	return strings.Join(parts, " | ")
 }
 
+// String prints the function type on one line.
+func (f *PFn) String() string {
+	parts := make([]string, len(f.Params))
+	for i, q := range f.Params {
+		parts[i] = q.Name + ": " + q.Type.String()
+	}
+	r := "unknown"
+	if f.Result != nil {
+		r = f.Result.String()
+	}
+	return "(" + strings.Join(parts, ", ") + ") => " + r
+}
+
 // String prints the primary.
 func (p *PPrim) String() string {
 	switch p.Kind {

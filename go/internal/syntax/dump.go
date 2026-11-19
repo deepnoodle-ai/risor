@@ -30,6 +30,9 @@ func dump(b *strings.Builder, n Node) {
 		w("nil")
 	case *Program:
 		w("(program")
+		for _, t := range n.Types {
+			w(" (type " + t.Name + " " + t.Type.String() + ")")
+		}
 		for _, c := range n.Consts {
 			w(" ")
 			dump(b, c)
@@ -38,6 +41,14 @@ func dump(b *strings.Builder, n Node) {
 		dump(b, n.Result)
 		w(")")
 	case *Const:
+		if n.Type != nil {
+			w("(const ")
+			dump(b, n.Pattern)
+			w(" : " + n.Type.String() + " ")
+			dump(b, n.Value)
+			w(")")
+			return
+		}
 		list("const", n.Pattern, n.Value)
 	case *Block:
 		w("(block")
@@ -135,9 +146,27 @@ func dump(b *strings.Builder, n Node) {
 			dump(b, p)
 		}
 		w(") ")
+		if n.Result != nil {
+			w(": " + n.Result.String() + " ")
+		}
 		dump(b, n.Body)
 		w(")")
 	case *Param:
+		if n.Annotated() {
+			w("(: ")
+			dump(b, n.Pattern)
+			if n.Fn != nil {
+				w(" " + n.Fn.String())
+			} else {
+				w(" " + n.Type.String())
+			}
+			if n.Default != nil {
+				w(" = ")
+				dump(b, n.Default)
+			}
+			w(")")
+			return
+		}
 		if n.Default == nil {
 			dump(b, n.Pattern)
 		} else {

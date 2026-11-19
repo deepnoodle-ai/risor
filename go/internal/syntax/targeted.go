@@ -296,7 +296,7 @@ func (p *parser) targetToken(e *Error) *Error {
 		return set("if-form", "call")
 	case e.Rule == "E6":
 		return set("try-form", "")
-	case t.Kind == Assign && j > 0 && operandEnd(prev) && e.Rule != "arm" && (p.inExpr() || p.marked(j-1, mDefaultEnd)) && !p.entryKey(j-1):
+	case t.Kind == Assign && j > 0 && operandEnd(prev) && e.Rule != "arm" && !p.marked(j-1, mAnnEnd) && (p.inExpr() || p.marked(j-1, mDefaultEnd)) && !p.entryKey(j-1):
 		return set("assignment", "assign")
 	case e.Rule == "E8":
 		return set("slice-syntax", "")
