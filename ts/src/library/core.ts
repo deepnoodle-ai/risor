@@ -175,6 +175,15 @@ function isTrue(c: CallContext, v: unknown): boolean {
   return typeof v === "boolean" ? v : truthy(v, c.run.cls);
 }
 
+/**
+ * The number of distinct keys a callback gave, which sets the size of a result
+ * that is built after its units are charged (02 6.2 item 3). The set is scratch
+ * space over keys that exist (6.2 item 6).
+ */
+function distinct(keys: unknown[]): number {
+  return new Set(keys).size;
+}
+
 /** A callback's result of the wrong kind. */
 function resultFail(c: CallContext, r: unknown): RunFailure {
   return new RunFailure("wrong-kind", c.span, "result", { name: c.name, kind: c.run.kind(r) });
@@ -652,13 +661,14 @@ implement(
   "list",
   "groupBy",
   stringKeyedEntry((c, keys, xs) => {
+    // 5.4.14: the units, then the build (02 6.2 item 3).
+    c.run.alloc(1 + 3 * distinct(keys) + keys.length);
     const groups = new Map<string, unknown[]>();
     for (let i = 0; i < keys.length; i++) {
       const g = groups.get(keys[i]);
       if (g === undefined) groups.set(keys[i], [xs[i]]);
       else g.push(xs[i]);
     }
-    c.run.alloc(1 + 3 * groups.size + keys.length);
     return new RMap(groups);
   }),
 );
@@ -812,16 +822,16 @@ implement(
   "uniqueBy",
   keyedEntry((c, keys, xs) => {
     orderedKeys(c, keys);
+    // The units, then the build (02 6.2 item 3). `1` and `1.0` are one key: numbers are held as doubles.
+    c.run.alloc(1 + distinct(keys));
     const seen = new Set<unknown>();
     const out: unknown[] = [];
     keys.forEach((k, i) => {
-      // `1` and `1.0` are one key: numbers are held as doubles.
       if (!seen.has(k)) {
         seen.add(k);
         out.push(xs[i]);
       }
     });
-    c.run.alloc(1 + out.length);
     return out;
   }),
 );
@@ -841,9 +851,10 @@ implement(
   "list",
   "countBy",
   stringKeyedEntry((c, keys) => {
+    // The units, then the build (02 6.2 item 3).
+    c.run.alloc(1 + 2 * distinct(keys));
     const m = new RMap();
     for (const k of keys) m.set(k, ((m.get(k) as number | undefined) ?? 0) + 1);
-    c.run.alloc(1 + 2 * m.size);
     return m;
   }),
 );
