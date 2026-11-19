@@ -608,7 +608,9 @@ one rounding, and must not compute in a wider format.
     default limit of 200 only in a walk of data. A program compiled without a
     check has no such bound, and neither has a program with a lambda that
     package F16 checks once, where it is written: that lambda is not expanded
-    at its uses (`spec/packages/f16-entry-points.md` 3.4).
+    at its uses (`spec/packages/f16-entry-points.md` 3.4). With package F17 a
+    lambda checked once may call itself, so a checked program can reach any
+    depth limit through calls (`spec/packages/f17-recursion.md` 11.4).
 
 In this table `f` is a `const`-bound lambda.
 
@@ -718,9 +720,9 @@ reference evaluation:
 | Skip building an intermediate value | Its steps and units are charged as if it were built. The error value of a `catch (err)` whose handler does not read the name is one |
 | Replace a scan by a lookup | The lookup charges what the scan would have charged. `x in [constants]` charges what the scan of 5.3 charges |
 | Build a constant list or map once | Its units are charged at each evaluation (6.2) |
-| Bind each call to its callee when compiling, keep each binding in one fixed place, and create nothing for a lambda | 11.1 |
+| Bind each call to its callee when compiling, keep each binding in one fixed place, and create nothing for a lambda | 11.1. One fixed place for each binding needs the third fact of 11.1, so it is allowed only for a program with no self-reference (`spec/packages/f17-recursion.md` 11.5) |
 | Resolve a method when compiling | The run still tests the receiver's kind and makes the shape tests of 2.3, so the method selected and every failure are those of the reference |
-| Make no depth test at a call | The largest count the program's calls can reach is within the depth limit (11.1) |
+| Make no depth test at a call | The largest count the program's calls can reach is within the depth limit (11.1). A program with a self-reference has no largest count |
 
 ### 10.3 Not allowed
 
@@ -736,7 +738,10 @@ reference evaluation:
 
 A lambda is passed only to a library entry, and a name bound by a parameter or a
 pattern cannot be called (`01-language.md`). So these hold for every program
-that runs:
+that runs, unless package F17 lets a lambda refer to its own name. A program
+with such a self-reference breaks the third, fourth and fifth facts: each call
+of a lambda then binds its own names, and the depth limit bounds the calls in
+progress (`spec/packages/f17-recursion.md` 11.5).
 
 | Fact | Consequence an implementation may rely on |
 | --- | --- |
@@ -859,4 +864,4 @@ own forms and changes no row above. Its chapter is the home of those rows.
 | F7, queries | The cost of a projection: a step for each element visited, and the units of its list. The cost of its seven entries | `spec/packages/f07-queries.md` 3 and 6 |
 | F5, tagged unions | The conformance walk against a union: the tag is read first, and a conforming value costs what its variant costs alone | `spec/packages/f05-unions.md` 7 |
 | F16, entry points, slice D1 | No cost. A type line and an annotation are not evaluated: they charge no step and no unit, and open no call (`spec/packages/f16-entry-points.md` 4) | `spec/packages/f16-entry-points.md` 4 |
-| F17, recursion and guards | A guard of a `match` arm: evaluated after a literal of its arm matched, or at a `_` arm, it charges what its expression charges and adds no step of its own. The cost of `walk`, and its place in the depth count: its call of its callback for a node also counts the node's depth | `spec/packages/f17-recursion.md` 3 and 5 |
+| F17, recursion and guards | A guard of a `match` arm: evaluated after a literal of its arm matched, or at a `_` arm, it charges what its expression charges and adds no step of its own. The cost of `walk`, and its place in the depth count: its call of its callback for a node also counts the node's depth. No row for a call of a lambda by its own name: it costs what any call by name costs. Each call binds its own names, which changes 10.2 and 11.1 | `spec/packages/f17-recursion.md` 3, 5, 11.4 and 11.5 |

@@ -258,10 +258,11 @@ These rules apply in every compile, with or without the type rules, in phase
    lambda given at it in a call of its lambda is `lambda-to-lambda`, and the
    name given as a lambda argument is a value.
 10. **The reference of a lambda to its own name** is Core's rule
-    `recursion-needs-types` (section 5). Every reference is that error,
-    whether or not the lambda's parameters and result are annotated. Step E1
-    of F17 is to accept a reference of a lambda whose every parameter and
-    result are annotated.
+    `recursion-needs-types` (section 5). With this package alone every
+    reference is that error, whether or not the lambda's parameters and
+    result are annotated. Package F17, which follows this slice in the order
+    (1.4), accepts a reference of a lambda whose every parameter and result
+    are annotated (`spec/packages/f17-recursion.md` 11.2).
 11. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
     `suite/entry-points/` the static codes are Core's twelve, `untagged-union`
     and `check-limit` at a program type (F4 6.1 item 4), and `name-clash`.
@@ -359,6 +360,10 @@ build asks an author for types it cannot parse:
    22.7, 22.9). It is reported once for each lambda, on its first reference.
 3. Such a reference is no use for the checker (`05-types.md` 13.9).
 4. F2 3.2 reads the amended scope: the name is bound in its own body (6).
+5. Package F17, step E1, lifts item 2 for a lambda whose every parameter and
+   result are annotated, and makes such a reference a use of a lambda checked
+   once (`spec/packages/f17-recursion.md` 11.2, 11.3). Items 1 and 4 do not
+   change.
 
 These are Core's rules, and their cases are Core's (8). The static codes go
 from 11 to 12, Core's check codes from 27 to 28.
@@ -502,8 +507,10 @@ a code no other file has is added whole.
 | `arg-mismatch` | `check` | `fn-value` | `{name} passes {found} to a parameter that takes a function` | `name`: word, `found`: type |
 
 1. `recursion-needs-types` is a code of Core (section 5). Its entry is in
-   `suite/messages-check.json` (F8 3.1), with the template `default`: `{name}
-   is this lambda's own name, and a lambda cannot refer to itself`.
+   `suite/messages-check.json` (F8 3.1), with the template `default`. Its text
+   is F17's (`spec/packages/f17-recursion.md` 9): `{name} is this lambda's own
+   name; give every parameter and the result a type so that it may refer to
+   itself, or give the lambda another name`.
 2. With F4, F5, F8 and this package, the check codes an implementation can
    report are 31: the 28 of `05-types.md` 16.1, `never-conforms`,
    `untagged-union` and `name-clash`.

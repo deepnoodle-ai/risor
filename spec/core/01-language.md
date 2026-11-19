@@ -572,8 +572,10 @@ its last token, where its tokens are these:
    So in `const f = n => f(n - 1);` the inner `f` is the lambda, and in
    `const x = 1; { const x = y => x + y; x(1) }` the `x` of the body is the
    lambda, not the outer `x`. A call of the name there, or the name given there
-   as a lambda argument, is an error, `recursion-needs-types` (14.4). A read
-   of it as a value is an error as anywhere (8.1 rules 3 and 4).
+   as a lambda argument, is an error, `recursion-needs-types` (14.4), unless
+   every parameter of the lambda and its result carry a type: package F17
+   lets such a lambda call itself (`spec/packages/f17-recursion.md` 11). A
+   read of the name as a value is an error as anywhere (8.1 rules 3 and 4).
 7. A name may be bound once in one program, block, branch or parameter list, and
    once in one pattern.
 8. An inner scope may bind a name that an outer scope binds, or that the
@@ -892,7 +894,8 @@ declared `string` and supplied as the list `[1, 2, 3]`, gives `[2, 3]`.
 2. In `f(a)`, `f` refers to the innermost binding of that name (5).
    - If it is a `const`-bound lambda, the call runs that lambda (8.3). A call
      that stands in that lambda's own body or defaults is a static error
-     (5 rule 6, 14.4).
+     (5 rule 6, 14.4), unless the lambda is typed as package F17 says
+     (`spec/packages/f17-recursion.md` 11.2).
    - If nothing in the program binds `f`, the call is of the environment's
      function `f`: the library's (`04-library.md`) or the host's
      (`03-host.md`).
@@ -941,7 +944,8 @@ fails when `input.event` is a map with no key `pull_request`.
    where a library function or method takes a function, as in `xs.map(double)`,
    which means what the lambda written there would mean. Inside the lambda's
    own body and defaults the name refers to the lambda itself (5 rule 6), and
-   either use there is an error (14.4).
+   either use there is an error (14.4), unless the lambda is typed as package
+   F17 says (`spec/packages/f17-recursion.md` 11.2).
 4. A function is not a value. A lambda, and the name of a `const`-bound lambda,
    cannot be stored in a list or a map, compared, used as a default, or be the
    value of a `const` line other than as rule 2 says, of a block, of a branch,
@@ -1405,7 +1409,7 @@ skipped after one. The message of a `check` diagnostic is not specified in Core.
 | A map literal does not write one key twice as a word, a string or a shorthand | 10.2 | `duplicate-key` |
 | A `match` does not list a literal twice | 9.3 | `duplicate-case` |
 | No arm of a `match` follows `_` | 9.3 | `unreachable-arm` |
-| A `const`-bound lambda does not refer to its own name: no call of it and no lambda argument naming it stands in its body or its defaults | 5, 8.1 | `recursion-needs-types` |
+| A `const`-bound lambda does not refer to its own name: no call of it and no lambda argument naming it stands in its body or its defaults. Package F17 lifts this rule for a lambda whose every parameter and result carry a type (`spec/packages/f17-recursion.md` 11.2) | 5, 8.1 | `recursion-needs-types` |
 
 At a method call none of these is a static rule: the count of arguments, a
 lambda where the method takes a value, a value where it takes a function, and a
@@ -1482,7 +1486,7 @@ and changes nothing else. Its chapter is the home of its rules.
 | F7, queries | The steps `[*]` and `?.[*]` of a chain, and the node `Each`. It replaces the rows of 14.3 for these texts | `spec/packages/f07-queries.md` |
 | F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 58 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
 | F16, entry points, slice D1 | Type lines, `type Name = T;`, at the top level of a program, and annotations: on a `const` line, `const n: T = e;`; on a lambda's parameters, `(x: T = d) => e`; on its result, `(x): R => e`; and a function type on a parameter that is a name, `(f: (a: T) => R) => e`. The fields `types` of node 1, `Program`; `type` of node 2, `Const`, and of node 23, `Param`; `fn` of node 23; `result` of node 22, `Lambda`. No node kind is added. It changes 3.1, 3.2 rule 5 and 8.1, and replaces the rows of 14.3 for `(x: int) => x` in an argument, `const n: int = 1;` and `type Name = T` | `spec/packages/f16-entry-points.md` 2 and 3 |
-| F17, recursion and guards | A guard on a `match` arm, `"a" if (c) => e`: the field `guard` of node 25, `Arm`. It changes 9.3 items 3, 7 and 9, and replaces the row of 14.3 for a guard | `spec/packages/f17-recursion.md` 2 to 4 |
+| F17, recursion and guards | A guard on a `match` arm, `"a" if (c) => e`: the field `guard` of node 25, `Arm`. It changes 9.3 items 3, 7 and 9, and replaces the row of 14.3 for a guard. A lambda whose every parameter and result carry a type may refer to its own name: it changes 5 rule 6, 7.3 item 2, 8.1 rule 3 and the row of 14.4 for `recursion-needs-types` | `spec/packages/f17-recursion.md` 2 to 4, 11 |
 
 1. Where this chapter calls such a text an error, it speaks of Core alone: the
    rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use them.

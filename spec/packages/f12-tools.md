@@ -819,6 +819,11 @@ When the hole is a string literal, the candidates are string values, kind
    description (F1 5.3) carries one, so their `doc` is null. A later minor
    version may add a field for it; a binding does not invent one.
 6. Any other word, a keyword or a type word among them, has no hover.
+7. **A call of a lambda by its own name** (F17) is the name of a `Call` of a
+   const-bound lambda. Its type is that of the `Call`: the result type for a
+   lambda whose every parameter and result carry a type
+   (`spec/packages/f17-recursion.md` 11.3), and `never` for any other
+   (`05-types.md` 13.9).
 
 ## 4. The command-line program
 

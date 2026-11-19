@@ -805,6 +805,7 @@ stack overflow. This specification fixes no number of bytes for all bindings.
 | Calls by name | A chain of `const`-bound lambdas, each calling the one before by name, whose depth count passes the depth limit (`02-evaluation.md` 8.4) |
 | Calls that a library entry makes of a lambda | The same chain, where each link calls the one before through `map`, and in a second case through `flatMap`, at a cost of 1 to the depth count for each link: `const f1 = x => [x].map(f0)[0];`, `const f1 = x => [x].flatMap(f0);`. The depth count passes the depth limit |
 | A walk | A value nested to the depth limit, compared with `==` and rendered (`02-evaluation.md` 8.4 item 5) |
+| Self-recursion, with package F17 | A typed lambda that calls itself by name, and one that gives its own name to `map`, and to `flatMap`, at a cost of 1 to the depth count for each call: `const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)` and the two forms of `spec/packages/f17-recursion.md` 11.6. With N one less than the depth limit the run reaches the limit; with N the limit it passes it |
 
 The calls through a library entry are in the list because an evaluator spends
 more of its own stack on them than on a call by name (informative). Measured on
@@ -1493,7 +1494,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F9, testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Cases that test a runner: the fields `runner`, `update` and `program`, and an `expect` of verdicts. Update mode. Case files written as programs. The report text. The command `risor test` | `spec/packages/f09-testing.md` |
 | F14, host facts | The declaration of a host fact: a statement about the values of an environment's variables beyond their types, part of the precondition. Its one kind, `someNotNull`. The case field `facts`, and a key of the description | `spec/packages/f14-host-facts.md` |
 | F16, entry points, slice D1 | Nothing in the host contract or the case format. Type lines and annotations. The check code `name-clash` and a template of `arg-mismatch`, in a catalog file of its own, `suite/messages-entry-points.json`; with F12, the hover kind `type` | `spec/packages/f16-entry-points.md` |
-| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json` | `spec/packages/f17-recursion.md` |
+| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1 | `spec/packages/f17-recursion.md` |
 | F12, tools | The formatter and the assist stage (completion and hover), each a call in every binding. The case fields `format`, `formatTemplate`, `complete` and `hover`, and the results `formatted`, `completion` and `hover`. The contract of the command line program | `spec/packages/f12-tools.md` |
 
 1. The cases of a package are in a directory of their own, and its library
@@ -1503,8 +1504,8 @@ above. A package's chapter is the home of its rules: this table only points.
    offers. The packages are offered in a fixed order, each only with all
    before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16
    slice D1, F17, F12. So a package's cases may use what an earlier package
-   adds. F16 holds only slice D1 of its plan, and F17 only step E0; how their
-   later slices and steps are offered is open
+   adds. F16 holds only slice D1 of its plan, and F17 only steps E0 and E1;
+   how their later slices and steps are offered is open
    (`spec/packages/f16-entry-points.md` 1.4,
    `spec/packages/f17-recursion.md` 1.4). The place of slice D1 before F17
    is a recommendation that the owner has not confirmed. F11 is a binding's
