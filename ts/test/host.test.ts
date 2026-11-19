@@ -1,6 +1,7 @@
 // Unit tests of the host API, for what no data case can raise (03
 // 3.10): the deadline, cancellation, a host crash, opaque values,
-// host numbers that cannot enter, ill-formed host text.
+// host numbers that cannot enter, ill-formed host text, a nested run's
+// failure from a host function.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -115,6 +116,78 @@ describe("host functions", () => {
   test("arguments are not tested against the signature (03 3.5)", () => {
     const e2 = createEnv({ functions: { id: { type: "(x: int) => any", call: (_h, x) => x } } });
     assert.equal(e2.compile(parse('id("text")'), { check: false }).run(), "text");
+  });
+});
+
+describe("03 3.4.4: a NaN or an infinity from the host cannot enter", () => {
+  // The suite cannot hold these numbers: JSON has no NaN and no infinity.
+  const bad: [string, number][] = [["NaN", NaN], ["+Infinity", Infinity], ["-Infinity", -Infinity]];
+  const env = createEnv({ varRecord: "{x: any}", functions: { f: { type: "() => float", call: () => current } } });
+  let current = 0;
+  const outcome = (src: string, x: unknown, check: boolean) => {
+    const o = execute(env.compile(parse(src), { check }), { x });
+    return o.ok ? "ok" : `${o.diagnostic.code} ${o.diagnostic.class}`;
+  };
+  for (const [name, n] of bad) {
+    test(`${name} as a variable, in a list, in a map, and as a host function's result`, () => {
+      current = n;
+      for (const check of [true, false]) {
+        assert.equal(outcome("x", n, check), "number-range environment");
+        assert.equal(outcome("x[1]", [1, n], check), "number-range environment");
+        assert.equal(outcome("x.a", { a: n }, check), "number-range environment");
+        assert.equal(outcome("x.map(v => v)", [n], check), "number-range environment");
+        assert.equal(outcome("f()", null, check), "number-range environment");
+      }
+      // Copying or measuring a container does not read its elements (item 5).
+      assert.equal(outcome("len(x)", [n], false), "ok");
+    });
+  }
+});
+
+describe("03 3.5.3 items 5 to 7: a host function that fails with a RisorError", () => {
+  // `city` fails with `failed`; `weather` runs it as a nested run, and `outer` runs a program that calls `weather`.
+  const city = createEnv({ varRecord: "{name: string}" }).compile(parse('fail(`unknown city "${name}"`, {code: 7})'));
+  const weatherEnv = createEnv({
+    functions: {
+      weather: { type: "(name: string) => float !", call: (_h, name) => city.run({ name: name as string }) as number },
+      own: { type: "() => int !", call: () => { throw new RisorError([{ phase: "run", code: "not-found", message: "no such row" }]); } },
+    },
+  });
+  const outerEnv = createEnv({
+    functions: { outer: { type: "() => float !", call: () => weatherEnv.compile(parse('weather("Atlantis")')).run() as number } },
+  });
+  test("function-error with the inner message, whole; the inner diagnostic is the cause", () => {
+    const o = execute(weatherEnv.compile(parse('weather("Atlantis")')));
+    assert.ok(!o.ok);
+    const d = o.diagnostic as typeof o.diagnostic & { cause?: unknown };
+    assert.equal(d.code, "function-error");
+    assert.equal(d.message, 'unknown city "Atlantis"');
+    assert.equal(d.class, "host");
+    assert.equal(d.data, undefined);
+    const cause = d.cause as { code: string; message: string; data: unknown };
+    assert.equal(cause.code, "failed");
+    assert.equal(cause.message, 'unknown city "Atlantis"');
+    // The inner diagnostic keeps its data; the outer one has none (item 2).
+    assert.equal(jsonText(cause.data), '{"code":7}');
+  });
+  test("catch catches it; its code, path and data are not the inner diagnostic's", () => {
+    const v = weatherEnv.compile(parse('try { weather("Atlantis") } catch (e) { [e.code, e.message, e.path, e.data] }')).run();
+    assert.equal(jsonText(v), '["function-error","unknown city \\"Atlantis\\"",null,null]');
+  });
+  test("a chain of nested runs gives the innermost message", () => {
+    try {
+      outerEnv.compile(parse("outer()")).run();
+      assert.fail("expected a failure");
+    } catch (e) {
+      assert.ok(e instanceof RisorError);
+      const d = e.diagnostics[0];
+      assert.equal(d.code, "function-error");
+      assert.equal(d.message, 'unknown city "Atlantis"');
+      assert.equal((d.cause as { code: string }).code, "function-error");
+    }
+  });
+  test("a RisorError the host builds itself", () => {
+    assert.equal(weatherEnv.compile(parse("try { own() } catch (e) { e.message }")).run(), "no such row");
   });
 });
 

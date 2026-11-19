@@ -40,6 +40,7 @@ import type { Counts, Resolution, Target } from "./static.ts";
 import { libraryFunction, method as libraryMethod } from "../library/registry.ts";
 import type { CallContext, Callback, Entry, Impl } from "../library/registry.ts";
 import { paramAt, testArgs } from "../library/args.ts";
+import { RisorError } from "../host/error.ts";
 
 export type Code = (r: Run) => unknown;
 type Binder = (r: Run, v: unknown) => void;
@@ -1683,6 +1684,14 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
     open = false;
     if (stop !== null) throw stop;
     if (x instanceof RunFailure) throw x;
+    // 03 3.5.3 items 5 to 7: a failure of this binding (a nested run's, say) is
+    // `function-error` whose message is its first diagnostic's message, whole,
+    // and whose cause is that diagnostic. Its code, class, span, path and data
+    // do not reach the run.
+    if (x instanceof RisorError && x.diagnostics.length > 0) {
+      const inner = x.diagnostics[0];
+      throw new RunFailure("function-error", span, null, {}, { text: inner.message, cause: inner });
+    }
     if (x instanceof Error) throw new RunFailure("function-error", span, null, {}, { text: x.message, cause: x });
     throw new RunFailure("function-panic", span, "default", { name });
   }

@@ -13,9 +13,16 @@ export interface StubRow {
   args?: Json[];
   /** Present when the row answers with a value. */
   result?: { value: Json };
-  error?: string;
+  /** A string: the text of an error. An object: a Risor diagnostic (3.10.4 item 5). */
+  error?: string | StubDiagnostic;
   charge: number;
   allocate: number;
+}
+
+/** A stub row's error that is a diagnostic object (03 3.10.4 item 5): a nested run's failure. */
+export interface StubDiagnostic {
+  code: string;
+  message: string;
 }
 
 export interface Stub {
@@ -400,12 +407,20 @@ function checkStub(v: Json, where: string): void {
         if (!["args", "result", "error", "charge", "allocate"].includes(k)) fail(`${where}: a row has a field ${k}`);
       }
       if ("args" in row && !Array.isArray(row.args)) fail(`${where}: args is not a list`);
-      if ("error" in row && typeof row.error !== "string") fail(`${where}: error is not a string`);
+      if ("error" in row && typeof row.error !== "string" && !isStubDiagnostic(row.error)) fail(`${where}: error is neither a string nor a diagnostic object`);
       if (("result" in row) === ("error" in row)) fail(`${where}: a row needs exactly one of result and error`);
       if ("charge" in row && !isInt(row.charge, 0)) fail(`${where}: charge is not a whole number of 0 or more`);
       if ("allocate" in row && !isInt(row.allocate, 0)) fail(`${where}: allocate is not a whole number of 0 or more`);
     }
   }
+}
+
+/** 3.10.4 item 5: an object with exactly the keys `code`, a code by the pattern of 3.10.11, and `message`, a string. */
+function isStubDiagnostic(v: Json | undefined): boolean {
+  if (!isObject(v)) return false;
+  const keys = Object.keys(v);
+  if (keys.length !== 2 || !("code" in v) || !("message" in v)) return false;
+  return typeof v.code === "string" && /^[a-z]+(-[a-z0-9]+)*$/.test(v.code) && typeof v.message === "string";
 }
 
 function toStub(v: Json): Stub {
@@ -416,7 +431,7 @@ function toStub(v: Json): Stub {
     const out: StubRow = { charge: (row.charge as number | undefined) ?? 0, allocate: (row.allocate as number | undefined) ?? 0 };
     if ("args" in row) out.args = row.args as Json[];
     if ("result" in row) out.result = { value: row.result };
-    if ("error" in row) out.error = row.error as string;
+    if ("error" in row) out.error = typeof row.error === "string" ? row.error : { code: (row.error as JsonObject).code as string, message: (row.error as JsonObject).message as string };
     return out;
   });
   return { type: o.type as string | undefined, calls };
