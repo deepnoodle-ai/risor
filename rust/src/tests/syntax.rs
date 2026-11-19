@@ -398,8 +398,11 @@ fn table_14_3_reserved_words_where_a_value_may_start() {
 fn table_14_3_annotations_and_queries() {
     check("x[a:b]", UT, l1(4, 5));
     check("(x: int) => x", UT, l1(3, 4));
-    check("f((x: int) => x)", UT, l1(5, 6));
-    check("const n: int = 1; n", UT, l1(8, 9));
+    // This build offers package F16, which replaces the rows of 14.3 for an
+    // annotated parameter in an argument, an annotated `const` line and
+    // `type Name = T` (`f16-entry-points.md` 2.5 item 3).
+    ok("f((x: int) => x)");
+    ok("const n: int = 1; n");
     check("xs.*.f", UT, l1(4, 5));
     check("xs[?c]", UT, l1(4, 5));
     check("xs[].f", UT, l1(4, 5));
@@ -425,7 +428,7 @@ fn table_14_3_every_other_text() {
     check("x satisfies T", UT, l1(3, 12));
     check("interface I { }", UT, l1(11, 12));
     check("enum E { }", UT, l1(6, 7));
-    check("type Name = T", UT, l1(6, 10));
+    check("type Name = T", "bad-type-text", l1(13, 14));
     check("export const x = 1;", UT, l1(8, 13));
     check("x => { x + 1 }", UT, l1(3, 5));
     check("f(x => { x + 1 })", UT, l1(12, 13));

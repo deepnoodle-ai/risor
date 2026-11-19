@@ -15,7 +15,7 @@ use crate::diag::{Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library::{self, Record};
 use crate::source::{Range, Source};
-use crate::syntax::ast::{Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
+use crate::syntax::ast::{Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, PType, UnaryOp};
 use crate::syntax::Expr;
 use crate::types::text::{self, Bound, ParamType, Sig};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -79,7 +79,7 @@ pub fn expected_schema(
 /// Check a program against an environment (`03-host.md` 3.2.1).
 pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     let r = resolve(env, parsed);
-    let mut c = Checker::new(env, parsed, &r.res);
+    let mut c = Checker::new(env, parsed, &r.res, &r.annots);
     let t = c.program(expected);
     let mut diags = r.diags;
     diags.append(&mut c.diags);
@@ -127,13 +127,15 @@ pub struct Probe {
     /// The type of each slot where the check first reached the probe node.
     pub at: Option<Vec<Ty>>,
     pub res: Vec<Res>,
+    /// F16 7.3: the type names that resolved.
+    pub type_refs: Vec<crate::compile::TypeRef>,
 }
 
 /// Check a program for assist, recording the types of the slots where the
 /// node `probe` is checked.
 pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
-    let mut c = Checker::new(env, parsed, &r.res);
+    let mut c = Checker::new(env, parsed, &r.res, &r.annots);
     c.probe = probe;
     c.program(expected);
     Probe {
@@ -141,6 +143,7 @@ pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<Node
         slots: std::mem::take(&mut c.slots),
         at: c.probe_slots.take(),
         res: r.res.clone(),
+        type_refs: r.type_refs.clone(),
     }
 }
 
@@ -230,6 +233,13 @@ struct Checker<'a> {
     /// F12: the node whose slots assist reads, and the slots there.
     probe: Option<NodeId>,
     probe_slots: Option<Vec<Ty>>,
+    /// F16: each annotation's program type, by the start of its span.
+    annots: &'a HashMap<u32, Option<Ty>>,
+    /// F16 3.3: a fit at an annotation, where a fit that uses `any` does
+    /// not hold.
+    strict: bool,
+    /// F16 3.4: the result type of each lambda checked once.
+    once_result: HashMap<u32, Ty>,
 }
 
 fn whole(v: f64) -> bool {
@@ -237,7 +247,12 @@ fn whole(v: f64) -> bool {
 }
 
 impl<'a> Checker<'a> {
-    fn new(env: &'a Env, parsed: &'a Expr, res: &'a [Res]) -> Checker<'a> {
+    fn new(
+        env: &'a Env,
+        parsed: &'a Expr,
+        res: &'a [Res],
+        annots: &'a HashMap<u32, Option<Ty>>,
+    ) -> Checker<'a> {
         let mut uses = HashMap::new();
         let mut slots_n = 0;
         for r in res {
@@ -316,6 +331,9 @@ impl<'a> Checker<'a> {
             dropping: 0,
             probe: None,
             probe_slots: None,
+            annots,
+            strict: false,
+            once_result: HashMap::new(),
         }
     }
 
@@ -895,7 +913,7 @@ impl<'a> Checker<'a> {
     // ---- the walk ---------------------------------------------------------------
 
     fn program(&mut self, expected: &Want) -> Ty {
-        let NodeKind::Program { consts, result } = self.kind(self.ast.root) else {
+        let NodeKind::Program { consts, result, .. } = self.kind(self.ast.root) else {
             return Ty::never();
         };
         for &c in consts {
@@ -1095,25 +1113,47 @@ impl<'a> Checker<'a> {
     }
 
     fn const_line(&mut self, c: NodeId) {
-        let NodeKind::Const { pattern, value } = self.kind(c) else {
+        let NodeKind::Const { pattern, value, ty } = self.kind(c) else {
             return;
         };
-        if let (NodeKind::Lambda { params, body }, NodeKind::NamePat { name: Some(_) }) =
-            (self.kind(*value), self.kind(*pattern))
+        if let (
+            NodeKind::Lambda {
+                params,
+                body,
+                result,
+            },
+            NodeKind::NamePat { name: Some(name) },
+        ) = (self.kind(*value), self.kind(*pattern))
         {
             self.lambda_facts.insert(value.0, self.facts.clone());
-            if self.uses.get(&value.0).copied().unwrap_or(0) == 0 {
+            if self.checked_once(*value) {
+                self.check_once(*value, name);
+            } else if self.uses.get(&value.0).copied().unwrap_or(0) == 0 {
                 // 13.9: an unused lambda is checked once, with every
-                // parameter `any`. Its sites are dropped.
+                // parameter `any`. Its sites are dropped. F16 3.4: an
+                // annotated parameter is bound to its annotation, and its
+                // default and the result annotation are fitted by Fits.
                 let n = self.sites.len();
                 for &p in params {
-                    if let NodeKind::Param { pattern, default } = self.kind(p) {
-                        let t = match default {
-                            Some(d) => {
+                    if let NodeKind::Param {
+                        pattern, default, ..
+                    } = self.kind(p)
+                    {
+                        let t = match (self.param_annot(p), default) {
+                            (Some(a), d) => {
+                                if let Some(d) = d {
+                                    self.synth(*d);
+                                    if let Some(x) = self.param_type(p) {
+                                        self.fit_form(*d, &x, Fit::Result);
+                                    }
+                                }
+                                a
+                            }
+                            (None, Some(d)) => {
                                 let dt = self.synth(*d);
                                 join(&Ty::any(), &dt)
                             }
-                            None => Ty::any(),
+                            (None, None) => Ty::any(),
                         };
                         let s = self.span(*pattern);
                         self.bind_pattern(*pattern, t, s);
@@ -1121,6 +1161,9 @@ impl<'a> Checker<'a> {
                 }
                 self.dropping += 1;
                 self.synth(*body);
+                if let Some(r) = result.as_deref().and_then(|r| self.annot(r)) {
+                    self.fit_form(*body, &r, Fit::Result);
+                }
                 self.dropping -= 1;
                 self.sites.truncate(n);
             }
@@ -1128,7 +1171,194 @@ impl<'a> Checker<'a> {
         }
         let v = self.synth(*value);
         let s = self.span(*value);
+        // F16 3.3: the value is fitted to the annotation, and the name is
+        // bound to it; to `never` when a static rule refused it.
+        let v = match ty {
+            Some(pt) => match self.annot(pt) {
+                Some(t) => {
+                    self.fit_strict(*value, &t, Fit::Result);
+                    t
+                }
+                None => Ty::never(),
+            },
+            None => v,
+        };
         self.bind_pattern(*pattern, v, s);
+    }
+
+    // ---- annotations (F16) ----------------------------------------------------------
+
+    /// An annotation's type, or `None` when a static rule refused it (3.3
+    /// item 2).
+    fn annot(&self, pt: &PType) -> Option<Ty> {
+        self.annots.get(&pt.span.start).cloned().flatten()
+    }
+
+    /// The program type of a parameter's annotation, when it has one and a
+    /// static rule did not refuse it.
+    fn param_type(&self, p: NodeId) -> Option<Ty> {
+        match self.kind(p) {
+            NodeKind::Param { ty: Some(pt), .. } => self.annot(pt),
+            _ => None,
+        }
+    }
+
+    /// What an annotated parameter is bound to (3.4): its annotation, or
+    /// `never` for a function type or an annotation a static rule refused.
+    /// `None` for a parameter with no annotation.
+    fn param_annot(&self, p: NodeId) -> Option<Ty> {
+        match self.kind(p) {
+            NodeKind::Param { ty: Some(pt), .. } => Some(self.annot(pt).unwrap_or_else(Ty::never)),
+            NodeKind::Param { fn_: Some(_), .. } => Some(Ty::never()),
+            _ => None,
+        }
+    }
+
+    /// 3.4: a `const`-bound lambda with at least one annotation, and every
+    /// parameter annotated, is checked once. A lambda with no parameter and
+    /// no annotation is not (3.4 item 3).
+    fn checked_once(&self, l: NodeId) -> bool {
+        let NodeKind::Lambda { params, result, .. } = self.kind(l) else {
+            return false;
+        };
+        let annotated = |p: &NodeId| {
+            matches!(
+                self.kind(*p),
+                NodeKind::Param { ty: Some(_), .. } | NodeKind::Param { fn_: Some(_), .. }
+            )
+        };
+        (result.is_some() || params.iter().any(annotated)) && params.iter().all(annotated)
+    }
+
+    /// The fit of a value against an annotation (3.3): through its form,
+    /// and a fit that uses `any` does not hold.
+    fn fit_strict(&mut self, e: NodeId, t: &Ty, mode: Fit) {
+        let old = std::mem::replace(&mut self.strict, true);
+        self.fit_form(e, t, mode);
+        self.strict = old;
+    }
+
+    /// A body's fit to a result annotation (3.3), and the type it stands
+    /// for: the annotation, or `never` when a static rule refused it.
+    fn fit_result(&mut self, body: NodeId, r: &PType) -> Ty {
+        match self.annot(r) {
+            Some(t) => {
+                self.fit_strict(body, &t, Fit::Result);
+                t
+            }
+            None => Ty::never(),
+        }
+    }
+
+    /// A default's fit to its parameter's annotation (3.3).
+    fn fit_default(&mut self, p: NodeId) {
+        if let NodeKind::Param {
+            default: Some(d), ..
+        } = self.kind(p)
+        {
+            self.synth(*d);
+            if let Some(t) = self.param_type(p) {
+                self.fit_strict(*d, &t, Fit::Result);
+            }
+        }
+    }
+
+    /// 3.4: a lambda checked once, where it is written.
+    fn check_once(&mut self, l: NodeId, name: &str) {
+        let NodeKind::Lambda {
+            params,
+            body,
+            result,
+        } = self.kind(l)
+        else {
+            return;
+        };
+        // 20.2: its nesting where it is written; 20.3: one check.
+        let lvl = self.ast.node(l).level as i32;
+        let d = self.ast.lambda_levels.get(&l.0).map_or(lvl, |m| *m as i32) - lvl;
+        let span = self.span(l);
+        if self.expanded(l) + d > 100 {
+            let p = [("name", name.to_string())];
+            self.diag("check-limit", span, "nesting", &p);
+            self.once_result.insert(l.0, Ty::never());
+            return;
+        }
+        self.body_checks += 1;
+        if self.body_checks > 1000 {
+            self.diag("check-limit", span, "bodies", &[]);
+            self.once_result.insert(l.0, Ty::never());
+            return;
+        }
+        for &p in params {
+            if let NodeKind::Param { pattern, .. } = self.kind(p) {
+                let t = self.param_annot(p).unwrap_or_else(Ty::never);
+                self.fit_default(p);
+                let s = self.span(*pattern);
+                self.bind_pattern(*pattern, t, s);
+            }
+        }
+        let b = self.synth(*body);
+        let rt = match result {
+            Some(r) => self.fit_result(*body, r),
+            None => b,
+        };
+        self.once_result.insert(l.0, rt);
+    }
+
+    /// 3.3: the plain arguments of a call by name, each fitted to its
+    /// parameter's annotation.
+    fn fit_args(&mut self, params: &[NodeId], args: &'a [NodeId], call: NodeId) {
+        for (&a, &p) in args.iter().zip(params) {
+            if self.lambda_of(a).is_some() {
+                continue;
+            }
+            match self.kind(p) {
+                NodeKind::Param {
+                    ty: Some(_),
+                    default,
+                    ..
+                } => {
+                    if let Some(t) = self.param_type(p) {
+                        let t = if default.is_some() { t.with_null() } else { t };
+                        self.fit_strict(a, &t, Fit::Arg);
+                    }
+                }
+                NodeKind::Param {
+                    fn_: Some(_),
+                    pattern,
+                    ..
+                } => {
+                    let param = match self.kind(*pattern) {
+                        NodeKind::NamePat { name: Some(n) } => n.clone(),
+                        _ => String::new(),
+                    };
+                    let s = self.span(a);
+                    let pa = [("param", param), ("name", self.call_name(call))];
+                    self.diag("arg-mismatch", s, "function", &pa);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 3.3: a value Q the library passes to an annotated parameter must
+    /// surely fit the annotation; at a function type it is `fn-value`.
+    fn fit_passed(&mut self, p: NodeId, q: &Ty, fname: &str) {
+        match self.kind(p) {
+            NodeKind::Param { ty: Some(pt), .. } => {
+                if let Some(t) = self.annot(pt) {
+                    if fits(q, &t) != Some(false) {
+                        let pa = [("expected", print(&t)), ("found", print(q))];
+                        self.diag("arg-mismatch", pt.span, "argument", &pa);
+                    }
+                }
+            }
+            NodeKind::Param { fn_: Some(f), .. } => {
+                let pa = [("name", fname.to_string()), ("found", print(q))];
+                self.diag("arg-mismatch", f.span, "fn-value", &pa);
+            }
+            _ => {}
+        }
     }
 
     fn ident(&mut self, id: NodeId) -> Ty {
@@ -2064,7 +2294,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     NodeKind::MethodCall { args, name, .. } => {
-                        self.any_args(args);
+                        self.any_args(args, &name.name);
                         // 13.3: the call may fail as a library
                         // method marked `!` (not a removed one, `03-host.md` 3.3.1) or an
                         // opaque type's method marked `!` would.
@@ -2427,6 +2657,9 @@ impl<'a> Checker<'a> {
         match (self.kind(a), &self.res[a.index()]) {
             (NodeKind::Lambda { .. }, _) => Some((a, false)),
             (_, Res::LambdaRef(l)) => Some((*l, true)),
+            // 13.9: a reference of a lambda to its own name is a lambda
+            // argument that is not checked.
+            (_, Res::SelfRef(l)) => Some((*l, true)),
             _ => None,
         }
     }
@@ -2441,18 +2674,19 @@ impl<'a> Checker<'a> {
 
     /// The arguments of a method call on `any` (13.3): plain arguments are
     /// synthesized, and each lambda is checked with `any` parameters.
-    fn any_args(&mut self, args: &'a [NodeId]) {
+    fn any_args(&mut self, args: &'a [NodeId], fname: &str) {
         for &a in args {
             match self.lambda_of(a) {
                 None => {
                     self.synth(a);
                 }
+                Some(_) if matches!(self.res[a.index()], Res::SelfRef(_)) => {}
                 Some((l, named)) => {
                     let n = match self.kind(l) {
                         NodeKind::Lambda { params, .. } => params.len(),
                         _ => 0,
                     };
-                    self.check_lambda(l, named, a, &vec![Ty::any(); n]);
+                    self.check_lambda(l, named, a, &vec![Ty::any(); n], fname);
                 }
             }
         }
@@ -2587,6 +2821,9 @@ impl<'a> Checker<'a> {
                     bind(&pt, &at, &mut sol);
                     plain.push((a, pt));
                 }
+                // 13.9: a reference of a lambda to its own name is not
+                // checked.
+                (ParamType::Fn(_), Some(_)) if matches!(self.res[a.index()], Res::SelfRef(_)) => {}
                 (ParamType::Fn(f), Some((l, named))) => lambdas.push((a, l, named, f.clone())),
             }
         }
@@ -2627,7 +2864,7 @@ impl<'a> Checker<'a> {
                 .collect();
             let (dn, sn) = (self.diags.len(), self.sites.len());
             let before = sol.clone();
-            let b = self.check_lambda(l, named, a, &qs);
+            let b = self.check_lambda(l, named, a, &qs, &name);
             let body = match self.kind(l) {
                 NodeKind::Lambda { body, .. } => *body,
                 _ => l,
@@ -2678,7 +2915,7 @@ impl<'a> Checker<'a> {
                             .iter()
                             .map(|(_, q)| substitute(q, self.opaque(), &sol))
                             .collect();
-                        let b2 = self.check_lambda(l, named, a, &qs);
+                        let b2 = self.check_lambda(l, named, a, &qs, &name);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b2, &rt) {
                             None => {
@@ -2767,7 +3004,7 @@ impl<'a> Checker<'a> {
     /// 13.8: the type the element parameter has under the body's true facts.
     fn narrow(&mut self, l: NodeId, qs: &[Ty]) -> Ty {
         let elem = qs.first().cloned().unwrap_or_default();
-        let NodeKind::Lambda { params, body } = self.kind(l) else {
+        let NodeKind::Lambda { params, body, .. } = self.kind(l) else {
             return elem;
         };
         let Some(&p) = params.first() else {
@@ -2850,7 +3087,25 @@ impl<'a> Checker<'a> {
 
     /// Check a lambda against parameter types (13.5 step 3), written in place
     /// or named. Returns the body's type.
-    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty]) -> Ty {
+    /// `fname` names the function or method that passes the values.
+    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty], fname: &str) -> Ty {
+        let NodeKind::Lambda {
+            params,
+            body,
+            result,
+        } = self.kind(l)
+        else {
+            return Ty::never();
+        };
+        // F16 3.4: a lambda checked once is not checked again. Each value
+        // passed is fitted, and its result type stands for the body's.
+        if named && self.checked_once(l) {
+            for (i, &p) in params.iter().enumerate() {
+                let q = qs.get(i).cloned().unwrap_or_default();
+                self.fit_passed(p, &q, fname);
+            }
+            return self.once_result.get(&l.0).cloned().unwrap_or_default();
+        }
         let saved = if named {
             match self.begin_use(l, at) {
                 Some(s) => Some(s),
@@ -2859,26 +3114,38 @@ impl<'a> Checker<'a> {
         } else {
             None
         };
-        let NodeKind::Lambda { params, body } = self.kind(l) else {
-            return Ty::never();
-        };
         for (i, &p) in params.iter().enumerate() {
-            if let NodeKind::Param { pattern, default } = self.kind(p) {
+            if let NodeKind::Param {
+                pattern, default, ..
+            } = self.kind(p)
+            {
                 let a = qs.get(i).cloned().unwrap_or_default();
-                let t = match default {
-                    Some(d) => {
-                        let dt = self.synth(*d);
-                        let t = join(&a.nonnull(), &dt);
-                        let ps = self.span(*pattern);
-                        self.size_check(ps, t)
+                let t = if let Some(x) = self.param_annot(p) {
+                    // F16 3.4: the value passed must surely fit the
+                    // annotation, and the parameter is bound to it.
+                    self.fit_passed(p, &a, fname);
+                    self.fit_default(p);
+                    x
+                } else {
+                    match default {
+                        Some(d) => {
+                            let dt = self.synth(*d);
+                            let t = join(&a.nonnull(), &dt);
+                            let ps = self.span(*pattern);
+                            self.size_check(ps, t)
+                        }
+                        None => a,
                     }
-                    None => a,
                 };
                 let s = self.span(*pattern);
                 self.bind_pattern(*pattern, t, s);
             }
         }
         let b = self.synth(*body);
+        let b = match result {
+            Some(r) => self.fit_result(*body, r),
+            None => b,
+        };
         if let Some(s) = saved {
             self.end_use(s);
         }
@@ -2887,7 +3154,12 @@ impl<'a> Checker<'a> {
 
     /// A call of a `const`-bound lambda by name (13.9).
     fn use_lambda(&mut self, l: NodeId, args: &'a [NodeId], call: NodeId) -> Ty {
-        let NodeKind::Lambda { params, body } = self.kind(l) else {
+        let NodeKind::Lambda {
+            params,
+            body,
+            result,
+        } = self.kind(l)
+        else {
             return Ty::never();
         };
         let required = params
@@ -2906,27 +3178,45 @@ impl<'a> Checker<'a> {
                 self.synth(a)
             });
         }
+        // F16 3.3: each plain argument at an annotated parameter.
+        self.fit_args(params, args, call);
+        // F16 3.4: the body of a lambda checked once is not checked again.
+        if self.checked_once(l) {
+            return self.once_result.get(&l.0).cloned().unwrap_or_default();
+        }
         let Some(saved) = self.begin_use(l, call) else {
             return Ty::never();
         };
         for (i, &p) in params.iter().enumerate() {
-            if let NodeKind::Param { pattern, default } = self.kind(p) {
-                let t = match (ats.get(i), default) {
-                    (Some(a), Some(d)) => {
-                        let dt = self.synth(*d);
-                        let t = join(&a.nonnull(), &dt);
-                        let ps = self.span(*pattern);
-                        self.size_check(ps, t)
+            if let NodeKind::Param {
+                pattern, default, ..
+            } = self.kind(p)
+            {
+                let t = if let Some(x) = self.param_annot(p) {
+                    self.fit_default(p);
+                    x
+                } else {
+                    match (ats.get(i), default) {
+                        (Some(a), Some(d)) => {
+                            let dt = self.synth(*d);
+                            let t = join(&a.nonnull(), &dt);
+                            let ps = self.span(*pattern);
+                            self.size_check(ps, t)
+                        }
+                        (None, Some(d)) => self.synth(*d),
+                        (Some(a), None) => a.clone(),
+                        (None, None) => Ty::never(),
                     }
-                    (None, Some(d)) => self.synth(*d),
-                    (Some(a), None) => a.clone(),
-                    (None, None) => Ty::never(),
                 };
                 let s = self.span(*pattern);
                 self.bind_pattern(*pattern, t, s);
             }
         }
         let b = self.synth(*body);
+        let b = match result {
+            Some(r) => self.fit_result(*body, r),
+            None => b,
+        };
         self.end_use(saved);
         b
     }
@@ -2953,7 +3243,11 @@ impl<'a> Checker<'a> {
                 self.diag(code, span, "extra", &p);
             }
             Why::Fit => {
-                if mode == Fit::Arg && at.null && fits(&at.nonnull(), target).is_some() {
+                let but_null = match fits(&at.nonnull(), target) {
+                    Some(used) => !(self.strict && used),
+                    None => false,
+                };
+                if mode == Fit::Arg && at.null && but_null {
                     self.null_at(span, at);
                 } else {
                     let template = match mode {
@@ -2972,11 +3266,16 @@ impl<'a> Checker<'a> {
         loop {
             let et = self.types[e.index()].clone();
             let es = self.span(e);
-            if let Some(used) = fits(&et, t) {
-                if used {
+            match fits(&et, t) {
+                Some(false) => return,
+                // F16 3.3: at an annotation, a fit that uses `any` is
+                // followed through the form to its places of failure.
+                Some(true) if self.strict => {}
+                Some(true) => {
                     self.dyn_site(es);
+                    return;
                 }
-                return;
+                None => {}
             }
             match self.kind(e) {
                 NodeKind::List { items } if t.list.is_some() => {
@@ -2987,6 +3286,10 @@ impl<'a> Checker<'a> {
                             let lt = Ty::list(elem.clone());
                             match fits(&vt, &lt) {
                                 None => {
+                                    let vs = self.span(*value);
+                                    self.report(vs, &vt, &lt, mode, Why::Fit);
+                                }
+                                Some(true) if self.strict => {
                                     let vs = self.span(*value);
                                     self.report(vs, &vt, &lt, mode, Why::Fit);
                                 }
@@ -3197,6 +3500,8 @@ impl<'a> Checker<'a> {
         keys.dedup();
         let mut failed: Vec<usize> = Vec::new();
         let mut used_any: Vec<usize> = Vec::new();
+        // F16 3.3: a spread whose fit used `any`, with the first key's types.
+        let mut strict_failed: Vec<(usize, Ty, Ty)> = Vec::new();
         let mut written: Vec<usize> = Vec::new();
         let mut surely: Vec<String> = Vec::new();
         let all: Vec<Option<&str>> = keys
@@ -3225,6 +3530,11 @@ impl<'a> Checker<'a> {
                     Ent::Written { .. } => written.push(i),
                     Ent::Spread { .. } => match fits(ty, &want) {
                         None => failed.push(i),
+                        Some(true) if self.strict => {
+                            if !strict_failed.iter().any(|(j, _, _)| *j == i) {
+                                strict_failed.push((i, ty.clone(), want.clone()));
+                            }
+                        }
                         Some(true) => used_any.push(i),
                         _ => {}
                     },
@@ -3261,6 +3571,15 @@ impl<'a> Checker<'a> {
                 let vs = self.span(*operand);
                 let vt = self.types[operand.index()].clone();
                 self.report(vs, &vt, t, mode, Why::Fit);
+            }
+        }
+        for (i, ty, want) in strict_failed {
+            if failed.contains(&i) {
+                continue;
+            }
+            if let Ent::Spread { operand, .. } = &ents[i] {
+                let vs = self.span(*operand);
+                self.report(vs, &ty, &want, mode, Why::Fit);
             }
         }
         for i in used_any {

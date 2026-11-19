@@ -143,10 +143,19 @@ pub struct PatElem {
 /// The 30 node kinds of Core (4.1). The comment on each gives its number.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeKind {
-    /// 1
-    Program { consts: Vec<NodeId>, result: NodeId },
-    /// 2
-    Const { pattern: NodeId, value: NodeId },
+    /// Kind 1. `types` are the type lines of package F16, in the order of
+    /// the text (`f16-entry-points.md` 2.3); they are not nodes.
+    Program {
+        consts: Vec<NodeId>,
+        result: NodeId,
+        types: Vec<TypeLine>,
+    },
+    /// Kind 2. `ty` is the annotation of package F16, or none.
+    Const {
+        pattern: NodeId,
+        value: NodeId,
+        ty: Option<Box<PType>>,
+    },
     /// 3
     Block { consts: Vec<NodeId>, result: NodeId },
     /// 4
@@ -215,12 +224,19 @@ pub enum NodeKind {
     },
     /// 21
     OptChain { x: NodeId },
-    /// 22
-    Lambda { params: Vec<NodeId>, body: NodeId },
-    /// 23
+    /// Kind 22. `result` is the result annotation of package F16, or none.
+    Lambda {
+        params: Vec<NodeId>,
+        body: NodeId,
+        result: Option<Box<PType>>,
+    },
+    /// Kind 23. `ty` and `fn_` are the annotation of package F16, a program
+    /// type or a function type; at most one of them is set.
     Param {
         pattern: NodeId,
         default: Option<NodeId>,
+        ty: Option<Box<PType>>,
+        fn_: Option<Box<PFn>>,
     },
     /// 24
     Match { subject: NodeId, arms: Vec<NodeId> },
@@ -316,6 +332,27 @@ pub enum PPrim {
     /// A type name, with its span.
     Name(String, Range),
     Paren(Box<PType>),
+}
+
+/// A type line of package F16 (`f16-entry-points.md` 2.3): `type Name =
+/// T;`, with the span of its name and its own span, from `type` to `;`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypeLine {
+    pub name: String,
+    pub name_span: Range,
+    pub ty: PType,
+    pub span: Range,
+}
+
+/// A function type on a parameter, package F16 (2.1, `PFn`): its parameters,
+/// each a word and a program type, and its result, `None` for `unknown`.
+/// The span runs from the `(` to the end of the result.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PFn {
+    pub params: Vec<(String, Range, PType)>,
+    pub result: Option<PType>,
+    pub result_span: Range,
+    pub span: Range,
 }
 
 #[derive(Clone, Debug, PartialEq)]

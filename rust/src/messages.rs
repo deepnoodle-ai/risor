@@ -30,6 +30,9 @@ pub struct Catalog {
     /// `suite/messages-check.json` (`f08-errors.md` 3.1).
     pub parse_cases: Vec<(String, Json)>,
     pub check_cases: Vec<(String, Json)>,
+    /// F16: the cases of `suite/messages-entry-points.json`
+    /// (`f16-entry-points.md` 9.1).
+    pub entry_point_cases: Vec<(String, Json)>,
 }
 
 /// Package F8: the catalog files of the `parse` and `check` phases
@@ -65,6 +68,10 @@ fn read_entry(e: &Json) -> Entry {
 
 /// Package F7: the catalog file of its three templates (`f07-queries.md` 11).
 pub const QUERIES_SOURCE: &str = include_str!("../../suite/messages-queries.json");
+
+/// Package F16: the catalog file of `name-clash` and a template of
+/// `arg-mismatch` (`f16-entry-points.md` 9.1).
+pub const ENTRY_POINTS_SOURCE: &str = include_str!("../../suite/messages-entry-points.json");
 
 pub fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
@@ -116,12 +123,28 @@ pub fn catalog() -> &'static Catalog {
         let mut check_cases = Vec::new();
         more(PARSE_SOURCE, &mut parse_cases);
         more(CHECK_SOURCE, &mut check_cases);
+        // F16 9.1: an entry of a code another file has adds templates to
+        // it; an entry of a code no other file has is added whole.
+        let d = json::parse(ENTRY_POINTS_SOURCE)
+            .expect("suite/messages-entry-points.json is valid JSON");
+        let mut entry_point_cases = Vec::new();
+        for e in d.as_arr().unwrap_or_default() {
+            let entry = read_entry(e);
+            if let Some(c) = e.get("cases") {
+                entry_point_cases.push((entry.code.clone(), c.clone()));
+            }
+            match entries.iter_mut().find(|x| x.code == entry.code) {
+                Some(x) => x.templates.extend(entry.templates),
+                None => entries.push(entry),
+            }
+        }
         Catalog {
             entries,
             cases,
             query_cases,
             parse_cases,
             check_cases,
+            entry_point_cases,
         }
     })
 }
@@ -268,6 +291,41 @@ mod tests {
         assert!(templates >= 64);
         assert!(caught("divide-by-zero"));
         assert!(!caught("steps-exceeded"));
+    }
+
+    /// F8 3.1 and F16 9.1: `messages-check.json` has 30 codes and 72
+    /// templates, `messages-parse.json` 58 codes and 97 templates; F16's
+    /// file adds the code `name-clash` and a template of `arg-mismatch`.
+    #[test]
+    fn the_check_catalog_has_31_codes_with_package_f16() {
+        let count = |text: &str| {
+            let d = json::parse(text).expect("valid JSON");
+            let es = d.as_arr().unwrap_or_default().to_vec();
+            let t: usize = es
+                .iter()
+                .map(|e| {
+                    e.get("templates")
+                        .and_then(|t| t.as_obj())
+                        .map_or(0, |m| m.len())
+                })
+                .sum();
+            (es.len(), t)
+        };
+        assert_eq!(count(CHECK_SOURCE), (30, 72));
+        assert_eq!(count(PARSE_SOURCE), (58, 97));
+        let c = catalog();
+        let check: Vec<_> = c.entries.iter().filter(|e| e.phase == "check").collect();
+        assert_eq!(check.len(), 31);
+        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 74);
+        assert_eq!(
+            build(
+                "arg-mismatch",
+                "fn-value",
+                &[("name", "map".into()), ("found", "int".into())]
+            ),
+            "map passes int to a parameter that takes a function"
+        );
+        assert!(entry("recursion-needs-types").is_some());
     }
 
     #[test]
