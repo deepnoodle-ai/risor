@@ -367,6 +367,8 @@ func TestTrees(t *testing.T) {
 		{`match x { 1 | -2 => "a", "s" | null => "b", true => 1, _ => 2, }`,
 			`(match x (1|-2 "a") ("s"|null "b") (true 1) (_ 2))`},
 		{`match -0 { -0 => 1 }`, `(match (- 0) (0 1))`},
+		{`match x { 1 | 2 if (c) => "a", _ if (d > 0) => 1, _ => 2 }`,
+			`(match x (1|2 if c "a") (_ if (> d 0) 1) (_ 2))`},
 		{`try { 1 } catch (e) { e.code }`, `(try 1 e (. e code))`},
 		{`try { const a = 1; a } catch { const b = 2; b }`, `(try (block (const a 1) a) (block (const b 2) b))`},
 		{`5.a`, `(. 5 a)`},

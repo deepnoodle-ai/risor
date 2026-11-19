@@ -258,6 +258,13 @@ func init() {
 			panic("library: " + q.Extends + " is not a Core entry")
 		}
 	}
+	// Package F17's record (f17-recursion.md 5.1): walk, a function of the
+	// group core.
+	var recursion []*Entry
+	if err := json.Unmarshal([]byte(sourceRecursionJSON), &recursion); err != nil {
+		panic("library: the recursion table does not parse: " + err.Error())
+	}
+	Entries = append(Entries, recursion...)
 	AllEntries = append(append([]*Entry(nil), Entries...), GroupEntries...)
 	for _, e := range AllEntries {
 		sig, err := typetext.ParseSig(e.Signature)

@@ -614,6 +614,10 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 	types.VarsIn(r, rv)
 	// The seed rule (13.5 step 3a): it fires also when B fits
 	// A0 only by a fit that used any. The second check binds nothing.
+	// It reads with R in place of the Var, for walk, whose R is T[] | null
+	// (F17 5.6): B is fitted to R under A0, and the new solution is the Join
+	// of A0 and what bind(R, B) gathers for the Var. For reduce, whose R is
+	// its Var, that is the rule as 13.5 states it.
 	vars := make([]string, 0, len(rv))
 	for x := range rv {
 		vars = append(vars, x)
@@ -628,9 +632,13 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 		}
 		a0, had := sol[x]
 		if inQ && had {
-			if ok, used := types.Fits(b, a0); !ok || used {
+			if ok, used := types.Fits(b, types.Subst(r, sol)); !ok || used {
 				c.diags, c.sites = c.diags[:dl], c.sites[:sl]
-				sol[x] = types.Join(a0, b)
+				gathered := map[string]*types.Type{}
+				bind(r, b, gathered)
+				if g, ok := gathered[x]; ok {
+					sol[x] = types.Join(a0, g)
+				}
 				for i, q := range fn.Params {
 					qs[i] = types.Subst(q, sol)
 				}

@@ -129,6 +129,7 @@ func AppendChildren(out []Node, n Node) []Node {
 		}
 	case *Arm:
 		addAll(n.Literals)
+		add(n.Guard)
 		add(n.Result)
 	case *Try:
 		add(n.Body)

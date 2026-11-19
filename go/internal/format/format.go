@@ -903,6 +903,13 @@ func (b *builder) arm(a *syntax.Arm) part {
 		}
 		end = l.Span().End
 	}
+	if a.Guard != nil { // F17 7.1: sp "if" sp "(" g(i(S guard) S) ")"
+		it := b.next(end, syntax.Word)
+		lp := it + 1
+		rp := b.match[lp]
+		out = append(out, pSpace, b.tok(it), pSpace, b.tok(lp), grp(ind(pSoft, b.test(a.Guard)), pSoft), b.tok(rp))
+		end = b.us[rp].end
+	}
 	ar := b.next(end, syntax.Arrow)
 	return append(out, pSpace, b.tok(ar), b.assigned(a.Result))
 }

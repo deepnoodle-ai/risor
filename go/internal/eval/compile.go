@@ -622,11 +622,16 @@ func (c *compiler) match(n *syntax.Match) code {
 	type arm struct {
 		lits   []any
 		def    bool
+		guard  code // nil when the arm has none (F17 3)
 		result code
 	}
 	var arms []arm
 	for _, a := range n.Arms {
-		am := arm{def: a.Default, result: c.expr(a.Result)}
+		am := arm{def: a.Default}
+		if a.Guard != nil {
+			am.guard = c.expr(a.Guard)
+		}
+		am.result = c.expr(a.Result)
 		for _, l := range a.Literals {
 			switch l := l.(type) {
 			case *syntax.Number:
@@ -646,22 +651,24 @@ func (c *compiler) match(n *syntax.Match) code {
 		v := subj(r)
 		for _, a := range arms {
 			r.step(1)
-			if a.def {
-				return a.result(r)
-			}
+			hit := a.def
 			for _, l := range a.lits {
+				if hit {
+					break
+				}
 				if ls, ok := l.(string); ok {
 					if vs, ok := v.(string); ok {
 						r.step(value.Size(value.CommonPrefix(ls, vs)))
-						if ls == vs {
-							return a.result(r)
-						}
+						hit = ls == vs
 					}
 					continue
 				}
-				if scalarEqual(l, v) {
-					return a.result(r)
-				}
+				hit = scalarEqual(l, v)
+			}
+			// A guard runs only after its arm matched, and a falsy one
+			// passes to the next arm (F17 3).
+			if hit && (a.guard == nil || value.Truthy(a.guard(r))) {
+				return a.result(r)
 			}
 		}
 		r.raise(fail("no-match", "", sp, messages.Val("found", v)))

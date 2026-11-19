@@ -136,8 +136,8 @@ func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(pa
 // file, else every .json file under the directory, in order.
 // Offered is the one list of the follow-on packages this implementation
 // offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10,
-// F11, F13, F14, F12, in that order, each with all before it).
-var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true, "F14": true, "F12": true}
+// F11, F13, F14, F17, F12, in that order, each with all before it).
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true, "F14": true, "F17": true, "F12": true}
 
 // Skipped returns whether a case file is one a runner of this
 // implementation does not run: its name begins until-fNN- and package NN is

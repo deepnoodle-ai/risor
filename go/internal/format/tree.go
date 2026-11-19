@@ -174,6 +174,10 @@ func tree(b *strings.Builder, n syntax.Node, src []rune) {
 		for _, l := range n.Literals {
 			sub(l)
 		}
+		if n.Guard != nil {
+			w(" if")
+			sub(n.Guard)
+		}
 		sub(n.Result)
 		w(")")
 	case *syntax.Try:

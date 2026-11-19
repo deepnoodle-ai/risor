@@ -637,6 +637,9 @@ func (w *walker) visit(n syntax.Node, exp *types.Type) bool {
 					return w.hit("strings")
 				}
 			}
+			if arm.Guard != nil && w.visit(arm.Guard, nil) { // F17 7.2 item 2
+				return true
+			}
 			if w.visit(arm.Result, exp) {
 				return true
 			}
@@ -988,6 +991,11 @@ func (a *assist) stringsContext(t *types.Type, m *syntax.Match, hole syntax.Span
 	listed := map[string]bool{}
 	if m != nil {
 		for _, arm := range m.Arms {
+			// A guarded arm covers nothing, so its strings stay candidates
+			// unless the hole is in it (F17 7.2 item 3).
+			if arm.Guard != nil && (hole.Start < arm.Span().Start || hole.End > arm.Span().End) {
+				continue
+			}
 			for _, l := range arm.Literals {
 				if s, ok := l.(*syntax.String); ok && s.Span() != hole {
 					listed[s.Value] = true
