@@ -766,9 +766,9 @@ step. Each is a typed lambda that calls itself, each call adding 1 to the
 depth count:
 
 ```js
-const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)                 // by name
-const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(N)        // map
-const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(N)    // flatMap
+const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)
+const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(N)
+const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(N)
 ```
 
 At each depth limit L of the test, 200 and 400, `d(L - 1)` makes L calls and

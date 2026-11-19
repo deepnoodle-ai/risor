@@ -17,14 +17,18 @@
 // nesting limit and to run at the depth limits 200 and 400 (03-host.md
 // 3.9.1). Go grows a goroutine's stack as needed, by doubling, so a host
 // needs no setting for this, and the stack a run holds is the next power of
-// two above the bytes it uses. The deepest case is a chain of calls that
-// flatMap makes of a lambda, at depth 400. On linux/amd64 with Go 1.26.11
-// each link of it uses 1,360 bytes (read from a stack trace), about 545 KiB
-// in all, so the goroutine holds 1 MiB. On darwin/arm64 with Go 1.26.2 the
-// same chain holds 512 KiB. A chain of calls by name and a walk of a value
-// nested 400 deep each hold at most 128 KiB (darwin/arm64). TestStackNeeds
-// runs the deepest cases at both limits with the stack capped at 2 MiB
-// divided by 1.5, which a stack of 1 MiB passes and one of 2 MiB does not.
+// two above the bytes it uses. The deepest cases are calls that flatMap
+// makes of a lambda, at depth 400. On linux/amd64 with Go 1.26.11 each link
+// of a chain of them used 1,360 bytes (read from a stack trace, before each
+// call had its own frame), about 545 KiB in all, so the goroutine holds 1
+// MiB. On darwin/arm64 with Go 1.26.2 a level of that chain uses about
+// 1,320 bytes and a level of a lambda that gives its own name to flatMap
+// about 1,400 (measured by the deepest run under a capped stack), 515 KiB
+// and 547 KiB at depth 400, so each holds 1 MiB. A chain of calls by name,
+// a lambda that calls itself by name, and a walk of a value nested 400 deep
+// each hold at most 256 KiB (darwin/arm64). TestStackNeeds runs the deepest
+// cases at both limits with the stack capped at 2 MiB divided by 1.5, which
+// a stack of 1 MiB passes and one of 2 MiB does not.
 //
 // # Memory
 //
