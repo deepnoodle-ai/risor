@@ -96,9 +96,9 @@ node that holds it starts or ends at (4.3 rule 1). `Bad` exists for the
 numbering; the parser stops at its first diagnostic and never builds it.
 
 **Stack.** The parser's recursion is bounded by the 100 levels. Measured at
-the worst 100-level form (`{a: {a: ...}}`): about 768 KiB in a debug build and
-256 KiB optimized. The parser's error type is boxed for this: an unboxed
-`Diagnostic` in every `Result` tripled the debug figure.
+the worst 100-level form (`{a: {a: ...}}`): about 611 KiB in a debug build and
+83 KiB optimized (Stack, below). The parser's error type is boxed for this:
+an unboxed `Diagnostic` in every `Result` tripled the debug figure.
 
 ## Plan for values (S2)
 
@@ -136,8 +136,8 @@ enum Value<'h> {
   of `List` and `Map` get a `Drop` that moves each child it owns alone onto a
   work list and drops them in a loop.
 - **Walks** (`==`, rendering, the JSON text) count nesting against the depth
-  limit (`02-evaluation.md`), so their recursion is bounded by it; if the
-  measured stack at depth 1,000 is too large, they move to an explicit stack.
+  limit (`02-evaluation.md`), so their recursion is bounded by it. At the
+  largest limit, 400, their stack is small beside that of calls (Stack).
 - **Memory (`02-evaluation.md` 8.5 item 2).** On 64-bit targets (`Value<'h>` is
   24 bytes, `Str<'h>` is 24 bytes), the heap memory a run creates as values of
   the language is at most 208 bytes per allocation unit charged plus 0 bytes per
@@ -214,6 +214,16 @@ lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
 
+**Coalesced reads.** `Ast::coalesced_reads` marks, once per program, the
+last step of each coalesced read under `??` (`01-language.md` 6.6): every
+operand of a `??` chain but the last, counted across the whole `??` tree,
+whose node is a plain `Member` or a plain `Index` by a `String` node. The
+mark depends on the nodes alone. The evaluator gives null for an absent key
+at a marked step, and the checker reads a marked step on a record by the
+column of `05-types.md` 9.2 for a coalesced read, which is the column
+"Optional" after a plain null step. Both read the same mark, so a checked
+and an unchecked run agree.
+
 ### The compiled form
 
 `compile` also builds, for the hot node kinds, a closure per node
@@ -245,19 +255,92 @@ functions.
 
 ## Stack
 
-Measured with a thread of a given stack, release build, on the deepest forms
-the limits allow:
+A run recurses on the thread that calls it. The depth count bounds the
+recursion: at most `D` units of calls in progress and walk levels, then at
+most 100 levels of source nesting inside the last call (`02-evaluation.md`
+8.4, 8.5 item 3). The stack a run needs is about `D` times the costliest unit,
+plus 100 times the costliest level of nesting. A Rust stack overflow aborts
+the process, so the figures below are part of the host contract (`03-host.md`
+3.9.1).
+
+**What a host gives a run.** At least 1.5 times the measured need of the worst
+form (below), in whole MiB, with room for the test to pass on two thirds of
+it. A thread that Rust spawns has 2 MiB unless it asks for more (the
+documented default of `std::thread`, from memory); the main thread of Linux
+and macOS usually has 8 MiB.
+
+| Depth limit | Optimized | Unoptimized |
+| --- | --- | --- |
+| 200, the default | 1 MiB (2.6 times the need) | 2 MiB (2.0 times) |
+| 400, the largest | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
+
+**Measured.** rustc 1.100.0 (the pinned toolchain), aarch64 macOS; optimized
+is the release profile and unoptimized the dev profile. The least stack, to
+4 KiB, of a thread on which the work succeeds; the program is compiled before
+the thread starts. The worst form is a chain of lambdas that each take a
+pattern parameter (`({v}) => ...`) and call the next through `mapValues`, the
+last nesting 98 map literals (`{a: ...}.a`). `sortBy` and `some` cost 0 to 4%
+less; `filter` and `reduce`, 4 to 17% less.
 
 | Work | Optimized | Unoptimized |
 | --- | --- | --- |
-| Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 256 KiB | 768 KiB |
-| Run at depth limit 200 (walks, and calls whose bodies nest 98 levels) | 512 KiB | 1 MiB |
-| Run at depth limit 1,000 | 2 MiB | 4 MiB |
+| Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 83 KiB | 611 KiB |
+| Run the worst form at depth limit 200 | 387 KiB | 1,043 KiB |
+| Run the worst form at depth limit 400 | 691 KiB | 1,859 KiB |
 
-A host that runs at depth 1,000 on a thread of its own gives it at least
-3 MiB (optimized). The main thread's default (8 MiB on common platforms) is
-enough. `tests/host.rs` runs the deepest cases on a thread of 3 MiB
-(optimized) or 6 MiB (unoptimized).
+The cost of one unit: the stack of a chain at the limit divided by the limit,
+optimized at depth 400 and unoptimized at depth 200, so it carries a share of
+the fixed cost of a run. The last row is the frames between one level and the
+next, read with lldb.
+
+| Unit | Optimized | Unoptimized |
+| --- | --- | --- |
+| A call through `mapValues` of a lambda with a pattern parameter | 1.5 KB | 4.2 KB |
+| A call through `sortBy` or `some` of a lambda with a pattern parameter | 1.5 KB | 4.0 KB |
+| A call through `flatMap` of a lambda by name | 1.3 KB | 3.4 KB |
+| A call through `map` of a lambda by name | 1.2 KB | 3.0 KB |
+| A call by name | 0.8 KB | 1.4 KB |
+| A level of map literal (`{a: ...}.a`) inside a lambda, by frames | 1.0 KB | 2.3 KB |
+
+Under x86_64 macOS (Rosetta, the same compiler), these forms used 0 to 4%
+less stack than on aarch64. CI runs on x86_64 Linux; its figures are not
+measured here.
+
+**How the evaluator keeps it small.** An unoptimized build gives every local
+and every temporary a slot of its own, and each `?` adds two. A frame that is
+live while a lambda runs, or while the walk recurses, pays for all of them at
+every level. So such a frame holds only its loop:
+
+- each library entry that calls a lambda is a function of its own (`map`,
+  `filter`, the entries of `list_each`, `reduce`, the queries, `mapValues`);
+  what the entry does after its loop, and every entry that calls no lambda,
+  is in another function;
+- a failure, a rare kind and a lambda with patterns or defaults go to
+  functions of their own, marked `#[inline(never)]` or `#[cold]`;
+- receivers are passed by reference, and the arguments of a library call are
+  written to the caller's buffer, not handed to a closure;
+- a chain's closure calls a method step or an index step directly, and the
+  arms of a frame that stays live end in one result, not one `?` each;
+- the small steps of each element (its two steps and read, the depth test
+  and the binding of plain parameters, `filter`'s keep) are inlined only
+  when `debug_assertions` is off. Inlined unoptimized, they added about
+  1.5 KB to each unit; called optimized, they cost 4 to 20% more
+  instructions on the benchmark programs that call a lambda for each of
+  10,000 elements (counted with `/usr/bin/time -l`). `debug_assertions`
+  stands for the build: an optimized build with debug assertions on gets
+  the calls, and an unoptimized one with them off gets bigger frames than
+  these figures.
+
+**The test.** `the_deepest_programs_run_within_the_stated_stack`
+(`src/tests/host.rs`) runs, at depth limits 200 and 400: walks to the limit
+and one level past it; calls by name with the nesting limit before the first
+and inside the last; and chains through `map` (a lambda by name and an inline
+lambda), `flatMap`, and `filter`, `some`, `sortBy`, `mapValues` and `reduce`
+with pattern parameters, each with 98 map literals inside the last call, then
+one link past the limit. It runs each limit on a thread of two thirds of the
+stated figure, so the figure has a margin of 1.5. CI runs it unoptimized and
+optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
+and overflows on 12/16 (aarch64 and x86_64 macOS).
 
 ## Known departures from the work bound
 
@@ -325,6 +408,23 @@ A call handle is valid only until its host function returns, and holds by
 construction here: `Call` borrows the run's meter mutably for the duration of
 one call, and a host implementation is a `'static` closure that receives
 `&mut Call<'_>`, so it cannot keep the handle past its return.
+
+## Host errors
+
+A host function returns `Result<Data, HostError>`. `HostError` is an enum of
+two variants, so the binding tells a Risor failure from any other error by
+its type, which `03-host.md` 3.5.3 item 5 leaves to the binding:
+
+| Variant | Made by | The run's `function-error` |
+| --- | --- | --- |
+| `Text(String)` | `"no".into()`, or `HostError::Text` | The text is the message. No cause |
+| `Risor(Box<Error>)` | `?` on any `Result<_, risor::Error>`, such as a nested `parse`, `compile` or `run` | The message of the error's first diagnostic, the inner diagnostic, whole. The inner diagnostic is `Diagnostic::cause` |
+
+The cause is a public field, `cause: Option<Box<Diagnostic>>`, named as the
+specification names it (3.7.1). `std::error::Error::source` gives the same
+diagnostic, on `Diagnostic` and on `Error`, so a chain of nested runs walks
+with the standard trait. The renderings never write it (`f08-errors.md` 6).
+A plain text error has no cause: its text is already the message.
 
 ## Package F1, host types
 

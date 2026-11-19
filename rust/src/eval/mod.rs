@@ -163,6 +163,8 @@ pub struct Fail<'h> {
     /// The calls in progress, the innermost first: each call adds its entry
     /// as the failure leaves it (`f08-errors.md` 4). Built only on failure.
     pub trace: Vec<(Range, String, Option<usize>)>,
+    /// The inner diagnostic of a `function-error` (`03-host.md` 3.5.3).
+    pub cause: Option<Box<Diagnostic>>,
 }
 
 impl Fail<'_> {
@@ -198,6 +200,7 @@ impl Fail<'_> {
         d.class = self.class();
         d.data = self.data.as_ref().map(|v| Box::new(v.to_data()));
         d.path = self.path.clone().map(Box::new);
+        d.cause = self.cause.clone();
         if !self.trace.is_empty() {
             d.trace = Some(Box::new(
                 self.trace
@@ -312,6 +315,33 @@ enum Arg<'h> {
     Lam(NodeId),
 }
 
+/// The arguments of a library call (`Run::args`): up to three in place,
+/// with their count, or more in a vector.
+enum Args<'h> {
+    Few([Arg<'h>; 3], usize),
+    Many(Vec<Arg<'h>>),
+}
+
+impl<'h> Args<'h> {
+    fn new() -> Args<'h> {
+        Args::Few(
+            [
+                Arg::Lam(NodeId(0)),
+                Arg::Lam(NodeId(0)),
+                Arg::Lam(NodeId(0)),
+            ],
+            0,
+        )
+    }
+
+    fn as_slice(&self) -> &[Arg<'h>] {
+        match self {
+            Args::Few(a, n) => &a[..*n],
+            Args::Many(v) => v,
+        }
+    }
+}
+
 pub(crate) struct Run<'h> {
     p: &'h Program,
     ast: &'h Ast,
@@ -395,9 +425,42 @@ fn fail<'h>(
         text: None,
         data: None,
         host_number: false,
+        cause: None,
         path: None,
         trace: Vec::new(),
     })
+}
+
+/// A library entry's trace entry, added as a failure leaves its call of a
+/// lambda at the element `index` (`f08-errors.md` 4.1, 4.2).
+#[cold]
+#[inline(never)]
+fn traced<'h>(mut f: Box<Fail<'h>>, span: Range, entry: &str, index: usize) -> Box<Fail<'h>> {
+    f.trace.push((span, entry.to_string(), Some(index)));
+    f
+}
+
+/// `function-error` from a host function's error (`03-host.md` 3.5.3): the
+/// text, or the message of the inner diagnostic, which is kept as the
+/// cause. Nothing else of the inner diagnostic reaches the run, and the
+/// error carries no `data`.
+#[cold]
+#[inline(never)]
+fn function_error<'h>(e: crate::host::HostError, span: Range) -> Box<Fail<'h>> {
+    let mut f = fail("function-error", "default", span, vec![]);
+    f.text = Some(e.message());
+    if let crate::host::HostError::Risor(inner) = e {
+        f.cause = inner.diagnostics.into_iter().next().map(Box::new);
+    }
+    f
+}
+
+/// The arguments a call did not bind, released.
+#[inline(never)]
+fn release_all(args: &mut [Value<'_>]) {
+    for a in args.iter_mut() {
+        value::release(std::mem::replace(a, Value::Null));
+    }
 }
 
 impl<'h> Run<'h> {
@@ -423,6 +486,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: false,
+            cause: None,
             path: None,
             trace: Vec::new(),
         })
@@ -457,6 +521,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: true,
+            cause: None,
             path: None,
             trace: Vec::new(),
         })
@@ -503,44 +568,29 @@ impl<'h> Run<'h> {
                 }
             }
             first = false;
+            // Stack: this frame is live at every level the walk recurses
+            // through, so each arm is one call, and what an arm would keep
+            // in this frame is in the function it calls.
             let node = &ast.nodes[id.index()];
-            match &node.kind {
+            let next = match &node.kind {
                 NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
-                    for &c in consts {
-                        self.const_line(c)?;
-                    }
-                    id = *result;
+                    self.const_lines(consts, *result)
                 }
-                NodeKind::Number { value } => return Ok(Value::Num(*value)),
-                NodeKind::String { value, .. } => return Ok(Value::Str(Str::Lent(value))),
-                NodeKind::Bool { value } => return Ok(Value::Bool(*value)),
-                NodeKind::Null => return Ok(Value::Null),
                 NodeKind::Template { parts } => return self.template(node.span, parts),
-                NodeKind::Ident { .. } => return self.ident(id),
                 NodeKind::List { items } => return self.list(items),
                 NodeKind::Map { entries } => return self.map(entries),
-                NodeKind::Unary { op, x } => {
-                    let v = self.eval(*x)?;
-                    return self.unary(*op, v, node.span);
-                }
+                NodeKind::Unary { op, x } => return self.unary_node(*op, *x, node.span),
                 NodeKind::Binary { .. } => return self.binary(id),
                 NodeKind::Cond {
                     test, then, else_, ..
-                } => {
-                    let t = self.eval(*test)?;
-                    id = if t.truthy() { *then } else { *else_ };
-                }
+                } => self.branch(*test, *then, *else_),
                 NodeKind::MethodCall { args, .. }
                     if matches!(self.res(id), Res::CallHost(_) | Res::CallLib(_)) =>
                 {
                     return self.call(id, args);
                 }
-                // F6 5.3: the read of a constant charges nothing.
                 NodeKind::Member { .. } if matches!(self.res(id), Res::Constant(_)) => {
-                    let Res::Constant(v) = self.res(id) else {
-                        unreachable!()
-                    };
-                    return Ok(Value::Num(*v));
+                    return self.leaf(id)
                 }
                 NodeKind::Member { .. }
                 | NodeKind::Index { .. }
@@ -548,14 +598,57 @@ impl<'h> Run<'h> {
                 | NodeKind::OptChain { .. }
                 | NodeKind::Each { .. } => return self.chain(id),
                 NodeKind::Call { args, .. } => return self.call(id, args),
-                NodeKind::Match { subject, arms } => {
-                    id = self.match_arm(node.span, *subject, arms)?;
-                }
+                NodeKind::Match { subject, arms } => self.match_arm(node.span, *subject, arms),
                 NodeKind::Try { body, handler, .. } => return self.try_(id, *body, *handler),
                 NodeKind::As { form, x, .. } => return self.as_test(id, *form, *x, node.span),
-                _ => return Err(self.internal(node.span)),
-            }
+                _ => return self.leaf(id),
+            };
+            id = next?;
         }
+    }
+
+    /// A node of the walk that has no children: a literal, a name or a
+    /// constant (F6 5.3: its read charges nothing).
+    #[inline(never)]
+    fn leaf(&mut self, id: NodeId) -> R<'h, Value<'h>> {
+        let node = &self.ast.nodes[id.index()];
+        match &node.kind {
+            NodeKind::Number { value } => Ok(Value::Num(*value)),
+            NodeKind::String { value, .. } => Ok(Value::Str(Str::Lent(value))),
+            NodeKind::Bool { value } => Ok(Value::Bool(*value)),
+            NodeKind::Null => Ok(Value::Null),
+            NodeKind::Ident { .. } => self.ident(id),
+            NodeKind::Member { .. } => match self.res(id) {
+                Res::Constant(v) => Ok(Value::Num(*v)),
+                _ => Err(self.internal(node.span)),
+            },
+            _ => Err(self.internal(node.span)),
+        }
+    }
+
+    /// The `const` lines of a program or a block, then its result, which the
+    /// walk evaluates next.
+    #[inline(never)]
+    fn const_lines(&mut self, consts: &'h [NodeId], result: NodeId) -> R<'h, NodeId> {
+        for &c in consts {
+            self.const_line(c)?;
+        }
+        Ok(result)
+    }
+
+    /// A prefix operator and its operand.
+    #[inline(never)]
+    fn unary_node(&mut self, op: UnaryOp, x: NodeId, span: Range) -> R<'h, Value<'h>> {
+        let v = self.eval(x)?;
+        self.unary(op, v, span)
+    }
+
+    /// The test of a conditional, and the branch it chooses, which the walk
+    /// evaluates next.
+    #[inline(never)]
+    fn branch(&mut self, test: NodeId, then: NodeId, else_: NodeId) -> R<'h, NodeId> {
+        let t = self.eval(test)?;
+        Ok(if t.truthy() { then } else { else_ })
     }
 
     /// F4 5.1 and 5.2: `x as T` and `x is T`, by the walk of 4.
@@ -809,6 +902,8 @@ impl<'h> Run<'h> {
         Ok(())
     }
 
+    /// A list literal. Stack: the frame is live while each item is
+    /// evaluated, so a spread and the building are functions of their own.
     fn list(&mut self, items: &'h [NodeId]) -> R<'h, Value<'h>> {
         // The items' values; a spread's is its list. The list's length is
         // found before the list is built (`02-evaluation.md` 6.2 item 3).
@@ -817,30 +912,55 @@ impl<'h> Run<'h> {
         let mut n = 0usize;
         for &item in items {
             if let NodeKind::Spread { value } = self.ast.kind(item) {
-                let span = self.ast.span(item);
-                let v = self.eval(*value)?;
-                match v.kind() {
-                    Kind::Null => return Err(fail("null-operand", "spread", span, vec![])),
-                    Kind::List => {}
-                    _ => {
-                        return Err(fail(
-                            "wrong-kind",
-                            "spread-list",
-                            span,
-                            vec![("kind", kind_p(&v))],
-                        ))
-                    }
-                }
-                let k = v.len().unwrap_or(0);
-                self.charge(k as u64)?;
-                n += k;
+                n += self.list_spread(item, *value, &mut vals)?;
                 spreads = true;
-                vals.push(v);
             } else {
                 vals.push(self.eval(item)?);
                 n += 1;
             }
         }
+        self.list_done(items, vals, spreads, n)
+    }
+
+    /// A spread of a list literal: its list, tested and charged, onto
+    /// `vals`, and its length.
+    #[inline(never)]
+    fn list_spread(
+        &mut self,
+        item: NodeId,
+        value: NodeId,
+        vals: &mut Vec<Value<'h>>,
+    ) -> R<'h, usize> {
+        let span = self.ast.span(item);
+        let v = self.eval(value)?;
+        match v.kind() {
+            Kind::Null => return Err(fail("null-operand", "spread", span, vec![])),
+            Kind::List => {}
+            _ => {
+                return Err(fail(
+                    "wrong-kind",
+                    "spread-list",
+                    span,
+                    vec![("kind", kind_p(&v))],
+                ))
+            }
+        }
+        let k = v.len().unwrap_or(0);
+        self.charge(k as u64)?;
+        vals.push(v);
+        Ok(k)
+    }
+
+    /// The end of a list literal: its units, then the list of `n` elements
+    /// from the items' values.
+    #[inline(never)]
+    fn list_done(
+        &mut self,
+        items: &'h [NodeId],
+        vals: Vec<Value<'h>>,
+        spreads: bool,
+        n: usize,
+    ) -> R<'h, Value<'h>> {
         self.alloc(1 + n as u64)?;
         if !spreads {
             return Ok(Value::list(vals));
@@ -856,6 +976,9 @@ impl<'h> Run<'h> {
         Ok(Value::list(out))
     }
 
+    /// A map literal. Stack: the frame is live while each entry is
+    /// evaluated, so an entry, a spread and the building are functions of
+    /// their own.
     fn map(&mut self, entries: &'h [NodeId]) -> R<'h, Value<'h>> {
         // The entries written, in order: a key and its value, or a spread's
         // map, with its index in `spreads`.
@@ -863,62 +986,102 @@ impl<'h> Run<'h> {
         let mut spreads: Vec<usize> = Vec::new();
         let mut nk = 0usize; // the keys written, at least the map's entries
         for &e in entries {
-            let span = self.ast.span(e);
             match self.ast.kind(e) {
                 NodeKind::Spread { value } => {
-                    let v = self.eval(*value)?;
-                    match v.kind() {
-                        Kind::Null => return Err(fail("null-operand", "spread", span, vec![])),
-                        Kind::Map => {}
-                        _ => {
-                            return Err(fail(
-                                "wrong-kind",
-                                "spread-map",
-                                span,
-                                vec![("kind", kind_p(&v))],
-                            ))
-                        }
-                    }
-                    let mut keys = 0usize;
-                    let mut w = 0u64;
-                    v.for_each_key(|k| {
-                        keys += 1;
-                        w += weight(k);
-                    });
-                    self.charge(keys as u64 + w / 64)?;
-                    spreads.push(es.len());
-                    es.push((Str::Lent(""), v));
-                    nk += keys;
+                    nk += self.map_spread(e, *value, &mut es, &mut spreads)?;
                 }
                 NodeKind::Entry { key, value, .. } => {
-                    let k = match key {
-                        EntryKey::Word(w) | EntryKey::Str(w) => Str::Lent(w.as_str()),
-                        EntryKey::Computed(k) => {
-                            let kv = self.eval(*k)?;
-                            match kv {
-                                Value::Str(s) => s,
-                                Value::Null => {
-                                    return Err(fail("null-operand", "key", span, vec![]))
-                                }
-                                other => {
-                                    return Err(fail(
-                                        "wrong-kind",
-                                        "key",
-                                        span,
-                                        vec![("found", value_p(&other))],
-                                    ))
-                                }
-                            }
-                        }
-                    };
-                    let v = self.eval(*value)?;
-                    self.charge(size(k.as_str()))?;
-                    es.push((k, v));
+                    self.map_entry(e, key, *value, &mut es)?;
                     nk += 1;
                 }
-                _ => return Err(self.internal(span)),
+                _ => return Err(self.internal(self.ast.span(e))),
             }
         }
+        self.map_done(es, spreads, nk)
+    }
+
+    /// A spread of a map literal: its map, tested and charged, onto `es`,
+    /// its place onto `spreads`, and its count of keys.
+    #[inline(never)]
+    fn map_spread(
+        &mut self,
+        e: NodeId,
+        value: NodeId,
+        es: &mut Vec<(Str<'h>, Value<'h>)>,
+        spreads: &mut Vec<usize>,
+    ) -> R<'h, usize> {
+        let span = self.ast.span(e);
+        let v = self.eval(value)?;
+        match v.kind() {
+            Kind::Null => return Err(fail("null-operand", "spread", span, vec![])),
+            Kind::Map => {}
+            _ => {
+                return Err(fail(
+                    "wrong-kind",
+                    "spread-map",
+                    span,
+                    vec![("kind", kind_p(&v))],
+                ))
+            }
+        }
+        let mut keys = 0usize;
+        let mut w = 0u64;
+        v.for_each_key(|k| {
+            keys += 1;
+            w += weight(k);
+        });
+        self.charge(keys as u64 + w / 64)?;
+        spreads.push(es.len());
+        es.push((Str::Lent(""), v));
+        Ok(keys)
+    }
+
+    /// An entry of a map literal: its key, its value, then the key's charge.
+    #[inline(never)]
+    fn map_entry(
+        &mut self,
+        e: NodeId,
+        key: &'h EntryKey,
+        value: NodeId,
+        es: &mut Vec<(Str<'h>, Value<'h>)>,
+    ) -> R<'h, ()> {
+        let k = match key {
+            EntryKey::Word(w) | EntryKey::Str(w) => Str::Lent(w.as_str()),
+            EntryKey::Computed(k) => self.computed_key(e, *k)?,
+        };
+        let v = self.eval(value)?;
+        self.charge(size(k.as_str()))?;
+        es.push((k, v));
+        Ok(())
+    }
+
+    /// A computed key `[k]` of the map entry `e`.
+    #[inline(never)]
+    fn computed_key(&mut self, e: NodeId, k: NodeId) -> R<'h, Str<'h>> {
+        let span = self.ast.span(e);
+        let kv = self.eval(k)?;
+        match kv {
+            Value::Str(s) => Ok(s),
+            Value::Null => Err(fail("null-operand", "key", span, vec![])),
+            other => Err(fail(
+                "wrong-kind",
+                "key",
+                span,
+                vec![("found", value_p(&other))],
+            )),
+        }
+    }
+
+    /// The end of a map literal: its units, then the map, from the entries
+    /// written and the spreads at the places `spreads`. `nk` is the count
+    /// of keys written.
+    #[inline(never)]
+    fn map_done(
+        &mut self,
+        es: Vec<(Str<'h>, Value<'h>)>,
+        spreads: Vec<usize>,
+        nk: usize,
+    ) -> R<'h, Value<'h>> {
         if spreads.is_empty() {
             let m = MapVal::from_written(es);
             self.alloc(1 + 2 * m.0.len() as u64)?;
@@ -1450,8 +1613,6 @@ impl<'h> Run<'h> {
         Ok(v)
     }
 
-    /// One step of a chain. `None` is a null receiver of an optional step:
-    /// the whole chain is null.
     /// The test of a star's receiver (F7 3.1): `None` for a null receiver of
     /// `?.[*]`; else the list.
     fn star_receiver(&self, v: &Value<'h>, optional: bool, star: Range) -> R<'h, Option<()>> {
@@ -1513,13 +1674,15 @@ impl<'h> Run<'h> {
     }
 
     /// A field read `.name` or `?.name`, the step of a chain. `None` is a
-    /// null receiver of an optional read.
+    /// null receiver of an optional read. The last step of a coalesced read
+    /// under `??` gives null for an absent key (`01-language.md` 6.6).
     #[inline]
-    fn member(
+    pub(crate) fn member(
         &mut self,
         v: Value<'h>,
         name: &str,
         optional: bool,
+        coalesced: bool,
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         match &v {
@@ -1540,7 +1703,7 @@ impl<'h> Run<'h> {
         match found {
             Some(Value::BadNum) => Err(self.host_number(Some(span))),
             Some(x) => Ok(Some(x)),
-            None if optional => Ok(Some(Value::Null)),
+            None if optional || coalesced => Ok(Some(Value::Null)),
             None => Err(fail(
                 "missing-field",
                 "field",
@@ -1569,150 +1732,182 @@ impl<'h> Run<'h> {
         )
     }
 
+    /// One step of a chain. `None` is a null receiver of an optional step:
+    /// the whole chain is null.
+    ///
+    /// Stack: a step's own work is in a function of its own, so that this
+    /// frame, which is live while an index or an argument is evaluated,
+    /// holds none of it (`DESIGN.md`, Stack).
     fn step(&mut self, s: NodeId, v: Value<'h>) -> R<'h, Option<Value<'h>>> {
         let ast = self.ast;
-        let span = ast.span(s);
-        if let NodeKind::Each {
+        match &ast.nodes[s.index()].kind {
+            NodeKind::Each { .. } => self.each_step(s, v),
+            NodeKind::Member { name, optional, .. } => {
+                let coalesced = self.p.coalesced[s.index()];
+                self.member(v, name, *optional, coalesced, ast.span(s))
+            }
+            NodeKind::Index { .. } => self.index_step(s, v),
+            NodeKind::MethodCall { .. } => self.method(s, v),
+            _ => Err(self.internal(ast.span(s))),
+        }
+    }
+
+    /// A projection `[*]` or `?.[*]`, the step of a chain (F7 3).
+    #[inline(never)]
+    fn each_step(&mut self, s: NodeId, v: Value<'h>) -> R<'h, Option<Value<'h>>> {
+        let NodeKind::Each {
             reads,
             optional,
             star,
             ..
+        } = &self.ast.nodes[s.index()].kind
+        else {
+            return Err(self.internal(self.ast.span(s)));
+        };
+        if self.star_receiver(&v, *optional, *star)?.is_none() {
+            return Ok(None);
+        }
+        let mut out = Vec::new();
+        self.level(&v, reads, &mut out)?;
+        self.alloc(1 + out.len() as u64)?;
+        Ok(Some(Value::list(out)))
+    }
+
+    /// An index `[i]` or `?.[i]`, the step of a chain: the receiver's test,
+    /// the index, then the read (`index_read`).
+    #[inline(never)]
+    pub(crate) fn index_step(&mut self, s: NodeId, v: Value<'h>) -> R<'h, Option<Value<'h>>> {
+        let ast = self.ast;
+        let NodeKind::Index {
+            index, optional, ..
         } = &ast.nodes[s.index()].kind
-        {
-            if self.star_receiver(&v, *optional, *star)?.is_none() {
+        else {
+            return Err(self.internal(ast.span(s)));
+        };
+        let span = ast.span(s);
+        let k = v.kind();
+        if !matches!(k, Kind::List | Kind::String | Kind::Map) {
+            return self.index_receiver(&v, *optional, span);
+        }
+        let iv = self.eval(*index)?;
+        let coalesced = self.p.coalesced[s.index()];
+        self.index_read(v, k, iv, *optional, coalesced, span)
+    }
+
+    /// The receiver of an index that is not a list, a string or a map:
+    /// `None` for a null receiver of `?.[`, else the failure.
+    #[cold]
+    #[inline(never)]
+    fn index_receiver(
+        &self,
+        v: &Value<'h>,
+        optional: bool,
+        span: Range,
+    ) -> R<'h, Option<Value<'h>>> {
+        if v.is_null() {
+            if optional {
                 return Ok(None);
             }
-            let mut out = Vec::new();
-            self.level(&v, reads, &mut out)?;
-            self.alloc(1 + out.len() as u64)?;
-            return Ok(Some(Value::list(out)));
+            return Err(fail("null-operand", "index", span, vec![]));
         }
-        match &ast.nodes[s.index()].kind {
-            NodeKind::Member { name, optional, .. } => self.member(v, name, *optional, span),
-            NodeKind::Index {
-                index, optional, ..
-            } => {
-                if v.is_null() {
-                    if *optional {
-                        return Ok(None);
-                    }
-                    return Err(fail("null-operand", "index", span, vec![]));
-                }
-                let k = v.kind();
-                if !matches!(k, Kind::List | Kind::String | Kind::Map) {
+        Err(fail("wrong-kind", "index", span, vec![("kind", kind_p(v))]))
+    }
+
+    /// The read of an index whose receiver `v`, of kind `k`, and index `iv`
+    /// are in hand.
+    #[inline(never)]
+    fn index_read(
+        &mut self,
+        v: Value<'h>,
+        k: Kind,
+        iv: Value<'h>,
+        optional: bool,
+        coalesced: bool,
+        span: Range,
+    ) -> R<'h, Option<Value<'h>>> {
+        if iv.is_null() {
+            return Err(fail("null-operand", "key", span, vec![]));
+        }
+        match k {
+            Kind::Map => {
+                let Value::Str(key) = &iv else {
                     return Err(fail(
                         "wrong-kind",
-                        "index",
+                        "key",
                         span,
-                        vec![("kind", kind_p(&v))],
+                        vec![("found", value_p(&iv))],
                     ));
+                };
+                self.charge(1 + size(key.as_str()))?;
+                match v.field(key.as_str()) {
+                    Some(x) => Ok(Some(self.read(x, span)?)),
+                    None if optional || coalesced => Ok(Some(Value::Null)),
+                    None => Err(fail(
+                        "missing-field",
+                        "key",
+                        span,
+                        vec![("key", json_string(key.as_str()))],
+                    )),
                 }
-                let iv = self.eval(*index)?;
-                if iv.is_null() {
-                    return Err(fail("null-operand", "key", span, vec![]));
-                }
-                match k {
-                    Kind::Map => {
-                        let Value::Str(key) = &iv else {
-                            return Err(fail(
-                                "wrong-kind",
-                                "key",
-                                span,
-                                vec![("found", value_p(&iv))],
-                            ));
-                        };
-                        self.charge(1 + size(key.as_str()))?;
-                        match v.field(key.as_str()) {
-                            Some(x) => Ok(Some(self.read(x, span)?)),
-                            None if *optional => Ok(Some(Value::Null)),
-                            None => Err(fail(
-                                "missing-field",
-                                "key",
-                                span,
-                                vec![("key", json_string(key.as_str()))],
-                            )),
-                        }
+            }
+            _ => {
+                let i = match iv {
+                    Value::Num(i) if is_whole(i) => i,
+                    other => {
+                        return Err(fail(
+                            "wrong-kind",
+                            "whole",
+                            span,
+                            vec![("found", value_p(&other))],
+                        ))
                     }
-                    _ => {
-                        let i = match iv {
-                            Value::Num(i) if is_whole(i) => i,
-                            other => {
-                                return Err(fail(
-                                    "wrong-kind",
-                                    "whole",
-                                    span,
-                                    vec![("found", value_p(&other))],
-                                ))
-                            }
-                        };
-                        if let Value::Str(st) = &v {
-                            let st = st.as_str();
-                            self.charge(1 + size(st))?;
-                            let found = if i >= 0.0 {
-                                st.chars().nth(i as usize)
-                            } else {
-                                None
-                            };
-                            match found {
-                                Some(c) => {
-                                    self.alloc(1)?;
-                                    Ok(Some(Value::str(c.to_string())))
-                                }
-                                None if *optional => Ok(Some(Value::Null)),
-                                None => Err(fail(
-                                    "index-range",
-                                    "index",
-                                    span,
-                                    vec![
-                                        ("index", number::to_text(i)),
-                                        ("kind", "string".into()),
-                                        ("length", value::cp_len(st).to_string()),
-                                    ],
-                                )),
-                            }
-                        } else {
-                            self.charge(1)?;
-                            let n = v.len().unwrap_or(0);
-                            if i >= 0.0 && (i as usize) < n {
-                                Ok(Some(self.read(v.elem(i as usize), span)?))
-                            } else if *optional {
-                                Ok(Some(Value::Null))
-                            } else {
-                                Err(fail(
-                                    "index-range",
-                                    "index",
-                                    span,
-                                    vec![
-                                        ("index", number::to_text(i)),
-                                        ("kind", "list".into()),
-                                        ("length", n.to_string()),
-                                    ],
-                                ))
-                            }
+                };
+                if let Value::Str(st) = &v {
+                    let st = st.as_str();
+                    self.charge(1 + size(st))?;
+                    let found = if i >= 0.0 {
+                        st.chars().nth(i as usize)
+                    } else {
+                        None
+                    };
+                    match found {
+                        Some(c) => {
+                            self.alloc(1)?;
+                            Ok(Some(Value::str(c.to_string())))
                         }
+                        None if optional => Ok(Some(Value::Null)),
+                        None => Err(fail(
+                            "index-range",
+                            "index",
+                            span,
+                            vec![
+                                ("index", number::to_text(i)),
+                                ("kind", "string".into()),
+                                ("length", value::cp_len(st).to_string()),
+                            ],
+                        )),
+                    }
+                } else {
+                    self.charge(1)?;
+                    let n = v.len().unwrap_or(0);
+                    if i >= 0.0 && (i as usize) < n {
+                        Ok(Some(self.read(v.elem(i as usize), span)?))
+                    } else if optional {
+                        Ok(Some(Value::Null))
+                    } else {
+                        Err(fail(
+                            "index-range",
+                            "index",
+                            span,
+                            vec![
+                                ("index", number::to_text(i)),
+                                ("kind", "list".into()),
+                                ("length", n.to_string()),
+                            ],
+                        ))
                     }
                 }
             }
-            NodeKind::MethodCall {
-                name,
-                args,
-                optional,
-                ..
-            } => {
-                if v.is_null() {
-                    if *optional {
-                        return Ok(None);
-                    }
-                    return Err(fail(
-                        "null-operand",
-                        "method",
-                        span,
-                        vec![("name", name.name.clone())],
-                    ));
-                }
-                self.method(s, v, name, args, span).map(Some)
-            }
-            _ => Err(self.internal(span)),
         }
     }
 
@@ -1738,65 +1933,174 @@ impl<'h> Run<'h> {
     #[inline]
     fn arg(&mut self, a: NodeId) -> R<'h, Arg<'h>> {
         if let NodeKind::Lambda { .. } = self.ast.kind(a) {
-            self.charge(1)?;
-            Ok(Arg::Lam(a))
+            self.charge(1).map(|()| Arg::Lam(a))
         } else if let Res::LambdaRef(l) = self.res(a) {
             Ok(Arg::Lam(*l))
         } else {
-            Ok(Arg::Val(self.eval(a)?))
+            self.eval(a).map(Arg::Val)
         }
     }
 
-    /// The arguments of a library call, left to right, handed to `f`. A
-    /// call of up to three arguments holds them in place.
-    fn with_args<T>(
-        &mut self,
-        args: &'h [NodeId],
-        f: impl FnOnce(&mut Self, &[Arg<'h>]) -> R<'h, T>,
-    ) -> R<'h, T> {
-        match *args {
-            [] => f(self, &[]),
-            [a] => {
-                let v = [self.arg(a)?];
-                f(self, &v)
+    /// The arguments of a library call into `out`, left to right. A call of
+    /// up to three arguments holds them in place.
+    ///
+    /// Stack: they are written to the caller's buffer, not handed to a
+    /// closure, so no frame of theirs is live while the entry runs and
+    /// calls a lambda.
+    fn args(&mut self, args: &'h [NodeId], out: &mut Args<'h>) -> R<'h, ()> {
+        if args.len() > 3 {
+            return self.args_many(args, out);
+        }
+        if let Args::Few(v, n) = out {
+            for &a in args {
+                v[*n] = self.arg(a)?;
+                *n += 1;
             }
-            [a, b] => {
-                let v = [self.arg(a)?, self.arg(b)?];
-                f(self, &v)
+        }
+        Ok(())
+    }
+
+    /// The arguments of a library call of more than three.
+    #[inline(never)]
+    fn args_many(&mut self, args: &'h [NodeId], out: &mut Args<'h>) -> R<'h, ()> {
+        let mut v = Vec::with_capacity(args.len());
+        for &a in args {
+            v.push(self.arg(a)?);
+        }
+        *out = Args::Many(v);
+        Ok(())
+    }
+
+    /// A method call, the step of a chain: the method by the receiver's
+    /// kind, the shape test, the arguments, then the entry (`04-library.md`
+    /// 2.2). `None` is a null receiver of `?.`.
+    ///
+    /// Stack: this frame is live while the entry calls a lambda, so the
+    /// tests and the call of a host method are functions of their own.
+    #[inline(never)]
+    pub(crate) fn method(&mut self, s: NodeId, recv: Value<'h>) -> R<'h, Option<Value<'h>>> {
+        let ast = self.ast;
+        let NodeKind::MethodCall {
+            name,
+            args,
+            optional,
+            ..
+        } = &ast.nodes[s.index()].kind
+        else {
+            return Err(self.internal(ast.span(s)));
+        };
+        let span = ast.span(s);
+        if recv.is_null() {
+            if *optional {
+                return Ok(None);
             }
-            [a, b, c] => {
-                let v = [self.arg(a)?, self.arg(b)?, self.arg(c)?];
-                f(self, &v)
-            }
-            _ => {
-                let mut v = Vec::with_capacity(args.len());
-                for &a in args {
-                    v.push(self.arg(a)?);
-                }
-                f(self, &v)
-            }
+            return Err(self.method_null(name, span));
+        }
+        if let Value::Opaque(_) = &recv {
+            return self.opaque_method(recv, name, args, span).map(Some);
+        }
+        let idx = self.method_entry(recv.kind(), name, args, span)?;
+        let measure = self.p.measure[s.index()] as u32;
+        let mut vals = Args::new();
+        self.args(args, &mut vals)?;
+        match self.lib_method(idx, recv, vals.as_slice(), span, measure) {
+            Ok(v) => Ok(Some(v)),
+            Err(f) => Err(f),
         }
     }
 
-    /// A method call: the method by the receiver's kind, the shape test,
-    /// the arguments, then the entry (`04-library.md` 2.2).
-    fn method(
+    #[cold]
+    #[inline(never)]
+    fn method_null(&self, name: &SpannedName, span: Range) -> Box<Fail<'h>> {
+        fail(
+            "null-operand",
+            "method",
+            span,
+            vec![("name", name.name.clone())],
+        )
+    }
+
+    /// A method of a host type, on an opaque receiver: the shape test, the
+    /// arguments, the step, then the host's implementation.
+    #[inline(never)]
+    fn opaque_method(
         &mut self,
-        s: NodeId,
         recv: Value<'h>,
         name: &'h SpannedName,
         args: &'h [NodeId],
         span: Range,
     ) -> R<'h, Value<'h>> {
-        let kind = recv.kind();
+        let Value::Opaque(o) = &recv else {
+            return Err(self.internal(span));
+        };
+        let env = &self.p.env;
+        let Some(mi) = env.method(&o.type_name, &name.name) else {
+            return Err(fail(
+                "wrong-kind",
+                "method",
+                span,
+                vec![
+                    ("kind", recv.kind().name().into()),
+                    ("name", name.name.clone()),
+                ],
+            ));
+        };
+        let m = &env.data().methods[mi];
+        let n = args.len();
+        if n < m.sig.required() || m.sig.at_most().is_some_and(|a| n > a) {
+            return Err(fail(
+                "wrong-kind",
+                "count",
+                span,
+                vec![
+                    ("count", args.len().to_string()),
+                    ("name", name.name.clone()),
+                ],
+            ));
+        }
+        for (i, &a) in args.iter().enumerate() {
+            if self.lambda_of(a).is_some() {
+                return Err(fail(
+                    "wrong-kind",
+                    "not-callback",
+                    span,
+                    vec![("count", (i + 1).to_string()), ("name", name.name.clone())],
+                ));
+            }
+        }
+        let mut vals = vec![recv.clone()];
+        for &a in args {
+            vals.push(self.eval(a)?);
+        }
+        self.charge(1)?;
+        let imp = m.imp.clone();
+        let label = format!("{}.{}", m.type_name, m.name);
+        self.invoke_host(imp, &vals, &label, span)
+    }
+
+    /// The library method of a receiver of kind `kind`, and the shape test
+    /// of its call: the count of arguments, then which are lambdas, then
+    /// the parameters of each lambda (`04-library.md` 2.2).
+    #[inline(never)]
+    fn method_entry(
+        &self,
+        kind: Kind,
+        name: &'h SpannedName,
+        args: &'h [NodeId],
+        span: Range,
+    ) -> R<'h, usize> {
         let nm = || ("name", name.name.clone());
-        let no_method = || {
-            fail(
+        let idx = match kind {
+            Kind::String | Kind::List | Kind::Map => self.p.env.lib_method(kind, &name.name),
+            _ => None,
+        };
+        let Some(idx) = idx else {
+            return Err(fail(
                 "wrong-kind",
                 "method",
                 span,
                 vec![("kind", kind.name().into()), nm()],
-            )
+            ));
         };
         let count = || {
             fail(
@@ -1805,42 +2109,6 @@ impl<'h> Run<'h> {
                 span,
                 vec![("count", args.len().to_string()), nm()],
             )
-        };
-        if let Value::Opaque(o) = &recv {
-            let env = &self.p.env;
-            let Some(mi) = env.method(&o.type_name, &name.name) else {
-                return Err(no_method());
-            };
-            let m = &env.data().methods[mi];
-            let n = args.len();
-            if n < m.sig.required() || m.sig.at_most().is_some_and(|a| n > a) {
-                return Err(count());
-            }
-            for (i, &a) in args.iter().enumerate() {
-                if self.lambda_of(a).is_some() {
-                    return Err(fail(
-                        "wrong-kind",
-                        "not-callback",
-                        span,
-                        vec![("count", (i + 1).to_string()), nm()],
-                    ));
-                }
-            }
-            let mut vals = vec![recv.clone()];
-            for &a in args {
-                vals.push(self.eval(a)?);
-            }
-            self.charge(1)?;
-            let imp = m.imp.clone();
-            let label = format!("{}.{}", m.type_name, m.name);
-            return self.invoke_host(imp, &vals, &label, span);
-        }
-        let idx = match kind {
-            Kind::String | Kind::List | Kind::Map => self.p.env.lib_method(kind, &name.name),
-            _ => None,
-        };
-        let Some(idx) = idx else {
-            return Err(no_method());
         };
         let rec = &crate::library::records()[idx];
         let n = args.len();
@@ -1881,8 +2149,7 @@ impl<'h> Run<'h> {
                 }
             }
         }
-        let measure = self.p.measure[s.index()] as u32;
-        self.with_args(args, |r, vals| r.lib_method(idx, recv, vals, span, measure))
+        Ok(idx)
     }
 
     // ---- calls ------------------------------------------------------------
@@ -1899,28 +2166,36 @@ impl<'h> Run<'h> {
                 self.charge(1)?;
                 let measure = self.p.measure[id.index()] as u32;
                 // `f08-errors.md` 4.1: in progress from its depth test to its end.
-                self.invoke(l, &mut vals, measure, span).map_err(|mut f| {
-                    if let NodeKind::Call { name, .. } = self.ast.kind(id) {
-                        f.trace.push((span, name.name.clone(), None));
-                    }
-                    f
-                })
-            }
-            Res::CallLib(i) => {
-                let i = *i as usize;
-                self.with_args(args, |r, vals| r.lib_function(i, vals, span))
-            }
-            Res::CallHost(i) => {
-                let f = &self.p.env.data().functions[*i as usize];
-                let mut vals = Vec::with_capacity(args.len());
-                for &a in args {
-                    vals.push(self.eval(a)?);
+                match self.invoke(l, &mut vals, measure, span) {
+                    Ok(v) => Ok(v),
+                    Err(f) => Err(self.call_traced(f, id, span)),
                 }
-                self.charge(1)?;
-                self.invoke_host(f.imp.clone(), &vals, &f.name, span)
             }
+            Res::CallLib(i) => self.call_lib(*i as usize, args, span),
+            Res::CallHost(i) => self.call_host(*i as usize, args, span),
             _ => Err(self.internal(span)),
         }
+    }
+
+    /// A call of a library function: the arguments, then the entry.
+    #[inline(never)]
+    fn call_lib(&mut self, i: usize, args: &'h [NodeId], span: Range) -> R<'h, Value<'h>> {
+        let mut vals = Args::new();
+        self.args(args, &mut vals)?;
+        self.lib_function(i, vals.as_slice(), span)
+    }
+
+    /// A call of a host function: the arguments, the call's step, then the
+    /// host's implementation.
+    #[inline(never)]
+    fn call_host(&mut self, i: usize, args: &'h [NodeId], span: Range) -> R<'h, Value<'h>> {
+        let f = &self.p.env.data().functions[i];
+        let mut vals = Vec::with_capacity(args.len());
+        for &a in args {
+            vals.push(self.eval(a)?);
+        }
+        self.charge(1)?;
+        self.invoke_host(f.imp.clone(), &vals, &f.name, span)
     }
 
     fn invoke_host(
@@ -1947,18 +2222,15 @@ impl<'h> Run<'h> {
                 span,
                 vec![("name", name.to_string())],
             )),
-            Ok(Err(e)) => {
-                let mut f = fail("function-error", "default", span, vec![]);
-                f.text = Some(e.0);
-                Err(f)
-            }
+            Ok(Err(e)) => Err(function_error(e, span)),
             Ok(Ok(d)) => self.read(Value::from_data(&d), span),
         }
     }
 
-    /// A library entry's call of a lambda passed to it, at the element
-    /// `index`: a failure that leaves it has the entry's trace entry
-    /// (`f08-errors.md` 4.1, 4.2).
+    /// A library entry's call of a lambda whose parameters are not all
+    /// plain names, at the element `index`: a failure that leaves it has the
+    /// entry's trace entry (`f08-errors.md` 4.1, 4.2).
+    #[inline(never)]
     fn invoke_for(
         &mut self,
         entry: &str,
@@ -1968,10 +2240,23 @@ impl<'h> Run<'h> {
         measure: u32,
         span: Range,
     ) -> R<'h, Value<'h>> {
-        self.invoke(l, args, measure, span).map_err(|mut f| {
-            f.trace.push((span, entry.to_string(), Some(index)));
-            f
-        })
+        let r = self.invoke(l, args, measure, span);
+        release_all(args);
+        match r {
+            Ok(v) => Ok(v),
+            Err(f) => Err(traced(f, span, entry, index)),
+        }
+    }
+
+    /// The trace entry of a call by name, added as a failure leaves it
+    /// (`f08-errors.md` 4.1).
+    #[cold]
+    #[inline(never)]
+    fn call_traced(&self, mut f: Box<Fail<'h>>, id: NodeId, span: Range) -> Box<Fail<'h>> {
+        if let NodeKind::Call { name, .. } = self.ast.kind(id) {
+            f.trace.push((span, name.name.clone(), None));
+        }
+        f
     }
 
     /// A lambda passed to a library entry, resolved once for all the calls
@@ -1991,6 +2276,10 @@ impl<'h> Run<'h> {
 
     /// A library entry's call of a callback with two arguments, as
     /// `invoke_for` makes it.
+    ///
+    /// Stack: this frame is live while the lambda runs, so it holds only the
+    /// fast path; a lambda with patterns or defaults goes to `invoke_for`,
+    /// and a failure's trace entry is added out of line.
     #[inline]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn call2(
@@ -2004,29 +2293,15 @@ impl<'h> Run<'h> {
         span: Range,
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
-            let mut args = [a, b];
-            let r = self.invoke_for(entry, index, cb.l, &mut args, measure, span);
-            let [a, b] = args;
-            value::release(a);
-            value::release(b);
-            return r;
+            return self.invoke_for(entry, index, cb.l, &mut [a, b], measure, span);
         };
-        let r = match self.enter(measure, span) {
-            Ok(()) => {
-                self.bind(slots, 0, a);
-                self.bind(slots, 1, b);
-                self.body(body, code, measure)
-            }
-            Err(f) => {
-                value::release(a);
-                value::release(b);
-                Err(f)
-            }
-        };
-        r.map_err(|mut f| {
-            f.trace.push((span, entry.to_string(), Some(index)));
-            f
-        })
+        if let Err(f) = self.enter2(slots, a, b, measure, span) {
+            return Err(traced(f, span, entry, index));
+        }
+        match self.body(body, code, measure) {
+            Ok(v) => Ok(v),
+            Err(f) => Err(traced(f, span, entry, index)),
+        }
     }
 
     /// A library entry's call of a callback with three arguments.
@@ -2043,32 +2318,15 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
             let mut args = args;
-            let r = self.invoke_for(entry, index, cb.l, &mut args, measure, span);
-            let [a, b, c] = args;
-            value::release(a);
-            value::release(b);
-            value::release(c);
-            return r;
+            return self.invoke_for(entry, index, cb.l, &mut args, measure, span);
         };
-        let [a, b, c] = args;
-        let r = match self.enter(measure, span) {
-            Ok(()) => {
-                self.bind(slots, 0, a);
-                self.bind(slots, 1, b);
-                self.bind(slots, 2, c);
-                self.body(body, code, measure)
-            }
-            Err(f) => {
-                value::release(a);
-                value::release(b);
-                value::release(c);
-                Err(f)
-            }
-        };
-        r.map_err(|mut f| {
-            f.trace.push((span, entry.to_string(), Some(index)));
-            f
-        })
+        if let Err(f) = self.enter3(slots, args, measure, span) {
+            return Err(traced(f, span, entry, index));
+        }
+        match self.body(body, code, measure) {
+            Ok(v) => Ok(v),
+            Err(f) => Err(traced(f, span, entry, index)),
+        }
     }
 
     /// The depth test of a call, and the depth it adds (`invoke`).
@@ -2079,10 +2337,64 @@ impl<'h> Run<'h> {
         Ok(())
     }
 
-    /// Argument `i` into its parameter's slot, for a lambda whose parameters
-    /// are all plain names. A lambda declares at most as many parameters as
-    /// the entry passes; an argument past them is released.
-    #[inline(always)]
+    /// The depth test of a library entry's call of a lambda whose
+    /// parameters are all plain names, and the depth it adds; then each of
+    /// two arguments into its parameter's slot. Both are released when the
+    /// test fails.
+    ///
+    /// Stack and speed: an optimized build inlines it, which saves calls for
+    /// each element and costs no stack. An unoptimized build keeps it a
+    /// function of its own: inlined, its slots would join a frame that is
+    /// live while the lambda runs. `debug_assertions` stands for the build
+    /// (`DESIGN.md`, Stack). `enter3`, `bind`, `next_element` and `keep_if`
+    /// do the same.
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn enter2(
+        &mut self,
+        slots: &[Option<u32>],
+        a: Value<'h>,
+        b: Value<'h>,
+        measure: u32,
+        span: Range,
+    ) -> R<'h, ()> {
+        if let Err(f) = self.enter(measure, span) {
+            value::release(a);
+            value::release(b);
+            return Err(f);
+        }
+        self.bind(slots, 0, a);
+        self.bind(slots, 1, b);
+        Ok(())
+    }
+
+    /// `enter2` for three arguments.
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn enter3(
+        &mut self,
+        slots: &[Option<u32>],
+        [a, b, c]: [Value<'h>; 3],
+        measure: u32,
+        span: Range,
+    ) -> R<'h, ()> {
+        if let Err(f) = self.enter(measure, span) {
+            value::release(a);
+            value::release(b);
+            value::release(c);
+            return Err(f);
+        }
+        self.bind(slots, 0, a);
+        self.bind(slots, 1, b);
+        self.bind(slots, 2, c);
+        Ok(())
+    }
+
+    /// Argument `i` into its parameter's slot. A lambda declares at most as
+    /// many parameters as the entry passes; an argument past them is
+    /// released.
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn bind(&mut self, slots: &[Option<u32>], i: usize, v: Value<'h>) {
         match slots.get(i) {
             Some(Some(s)) => value::put(&mut self.slots[*s as usize], v),
@@ -2091,24 +2403,29 @@ impl<'h> Run<'h> {
     }
 
     /// The body of a lambda whose parameters are bound, and the end of its
-    /// call.
-    #[inline]
+    /// call. A failure leaves the depth as it is: a `catch` restores it.
+    #[inline(always)]
     fn body(
         &mut self,
         body: NodeId,
         code: Option<&'h code::Code>,
         measure: u32,
     ) -> R<'h, Value<'h>> {
-        let v = match code {
-            Some(c) => c(self)?,
-            None => self.eval(body)?,
+        let r = match code {
+            Some(c) => c(self),
+            None => self.eval(body),
         };
-        self.m.depth -= measure;
-        Ok(v)
+        if r.is_ok() {
+            self.m.depth -= measure;
+        }
+        r
     }
 
     /// Call a lambda: by name after its step, or by the library after the two
     /// steps of the element. The depth test, the parameters, the body.
+    ///
+    /// Stack: the frame is live while the body runs, so the binding of
+    /// parameters is a function of its own.
     fn invoke(
         &mut self,
         l: NodeId,
@@ -2118,10 +2435,21 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         self.depth_test(measure, span)?;
         self.m.depth += measure;
+        let NodeKind::Lambda { body, .. } = &self.ast.nodes[l.index()].kind else {
+            return Err(self.internal(span));
+        };
+        self.bind_params(l, args)?;
+        let code = self.p.code.get(body.index()).and_then(|c| c.as_ref());
+        self.body(*body, code, measure)
+    }
+
+    /// The arguments of a call into the parameters of lambda `l`.
+    #[inline(never)]
+    fn bind_params(&mut self, l: NodeId, args: &mut [Value<'h>]) -> R<'h, ()> {
         let p = self.p;
         let ast = self.ast;
-        let NodeKind::Lambda { params, body } = &ast.nodes[l.index()].kind else {
-            return Err(self.internal(span));
+        let NodeKind::Lambda { params, .. } = &ast.nodes[l.index()].kind else {
+            return Ok(());
         };
         if let Some(Some(slots)) = p.params.get(l.index()) {
             // Each parameter a name with no default: the argument, or null.
@@ -2149,12 +2477,7 @@ impl<'h> Run<'h> {
                 self.bind_pattern(*pattern, v)?;
             }
         }
-        let v = match p.code.get(body.index()) {
-            Some(Some(c)) => c(self)?,
-            _ => self.eval(*body)?,
-        };
-        self.m.depth -= measure;
-        Ok(v)
+        Ok(())
     }
 
     // ---- patterns ---------------------------------------------------------
@@ -2800,7 +3123,7 @@ impl Program {
         // the whole program's.
         if d.span.is_none() && crate::diag::code::LIMIT.contains(&f.code) {
             let s = self.parsed.ast.node(self.parsed.ast.root).span;
-            d.range = Some(s);
+            d.set_range(s);
             d.span = Some(self.parsed.source.line_span(s));
         }
         d.class = self.class_of(f);

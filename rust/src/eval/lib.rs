@@ -176,6 +176,37 @@ pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 78] = [
     ),
 ];
 
+/// The entries that `Run::list_each` runs.
+#[derive(Clone, Copy, PartialEq)]
+enum Each {
+    FlatMap,
+    Some,
+    Every,
+    Find,
+    Count,
+    GroupBy,
+    SortBy,
+}
+
+/// What `Run::list_each` keeps of its results.
+struct Gathered<'h> {
+    out: Vec<Value<'h>>,
+    keys: Vec<Value<'h>>,
+    counted: usize,
+}
+
+/// `filter`'s element `e`, kept when the result `r` is truthy.
+#[cfg_attr(debug_assertions, inline)]
+#[cfg_attr(not(debug_assertions), inline(always))]
+fn keep_if<'h>(out: &mut Vec<Value<'h>>, e: Value<'h>, r: Value<'h>) {
+    if r.truthy() {
+        out.push(e)
+    } else {
+        release(e)
+    }
+    release(r)
+}
+
 /// White space (3.9): exactly 25 code points.
 pub fn is_space(c: char) -> bool {
     matches!(c,
@@ -248,6 +279,35 @@ struct Plan {
     /// The last parameter is a rest parameter: it tests every later
     /// argument.
     rest: bool,
+    /// For a method of a list, the function that runs it.
+    list: ListEntry,
+}
+
+/// The function that runs a method of a list (`Run::lib_method`), read
+/// once from the record's name.
+#[derive(Clone, Copy, PartialEq)]
+enum ListEntry {
+    Map,
+    Filter,
+    Each(Each),
+    Reduce,
+    Plain,
+}
+
+fn list_entry(name: &str) -> ListEntry {
+    match name {
+        "map" => ListEntry::Map,
+        "filter" => ListEntry::Filter,
+        "flatMap" => ListEntry::Each(Each::FlatMap),
+        "some" => ListEntry::Each(Each::Some),
+        "every" => ListEntry::Each(Each::Every),
+        "find" => ListEntry::Each(Each::Find),
+        "count" => ListEntry::Each(Each::Count),
+        "groupBy" => ListEntry::Each(Each::GroupBy),
+        "sortBy" => ListEntry::Each(Each::SortBy),
+        "reduce" => ListEntry::Reduce,
+        _ => ListEntry::Plain,
+    }
 }
 
 fn plans() -> &'static [Plan] {
@@ -315,6 +375,7 @@ fn plan(rec: &Record) -> Plan {
     Plan {
         params,
         rest: sig.params.last().is_some_and(|p| p.rest),
+        list: list_entry(&rec.name),
     }
 }
 
@@ -489,6 +550,15 @@ impl<'h> Run<'h> {
             span,
             vec![("name", name.to_string())],
         )
+    }
+
+    /// The two steps of an element (`02-evaluation.md` 5.6), then the
+    /// element `i` of `recv`, read, for a call of a lambda.
+    #[cfg_attr(debug_assertions, inline)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn next_element(&mut self, recv: &Value<'h>, i: usize, span: Range) -> R<'h, Value<'h>> {
+        self.charge(2)?;
+        self.read(recv.elem(i), span)
     }
 
     /// A failed element scan charges 1 step for each element tested, the
@@ -741,6 +811,13 @@ impl<'h> Run<'h> {
         }
     }
 
+    /// A library method: the argument tests, the call's step, then the
+    /// entry.
+    ///
+    /// Stack: each entry is a function of its own. The frame of an entry
+    /// that calls a lambda is live while the lambda runs, so it holds only
+    /// its loop; what an entry does after the loop, and every entry that
+    /// calls no lambda, is out of line (`DESIGN.md`, Stack).
     pub(super) fn lib_method(
         &mut self,
         idx: usize,
@@ -752,21 +829,28 @@ impl<'h> Run<'h> {
         let rec = &records()[idx];
         self.arg_tests(idx, args, span)?;
         self.charge(1)?;
+        let name = rec.name.as_str();
+        let recv = &recv;
         match rec.receiver {
             Some(Kind::String) => self.string_method(rec, recv, args, span),
-            Some(Kind::Map) if rec.name == "mapValues" => {
-                self.map_values(recv, args, span, measure)
-            }
+            Some(Kind::Map) if name == "mapValues" => self.map_values(recv, args, span, measure),
             Some(Kind::Map) => self.map_method(rec, recv, span),
             _ if rec.queries => self.query_method(rec, recv, args, span, measure),
-            _ => self.list_method(rec, recv, args, span, measure),
+            _ => match plans()[idx].list {
+                ListEntry::Map => self.list_map(name, recv, args, span, measure),
+                ListEntry::Filter => self.list_filter(name, recv, args, span, measure),
+                ListEntry::Each(op) => self.list_each(op, name, recv, args, span, measure),
+                ListEntry::Reduce => self.list_reduce(name, recv, args, span, measure),
+                ListEntry::Plain => self.list_plain(name, recv, args, span),
+            },
         }
     }
 
+    #[inline(never)]
     fn string_method(
         &mut self,
         rec: &Record,
-        recv: Value<'h>,
+        recv: &Value<'h>,
         args: &[Arg<'h>],
         span: Range,
     ) -> R<'h, Value<'h>> {
@@ -927,17 +1011,15 @@ impl<'h> Run<'h> {
 
     /// F7 6.9: `mapValues`. The key order is charged first; then each
     /// entry, in key order: 2 steps, then `f(value, key)`.
+    #[inline(never)]
     fn map_values(
         &mut self,
-        recv: Value<'h>,
+        recv: &Value<'h>,
         args: &[Arg<'h>],
         span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
-        let es = recv.entries();
-        let n = es.len() as u64;
-        let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
-        self.charge(log2_ceil(n) * (n + s))?;
+        let es = self.entries_in_order(recv)?;
         let f = self.lam(args, 0, span)?;
         let f = self.callback(f);
         let mut out = Vec::with_capacity(es.len());
@@ -947,15 +1029,27 @@ impl<'h> Run<'h> {
             let r = self.call2(&f, "mapValues", i, v, Value::Str(k.clone()), measure, span)?;
             out.push((k, r));
         }
-        self.alloc(1 + 2 * n)?;
+        self.alloc(1 + 2 * out.len() as u64)?;
         Ok(Value::Map(Rc::new(MapVal(out))))
     }
 
-    /// F7 6.4 to 6.8: `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy`.
+    /// The entries of a map in key order, the order charged.
+    #[inline(never)]
+    fn entries_in_order(&mut self, m: &Value<'h>) -> R<'h, Vec<(Str<'h>, Value<'h>)>> {
+        let es = m.entries();
+        let n = es.len() as u64;
+        let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
+        self.charge(log2_ceil(n) * (n + s))?;
+        Ok(es)
+    }
+
+    /// F7 6.4 to 6.8: `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy`:
+    /// the loop of calls, then the result (`query_result`).
+    #[inline(never)]
     fn query_method(
         &mut self,
         rec: &Record,
-        recv: Value<'h>,
+        recv: &Value<'h>,
         args: &[Arg<'h>],
         span: Range,
         measure: u32,
@@ -968,20 +1062,29 @@ impl<'h> Run<'h> {
         let mut keys: Vec<Value<'h>> = Vec::with_capacity(n);
         let string_keys = matches!(name, "indexBy" | "countBy");
         for i in 0..n {
-            self.charge(2)?;
-            let e = self.read(recv.elem(i), span)?;
+            let e = self.next_element(recv, i, span)?;
             let k = self.call2(&f, name, i, e.dup(), Value::Num(i as f64), measure, span)?;
             if string_keys && k.kind() != Kind::String {
-                return Err(fail(
-                    "wrong-kind",
-                    "result",
-                    span,
-                    vec![("name", name.to_string()), ("kind", kind_p(&k))],
-                ));
+                return Err(self.result_kind(name, &k, span));
             }
             elems.push(e);
             keys.push(k);
         }
+        self.query_result(name, n, elems, keys, span)
+    }
+
+    /// The end of a query entry: the keys' test and charge, then the
+    /// entry's result.
+    #[inline(never)]
+    fn query_result(
+        &mut self,
+        name: &str,
+        n: usize,
+        elems: Vec<Value<'h>>,
+        keys: Vec<Value<'h>>,
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        let string_keys = matches!(name, "indexBy" | "countBy");
         if !string_keys {
             if let Err((_, k)) = ordered(keys.iter()) {
                 return Err(self.unordered(name, k, span));
@@ -1059,7 +1162,8 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn map_method(&mut self, rec: &Record, recv: Value<'h>, _span: Range) -> R<'h, Value<'h>> {
+    #[inline(never)]
+    fn map_method(&mut self, rec: &Record, recv: &Value<'h>, _span: Range) -> R<'h, Value<'h>> {
         let es = recv.entries();
         let n = es.len() as u64;
         let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
@@ -1091,210 +1195,268 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn list_method(
+    /// `map`: for each element, 2 steps, then the call.
+    #[inline(never)]
+    fn list_map(
         &mut self,
-        rec: &Record,
-        recv: Value<'h>,
+        name: &str,
+        recv: &Value<'h>,
         args: &[Arg<'h>],
         span: Range,
         measure: u32,
     ) -> R<'h, Value<'h>> {
-        let name = rec.name.as_str();
+        let n = recv.len().unwrap_or(0);
+        let f = self.lam(args, 0, span)?;
+        let f = self.callback(f);
+        let mut out: Vec<Value<'h>> = Vec::with_capacity(n);
+        for i in 0..n {
+            let e = self.next_element(recv, i, span)?;
+            out.push(self.call2(&f, name, i, e, Value::Num(i as f64), measure, span)?);
+        }
+        self.alloc(1 + out.len() as u64)?;
+        Ok(Value::list(out))
+    }
+
+    /// `filter`: as `map`, keeping the elements whose result is truthy.
+    #[inline(never)]
+    fn list_filter(
+        &mut self,
+        name: &str,
+        recv: &Value<'h>,
+        args: &[Arg<'h>],
+        span: Range,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let n = recv.len().unwrap_or(0);
+        let f = self.lam(args, 0, span)?;
+        let f = self.callback(f);
+        let mut out: Vec<Value<'h>> = Vec::new();
+        for i in 0..n {
+            let e = self.next_element(recv, i, span)?;
+            let r = self.call2(&f, name, i, e.dup(), Value::Num(i as f64), measure, span)?;
+            keep_if(&mut out, e, r);
+        }
+        self.alloc(1 + out.len() as u64)?;
+        Ok(Value::list(out))
+    }
+
+    /// `flatMap`, `some`, `every`, `find`, `count`, `sortBy` and `groupBy`:
+    /// the loop of calls (`each_result` takes each result), then the
+    /// entry's result (`each_done`).
+    #[inline(never)]
+    fn list_each(
+        &mut self,
+        op: Each,
+        name: &str,
+        recv: &Value<'h>,
+        args: &[Arg<'h>],
+        span: Range,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let n = recv.len().unwrap_or(0);
+        let f = self.lam(args, 0, span)?;
+        let mut g = Gathered {
+            out: Vec::new(),
+            keys: Vec::new(),
+            counted: 0,
+        };
+        let f = self.callback(f);
+        // The element is kept only where the result uses it.
+        let keep = matches!(op, Each::Find | Each::GroupBy | Each::SortBy);
+        for i in 0..n {
+            let mut e = self.next_element(recv, i, span)?;
+            let arg = if keep {
+                e.dup()
+            } else {
+                std::mem::replace(&mut e, Value::Null)
+            };
+            let r = self.call2(&f, name, i, arg, Value::Num(i as f64), measure, span)?;
+            if let Some(v) = self.each_result(op, name, r, e, &mut g, span)? {
+                return Ok(v);
+            }
+        }
+        self.each_done(op, name, n, g, args, span)
+    }
+
+    /// The result `r` of the call for element `e` in `list_each`: kept, or
+    /// the entry's result when it is known now.
+    #[inline(never)]
+    fn each_result(
+        &mut self,
+        op: Each,
+        name: &str,
+        r: Value<'h>,
+        e: Value<'h>,
+        g: &mut Gathered<'h>,
+        span: Range,
+    ) -> R<'h, Option<Value<'h>>> {
+        match op {
+            Each::FlatMap => {
+                if r.kind() != Kind::List {
+                    return Err(self.result_kind(name, &r, span));
+                }
+                for j in 0..r.len().unwrap_or(0) {
+                    g.out.push(r.elem(j));
+                }
+            }
+            Each::Some if r.truthy() => return Ok(Some(Value::Bool(true))),
+            Each::Every if !r.truthy() => return Ok(Some(Value::Bool(false))),
+            Each::Find if r.truthy() => return Ok(Some(e)),
+            Each::Count => {
+                g.counted += r.truthy() as usize;
+                release(r)
+            }
+            Each::Some | Each::Every | Each::Find => {
+                release(r);
+                release(e)
+            }
+            Each::GroupBy => {
+                if r.kind() != Kind::String {
+                    return Err(self.result_kind(name, &r, span));
+                }
+                g.keys.push(r);
+                g.out.push(e);
+            }
+            Each::SortBy => {
+                g.keys.push(r);
+                g.out.push(e);
+            }
+        }
+        Ok(None)
+    }
+
+    /// The end of `list_each`, after the last element.
+    #[inline(never)]
+    fn each_done(
+        &mut self,
+        op: Each,
+        name: &str,
+        n: usize,
+        g: Gathered<'h>,
+        args: &[Arg<'h>],
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        match op {
+            Each::FlatMap => {
+                let k = g.out.len() as u64;
+                self.charge(k)?;
+                self.alloc(1 + k)?;
+                Ok(Value::list(g.out))
+            }
+            Each::Some => Ok(Value::Bool(false)),
+            Each::Every => Ok(Value::Bool(true)),
+            Each::Find => Ok(Value::Null),
+            Each::Count => Ok(Value::Num(g.counted as f64)),
+            Each::SortBy => self.sorted_by_keys(name, n, g.keys, g.out, args, span),
+            Each::GroupBy => self.grouped_by_keys(n, g.keys, g.out),
+        }
+    }
+
+    /// The result of a callback that is not of the kind the entry needs.
+    #[cold]
+    #[inline(never)]
+    fn result_kind(&self, name: &str, r: &Value<'h>, span: Range) -> Box<Fail<'h>> {
+        fail(
+            "wrong-kind",
+            "result",
+            span,
+            vec![("name", name.to_string()), ("kind", kind_p(r))],
+        )
+    }
+
+    /// The end of `sortBy`: the keys' test and charge, then the elements in
+    /// the order of their keys.
+    #[inline(never)]
+    fn sorted_by_keys(
+        &mut self,
+        name: &str,
+        n: usize,
+        keys: Vec<Value<'h>>,
+        out: Vec<Value<'h>>,
+        args: &[Arg<'h>],
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        if let Err((_, k)) = ordered(keys.iter()) {
+            return Err(self.unordered(name, k, span));
+        }
+        let nn = n as u64;
+        let s = sz_all(keys.iter().filter_map(|k| k.as_str()));
+        self.charge(log2_ceil(nn) * (nn + s))?;
+        self.alloc(1 + nn)?;
+        let mut idx: Vec<usize> = (0..n).collect();
+        // F7 6.3: `"desc"` is a stable sort in descending
+        // order of the keys.
+        let desc = matches!(self.val(args, 1), Some(Value::Str(d)) if d.as_str() == "desc");
+        if desc {
+            idx.sort_by(|&a, &b| cmp(&keys[b], &keys[a]));
+        } else {
+            idx.sort_by(|&a, &b| cmp(&keys[a], &keys[b]));
+        }
+        Ok(Value::list(idx.into_iter().map(|i| out[i].dup()).collect()))
+    }
+
+    /// The end of `groupBy`: the elements in groups by key.
+    #[inline(never)]
+    fn grouped_by_keys(
+        &mut self,
+        n: usize,
+        keys: Vec<Value<'h>>,
+        out: Vec<Value<'h>>,
+    ) -> R<'h, Value<'h>> {
+        let s = sz_all(keys.iter().filter_map(|k| k.as_str()));
+        self.charge(s)?;
+        let mut seen = Distinct::new();
+        let mut groups: Vec<(Str<'h>, Vec<Value<'h>>)> = Vec::new();
+        for (k, e) in keys.iter().zip(out.iter()) {
+            let Value::Str(ks) = k else { continue };
+            let (i, new) = seen.index(ks.as_str());
+            if new {
+                groups.push((ks.clone(), Vec::new()));
+            }
+            groups[i].1.push(e.dup());
+        }
+        let g = groups.len() as u64;
+        self.alloc(1 + 3 * g + n as u64)?;
+        let es: Vec<(Str<'h>, Value<'h>)> = groups
+            .into_iter()
+            .map(|(k, list)| (k, Value::list(list)))
+            .collect();
+        Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+    }
+
+    /// `reduce`: for each element, 2 steps, then the call with the
+    /// accumulator.
+    #[inline(never)]
+    fn list_reduce(
+        &mut self,
+        name: &str,
+        recv: &Value<'h>,
+        args: &[Arg<'h>],
+        span: Range,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let n = recv.len().unwrap_or(0);
+        let f = self.lam(args, 0, span)?;
+        let f = self.callback(f);
+        let mut acc = self.val(args, 1).unwrap_or(Value::Null);
+        for i in 0..n {
+            let e = self.next_element(recv, i, span)?;
+            acc = self.call3(&f, name, i, [acc, e, Value::Num(i as f64)], measure, span)?;
+        }
+        Ok(acc)
+    }
+
+    /// The methods of a list that call no lambda.
+    #[inline(never)]
+    fn list_plain(
+        &mut self,
+        name: &str,
+        recv: &Value<'h>,
+        args: &[Arg<'h>],
+        span: Range,
+    ) -> R<'h, Value<'h>> {
         let n = recv.len().unwrap_or(0);
         match name {
-            // `map` and `filter`, the most frequent, each in a loop of its
-            // own: the same steps as the loop below.
-            "map" => {
-                let f = self.lam(args, 0, span)?;
-                let f = self.callback(f);
-                let mut out: Vec<Value<'h>> = Vec::with_capacity(n);
-                for i in 0..n {
-                    self.charge(2)?;
-                    let e = self.read(recv.elem(i), span)?;
-                    out.push(self.call2(&f, name, i, e, Value::Num(i as f64), measure, span)?);
-                }
-                self.alloc(1 + out.len() as u64)?;
-                Ok(Value::list(out))
-            }
-            "filter" => {
-                let f = self.lam(args, 0, span)?;
-                let f = self.callback(f);
-                let mut out: Vec<Value<'h>> = Vec::new();
-                for i in 0..n {
-                    self.charge(2)?;
-                    let e = self.read(recv.elem(i), span)?;
-                    let r =
-                        self.call2(&f, name, i, e.dup(), Value::Num(i as f64), measure, span)?;
-                    if r.truthy() {
-                        out.push(e)
-                    } else {
-                        release(e)
-                    }
-                    release(r)
-                }
-                self.alloc(1 + out.len() as u64)?;
-                Ok(Value::list(out))
-            }
-            "flatMap" | "some" | "every" | "find" | "count" | "sortBy" | "groupBy" => {
-                let f = self.lam(args, 0, span)?;
-                let mut out: Vec<Value<'h>> = Vec::new();
-                let mut keys: Vec<Value<'h>> = Vec::new();
-                let mut counted = 0usize;
-                #[derive(Clone, Copy, PartialEq)]
-                enum Op {
-                    Map,
-                    Filter,
-                    FlatMap,
-                    Some,
-                    Every,
-                    Find,
-                    Count,
-                    GroupBy,
-                    SortBy,
-                }
-                let op = match name {
-                    "map" => {
-                        out.reserve(n);
-                        Op::Map
-                    }
-                    "filter" => Op::Filter,
-                    "flatMap" => Op::FlatMap,
-                    "some" => Op::Some,
-                    "every" => Op::Every,
-                    "find" => Op::Find,
-                    "count" => Op::Count,
-                    "groupBy" => Op::GroupBy,
-                    _ => Op::SortBy,
-                };
-                let f = self.callback(f);
-                // The element is kept only where the result uses it.
-                let keep = matches!(op, Op::Filter | Op::Find | Op::GroupBy | Op::SortBy);
-                for i in 0..n {
-                    self.charge(2)?;
-                    let e = self.read(recv.elem(i), span)?;
-                    let (arg, e) = if keep { (e.dup(), e) } else { (e, Value::Null) };
-                    let r = self.call2(&f, name, i, arg, Value::Num(i as f64), measure, span)?;
-                    match op {
-                        Op::Map => out.push(r),
-                        Op::Filter => {
-                            if r.truthy() {
-                                out.push(e)
-                            } else {
-                                release(e)
-                            }
-                            release(r)
-                        }
-                        Op::FlatMap => {
-                            if r.kind() != Kind::List {
-                                return Err(fail(
-                                    "wrong-kind",
-                                    "result",
-                                    span,
-                                    vec![("name", name.to_string()), ("kind", kind_p(&r))],
-                                ));
-                            }
-                            for j in 0..r.len().unwrap_or(0) {
-                                out.push(r.elem(j));
-                            }
-                        }
-                        Op::Some if r.truthy() => return Ok(Value::Bool(true)),
-                        Op::Every if !r.truthy() => return Ok(Value::Bool(false)),
-                        Op::Find if r.truthy() => return Ok(e),
-                        Op::Count => {
-                            counted += r.truthy() as usize;
-                            release(r)
-                        }
-                        Op::Some | Op::Every | Op::Find => {
-                            release(r);
-                            release(e)
-                        }
-                        Op::GroupBy => {
-                            if r.kind() != Kind::String {
-                                return Err(fail(
-                                    "wrong-kind",
-                                    "result",
-                                    span,
-                                    vec![("name", name.to_string()), ("kind", kind_p(&r))],
-                                ));
-                            }
-                            keys.push(r);
-                            out.push(e);
-                        }
-                        Op::SortBy => {
-                            keys.push(r);
-                            out.push(e);
-                        }
-                    }
-                }
-                match name {
-                    "map" | "filter" => {
-                        self.alloc(1 + out.len() as u64)?;
-                        Ok(Value::list(out))
-                    }
-                    "flatMap" => {
-                        let k = out.len() as u64;
-                        self.charge(k)?;
-                        self.alloc(1 + k)?;
-                        Ok(Value::list(out))
-                    }
-                    "some" => Ok(Value::Bool(false)),
-                    "every" => Ok(Value::Bool(true)),
-                    "find" => Ok(Value::Null),
-                    "count" => Ok(Value::Num(counted as f64)),
-                    "sortBy" => {
-                        if let Err((_, k)) = ordered(keys.iter()) {
-                            return Err(self.unordered(name, k, span));
-                        }
-                        let nn = n as u64;
-                        let s = sz_all(keys.iter().filter_map(|k| k.as_str()));
-                        self.charge(log2_ceil(nn) * (nn + s))?;
-                        self.alloc(1 + nn)?;
-                        let mut idx: Vec<usize> = (0..n).collect();
-                        // F7 6.3: `"desc"` is a stable sort in descending
-                        // order of the keys.
-                        let desc = matches!(self.val(args, 1), Some(Value::Str(d)) if d.as_str() == "desc");
-                        if desc {
-                            idx.sort_by(|&a, &b| cmp(&keys[b], &keys[a]));
-                        } else {
-                            idx.sort_by(|&a, &b| cmp(&keys[a], &keys[b]));
-                        }
-                        Ok(Value::list(idx.into_iter().map(|i| out[i].dup()).collect()))
-                    }
-                    _ => {
-                        // groupBy
-                        let s = sz_all(keys.iter().filter_map(|k| k.as_str()));
-                        self.charge(s)?;
-                        let mut seen = Distinct::new();
-                        let mut groups: Vec<(Str<'h>, Vec<Value<'h>>)> = Vec::new();
-                        for (k, e) in keys.iter().zip(out.iter()) {
-                            let Value::Str(ks) = k else { continue };
-                            let (i, new) = seen.index(ks.as_str());
-                            if new {
-                                groups.push((ks.clone(), Vec::new()));
-                            }
-                            groups[i].1.push(e.dup());
-                        }
-                        let g = groups.len() as u64;
-                        self.alloc(1 + 3 * g + n as u64)?;
-                        let es: Vec<(Str<'h>, Value<'h>)> = groups
-                            .into_iter()
-                            .map(|(k, list)| (k, Value::list(list)))
-                            .collect();
-                        Ok(Value::Map(Rc::new(MapVal::from_written(es))))
-                    }
-                }
-            }
-            "reduce" => {
-                let f = self.lam(args, 0, span)?;
-                let f = self.callback(f);
-                let mut acc = self.val(args, 1).unwrap_or(Value::Null);
-                for i in 0..n {
-                    self.charge(2)?;
-                    let e = self.read(recv.elem(i), span)?;
-                    acc = self.call3(&f, name, i, [acc, e, Value::Num(i as f64)], measure, span)?;
-                }
-                Ok(acc)
-            }
             "sum" => {
                 let mut xs = Vec::with_capacity(n);
                 for i in 0..n {
@@ -1320,7 +1482,7 @@ impl<'h> Run<'h> {
                 Ok(Value::Num(t))
             }
             "min" | "max" | "sort" | "unique" => {
-                let xs = self.ordered_scan(name, &recv, span)?;
+                let xs = self.ordered_scan(name, recv, span)?;
                 let nn = n as u64;
                 let s = sz_all(xs.iter().filter_map(|v| v.as_str()));
                 match name {

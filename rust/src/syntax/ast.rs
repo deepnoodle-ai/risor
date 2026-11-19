@@ -459,4 +459,89 @@ impl Ast {
         });
         id
     }
+
+    /// For each node, whether it is the last step of a coalesced read under
+    /// `??` (`01-language.md` 6.6): a `Member` or `Index` node that gives
+    /// null, not `missing-field`, for an absent key. The rule reads the
+    /// nodes only, so the checker and a run agree.
+    pub fn coalesced_reads(&self) -> Vec<bool> {
+        let n = self.nodes.len();
+        let is_coalesce = |k: &NodeKind| {
+            matches!(
+                k,
+                NodeKind::Binary {
+                    op: BinaryOp::Coalesce,
+                    ..
+                }
+            )
+        };
+        // The `??` nodes that are an operand of a `??` node: each belongs
+        // to the chain of the node above it.
+        let mut operand = vec![false; n];
+        for node in &self.nodes {
+            if let NodeKind::Binary {
+                op: BinaryOp::Coalesce,
+                x,
+                y,
+            } = &node.kind
+            {
+                operand[x.index()] = true;
+                operand[y.index()] = true;
+            }
+        }
+        let mut out = vec![false; n];
+        let mut stack = Vec::new();
+        let mut operands = Vec::new();
+        for (i, node) in self.nodes.iter().enumerate() {
+            if !is_coalesce(&node.kind) || operand[i] {
+                continue;
+            }
+            // The operands of the chain in source order, by a loop: a long
+            // chain opens no level.
+            operands.clear();
+            stack.push(NodeId(i as u32));
+            while let Some(id) = stack.pop() {
+                match self.kind(id) {
+                    NodeKind::Binary {
+                        op: BinaryOp::Coalesce,
+                        x,
+                        y,
+                    } => {
+                        stack.push(*y);
+                        stack.push(*x);
+                    }
+                    _ => operands.push(id),
+                }
+            }
+            // Every operand but the last.
+            operands.pop();
+            for &o in &operands {
+                if let Some(s) = self.coalesced_step(o) {
+                    out[s.index()] = true;
+                }
+            }
+        }
+        out
+    }
+
+    /// The last step of an operand of `??` when the operand is a coalesced
+    /// read: a plain `Member`, or a plain `Index` by a `String` node, with
+    /// or without an `OptChain` around it.
+    fn coalesced_step(&self, id: NodeId) -> Option<NodeId> {
+        let id = match self.kind(id) {
+            NodeKind::OptChain { x } => *x,
+            _ => id,
+        };
+        match self.kind(id) {
+            NodeKind::Member {
+                optional: false, ..
+            } => Some(id),
+            NodeKind::Index {
+                index,
+                optional: false,
+                ..
+            } if matches!(self.kind(*index), NodeKind::String { .. }) => Some(id),
+            _ => None,
+        }
+    }
 }
