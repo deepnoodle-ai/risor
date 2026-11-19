@@ -409,7 +409,7 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
 1. The entries of the `parse` phase are in `suite/messages-parse.json`, and
    those of the `check` phase in `suite/messages-check.json`. Each file has the
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
-2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 96
+2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 97
    templates. `messages-check.json` has one entry for each of the 29 check codes
    (`05-types.md` 16.1, F4 6.7), with 71 templates.
 3. An entry of either file has no field `caught`.
