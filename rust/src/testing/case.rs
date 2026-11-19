@@ -1776,7 +1776,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
                     .ok_or_else(|| format!("limits.{lk} is not a whole number"))?;
                 match lk.as_str() {
                     "steps" | "allocation" if n >= 0.0 => {}
-                    "depth" if (1.0..=1000.0).contains(&n) => {}
+                    "depth" if (1.0..=400.0).contains(&n) => {}
                     "steps" | "allocation" | "depth" => {
                         return Err(format!("limits.{lk} is out of range"))
                     }

@@ -136,8 +136,8 @@ enum Value<'h> {
   of `List` and `Map` get a `Drop` that moves each child it owns alone onto a
   work list and drops them in a loop.
 - **Walks** (`==`, rendering, the JSON text) count nesting against the depth
-  limit (`02-evaluation.md`), so their recursion is bounded by it; if the
-  measured stack at depth 1,000 is too large, they move to an explicit stack.
+  limit (`02-evaluation.md`), so their recursion is bounded by it. At the
+  largest limit, 400, their stack is small beside that of calls (Stack).
 - **Memory (`02-evaluation.md` 8.5 item 2).** On 64-bit targets (`Value<'h>` is
   24 bytes, `Str<'h>` is 24 bytes), the heap memory a run creates as values of
   the language is at most 208 bytes per allocation unit charged plus 0 bytes per
@@ -262,8 +262,7 @@ and macOS usually has 8 MiB.
 | Depth limit | Optimized | Unoptimized |
 | --- | --- | --- |
 | 200, the default | 1 MiB (2.6 times the need) | 2 MiB (2.0 times) |
-| 400 | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
-| 1,000, while the limit allows it (measured, not tested) | 3 MiB (2.0 times) | 8 MiB (1.9 times) |
+| 400, the largest | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
 
 **Measured.** rustc 1.100.0 (the pinned toolchain), aarch64 macOS; optimized
 is the release profile and unoptimized the dev profile. The least stack, to
@@ -278,7 +277,6 @@ less; `filter` and `reduce`, 4 to 17% less.
 | Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 83 KiB | 611 KiB |
 | Run the worst form at depth limit 200 | 387 KiB | 1,043 KiB |
 | Run the worst form at depth limit 400 | 691 KiB | 1,859 KiB |
-| Run the worst form at depth limit 1,000 | 1,555 KiB | 4,289 KiB |
 
 The cost of one unit: the stack of a chain at the limit divided by the limit,
 optimized at depth 400 and unoptimized at depth 200, so it carries a share of

@@ -29,16 +29,16 @@
 //! | Depth limit | Optimized build | Unoptimized build |
 //! | --- | --- | --- |
 //! | 200, the default | 1 MiB | 2 MiB |
-//! | 400 | 2 MiB | 4 MiB |
-//! | 1,000 | 3 MiB | 8 MiB |
+//! | 400, the largest | 2 MiB | 4 MiB |
 //!
-//! Each figure is at least 1.5 times what the deepest program that limit
-//! allows was measured to need. The figures for 200 and 400 are tested on two
-//! thirds of the stack; `DESIGN.md` has the measurements. Parsing needs less.
+//! 400 is the largest limit. Each figure is at least 1.5 times what the
+//! deepest program that limit allows was measured to need, and it is tested
+//! on two thirds of the stack; `DESIGN.md` has the measurements. Parsing
+//! needs less.
 //!
 //! A thread that Rust spawns has 2 MiB unless it asks for more. A host that
-//! runs programs on threads with less, or at a higher limit, runs each on a
-//! thread of its own:
+//! runs programs on threads with less, or an unoptimized build at limit 400,
+//! runs each on a thread of its own:
 //!
 //! ```
 //! use risor::{parse, CompileOptions, Env, NoVars};

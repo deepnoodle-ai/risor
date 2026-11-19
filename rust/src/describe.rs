@@ -329,9 +329,9 @@ impl Env {
                 None if null_or("allocation") => None,
                 None => defaults.allocation,
             },
-            // A depth outside 1 to 1,000 is reported by the builder.
+            // A depth outside 1 to 400 is reported by the builder.
             depth: match depth {
-                Some(n) if n <= 1000.0 => n as u32,
+                Some(n) if n <= 400.0 => n as u32,
                 Some(_) => 0,
                 None => defaults.depth,
             },

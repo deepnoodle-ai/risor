@@ -572,10 +572,10 @@ fn flat_programs_run() {
     );
 }
 
-/// A depth limit outside 1 to 1,000 is `bad-limit` (`03-host.md` 3.3.4).
+/// A depth limit outside 1 to 400 is `bad-limit` (`03-host.md` 3.3.4).
 #[test]
 fn a_depth_limit_out_of_range_is_bad_limit() {
-    for depth in [0, 1001] {
+    for depth in [0, 401, 1000] {
         let e = Env::builder()
             .limits(Limits {
                 depth,
@@ -586,7 +586,7 @@ fn a_depth_limit_out_of_range_is_bad_limit() {
             .expect("the environment is refused");
         assert_eq!(e.first().code, "bad-limit");
     }
-    for depth in [1, 1000] {
+    for depth in [1, 400] {
         assert!(Env::builder()
             .limits(Limits {
                 depth,
