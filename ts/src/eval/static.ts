@@ -237,9 +237,10 @@ class Walker {
     this.typeLineNames.add(l.name);
     const t = this.annotation(l.type);
     if (clash) return;
-    // A line that stands replaces an earlier line of its name; one whose type has a diagnostic declares nothing.
+    // A line that stands replaces an earlier line of its name (f16 3.1 item 4, R240); one whose type has a
+    // diagnostic declares nothing, nor one whose type the repair supplied (f16 7.3 item 5).
     const named = new Map(this.typeNames.named);
-    if (t === null) named.delete(l.name);
+    if (t === null || l.supplied === true) named.delete(l.name);
     else {
       named.set(l.name, t);
       this.res.typeLines.set(l, t);

@@ -400,8 +400,10 @@ class Parser {
     const name = this.peek(1);
     const after = this.peek(2);
     if (name.kind !== "word") return false;
-    // f16 7.2 item 7: at the end of the text, `type` and an upper-case word (the hole) and nothing more begins a type line.
-    if (name.text === HOLE) return /^[A-Z]/.test(name.holePrefix ?? "") && after.cut === true && (after.kind === "eof" || after.kind === "interpEnd");
+    // f16 7.2 item 7 (R242): at the end of the text, `type` and one word and nothing more begins a type line,
+    // whatever the word's first letter; the word may be the hole, empty or not. What follows is the end, or a
+    // token the repair inserted there (f12 3.3).
+    if (after.cut === true) return true;
     return /^[A-Z]/.test(name.text) && this.isP(after, "=");
   }
 
@@ -413,9 +415,13 @@ class Parser {
     if (n.text !== HOLE && !/^[A-Z][A-Za-z0-9_]+$/.test(n.text)) this.badType(n);
     this.advance();
     this.expect("=");
+    // f16 7.3 item 5: a type the repair supplied (its first token was inserted at the end) declares nothing.
+    const supplied = this.cur.cut === true;
     const type = this.annotation();
     this.expect(";");
-    return { name: n.text, nameSpan: { start: n.start, end: n.end }, type, span: this.span(start) };
+    const line: A.TypeLine = { name: n.text, nameSpan: { start: n.start, end: n.end }, type, span: this.span(start) };
+    if (supplied) line.supplied = true;
+    return line;
   }
 
   /** Package F16: a program type after the `:` of an annotation, or in a type line (f16 2.1). */

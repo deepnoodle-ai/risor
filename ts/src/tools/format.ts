@@ -972,10 +972,16 @@ class Formatter {
     const lp = this.at(fn.span.start);
     const rp = this.match.get(lp)!;
     const out: Doc[] = [this.tok(lp)];
+    // f16 7.1 item 4: a parameter is as a field of a program type: its trailing comments go after its comma.
+    let trail: Doc = "";
     fn.params.forEach((fp, n) => {
       const w = this.at(fp.span.start);
-      if (n > 0) out.push(this.tok(w - 1), SP);
-      out.push(this.tok(w), this.tok(w + 1), SP, this.typeDoc(fp.type.span));
+      if (n > 0) out.push(this.tok(w - 1, { noTrail: true }), trail, this.trailMark(w - 1), SP);
+      const el = this.element([this.tok(w), this.tok(w + 1), SP, this.typeDoc(fp.type.span)]);
+      if (n < fn.params.length - 1) {
+        out.push(el.d);
+        trail = el.trail;
+      } else out.push(el.d, el.trail);
     });
     out.push(this.tok(rp), SP, this.tok(rp + 1), SP, this.typeDoc(fn.resultSpan));
     return out;
@@ -1026,15 +1032,27 @@ class Formatter {
   private typeDoc(span: Span): Doc {
     let i = this.at(span.start);
     const out: Doc[] = [];
+    // A comma that is written: one before `}` is dropped.
+    const keptComma = (j: number): boolean => {
+      const c = this.toks[j];
+      if (c === undefined || c.start >= span.end || c.kind !== "punct" || c.text !== ",") return false;
+      const n = this.toks[j + 1];
+      return !(n !== undefined && n.text === "}" && n.start < span.end + 1);
+    };
+    // F12 2.12 item 5: the trailing comments of a field's last token are written after its comma.
+    let moved = -1;
     while (i < this.toks.length && this.toks[i].start < span.end) {
       const t = this.toks[i];
-      const next = this.toks[i + 1];
       if (t.kind === "punct" && t.text === ",") {
-        if (next !== undefined && next.text === "}" && next.start < span.end + 1) {
+        if (!keptComma(i)) {
           i++;
           continue;
         }
-        out.push(this.tok(i), SP);
+        out.push(this.tok(i, { noTrail: true }), moved >= 0 ? this.trailMark(moved) : "", this.trailMark(i), SP);
+        moved = -1;
+      } else if (keptComma(i + 1)) {
+        out.push(this.tok(i, { noTrail: true }));
+        moved = i;
       } else if (t.kind === "punct" && t.text === "|") out.push(SP, this.tok(i), SP);
       else if (t.kind === "punct" && t.text === ":") out.push(this.tok(i), SP);
       else out.push(this.tok(i));

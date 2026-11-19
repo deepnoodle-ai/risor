@@ -580,8 +580,8 @@ class Checker {
       this.lambdaFacts.set(id, f);
       if (checkedOnce(l)) {
         // f16 3.4: checked once, where it is written, under the facts there; its sites are kept.
-        // One check against 20.3, and its nesting where it is written against 20.2.
-        this.onceTypes.set(id, this.useLimit(l, l.level - 1, c.pattern.span) ? this.lambdaBody(l, [], f, "once") : NEVER);
+        // One check against 20.3, and its nesting where it is written against 20.2; a check-limit is on the whole lambda.
+        this.onceTypes.set(id, this.useLimit(l, l.level - 1, l.span) ? this.lambdaBody(l, [], f, "once") : NEVER);
         return f;
       }
       if (!this.used.has(id)) {
