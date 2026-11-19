@@ -602,6 +602,9 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 		kept, keptNull := 0, false // the literals 11.2 does not ignore
 		var strs []string
 		allStrings := !a.Default && len(a.Literals) > 0
+		// seen holds the literals of the plain arms so far: a guarded arm's
+		// own literals are dropped from it after the arm (F17 4.2).
+		plain := len(seen)
 		for _, l := range a.Literals {
 			dup := false
 			for _, prev := range seen {
@@ -630,6 +633,9 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 			if str, isStr := l.(*syntax.String); isStr {
 				strs = append(strs, str.Value)
 			}
+			if a.Guard != nil {
+				continue // a guarded arm covers nothing (F17 4.2)
+			}
 			switch l := l.(type) {
 			case *syntax.Null:
 				covered["null"] = true
@@ -643,7 +649,8 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 				covered["s:"+l.Value] = true
 			}
 		}
-		if a.Default {
+		guarded := a.Guard != nil
+		if a.Default && !guarded {
 			hasDefault = true
 		}
 		armFs := af
@@ -654,6 +661,17 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 			if h := types.Hit(mi, fkey, strs); !h.IsNever() {
 				armFs = af.with(facts{{p: fp, kind: factConforms, t: h, field: true}, nn(fp)})
 			}
+		}
+		if guarded {
+			// F17 4.2, 4.3: the guard is tested under the arm's facts, its
+			// true facts hold in the result, and the arm covers nothing and
+			// gives later arms nothing.
+			gt := c.synth(a.Guard, armFs)
+			c.tested(a.Guard, gt)
+			tf, _ := c.factsOf(a.Guard)
+			arms = append(arms, c.synth(a.Result, armFs.with(tf)))
+			seen = seen[:plain]
+			continue
 		}
 		arms = append(arms, c.synth(a.Result, armFs))
 		if fok && len(strs) > 0 {

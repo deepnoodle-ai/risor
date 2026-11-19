@@ -27,8 +27,12 @@ func TestTableIsCurrent(t *testing.T) {
 }
 
 func TestTable(t *testing.T) {
-	assert.Equal(t, len(Entries), 59) // 53 of Core and 6 of F7
-	assert.Equal(t, len(Functions), 15)
+	assert.Equal(t, len(Entries), 60) // 53 of Core, 6 of F7 and 1 of F17
+	assert.Equal(t, len(Functions), 16)
+	w := Functions["walk"]
+	assert.NotNil(t, w)
+	assert.Equal(t, w.Params[1].Callback, 2)
+	assert.Equal(t, w.Params[0].Any, true)
 	assert.Equal(t, len(GroupEntries), 19) // 8 of F6 and 11 of F13
 	assert.Equal(t, len(Constants), 2)
 	assert.Equal(t, *Constants["math.pi"].Value, 3.141592653589793)
@@ -45,5 +49,16 @@ func TestQueriesTableIsCurrent(t *testing.T) {
 	}
 	if string(data) != sourceQueriesJSON {
 		t.Fatal("queries_gen.go is stale: run go generate ./internal/... in go/")
+	}
+}
+
+// The generated copy of the F17 file must be the file of the suite.
+func TestRecursionTableIsCurrent(t *testing.T) {
+	data, err := os.ReadFile("../../../suite/library-recursion.json")
+	if err != nil {
+		t.Skip("suite/library-recursion.json is not there")
+	}
+	if string(data) != sourceRecursionJSON {
+		t.Fatal("recursion_gen.go is stale: run go generate ./internal/... in go/")
 	}
 }

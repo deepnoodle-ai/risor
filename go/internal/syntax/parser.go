@@ -1215,8 +1215,16 @@ func (p *parser) match() Node {
 				break
 			}
 		}
+		if p.tok.isWord("if") { // a guard, F17 2.1
+			p.next()
+			p.open(LParen)
+			arm.Guard = p.expr()
+			p.expect(RParen)
+			p.exit()
+		}
 		if p.tok.Kind != Arrow {
-			// After a Lit or _, not an Expr: no complete operand (F8 E7).
+			// After a Lit, _ or a guard, not an Expr: no complete operand
+			// (F8 E7; F17 2.4 item 3).
 			p.rule = "arm"
 		}
 		p.expect(Arrow)

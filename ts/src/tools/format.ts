@@ -901,8 +901,18 @@ class Formatter {
       });
     }
     const lastLitEnd = arm.isDefault ? this.toks[this.at(arm.span.start)].end : this.outer(arm.literals[arm.literals.length - 1]).end;
-    const arrow = this.find("=>", lastLitEnd);
-    return [parts, SP, this.tok(arrow), this.assigned(arm.result)];
+    // Package F17 (f17 7.1): sp "if" sp "(" g(i(S ‹guard›) S) ")", the guard a run that is unindented.
+    let guard: Doc = "";
+    let guardEnd = lastLitEnd;
+    if (arm.guard !== null) {
+      const ifI = this.find("if", lastLitEnd);
+      const lp = ifI + 1;
+      const rp = this.match.get(lp)!;
+      guard = [SP, this.tok(ifI), SP, this.tok(lp), group([indent([S, this.expr(arm.guard, { unindented: true })]), S]), this.tok(rp)];
+      guardEnd = this.toks[rp].end;
+    }
+    const arrow = this.find("=>", guardEnd);
+    return [parts, guard, SP, this.tok(arrow), this.assigned(arm.result)];
   }
 
   private lambda(e: A.Lambda): Doc {

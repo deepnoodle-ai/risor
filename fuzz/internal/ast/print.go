@@ -400,6 +400,11 @@ func (w *printer) expr(e Expr, need int) {
 					w.expr(l, LevelExpr)
 				}
 			}
+			if a.Guard != nil {
+				w.s(" if (")
+				w.expr(a.Guard, LevelExpr)
+				w.s(")")
+			}
 			w.s(" => ")
 			w.expr(a.Result, LevelExpr)
 		}

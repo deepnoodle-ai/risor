@@ -505,12 +505,16 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		}
 	case *syntax.Match:
 		w.expr(n.Subject, s)
+		// lits holds the literals of the plain arms so far. A literal of a
+		// guarded arm is compared with them and with the earlier literals
+		// of its own arm, and is not added (F17 4.1).
 		var lits []syntax.Node
 		sawDefault := false
 		for _, a := range n.Arms {
 			if sawDefault {
 				w.diag("unreachable-arm", a.Span())
 			}
+			plain := len(lits)
 			for _, l := range a.Literals {
 				for _, prev := range lits {
 					if litEqual(prev, l) {
@@ -520,7 +524,10 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 				}
 				lits = append(lits, l)
 			}
-			if a.Default {
+			if a.Guard != nil {
+				lits = lits[:plain]
+				w.expr(a.Guard, s)
+			} else if a.Default {
 				sawDefault = true
 			}
 			w.expr(a.Result, s)

@@ -606,8 +606,9 @@ fn chain(f0: &str, link: &str, top: &str, n: usize) -> String {
 }
 
 /// The deepest programs the limits allow, at the depth limits 200 and 400:
-/// a walk, calls by name, and calls of lambdas by library entries, with the
-/// source nesting limit inside the last call. Each runs on a thread with two
+/// a walk, calls by name, calls of lambdas by library entries with the
+/// source nesting limit inside the last call, and the library entry `walk`
+/// (F17 5.3). Each runs on a thread with two
 /// thirds of the stack `DESIGN.md` states for this build, so the stated
 /// figure has a margin of 1.5 (`03-host.md` 3.9.1).
 #[test]
@@ -739,6 +740,50 @@ fn deepest_programs(depth: u32) {
     };
     assert_eq!(f.code, "failed");
     assert_eq!(f.trace.len(), d);
+    // F17 5.3: `walk` keeps its place in a stack of its own, so a chain of
+    // nodes to the limit costs no host stack for its levels. The deepest
+    // node's callback runs at depth d - 1, with the source nesting limit in
+    // its body; one node more fails its depth test, with the one trace
+    // entry of the walk. The lambda stands in the call's parentheses, so 96
+    // levels of maps, the `?`, the brackets and the `+` reach the nesting
+    // limit.
+    let body = |last: usize| {
+        let mut s = format!("k < {last} ? [x + 1] : null");
+        for _ in 0..96 {
+            s = format!("{{a: {s}}}.a");
+        }
+        s
+    };
+    let src = format!("walk(0, (x, k) => {})[{}]", body(d - 1), d - 1);
+    assert_eq!(run(&src), Ok((d - 1).to_string()));
+    let p = program(&env, &format!("walk(0, (x, k) => {})", body(d)));
+    let Err(f) = p.outcome(&v).result else {
+        panic!("walk past the limit: no failure");
+    };
+    assert_eq!(f.code, "depth-exceeded");
+    assert_eq!(f.trace.len(), 1);
+    // Data nested to the limit, walked with the identity, and one level more.
+    // The walk stands at nesting 0, so its call measures 1.
+    let src = "const r = walk(v, x => x); len(r)";
+    assert_eq!(run(src), Ok(d.to_string()));
+    let p = program(&env, src);
+    assert_eq!(
+        outcome(&p, &v2),
+        Err("depth-exceeded".into()),
+        "walk of data past the limit"
+    );
+    // Walks inside walks: each link calls the one before from the callback
+    // of its walk, so a frame of each walk is live while the links under it
+    // run. A link adds 4 to the depth count: 1 for its walk's call of the
+    // callback, 3 for the call by name inside `? :` and `[...]`.
+    let link = "x => walk(x, (y, k) => k < 1 ? [{P}(y)] : null)[1]";
+    let links = (d - 1) / 4;
+    assert_eq!(
+        run(&chain("x => x", link, "{N}(1)", links + 1)),
+        Ok("1".into())
+    );
+    let p = program(&env, &chain("x => x", link, "{N}(1)", links + 2));
+    assert_eq!(outcome(&p, &v), Err("depth-exceeded".into()));
 }
 
 /// What opens no level costs no stack at run time either (13.2 rule 6).

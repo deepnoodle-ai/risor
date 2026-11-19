@@ -47,6 +47,7 @@ func TestPrintPrecedence(t *testing.T) {
 		{&Index{X: &Try{Body: &Branch{Result: id("a")}, Handler: &Branch{Result: id("b")}}, I: n("0"), Opt: true}, "(try { a } catch { b })?.[0]"},
 		{&Match{Subject: &Map{Entries: []Entry{{Kind: EntryWord, Key: "a", X: n("1")}}}, Arms: []Arm{{Default: true, Result: n("0")}}}, "match ({a: 1}) { _ => 0 }"},
 		{&Match{Subject: &Member{X: &Map{}, Name: "a", Opt: true}, Arms: []Arm{{Lits: []Expr{un("-", n("1")), &Str{Val: "x", Quote: '\''}}, Result: n("0")}}}, "match ({}?.a) { -1 | 'x' => 0 }"},
+		{&Match{Subject: id("x"), Arms: []Arm{{Lits: []Expr{n("1")}, Guard: &Cond{Test: id("a"), Then: id("b"), Else: id("c")}, Result: n("0")}, {Default: true, Guard: id("d"), Result: n("1")}}}, "match x { 1 if (a ? b : c) => 0, _ if (d) => 1 }"},
 		{&Call{Name: "f", Args: []Expr{&Lambda{Bare: "x", Body: &Cond{Test: id("x"), Then: n("1"), Else: n("2")}}}}, "f(x => x ? 1 : 2)"},
 		{&Template{Parts: []Part{{Text: "a`$"}, {X: &Template{Parts: []Part{{Text: "${"}, {X: id("b")}}}}}}, "`a\\`$${`\\${${b}`}`"},
 		{&Str{Val: "a\"'\n😀", Quote: '"', Esc: 2}, `"a\"'\n\uD83D\ude00"`},

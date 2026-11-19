@@ -133,7 +133,10 @@ type Try struct {
 type Arm struct {
 	Lits    []Expr
 	Default bool
-	Result  Expr
+	// Guard is the expression of "if (e)" before the arrow, nil when the
+	// arm has none (package F17, f17-recursion.md 2).
+	Guard  Expr
+	Result Expr
 }
 
 // Match is match subject { arms }.

@@ -276,10 +276,14 @@ type entryInfo struct {
 }
 
 type paramInfo struct {
-	test  bool
-	kinds [value.OpaqueKind + 1]bool
-	whole bool
-	lits  []string // a literal set (F7 6.2)
+	test bool
+	// callback marks a callback parameter. Its argument must be a lambda:
+	// at a method call the shape test makes sure of it; at a call of a
+	// function by name, the test of 2.6 (F17 5.5).
+	callback bool
+	kinds    [value.OpaqueKind + 1]bool
+	whole    bool
+	lits     []string // a literal set (F7 6.2)
 }
 
 var infos = func() map[*library.Entry]*entryInfo {
@@ -305,7 +309,7 @@ func newInfo(e *library.Entry) *entryInfo {
 	}
 	in := &entryInfo{impl: impl, minmax: !e.IsMethod() && (e.Name == "min" || e.Name == "max")}
 	for _, p := range e.Params {
-		pi := paramInfo{test: p.Callback < 0 && !p.Any, whole: p.Whole, lits: p.Lits}
+		pi := paramInfo{test: p.Callback < 0 && !p.Any, callback: p.Callback >= 0, whole: p.Whole, lits: p.Lits}
 		for k, ok := range p.Kinds {
 			if ok && int(k) < len(pi.kinds) {
 				pi.kinds[k] = true
@@ -343,6 +347,14 @@ func (r *run) testArgs(c *libCall) {
 		case in.rest:
 			p = &in.params[len(in.params)-1]
 		default:
+			continue
+		}
+		if p.callback {
+			// A value where a function takes a callback: no kind is
+			// accepted there (F17 5.5 item 3).
+			if _, ok := v.(*lambdaCode); !ok {
+				r.raise(fail("wrong-kind", "argument", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
+			}
 			continue
 		}
 		if !p.test {

@@ -324,7 +324,7 @@ Each line points at the document that owns the detail.
 | Evaluation | In Go: closures compiled from the AST, values as plain Go values, host data read in place through one read barrier. A simple reference layer, and a typed layer over it for speed on Go structs. In Rust: no collector, values lent from the host for the length of a run, host records through a trait. | `04` |
 | Limits | Steps, allocation units and a deadline, plus a depth limit. Steps and units are fixed by the specification version, so a program reaches a limit at the same point in every implementation. | `04`, section 2.5 |
 | Host model | Parse, analyze, check, compile, run. An immutable environment declares names and types; values arrive per run. One error type with stable codes, a trace, and messages from one catalog. Templates with `${{ }}`. Tests as data. Analysis of names, paths and calls without an environment. | `05` |
-| Library | 78 functions and methods and 2 constants. 59 are in the default core and all 59 are exact across implementations. Optional groups: `math`, `time`, `json`, `base64`. One specification table defines every entry, with its cost formulas and its examples as conformance cases. | `06` |
+| Library | 79 functions and methods and 2 constants. 60 are in the default core and all 60 are exact across implementations. Optional groups: `math`, `time`, `json`, `base64`. One specification table defines every entry, with its cost formulas and its examples as conformance cases. | `06` |
 
 This table is the design as built on `main`. D53 to D58 change it as `14`
 section 5 schedules, and the Counts table of section 4 lists what moves.
@@ -553,7 +553,7 @@ are built on it. Both toolchains are on the development machine (Node 22, Rust
 1.99), so neither step waits on anything.
 
 Three of everything is the main cost of C1. The checker is about 2,935 lines and
-the library 78 entries, each written three times and kept in step by the suite.
+the library 79 entries, each written three times and kept in step by the suite.
 R9 is the fallback if that proves too much for the third checker.
 
 ### 5.3 What happens to v2 and expr
@@ -582,7 +582,7 @@ fixing in v2 whatever happens to v3:
 | Risk | Why it matters | What reduces it |
 | --- | --- | --- |
 | The three implementations drift | The prior art says this is the normal state of second and third implementations, that the lag sits in the checker and the library, and that the bindings diverge more than the evaluators. One Go port of a Rust policy language had a decoder that turned a deny into an allow (`01` 3.1) | Step and unit counts asserted in suite cases; a public conformance report per implementation; steps 4 and 5 early; D27 |
-| Three of everything is too much work | A checker and a 78-entry library, three times, for a project with few maintainers | The language is small by ruling; the suite and the library table are shared data; R9 as a fallback |
+| Three of everything is too much work | A checker and a 79-entry library, three times, for a project with few maintainers | The language is small by ruling; the suite and the library table are shared data; R9 as a fallback |
 | A deep program crashes a Rust host | A stack overflow cannot be caught there | R5, R6, D31 and D58: every recursion has a specified bound, release is not recursive, and each binding's stack test covers calls through the library |
 | The whole-number range hurts Go hosts | 64-bit ids and nanosecond times are common in Go data | The error is loud and at the read; the binding can present a field as a string. D3 should be confirmed knowing this |
 | The cost table is wrong and frozen | A released rate cannot change within a specification version | Calibrate the rates on the real evaluator before 3.0; the accounting test bounds real time and memory per unit |

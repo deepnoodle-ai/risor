@@ -190,7 +190,11 @@ class Walker {
         }
         case "Match":
           this.expr(e.subject);
-          for (const arm of e.arms) this.expr(arm.result);
+          // Package F17 (f17 6): an arm's guard, then its result, in source order.
+          for (const arm of e.arms) {
+            if (arm.guard !== null) this.expr(arm.guard);
+            this.expr(arm.result);
+          }
           return;
         case "Call":
         case "MethodCall":

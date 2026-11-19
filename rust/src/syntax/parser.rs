@@ -1686,10 +1686,30 @@ impl<'a> Parser<'a> {
             }
             Some(lits)
         };
+        // F17 2.1: a guard, `if (e)`, after the literals or the `_`. The `(`
+        // opens a level and the word `if` none (2.3).
+        let guard = if self.at_word("if") {
+            self.bump();
+            let lp = self.expect(P::LParen)?;
+            self.open(lp.span)?;
+            let g = self.expr()?;
+            self.expect(P::RParen)?;
+            self.close();
+            Some(g)
+        } else {
+            None
+        };
         self.expect(P::Arrow)?;
         let result = self.expr()?;
         let span = start.to(self.outer(result));
-        Ok(self.node(NodeKind::Arm { literals, result }, span))
+        Ok(self.node(
+            NodeKind::Arm {
+                literals,
+                guard,
+                result,
+            },
+            span,
+        ))
     }
 
     fn lit(&mut self) -> R<ArmLit> {

@@ -2196,3 +2196,4 @@ Its chapter is the home of its rules.
 | F8, errors, second part | A message template for every `check` code, with the types it prints | `spec/packages/f08-errors.md` 3 |
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
 | F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |
+| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable | `spec/packages/f17-recursion.md` 4 and 5.6 |

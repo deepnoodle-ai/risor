@@ -164,6 +164,11 @@ func dump(b *strings.Builder, n Node) {
 			}
 			w(" ")
 		}
+		if n.Guard != nil {
+			w("if ")
+			dump(b, n.Guard)
+			w(" ")
+		}
 		dump(b, n.Result)
 		w(")")
 	case *Try:

@@ -97,6 +97,20 @@ And the forms of packages F6 and F7 (`spec/packages/f06-groups.md`,
 - the six methods `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy` and
   `mapValues`, and `sortBy` with a direction.
 
+And the forms of package F17, step E0 (`spec/packages/f17-recursion.md`):
+
+- guards on `match` arms, `1 if (c) => e` and `_ if (c) => e`: on some arms of
+  about one `match` in three, a guarded `_` before the last plain `_`, and in a
+  typed program a plain arm after a guarded one that lists its literals again;
+  loose programs put a guarded arm after a plain `_`;
+- calls of `walk`: a walk bounded by its depth parameter, `(n, k) => k < K ?
+  [...] : null`, that visits at most 15 nodes; a walk of `any` data by a field
+  of each node or by the node; and in loose programs a wrong count, a value at
+  `children`, a lambda at `root`, a callback with three parameters, a result of
+  any kind, and a walk with no bound.
+
+`-nof17` leaves the package out.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -137,6 +151,7 @@ The status is 1 when there was any finding, else 0.
 | `-nof3` | Leave out the string forms of package F3 |
 | `-nof4` | Leave out the forms of packages F4 and F5 |
 | `-nof6`, `-nof7` | Leave out the opt-in groups of F6, or the projection and methods of F7 |
+| `-nof17` | Leave out the guards and the calls of `walk` of F17 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |
@@ -161,9 +176,9 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
 Every implementation offers F1 to F8, and some offer more. The generator writes
-only forms of F1 to F8, so no difference is filtered: `cmd/fuzz/known.go` is
-where a form of a package that not every implementation offers would be counted
-apart. With F8 a parse or check diagnostic carries a message, and a run
+only forms that every implementation offers, the guards and `walk` of F17 among
+them, so no difference is filtered: `cmd/fuzz/known.go` is where a form of a
+package that not every implementation offers would be counted apart. With F8 a parse or check diagnostic carries a message, and a run
 diagnostic a trace; each is compared among the implementations that write it
 (`spec/packages/f08-errors.md` 8).
 

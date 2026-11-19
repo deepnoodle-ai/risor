@@ -4,3 +4,4 @@ package library
 //go:generate go run ../gen ../../../suite/library-groups.json groups_gen.go library sourceGroupsJSON
 //go:generate go run ../gen ../../../suite/library-queries.json queries_gen.go library sourceQueriesJSON
 //go:generate go run ../gen ../../../suite/library-math.json math_gen.go library sourceMathJSON
+//go:generate go run ../gen ../../../suite/library-recursion.json recursion_gen.go library sourceRecursionJSON

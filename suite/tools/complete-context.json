@@ -294,6 +294,35 @@
   }
  },
  {
+  "name": "a match leaves out the strings its own arm has",
+  "complete": "match s { \"a\" | \"‸",
+  "env": "{s: \"a\" | \"b\" | \"c\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     18,
+     1,
+     18
+    ],
+    "items": [
+     {
+      "label": "b",
+      "kind": "literal",
+      "detail": null,
+      "insert": "b"
+     },
+     {
+      "label": "c",
+      "kind": "literal",
+      "detail": null,
+      "insert": "c"
+     }
+    ]
+   }
+  }
+ },
+ {
   "name": "a match lists the strings no arm has",
   "complete": "match s { \"a\" => 1, \"‸",
   "env": "{s: \"a\" | \"b\" | \"c\"}",

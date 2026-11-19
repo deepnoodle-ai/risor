@@ -28,6 +28,8 @@ type Options struct {
 	NoF4 bool
 	// NoF3 leaves out the string forms of package F3.
 	NoF3 bool
+	// NoF17 leaves out the guards and the calls of walk of package F17.
+	NoF17 bool
 	// Exclude names library entries not to call, by name.
 	Exclude map[string]bool
 }
@@ -73,6 +75,7 @@ type Gen struct {
 	ns      string
 	tryBody int
 	sound   bool // the soundness mode: use the variables more, divide by them
+	f17     bool // the program has a form of package F17
 
 	// Packages F4 and F5.
 	declared map[string]*types.Type // the declared type of each variable
@@ -135,6 +138,7 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 		c.Source = g.mangle(ast.Print(c.Prog))
 		c.Prog = nil
 	}
+	c.F17 = g.f17
 	c.NoCheck = r.IntN(100) < opts.NoCheckShare
 	share := opts.LimitShare
 	if share == 0 {
@@ -647,6 +651,9 @@ func (g *Gen) forms(t *Ty) []wform {
 	if !g.opts.NoF7 && (t.K == KList || t.K == KAny) {
 		fs = append(fs, wform{3, g.projection})
 	}
+	if !g.opts.NoF17 && (t.K == KList || t.K == KAny) {
+		fs = append(fs, wform{2, g.walkCall})
+	}
 	return fs
 }
 
@@ -899,6 +906,9 @@ func (g *Gen) matchExpr(t *Ty, d int) ast.Expr {
 		if g.loose && r.IntN(8) == 0 {
 			m.Arms = append(m.Arms, ast.Arm{Lits: []ast.Expr{g.matchNum(99)}, Result: g.expr(t, 0)})
 		}
+	}
+	if !g.opts.NoF17 && r.IntN(3) == 0 {
+		g.guardArms(m, t, d)
 	}
 	return m
 }

@@ -567,17 +567,27 @@ class Walker {
     }
   }
 
+  /**
+   * 05 22.4, 22.8, with package F17 (f17 4.1): a literal is compared with the
+   * earlier literals of its arm and those of earlier plain arms, and an arm is
+   * unreachable after the first plain `_`. Then the arm's guard and its result.
+   */
   private match(m: A.Match): void {
     this.expr(m.subject);
     const lits: A.Literal[] = [];
     let defaultSeen = false;
     for (const arm of m.arms) {
       if (defaultSeen) this.diag("unreachable-arm", arm.span);
+      const own: A.Literal[] = [];
       for (const l of arm.literals) {
-        if (lits.some((p) => litEqual(p, l))) this.diag("duplicate-case", l.span, "default", { text: true });
-        lits.push(l);
+        if (lits.some((p) => litEqual(p, l)) || own.some((p) => litEqual(p, l))) this.diag("duplicate-case", l.span, "default", { text: true });
+        own.push(l);
       }
-      if (arm.isDefault) defaultSeen = true;
+      if (arm.guard === null) {
+        // One at a time: a spread of a very wide arm would overflow the stack.
+        for (const l of own) lits.push(l);
+        if (arm.isDefault) defaultSeen = true;
+      } else this.expr(arm.guard);
       this.expr(arm.result);
     }
   }

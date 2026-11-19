@@ -8,8 +8,9 @@ in: `sortBy` takes a direction, and `minBy`, `maxBy`, `uniqueBy`, `indexBy`,
 `countBy` and `mapValues` are new (2.8). `fail` takes data (2.8). Recovery is
 written `try { e } catch { d }` everywhere (`10`). The messages of the library's
 failures come from the catalog `messages.json` (2.3, 2.11). A case has no
-tolerance field (2.8, `math`). The library now has 78 entries. A decision of a
-plan is cited by the plan's own number, such as `13-2`.
+tolerance field (2.8, `math`). The library now has 79 entries, with `walk` of
+plan `18` 5 (F17). A decision of a plan is cited by the plan's own number, such
+as `13-2`.
 
 **How to read this.** Section 2 defines the library. A rule there is normative:
 any implementation must do it. A paragraph headed *Why*, *Rejected* or *Note* is
@@ -26,10 +27,11 @@ documents by section, and `07:` to `13:` are the plans.
 
 ## 1. Summary
 
-1. **The 3.0 library has 78 entries.** 59 are in the default set: 15 functions
-   and 44 methods. Four opt-in namespaces add 19 functions, and 2 constants that
-   are not counted as entries. v2 ships 175 entries and expr 40 (section 3).
-2. **67 entries are exact and 11 are implementation-defined (T3).** The 11 are
+1. **The 3.0 library has 79 entries.** 60 are in the default set: 16 functions
+   and 44 methods, `walk` (plan `18` 5) among the functions. Four opt-in
+   namespaces add 19 functions, and 2 constants that are not counted as
+   entries. v2 ships 175 entries and expr 40 (section 3).
+2. **68 entries are exact and 11 are implementation-defined (T3).** The 11 are
    the transcendental functions of `math`. Every other entry has one result in
    every implementation, stated in neutral terms: code points, a listed set of
    white space, a case table the specification owns, RFC texts.
@@ -1624,7 +1626,7 @@ and 30 in the map methods (`13`, section 1, counts the same 200 and adds 30 in
 the checker for `filter` and `find`). `fail` with data adds none. The catalog
 loader and the generated message code are plan `10`'s lines, not these.
 
-The table itself is about 80 records: 78 entries and 2 constants. The cases are
+The table itself is about 80 records: 79 entries and 2 constants. The cases are
 data: I expect 450 to 550, plus one per code point of the case table. Each case
 for a failure now states its message. The accounting test is about 500 lines per
 implementation. The TypeScript and Rust implementations are each about the same

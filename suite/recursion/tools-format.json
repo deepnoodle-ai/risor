@@ -1,0 +1,11 @@
+[
+  {"name": "a guard with spaces", "format": "match x{1 if(c)=>2,_=>3}", "expect": {"formatted": "match x { 1 if (c) => 2, _ => 3 }\n"}},
+  {"name": "parentheses in a guard are dropped", "format": "match x { 1 if ((a + b) > c) => 2, _ => 3 }", "expect": {"formatted": "match x { 1 if (a + b > c) => 2, _ => 3 }\n"}},
+  {"name": "a guard on several literals and on _", "format": "match s { \"a\"|\"b\" if (p) => 1, _ if (q) => 2, _ => 3 }", "expect": {"formatted": "match s { \"a\" | \"b\" if (p) => 1, _ if (q) => 2, _ => 3 }\n"}},
+  {"name": "a negative literal with a guard", "format": "match n { -1 if(c) => 1, _ => 2 }", "expect": {"formatted": "match n { -1 if (c) => 1, _ => 2 }\n"}},
+  {"name": "a lambda in a guard", "format": "match x { 1 if (xs.some(v=>v>1)) => 2, _ => 3 }", "expect": {"formatted": "match x { 1 if (xs.some(v => v > 1)) => 2, _ => 3 }\n"}},
+  {"name": "a guard that does not fit", "format": "match kind { \"a\" if (event.pull_request.head.sha != \"\" && event.pull_request.number > 0) => 1, _ => 2 }", "expect": {"formatted": "match kind {\n  \"a\" if (\n    event.pull_request.head.sha != \"\" && event.pull_request.number > 0\n  ) => 1,\n  _ => 2,\n}\n"}},
+  {"name": "a guard on lines of its own is joined", "format": "match x {\n  1 if (\n    c\n  ) => 2,\n  _ => 3,\n}", "expect": {"formatted": "match x { 1 if (c) => 2, _ => 3 }\n"}},
+  {"name": "a comment after a guard", "format": "match x { 1 if (c) /* why */ => 2, _ => 3 }", "expect": {"formatted": "match x { 1 if (c) /* why */ => 2, _ => 3 }\n"}},
+  {"name": "a call of walk", "format": "walk(doc,n=>n.replies)[*].author", "expect": {"formatted": "walk(doc, n => n.replies)[*].author\n"}}
+]

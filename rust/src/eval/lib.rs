@@ -1,4 +1,5 @@
-//! The 53 library entries (`04-library.md` 5).
+//! The library entries (`04-library.md` 5): the 53 of Core and those of
+//! the packages F6, F7, F13 and F17.
 //!
 //! Every call goes through the same steps (4.4): the argument tests of 2.6,
 //! taken from the entry's signature in `suite/library.json` (the receiver
@@ -40,7 +41,8 @@ fn literal_set(t: &Type) -> Option<Vec<&str>> {
 
 /// The formulas each entry implements: name, receiver, steps, units. A unit
 /// test holds them equal to `suite/library.json`.
-pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 78] = [
+pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 79] = [
+    ("walk", None, "2*k", "1 + k"),
     ("math.pow", None, "200", "0"),
     ("math.exp", None, "200", "0"),
     ("math.log", None, "200", "0"),
@@ -262,8 +264,13 @@ fn fits(t: &Type, v: &Value<'_>, bounds: &[(char, Bound)]) -> (bool, bool) {
 /// The test of one argument (2.6 item 3), read once from its parameter's
 /// type.
 enum ArgTest {
-    /// A callback, `any`, or a type variable with no bound.
+    /// `any`, or a type variable with no bound.
     None,
+    /// A callback parameter: an argument there that is a value fails
+    /// (`04-library.md` 2.6 item 3, F17 5.5 item 3). Only a call of a
+    /// function by name can reach the test with one: a method's shape test
+    /// comes first (2.2).
+    Callback,
     /// The kinds the parameter takes, as bits by `Kind`, and those of them
     /// for which it asks a whole number.
     Kinds { allowed: u8, whole: u8 },
@@ -332,7 +339,7 @@ fn plan(rec: &Record) -> Plan {
         .iter()
         .map(|p| {
             let ParamType::Type(t) = &p.ty else {
-                return ArgTest::None;
+                return ArgTest::Callback;
             };
             let t = match (t, p.rest) {
                 (Type::List(e), true) => e.as_ref(),
@@ -588,6 +595,7 @@ impl<'h> Run<'h> {
             };
             match test {
                 ArgTest::None => {}
+                ArgTest::Callback => return Err(self.arg_kind(idx, v, span)),
                 ArgTest::Kinds { allowed, whole } => {
                     let k = 1u8 << v.kind() as u8;
                     if allowed & k == 0 {
@@ -643,16 +651,23 @@ impl<'h> Run<'h> {
         )
     }
 
+    /// A call of a library function, after its arguments. `measure` is the
+    /// call's depth measure (`02-evaluation.md` 8.4 item 3), for an entry
+    /// that calls a lambda.
     pub(super) fn lib_function(
         &mut self,
         idx: usize,
         args: &[Arg<'h>],
         span: Range,
+        measure: u32,
     ) -> R<'h, Value<'h>> {
         let rec = &records()[idx];
         let name = rec.name.as_str();
         self.arg_tests(idx, args, span)?;
         self.charge(1)?;
+        if name == "walk" {
+            return self.lib_walk(args, span, measure);
+        }
         let x = self.val(args, 0).unwrap_or(Value::Null);
         let num = |v: &Value<'h>| match v {
             Value::Num(n) => *n,
@@ -1217,6 +1232,75 @@ impl<'h> Run<'h> {
         Ok(Value::list(out))
     }
 
+    /// F17 5: `walk(root, children)`, the nodes in pre-order. The place of
+    /// the walk is a stack of its own, one entry for each list of children
+    /// entered: the list and the position of its next element. No level of
+    /// the walk recurses natively (5.3), so a walk at the depth limit needs
+    /// no more host stack than a walk of one node. The stack has at most one
+    /// entry for each depth the depth test lets through.
+    ///
+    /// Each node: 2 steps; a child is read as a host value; the depth test
+    /// of the call of `children` with its depth added to the measure (5.4);
+    /// the call; the test of its result. Then `1 + k` units, and the list.
+    #[inline(never)]
+    fn lib_walk(&mut self, args: &[Arg<'h>], span: Range, measure: u32) -> R<'h, Value<'h>> {
+        const NAME: &str = "walk";
+        let root = self.val(args, 0).unwrap_or(Value::Null);
+        let f = self.lam(args, 1, span)?;
+        let f = self.callback(f);
+        let mut out: Vec<Value<'h>> = Vec::new();
+        let mut stack: Vec<(Value<'h>, usize)> = Vec::new();
+        let mut next = Some(root);
+        loop {
+            let node = match next.take() {
+                // The root was read where its argument was evaluated.
+                Some(root) => {
+                    self.charge(2)?;
+                    root
+                }
+                None => {
+                    // The next element of the innermost list that has one.
+                    let Some((list, pos)) = stack.last_mut() else {
+                        break;
+                    };
+                    if *pos >= list.len().unwrap_or(0) {
+                        if let Some((list, _)) = stack.pop() {
+                            release(list);
+                        }
+                        continue;
+                    }
+                    // The 2 steps come first: a host list is not asked
+                    // for a child the run cannot pay for (5.2 item 5).
+                    self.charge(2)?;
+                    let e = list.elem(*pos);
+                    *pos += 1;
+                    self.read(e, span)?
+                }
+            };
+            // The depth of a node is the number of lists entered above it.
+            let depth = stack.len();
+            let index = out.len();
+            out.push(node.dup());
+            let d = depth as u32;
+            let r = self.call2(
+                &f,
+                NAME,
+                index,
+                node,
+                Value::Num(depth as f64),
+                measure + d,
+                span,
+            )?;
+            match r.kind() {
+                Kind::Null => {}
+                Kind::List => stack.push((r, 0)),
+                _ => return Err(self.result_kind(NAME, &r, span)),
+            }
+        }
+        self.alloc(1 + out.len() as u64)?;
+        Ok(Value::list(out))
+    }
+
     /// `filter`: as `map`, keeping the elements whose result is truthy.
     #[inline(never)]
     fn list_filter(
@@ -1682,8 +1766,16 @@ mod tests {
     #[test]
     fn the_formulas_are_the_records() {
         let recs = records();
-        // 53 of Core, 8 of F6, 6 of F7 and 11 of F13 (`f13-math.md` 1.1).
-        assert_eq!(recs.len(), 78);
+        // 53 of Core, 8 of F6, 6 of F7, 11 of F13 and `walk` of F17
+        // (`f17-recursion.md` 1.3).
+        assert_eq!(recs.len(), 79);
+        let core = recs.iter().filter(|r| r.group.is_none()).count();
+        assert_eq!(core, 60);
+        let functions = recs
+            .iter()
+            .filter(|r| r.group.is_none() && r.receiver.is_none())
+            .count();
+        assert_eq!(functions, 16);
         for r in recs {
             let f = FORMULAS
                 .iter()

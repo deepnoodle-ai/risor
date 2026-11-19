@@ -294,7 +294,10 @@ type Arm struct {
 	// default arm.
 	Literals []Node
 	Default  bool
-	Result   Node
+	// Guard is the expression of "if (e)" before the arrow, nil when the arm
+	// has none (package F17, spec/packages/f17-recursion.md 2).
+	Guard  Node
+	Result Node
 }
 
 // Try is "try { e } catch (name) { d }" or "try { e } catch { d }".

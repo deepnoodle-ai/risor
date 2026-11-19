@@ -27,6 +27,7 @@ var SuiteDirs = []string{
 	"config",     // F10
 	"math",       // F13
 	"facts",      // F14
+	"recursion",  // F17
 	"tools",      // F12
 }
 
@@ -36,12 +37,13 @@ type SuiteCatalog struct{ Rel, Key string }
 // SuiteCatalogs are the catalog files of the suite.
 var SuiteCatalogs = []SuiteCatalog{
 	{"library.json", "name"},
-	{"library-groups.json", "name"},   // F6
-	{"library-queries.json", "name"},  // F7
-	{"library-math.json", "name"},     // F13
-	{"messages-queries.json", "code"}, // F7
-	{"messages-parse.json", "code"},   // F8
-	{"messages-check.json", "code"},   // F8
+	{"library-groups.json", "name"},    // F6
+	{"library-queries.json", "name"},   // F7
+	{"library-math.json", "name"},      // F13
+	{"library-recursion.json", "name"}, // F17
+	{"messages-queries.json", "code"},  // F7
+	{"messages-parse.json", "code"},    // F8
+	{"messages-check.json", "code"},    // F8
 	{"messages.json", "code"},
 }
 

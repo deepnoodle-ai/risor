@@ -1644,42 +1644,60 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A `match` (11.2), with the guards of F17 4.2 and 4.3: a guard is a
+    /// tested position, checked under the facts of its arm, and its true
+    /// facts hold in the arm's result. A guarded arm gives later arms no
+    /// fact and covers nothing, and only a literal that is `duplicate-case`
+    /// by F17 4.1 is ignored.
     fn match_(&mut self, id: NodeId, subject: NodeId, arms: &'a [NodeId]) -> Ty {
+        use crate::compile::{lit_key, LitKey};
         let s = self.synth(subject);
         let p = self.path_of(subject);
         let k = self.facts.len();
         let mut acc = Ty::never();
         let mut default = false;
-        let mut lits: std::collections::HashSet<crate::compile::LitKey> =
-            std::collections::HashSet::new();
+        // The literals of the earlier plain arms: those a later literal is
+        // compared with, and those that cover.
+        let mut lits: std::collections::HashSet<LitKey> = std::collections::HashSet::new();
         for &a in arms {
-            let NodeKind::Arm { literals, result } = self.kind(a) else {
+            let NodeKind::Arm {
+                literals,
+                guard,
+                result,
+            } = self.kind(a)
+            else {
                 continue;
             };
+            let plain = guard.is_none();
             let mut has_null = false;
             // F14 4.3: the literals of this arm that 11.2 does not ignore.
             let mut kept: Vec<&Lit> = Vec::new();
+            // The literals of this arm, so far.
+            let mut own: std::collections::HashSet<LitKey> = std::collections::HashSet::new();
             // F5 5.3: the strings of this arm, and whether every literal of
             // it is a string.
             let mut strs: BTreeSet<String> = BTreeSet::new();
             let mut all_strings = literals.is_some();
             match literals {
-                None => default = true,
+                None => default |= plain,
                 Some(ls) => {
                     for l in ls {
+                        let key = lit_key(&l.lit);
+                        let dup = lits.contains(&key) || own.contains(&key);
                         match &l.lit {
                             Lit::Str(x) => {
-                                if !lits.contains(&crate::compile::lit_key(&l.lit)) {
+                                if !dup {
                                     strs.insert(x.clone());
                                 }
                             }
                             _ => all_strings = false,
                         }
-                        // 11.2: a literal equal to an earlier one is
-                        // `duplicate-case` only, and ignored here.
-                        if !lits.insert(crate::compile::lit_key(&l.lit)) {
+                        // 11.2: a literal that is `duplicate-case` is
+                        // ignored here.
+                        if dup {
                             continue;
                         }
+                        own.insert(key);
                         kept.push(&l.lit);
                         // 11.2: the conditions of `==` (8.2).
                         if !matches!(l.lit, Lit::Null)
@@ -1712,22 +1730,33 @@ impl<'a> Checker<'a> {
                     });
                 }
             }
+            // F17 4.2: the guard, under the facts of its arm; its true
+            // facts hold in the result. Its false facts hold nowhere.
+            if let Some(g) = guard {
+                let gt = self.synth(*g);
+                self.tested(*g, &gt);
+                let (tf, _) = self.facts_of(*g);
+                self.facts.extend(tf);
+            }
             let rt = self.synth(*result);
             self.facts.truncate(arm_start);
             join_into(&mut acc, &rt);
-            // Every later arm, `_` included, under {p: not all(Mi, f, S)}.
-            self.facts.extend(failed);
-            if has_null {
-                if let Some(p) = &p {
-                    self.facts.push(p.clone());
+            // F17 4.3: a guarded arm gives later arms nothing.
+            if plain {
+                // Every later arm, `_` included, under {p: not all(Mi, f, S)}.
+                self.facts.extend(failed);
+                if has_null {
+                    if let Some(p) = &p {
+                        self.facts.push(p.clone());
+                    }
                 }
+                lits.extend(own);
             }
         }
         self.facts.truncate(k);
         if !default && !s.is_never() {
             let covered = finite_values(&s).is_some_and(|vals| {
                 vals.iter().all(|v| {
-                    use crate::compile::LitKey;
                     lits.contains(&match v {
                         FiniteValue::Null => LitKey::Null,
                         FiniteValue::Bool(b) => LitKey::Bool(*b),
@@ -2614,18 +2643,36 @@ impl<'a> Checker<'a> {
                 }
                 Some(r) => {
                     let rv = vars(r);
-                    // 3a: also when B fits A0 only by a fit
-                    // that used any.
-                    let seed = rv.iter().find(|x| {
-                        f.params.iter().any(|(_, q)| vars(q).contains(x))
-                            && before.get(x).is_some_and(|a0| fits(&b, a0) != Some(false))
-                    });
+                    // 3a, as F17 5.6 reads it for an R that is not the
+                    // `Var` itself: it fires when B does not fit R with the
+                    // `Var` replaced by A0, or fits it only by a fit that
+                    // used any. For `reduce`, R is the `Var`, and R so
+                    // replaced is A0.
+                    let seed = rv
+                        .iter()
+                        .find(|x| {
+                            f.params.iter().any(|(_, q)| vars(q).contains(x))
+                                && before.contains_key(x)
+                        })
+                        .filter(|_| {
+                            let r0 = substitute(r, self.opaque(), &before);
+                            fits(&b, &r0) != Some(false)
+                        });
                     if let Some(&x) = seed {
                         // 3a. The seed rule.
                         self.diags.truncate(dn);
                         self.sites.truncate(sn);
                         let a0 = before.get(&x).cloned().unwrap_or_default();
-                        sol.insert(x, join(&a0, &b));
+                        // The new solution: the Join of A0 and what bind(R,
+                        // B) gathers for the `Var`, or A0 when it gathers
+                        // nothing. For R the `Var`, that is B.
+                        let mut gathered = Solutions::new();
+                        bind(r, &b, &mut gathered);
+                        let t = match gathered.get(&x) {
+                            Some(g) => join(&a0, g),
+                            None => a0,
+                        };
+                        sol.insert(x, t);
                         let qs: Vec<Ty> = f
                             .params
                             .iter()

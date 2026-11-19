@@ -959,6 +959,7 @@ class Compiler {
     const arms = e.arms.map((a) => ({
       lits: a.literals.map((l) => (l.kind === "Null" ? null : l.value)),
       isDefault: a.isDefault,
+      guard: a.guard === null ? null : this.expr(a.guard),
       result: this.expr(a.result),
     }));
     const span = e.span;
@@ -968,17 +969,17 @@ class Compiler {
       for (let i = 0; i < arms.length; i++) {
         const a = arms[i];
         r.charge(1);
-        if (a.isDefault) return a.result(r);
-        for (let j = 0; j < a.lits.length; j++) {
+        let hit = a.isDefault;
+        for (let j = 0; !hit && j < a.lits.length; j++) {
           const l = a.lits[j];
           if (typeof l === "string" && sk === "string") {
             // 02 5.2, `match`: a string literal against a string subject compares text.
             if (l.length >= 64 && (s as string).length >= 64) r.charge(div64(lcpWeight(l, s as string)));
-            if (l === s) return a.result(r);
-          } else if (l === null ? sk === "null" : l === s) {
-            return a.result(r);
-          }
+            hit = l === s;
+          } else hit = l === null ? sk === "null" : l === s;
         }
+        // Package F17 (f17 3): the guard runs once its arm matched; a falsy guard tries the next arm.
+        if (hit && (a.guard === null || truthy(a.guard(r), r.cls))) return a.result(r);
       }
       throw new RunFailure("no-match", span, "default", { found: s });
     };
@@ -1560,7 +1561,7 @@ interface EntryCall extends CallContext {
  */
 function enterEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], site: EntrySite): EntryCall {
   const { span, name, lambdas } = site;
-  testArgs(r, entry, args, span, name);
+  testArgs(r, entry, args, span, name, lambdas);
   r.charge(1);
   const impl = entry.impl;
   if (impl === null) throw new RunFailure("internal-error", span, "default");

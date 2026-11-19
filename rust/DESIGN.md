@@ -61,7 +61,7 @@ grouped by the sections E.3 to E.8.
 | `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
 | `src/eval/code.rs` | — | The compiled form of the hot node kinds: a tree of closures built with the program, which the walk tries first |
-| `src/eval/lib.rs` | S3 | The 53 library entries, their argument tests from the records' signatures, and the table of formulas a test holds equal to `library.json` |
+| `src/eval/lib.rs` | S3 | The library entries: the 53 of Core, the 6 queries of F7 and `walk` of F17; the entries of the groups (F6, F13) run in `eval/groups.rs`. The argument tests of every entry from its record's signature, and the table of formulas of all 79, which a test holds equal to the record files |
 | `src/casemap.rs` | S3 | The case table, from `suite/casemap.json` |
 | `src/check/ty.rs` | S4 | Types (`05-types.md` 2): Join, Fits, Merge, Truthy, Falsy, the helpers of 4.5, printing (3.9), and reading type text |
 | `src/check/mod.rs` | S4 | The checker: the type rules of sections 5 to 18 over the resolution that `compile::resolve` gives, sites, classes, the expected result, and `compile_checked` |
@@ -312,7 +312,8 @@ live while a lambda runs, or while the walk recurses, pays for all of them at
 every level. So such a frame holds only its loop:
 
 - each library entry that calls a lambda is a function of its own (`map`,
-  `filter`, the entries of `list_each`, `reduce`, the queries, `mapValues`);
+  `filter`, the entries of `list_each`, `reduce`, the queries, `mapValues`,
+  `walk`);
   what the entry does after its loop, and every entry that calls no lambda,
   is in another function;
 - a failure, a rare kind and a lambda with patterns or defaults go to
@@ -337,7 +338,11 @@ and one level past it; calls by name with the nesting limit before the first
 and inside the last; and chains through `map` (a lambda by name and an inline
 lambda), `flatMap`, and `filter`, `some`, `sortBy`, `mapValues` and `reduce`
 with pattern parameters, each with 98 map literals inside the last call, then
-one link past the limit. It runs each limit on a thread of two thirds of the
+one link past the limit. It also runs `walk` (F17): a chain of nodes whose
+deepest callback runs at the limit, with the nesting limit in its body, and
+one node past it; data nested to the limit, and one level past; and walks
+inside walks, each link calling the one before from its walk's callback, to
+the limit and one link past. It runs each limit on a thread of two thirds of the
 stated figure, so the figure has a margin of 1.5. CI runs it unoptimized and
 optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
 and overflows on 12/16 (aarch64 and x86_64 macOS).
@@ -650,6 +655,39 @@ A plain text error has no cause: its text is already the message.
   facts. The effect is applied in `ident`, after the facts of Core, F4 and
   F5: some host fact of the variable has every other member under a null
   fact in force.
+
+## Package F17, guards and `walk`
+
+- **Guards** (`syntax/parser.rs`, `compile.rs`, `check/mod.rs`,
+  `eval/mod.rs`): `Arm` has `guard: Option<NodeId>`. The parser reads
+  `if (e)` after the literals or the `_`, and its `(` opens a level. The
+  resolver and the checker keep the literals of earlier plain arms apart
+  from those of the arm itself: a literal is compared with both, and only a
+  plain arm adds its own to the first. So a guarded arm neither covers nor
+  makes a later literal `duplicate-case`, and only a plain `_` makes the
+  arms after it unreachable. In the checker a guarded arm gives later arms
+  none of its facts; its guard is a tested position under the arm's facts,
+  and its true facts join them for the result.
+- **`walk`** (`eval/lib.rs`, `lib_walk`): the record is loaded from
+  `suite/library-recursion.json` after those of F7, so its index is the
+  last. The walk keeps a stack of its own, one entry for each list of
+  children entered, each a list and the position of its next element, so a
+  level of the walk is a loop turn and not a host call. The depth of a node
+  is the length of that stack. Each call of the callback goes through
+  `call2`, as `map`'s does, with the measure of the call plus the node's
+  depth, and the node's place in pre-order as the trace index.
+- **A value at a callback parameter.** `ArgTest::Callback` fails an argument
+  that is a value with `wrong-kind`, template `argument`, among the tests of
+  2.6 in their order (F17 5.5 item 3). Only a call of a function by name
+  reaches it: a method's shape test comes first.
+- **The seed rule** (`check/mod.rs`, `call`): it fires when B does not fit
+  R with the `Var` replaced by A0, or fits it only by any; the new solution
+  joins A0 with what `bind(R, B)` gathers for the `Var` (F17 5.6). For
+  `reduce`, whose R is the `Var`, this is the rule as before.
+- **The runner**: `PACKAGES` holds 17 before 12, so a file named
+  `until-f17-` is not run; `recursion_package` runs
+  `suite/recursion/`, its `tools-` files among them, and
+  `library_recursion_cases` the record's cases.
 
 ## Package F12, tools
 

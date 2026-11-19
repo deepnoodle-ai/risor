@@ -115,6 +115,9 @@ func CloneExpr(e Expr) Expr {
 		c := &Match{Subject: CloneExpr(e.Subject), Arms: make([]Arm, len(e.Arms))}
 		for i, a := range e.Arms {
 			c.Arms[i] = Arm{Lits: cloneExprs(a.Lits), Default: a.Default, Result: CloneExpr(a.Result)}
+			if a.Guard != nil {
+				c.Arms[i].Guard = CloneExpr(a.Guard)
+			}
 		}
 		return c
 	case *Call:
@@ -282,6 +285,12 @@ func (s *sites) expr(ep *Expr) {
 			s.list(len(e.Arms), func(j int) { e.Arms = append(e.Arms[:j:j], e.Arms[j+1:]...) })
 		}
 		for i := range e.Arms {
+			if e.Arms[i].Guard != nil {
+				// Drop the guard, or shrink it.
+				a := &e.Arms[i]
+				s.list(1, func(int) { a.Guard = nil })
+				s.expr(&a.Guard)
+			}
 			s.expr(&e.Arms[i].Result)
 		}
 	case *Call:
@@ -361,6 +370,9 @@ func Children(e Expr) []Expr {
 	case *Match:
 		add(e.Subject)
 		for _, a := range e.Arms {
+			if a.Guard != nil {
+				add(a.Guard)
+			}
 			add(a.Result)
 		}
 	case *Call:

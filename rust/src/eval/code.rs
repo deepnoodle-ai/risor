@@ -81,7 +81,10 @@ fn children(kind: &NodeKind, out: &mut Vec<NodeId>) {
             out.push(*subject);
             out.extend(arms.iter().copied());
         }
-        NodeKind::Arm { result, .. } => out.push(*result),
+        NodeKind::Arm { guard, result, .. } => {
+            out.extend(guard.iter().copied());
+            out.push(*result);
+        }
         NodeKind::Try { body, handler, .. } => out.extend([*body, *handler]),
         NodeKind::MapPat { fields, .. } => out.extend(fields.iter().filter_map(|f| f.default)),
         NodeKind::ListPat { elems, .. } => {
@@ -482,7 +485,7 @@ fn node(
                     let a = child(code, a);
                     mk(move |r| {
                         let v = [Arg::Val(a(r)?)];
-                        let out = r.lib_function(i, &v, span);
+                        let out = r.lib_function(i, &v, span, 0);
                         let [Arg::Val(x)] = v else { return out };
                         release(x);
                         out
@@ -493,7 +496,7 @@ fn node(
                     mk(move |r| {
                         let x = a(r)?;
                         let v = [Arg::Val(x), Arg::Val(b(r)?)];
-                        let out = r.lib_function(i, &v, span);
+                        let out = r.lib_function(i, &v, span, 0);
                         let [Arg::Val(x), Arg::Val(y)] = v else {
                             return out;
                         };

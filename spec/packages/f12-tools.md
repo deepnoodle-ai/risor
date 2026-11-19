@@ -72,12 +72,14 @@ numbers without a file are of this chapter.
    6 bind the implementation that ships the CLI, the REPL or the editor
    grammar.
 2. Packages are offered in the order of `03-host.md` 3.11 item 2: F3, F1, F2,
-   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F12. F12 is the last. So an
+   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F17, F12. F12 is the last. So an
    implementation that offers F12 offers every form of F3, F4 and F7, the
    templates of F2, the groups of F6 with every function of F13, the renderings
-   of F8, the report of F9, the commands of F10 and the host facts of F14. The formatter prints every
-   one of those forms, assist lists every library entry, and the cases of
-   `suite/tools/` use them.
+   of F8, the report of F9, the commands of F10, the host facts of F14, and the
+   guards and `walk` of F17. The formatter prints every one of those forms,
+   assist lists every library entry, and the cases of `suite/tools/` use them.
+   The cases of F17's forms in the formatter and in assist stand in
+   `suite/recursion/`, in its files named `tools-` (F17 1.4 item 3).
 
 ### 1.4 Version
 
@@ -340,7 +342,7 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 | `NamePat` | The name or `_` |
 | `MapPat` | `seq("{", fields and rest, "}")`. A field whose key is a word equal to its name is the name alone: `{a: a}` and `{a}` are one tree. Another field is `key ":" sp name`. A default is `sp "=" assigned(default)`. The rest is `"..." name` |
 | `ListPat` | `seq("[", elements and rest, "]")`. An element is the name or `_`, then its default as for a field |
-| `Match` | `g("match" sp ‹subject› sp "{" i(L arm1 "," L arm2 "," ... L armn ib(",", "")) L "}")`, with the leading comments of `}` inside the indent and empty lines as 2.9 says. An arm: its literals separated by `sp "\|" sp`, or `_`, then `sp "=>" assigned(result)`. A literal is `-` and the number when it has one |
+| `Match` | `g("match" sp ‹subject› sp "{" i(L arm1 "," L arm2 "," ... L armn ib(",", "")) L "}")`, with the leading comments of `}` inside the indent and empty lines as 2.9 says. An arm: its literals separated by `sp "\|" sp`, or `_`; then, for an arm with a guard (F17 2), `sp "if" sp "(" g(i(S ‹guard›) S) ")"`; then `sp "=>" assigned(result)`. A literal is `-` and the number when it has one |
 
 1. A text such as `"const"` is the token of the source, not a new one, so its
    comments come with it (2.12). A comma and a parenthesis the formatter writes
@@ -356,8 +358,9 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
    is a run of `||` whose first operand is the group of `(a && b)`, and `a ** b
    ** c` is a `**` whose right operand is a `**`.
 4. **Unindented.** A run is written without `i( )` when it is the v of
-   `assigned(v)`, or the test of an `if` or an `else if`. Its lines then stand at
-   the indentation that the `assigned` or the parentheses already give.
+   `assigned(v)`, the test of an `if` or an `else if`, or the guard of a `match`
+   arm (F17). Its lines then stand at the indentation that the `assigned` or
+   the parentheses already give.
 
 ### 2.9 Sequences, commas and empty lines
 
@@ -744,7 +747,10 @@ When the hole is a string literal, the candidates are string values, kind
 
 1. The candidates are the strings of the literal sets among the alternatives of
    the string type, in code point order. For a `match`, a string another arm of
-   that `match` already lists is left out.
+   that `match` already lists is left out; with F17, only a string another arm
+   with no guard lists (F17 7.2). A string that an earlier literal of the
+   hole's own arm lists is left out too: written again it is `duplicate-case`.
+   So `match s { "a" | "‸` does not list `a`.
 2. The prefix is the hole's value, and the prefix span runs from after the
    opening quote to the position.
 3. A candidate's insert text is its value written as the content of a one-line
