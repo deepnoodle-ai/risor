@@ -2437,7 +2437,13 @@ impl<'a> Parser<'a> {
         if t.is_punct(P::Comma) && enclosing.is_some_and(|o| self.mark[o] == MARK_IF_TEST) {
             return at("if-form", "call");
         }
+        // E6. F8 2.7 item 8 (R257): a word after `.` or `?.` is a field's
+        // name, never the word of a form.
+        let field = |j: usize| {
+            j >= 1 && (self.t[j - 1].is_punct(P::Dot) || self.t[j - 1].is_punct(P::QDot))
+        };
         if prev(1).is_some_and(|p| p.is_word("try"))
+            && !field(ti - 1)
             && !t.is_punct(P::LBrace)
             && !t.is_punct(P::LParen)
         {
@@ -2489,8 +2495,7 @@ impl<'a> Parser<'a> {
                 let named = o >= 1
                     && self.t[o].is_punct(P::LParen)
                     && self.t[o - 1].is_word("switch")
-                    && !(o >= 2
-                        && (self.t[o - 2].is_punct(P::Dot) || self.t[o - 2].is_punct(P::QDot)));
+                    && !field(o - 1);
                 if named {
                     return at_span("switch-statement", self.t[o - 1].span);
                 }
