@@ -21,6 +21,9 @@ pub const MATH_SOURCE: &str = include_str!("../../suite/library-math.json");
 /// Package F7: the records of the queries (`f07-queries.md` 6.1).
 pub const QUERIES_SOURCE: &str = include_str!("../../suite/library-queries.json");
 
+/// Package F17: the record of `walk` (`f17-recursion.md` 5.1).
+pub const RECURSION_SOURCE: &str = include_str!("../../suite/library-recursion.json");
+
 /// The four opt-in groups (`f06-groups.md` 1.1).
 pub const GROUPS: [&str; 4] = ["json", "time", "math", "base64"];
 
@@ -61,6 +64,10 @@ pub struct Record {
     /// F7: the cases of a record that extends a Core entry, beside the Core
     /// record's own.
     pub ext_cases: Option<Json>,
+    /// F17: a record of `suite/library-recursion.json`, whose cases the
+    /// runner runs as that file's.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub recursion: bool,
     /// The record's formulas, as written.
     #[cfg_attr(not(test), allow(dead_code))]
     pub steps: String,
@@ -125,6 +132,19 @@ pub fn records() -> &'static [Record] {
             r.queries = true;
             out.push(r);
         }
+        // F17 5.1: `walk`, after the records of the packages before F17.
+        let recursion =
+            json::parse(RECURSION_SOURCE).expect("suite/library-recursion.json is valid JSON");
+        out.extend(
+            recursion
+                .as_arr()
+                .unwrap_or_default()
+                .iter()
+                .map(|e| Record {
+                    recursion: true,
+                    ..record(e)
+                }),
+        );
         out
     })
 }
@@ -174,6 +194,7 @@ fn record(e: &Json) -> Record {
         extends: false,
         queries: false,
         ext_cases: None,
+        recursion: false,
         group: e
             .get("group")
             .and_then(|g| g.as_str())
@@ -269,8 +290,8 @@ pub fn entry_of(name: &str) -> Option<usize> {
     (0..records().len() + constants().len()).find(|&i| entry_name(i) == name)
 }
 
-/// The entries this build runs: all 53. A runner names any other in a
-/// skip.
+/// The entries this build runs: all 79 (F17 1.3). A runner names any other
+/// in a skip.
 pub fn implemented(idx: usize) -> bool {
     crate::eval::lib::FORMULAS
         .iter()

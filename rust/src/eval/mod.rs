@@ -2171,7 +2171,10 @@ impl<'h> Run<'h> {
                     Err(f) => Err(self.call_traced(f, id, span)),
                 }
             }
-            Res::CallLib(i) => self.call_lib(*i as usize, args, span),
+            Res::CallLib(i) => {
+                let measure = self.p.measure[id.index()] as u32;
+                self.call_lib(*i as usize, args, span, measure)
+            }
             Res::CallHost(i) => self.call_host(*i as usize, args, span),
             _ => Err(self.internal(span)),
         }
@@ -2179,10 +2182,16 @@ impl<'h> Run<'h> {
 
     /// A call of a library function: the arguments, then the entry.
     #[inline(never)]
-    fn call_lib(&mut self, i: usize, args: &'h [NodeId], span: Range) -> R<'h, Value<'h>> {
+    fn call_lib(
+        &mut self,
+        i: usize,
+        args: &'h [NodeId],
+        span: Range,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
         let mut vals = Args::new();
         self.args(args, &mut vals)?;
-        self.lib_function(i, vals.as_slice(), span)
+        self.lib_function(i, vals.as_slice(), span, measure)
     }
 
     /// A call of a host function: the arguments, the call's step, then the

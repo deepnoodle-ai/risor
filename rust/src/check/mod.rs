@@ -2643,18 +2643,36 @@ impl<'a> Checker<'a> {
                 }
                 Some(r) => {
                     let rv = vars(r);
-                    // 3a: also when B fits A0 only by a fit
-                    // that used any.
-                    let seed = rv.iter().find(|x| {
-                        f.params.iter().any(|(_, q)| vars(q).contains(x))
-                            && before.get(x).is_some_and(|a0| fits(&b, a0) != Some(false))
-                    });
+                    // 3a, as F17 5.6 reads it for an R that is not the
+                    // `Var` itself: it fires when B does not fit R with the
+                    // `Var` replaced by A0, or fits it only by a fit that
+                    // used any. For `reduce`, R is the `Var`, and R so
+                    // replaced is A0.
+                    let seed = rv
+                        .iter()
+                        .find(|x| {
+                            f.params.iter().any(|(_, q)| vars(q).contains(x))
+                                && before.contains_key(x)
+                        })
+                        .filter(|_| {
+                            let r0 = substitute(r, self.opaque(), &before);
+                            fits(&b, &r0) != Some(false)
+                        });
                     if let Some(&x) = seed {
                         // 3a. The seed rule.
                         self.diags.truncate(dn);
                         self.sites.truncate(sn);
                         let a0 = before.get(&x).cloned().unwrap_or_default();
-                        sol.insert(x, join(&a0, &b));
+                        // The new solution: the Join of A0 and what bind(R,
+                        // B) gathers for the `Var`, or A0 when it gathers
+                        // nothing. For R the `Var`, that is B.
+                        let mut gathered = Solutions::new();
+                        bind(r, &b, &mut gathered);
+                        let t = match gathered.get(&x) {
+                            Some(g) => join(&a0, g),
+                            None => a0,
+                        };
+                        sol.insert(x, t);
                         let qs: Vec<Ty> = f
                             .params
                             .iter()

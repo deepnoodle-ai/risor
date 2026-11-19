@@ -180,7 +180,7 @@ fn catalog_cases() {
 fn library_cases() {
     let lists: Vec<(String, Json)> = crate::library::records()
         .iter()
-        .filter(|r| r.group.is_none() && !r.queries)
+        .filter(|r| r.group.is_none() && !r.queries && !r.recursion)
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
         .collect();
     let total = run_lists("suite/library.json", lists);
@@ -266,13 +266,14 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f12-x.json", true),
         ("until-f14-x.json", true),
         ("until-f13-math.json", true),
+        ("until-f17-complete.json", true),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
         ("check-until-f02-a.json", false),
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(crate::PACKAGES.len(), 14);
+    assert_eq!(crate::PACKAGES.len(), 15);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -478,6 +479,32 @@ fn facts_package() {
     let total = run(&suite_dir().join("facts"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F17: the record of `suite/library-recursion.json`, run as those
+/// of `library.json` are (`f17-recursion.md` 8 item 1).
+#[test]
+fn library_recursion_cases() {
+    let lists: Vec<(String, Json)> = crate::library::records()
+        .iter()
+        .filter(|r| r.recursion)
+        .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
+        .collect();
+    assert_eq!(lists.len(), 1);
+    let total = run_lists("suite/library-recursion.json", lists);
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F17: `suite/recursion/`, after `suite/facts/` (`f17-recursion.md`
+/// 8). Its files named `tools-` are run as `suite/tools/` is, since this
+/// build offers F12 (8 item 2).
+#[test]
+fn recursion_package() {
+    let total = run(&suite_dir().join("recursion"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+    assert!(total.pass > 0, "no case ran");
 }
 
 /// Package F12: `suite/tools/` (`f12-tools.md` 7.6).
