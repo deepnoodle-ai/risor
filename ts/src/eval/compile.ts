@@ -273,16 +273,17 @@ function rangeFail(op: string, span: Span): never {
 /**
  * An operand: compiled code (k 0), a constant (1), a slot of the program (2),
  * a variable of the environment (3), a name of the frame of the call in
- * progress (4) or of a frame `h` links out from it (5). A constant, a name or
- * a variable is read in place, with no call of a closure.
+ * progress (4), of the frame one link out from it (5), or of a frame `h`
+ * links out (6). A constant, a name or a variable is read in place, with no
+ * call of a closure.
  */
 interface Operand {
-  k: 0 | 1 | 2 | 3 | 4 | 5;
+  k: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   c: Code;
   v: unknown;
   /** The slot, the index in the frame, or the index of the variable. */
   s: number;
-  /** The links to follow to the frame (k 5). */
+  /** The links to follow to the frame (k 5 and 6). */
   h: number;
   /** The variable's name and span. */
   name: string;
@@ -300,6 +301,13 @@ function codeOperand(c: Code): Operand {
  * `o.k === 0 ? o.c(r) : ev(r, o)`, so that no frame of `ev` sits under it
  * while it runs: a call it makes, and so a recursion, would spend that frame
  * at every level (src/index.ts).
+ *
+ * SPEED. `ev` is inlined into the closures of the operators, and its size
+ * counts against what else the engine inlines there (the operator's own
+ * function, `charge`): a name of an outer frame, which is rarer, is read by a
+ * function of its own (measured with scripts/bench.ts: with it in `ev`, the
+ * engine stopped inlining `charge` and the operators into the closures, and
+ * `heavy/arith_10k` ran 10% to 25% slower).
  */
 function ev(r: Run, o: Operand): unknown {
   switch (o.k) {
@@ -309,13 +317,20 @@ function ev(r: Run, o: Operand): unknown {
       return o.v;
     case 2:
       return r.slots[o.s];
-    case 3:
-      return r.variable(o.s, o.name, o.span!);
     case 4:
       return r.frame[o.s];
+    case 3:
+      return r.variable(o.s, o.name, o.span!);
     default:
-      return up(r.frame, o.h)[o.s];
+      return outerName(r, o);
   }
+}
+
+/** A name of a frame `o.h` links out from the frame of the call in progress (k 5 and 6). */
+function outerName(r: Run, o: Operand): unknown {
+  let f = r.frame[0] as unknown[];
+  for (let i = 1; i < o.h; i++) f = f[0] as unknown[];
+  return f[o.s];
 }
 
 // The operators that take both operands, each with its fast path (01 6; 02 5.3).
@@ -549,7 +564,7 @@ class Compiler {
     return -p;
   }
 
-  /** How code at this frame depth reads the name of slot `s`: as an operand (k 2, 4 or 5). */
+  /** How code at this frame depth reads the name of slot `s`: as an operand (k 2, 4, 5 or 6). */
   private nameOperand(s: number, o: Operand): void {
     const depth = this.res.slotDepth[s];
     if (depth === 0) {
@@ -559,7 +574,7 @@ class Compiler {
     }
     o.s = this.res.slotIndex[s];
     o.h = this.frameDepth - depth;
-    o.k = o.h === 0 ? 4 : 5;
+    o.k = o.h === 0 ? 4 : o.h === 1 ? 5 : 6;
   }
 
   /** The frame a lambda `l` links to, from the code being compiled: null for a lambda of the program. */
@@ -1275,8 +1290,14 @@ class Compiler {
         if (m === null) v = s.f!(r, v);
         else {
           // A method call (02 2.3, 11.3): the entry runs from this frame.
+          // Its calls of a lambda leave that lambda's frame in progress (FRAME).
           const c = m.enter(r, v);
-          v = c === null ? SHORT : c.impl(c);
+          if (c === null) v = SHORT;
+          else {
+            const frame = r.frame;
+            v = c.impl(c);
+            r.frame = frame;
+          }
         }
         if (v === SHORT) {
           v = null;
@@ -1337,6 +1358,23 @@ class Compiler {
     const cost = 1 + size(name);
     const slow = this.memberSlow(s);
     const absentNull = s.optional || this.res.coalesced.has(s);
+    if (prev.k === 5 && prev.h === 1) {
+      // A field of a name of the frame one link out, `x.id` in `xs.map(x => ys.filter(y => y.id == x.id))`:
+      // read in place (SPEED at ev).
+      const at = prev.s;
+      return (r) => {
+        const v = (r.frame[0] as unknown[])[at];
+        const q = quickMap(r, v);
+        if (q === 0) return slow(r, v);
+        r.charge(cost);
+        const g = quickGet(v as object, q, name);
+        if (g === ABSENT) {
+          if (absentNull) return null;
+          throw new RunFailure("missing-field", span, "field", { name });
+        }
+        return readQ(r, g, span);
+      };
+    }
     return (r) => {
       const v = prev.k === 0 ? prev.c(r) : ev(r, prev);
       const q = quickMap(r, v);
@@ -1572,7 +1610,11 @@ class Compiler {
         const site: EntrySite = { span, name, lambdas };
         return (r) => {
           const c = enterEntry(r, entry, undefined, args(r), site);
-          return c.impl(c);
+          // The entry's calls of a lambda leave that lambda's frame in progress (FRAME).
+          const frame = r.frame;
+          const out = c.impl(c);
+          r.frame = frame;
+          return out;
         };
       }
       case "host": {
@@ -1616,7 +1658,11 @@ function bindArgs(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown): v
  *
  * FRAME (f17 11.5). The entry's calls of the lambda never overlap, so they
  * share one frame, made here, which links to the frame of the call in which
- * the lambda was evaluated. Each call binds the names again.
+ * the lambda was evaluated. Each call binds the names again. A call makes
+ * that frame the one in progress and leaves it so: between the calls only the
+ * entry runs, which reads no name, and the code that calls the entry puts its
+ * own frame back when the entry returns. A failure that `catch` stops puts
+ * back the frame of the `try`.
  */
 class LambdaCallback implements Callback {
   readonly params: number;
@@ -1644,7 +1690,6 @@ class LambdaCallback implements Callback {
     r.depth += this.measure;
     try {
       if (r.depth > r.depthLimit) r.testDepth(r.depth);
-      const caller = r.frame;
       const fr = this.frame;
       r.frame = fr;
       if (lc.simple) {
@@ -1653,7 +1698,6 @@ class LambdaCallback implements Callback {
         if (lc.s2 >= 0) fr[lc.s2] = null;
       } else this.bind2(a, b);
       const out = lc.body(r);
-      r.frame = caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {
@@ -1671,7 +1715,6 @@ class LambdaCallback implements Callback {
     r.depth += this.measure;
     try {
       if (r.depth > r.depthLimit) r.testDepth(r.depth);
-      const caller = r.frame;
       const fr = this.frame;
       r.frame = fr;
       if (lc.simple) {
@@ -1680,7 +1723,6 @@ class LambdaCallback implements Callback {
         if (lc.s2 >= 0) fr[lc.s2] = c;
       } else bindArgs(r, lc, a, b, c);
       const out = lc.body(r);
-      r.frame = caller;
       r.depth -= this.measure;
       return out;
     } catch (x) {

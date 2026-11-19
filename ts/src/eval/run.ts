@@ -38,8 +38,12 @@ function supplied(vars: VarSource, name: string): unknown {
   return v === undefined ? ABSENT_VAR : v;
 }
 
-/** The frame of the program: its names are the run's slots, so it holds nothing (f17 11.5). */
-const PROGRAM_FRAME: unknown[] = [];
+/**
+ * The frame of the program: its names are the run's slots, so it holds only
+ * a link to nothing (f17 11.5). Its elements are of the kind every frame's
+ * are, so a read of a frame sees one kind of array.
+ */
+const PROGRAM_FRAME: unknown[] = [null];
 
 export class Run {
   steps = 0;
