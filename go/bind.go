@@ -581,9 +581,10 @@ func deriveIn(d *deriver, t reflect.Type) (text string, err error) {
 }
 
 // bound applies the derivation of a Function from Func or Methods when it is
-// declared: it reports what the derivation found, and tests a signature
-// the host wrote against the Go function. It reports whether the
-// declaration goes on.
+// declared: it reports what the derivation found. For a signature the host
+// wrote, it tests only that the signature has as many parameters as the Go
+// function, and that none is optional or rest; it does not compare the
+// types. It reports whether the declaration goes on.
 func (e *Env) bound(what string, f Function) bool {
 	b := f.bind
 	if b == nil {

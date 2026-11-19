@@ -365,6 +365,9 @@ func TestFuncCalls(t *testing.T) {
 		risor.Func("small", func(x float32) float32 { return x }),
 		risor.Func("huge", func() int64 { return 1 << 60 }),
 		risor.Func("most", func() uint64 { return math.MaxUint64 }),
+		risor.Func("nan", math.NaN),
+		risor.Func("inf", func() float64 { return math.Inf(1) }),
+		risor.Func("inf32", func() float32 { return float32(math.Inf(-1)) }),
 		risor.Func("boom", func() string { panic("bug") }),
 		risor.Func("total", func(xs []struct {
 			Qty int `json:"qty"`
@@ -390,11 +393,15 @@ func TestFuncCalls(t *testing.T) {
 		`natural(-1)`:                           `function-error environment: argument 1 of natural: -1 does not fit uint {2 0}`,
 		`small(1e300)`:                          `function-error environment: argument 1 of small: 1e+300 does not fit float32 {1 0}`,
 		// A Go result past 2^53 - 1, a NaN and an infinity cannot enter.
-		`huge()`:                         `number-range environment: a number from the host is out of range {1 0}`,
-		`most()`:                         `number-range environment: a number from the host is out of range {1 0}`,
-		`try { boom() } catch { 1 }`:     `function-panic host: host function boom crashed {1 0}`,
-		`total([{qty: 2}, {qty: 3}])`:    `5 {1 9}`,
-		`total([{qty: 2}, {qty: blob}])`: `function-error environment: argument 1 of total, at [1].qty: expected int, found "x" {1 9}`,
+		`huge()`:                             `number-range environment: a number from the host is out of range {1 0}`,
+		`most()`:                             `number-range environment: a number from the host is out of range {1 0}`,
+		`nan()`:                              `number-range environment: a number from the host is out of range {1 0}`,
+		`inf()`:                              `number-range environment: a number from the host is out of range {1 0}`,
+		`inf32()`:                            `number-range environment: a number from the host is out of range {1 0}`,
+		`try { inf() } catch (e) { e.code }`: `"number-range" {3 10}`,
+		`try { boom() } catch { 1 }`:         `function-panic host: host function boom crashed {1 0}`,
+		`total([{qty: 2}, {qty: 3}])`:        `5 {1 9}`,
+		`total([{qty: 2}, {qty: blob}])`:     `function-error environment: argument 1 of total, at [1].qty: expected int, found "x" {1 9}`,
 	}, func(src string) string { return bindOutcome(t, env, src, vars, false) })
 	// A program not checked reaches the adapter with any argument.
 	expectAll(t, map[string]string{
