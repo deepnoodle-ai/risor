@@ -84,6 +84,14 @@ func reflectKind(v any) Kind {
 	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
+	case reflect.Bool: // F1 6.2: a named type is presented by its kind
+		return Bool
+	case reflect.String:
+		return String
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return Number
 	case reflect.Slice, reflect.Array:
 		return List // F1 6.2: a nil slice is an empty list
 	case reflect.Map:
@@ -165,11 +173,24 @@ func Read(v any) (any, ReadError) {
 		}
 		return nil, ReadOK // null when MarshalText fails (F1 6.2)
 	}
-	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, ReadOK
 		}
 		return Read(rv.Elem().Interface())
+	// F1 6.2: a value of a named bool, string or number type, such as
+	// time.Duration, is read as one of its kind.
+	case reflect.Bool:
+		return rv.Bool(), ReadOK
+	case reflect.String:
+		return Read(rv.String())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return readInt(rv.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return readUint(rv.Uint())
+	case reflect.Float32, reflect.Float64:
+		return Read(rv.Float())
 	}
 	if KindOf(v) == Null {
 		return nil, ReadOK
@@ -323,6 +344,9 @@ func Truthy(v any) bool {
 	case Number:
 		f, _ := Read(v)
 		return f != nil && f.(float64) != 0
+	case Bool, String: // a named type (F1 6.2), or a text type
+		x, _ := Read(v)
+		return Truthy(x)
 	case List, Map:
 		return Len(v) > 0
 	}

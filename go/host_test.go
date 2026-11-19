@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -105,6 +106,34 @@ func TestHostFunctions(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Class, "environment")
 	assert.Equal(t, u, risor.Usage{Steps: 4, Allocated: 2})
 	assert.Equal(t, run(t, env, "geo.dist(1) + geo.dist(1, 2)", nil), any(3.0))
+}
+
+// 03-host.md 3.4.4: a NaN and an infinity from the host cannot enter, in a
+// plain float64 as in any other host number type, from a variable, an element,
+// a field, a pointer or a host function's result.
+func TestHostNaNAndInfinity(t *testing.T) {
+	nan, inf := math.NaN(), math.Inf(-1)
+	type box struct {
+		F float64
+		G float32
+	}
+	f := risor.Function{Name: "bad", Type: "() => float", Impl: func(c *risor.Call, args []any) (any, error) { return nan, nil }}
+	g := risor.Function{Name: "bads", Type: "() => float[]", Impl: func(c *risor.Call, args []any) (any, error) { return []any{1.0, inf}, nil }}
+	env, err := risor.NewEnv(risor.VarRecord("{x: float, y: float, xs: float[], ys: float[], m: map<float>, s: {F: float, G: float}, p: float}"), f, g)
+	assert.NoError(t, err)
+	vars := risor.Map{"x": nan, "y": math.Inf(1), "xs": []any{1.0, inf}, "ys": []float64{1, nan},
+		"m": map[string]any{"a": nan}, "s": box{F: nan, G: float32(math.Inf(1))}, "p": &nan}
+	for _, src := range []string{"x", "y", "x == x", "y > 1", "[x]", "`${y}`", "xs[1]", "ys[1]", "m.a", "s.F", "s.G", "p",
+		"xs.sum()", "ys.map(v => v)", "xs == xs", "`${xs}`", "bad()", "bads()[1]", "bads().sum()"} {
+		d := runErr(t, env, src, vars)
+		assert.Equal(t, d.Code, "number-range", src)
+		assert.Equal(t, d.Class, "environment", src)
+		assert.Equal(t, d.Message, "a number from the host is out of range", src)
+	}
+	assert.Equal(t, run(t, env, "try { x } catch (e) { e.code }", vars), any("number-range"))
+	// What does not read the element does not fail (02-evaluation.md 3.3).
+	assert.Equal(t, run(t, env, "len(xs) + len(bads())", vars), any(4.0))
+	assert.Equal(t, run(t, env, "xs[0] + ys[0]", vars), any(2.0))
 }
 
 func TestHostNumbers(t *testing.T) {

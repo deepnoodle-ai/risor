@@ -205,6 +205,71 @@ func TestStructPresentation(t *testing.T) {
 	assert.Equal(t, eval("len(o)", o2), 12.0)
 }
 
+type (
+	shade  string
+	toggle bool
+	level  uint8
+	ratio  float32
+)
+
+type styled struct {
+	Timeout time.Duration `json:"timeout"`
+	Shade   shade         `json:"shade"`
+	On      toggle        `json:"on"`
+	Level   level         `json:"level"`
+	Ratio   ratio         `json:"ratio"`
+	Shades  []shade       `json:"shades"`
+	Big     time.Duration `json:"big"`
+}
+
+// F1 6.2: a value of a named bool, string or number type is presented by
+// its kind, as TypeOf types it, and not as an opaque value.
+func TestNamedScalarTypes(t *testing.T) {
+	ty, err := risor.TypeOf[styled]()
+	assert.NoError(t, err)
+	assert.Equal(t, ty.String(), "{big: int, level: int, on: bool, ratio: float, shade: string, shades: string[], timeout: int}")
+	env, err := risor.NewEnv(risor.VarType("s", ty), risor.Groups("json"),
+		risor.Func("timeout", func() time.Duration { return 2 * time.Second }),
+		risor.Func("pick", func(s shade) shade { return s + "!" }))
+	assert.NoError(t, err)
+	v := styled{Timeout: 1500, Shade: "red", On: false, Level: 3, Ratio: 0.5, Shades: []shade{"b", "a"}, Big: 1 << 60}
+	for src, want := range map[string]any{
+		"s.timeout + 1":               1501.0,
+		`s.shade + "/" + s.shades[1]`: "red/a",
+		"s.on || s.level > 2":         true,
+		"!s.on":                       true,
+		"s.ratio * 4":                 2.0,
+		"s.shades.sort().join(\",\")": "a,b",
+		`"red" == s.shade`:            true,
+		"`${s.level}-${s.shade}`":     "3-red",
+		"type(s.timeout)":             "number",
+		"json.stringify(s.shades)":    `["b","a"]`,
+		"timeout() / 1e9":             2.0,
+		`pick(s.shade)`:               "red!",
+	} {
+		x, err := risor.Parse(src)
+		assert.NoError(t, err, src)
+		p, err := env.Compile(x)
+		assert.NoError(t, err, src)
+		out, err := p.Run(context.Background(), risor.Map{"s": v})
+		assert.NoError(t, err, src)
+		if f, ok := risor.AsFloat(out); ok {
+			out = f
+		}
+		assert.Equal(t, out, want, src)
+	}
+	// Past 2^53 - 1, a named integer cannot enter, as any host integer.
+	x, _ := risor.Parse("s.big")
+	p, _ := env.Compile(x)
+	_, err = p.Run(context.Background(), risor.Map{"s": v})
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, e.Diagnostics[0].Code, "number-range")
+	assert.False(t, risor.Truthy(toggle(false)))
+	assert.False(t, risor.Truthy(shade("")))
+	assert.True(t, risor.Truthy(level(1)))
+}
+
 func TestTextMarshalerError(t *testing.T) {
 	// F1 6.2: a MarshalText that fails, and a nil pointer, present null.
 	env, err := risor.NewEnv(risor.Var("v", "string | null"))

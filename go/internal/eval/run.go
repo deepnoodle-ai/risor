@@ -383,8 +383,14 @@ func (r *run) enterWalk() {
 
 // read reads a host value at the node that yields it (02-evaluation.md 3.3).
 func (r *run) read(v any, sp syntax.Span) any {
-	switch v.(type) {
-	case float64, map[string]any, nil:
+	switch x := v.(type) {
+	case float64:
+		// A NaN or an infinity from the host cannot enter (03-host.md
+		// 3.4.4). x-x is 0 for every finite number and NaN for those.
+		if x-x == 0 {
+			return v
+		}
+	case map[string]any, nil:
 		return v
 	}
 	return r.readMore(v, sp)
