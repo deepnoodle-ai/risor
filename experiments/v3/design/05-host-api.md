@@ -371,9 +371,10 @@ functions exactly as far as they charge (`O:L8`).
 The first three can be set or turned off; depth can only be set. Source nesting
 cannot be set: whether a text is a program must not depend on the host. The five
 codes of the first four rows have class `limit`, and `catch` does not catch them
-(A.6). The specification also fixes the largest depth a host may set (candidate:
-1,000), so that every implementation can state the stack it needs for 2D + 100
-levels. The defaults:
+(A.6). The specification also fixes the largest depth a host may set (1,000 by
+R20; 400 by D58 and R206, which track B of `14` 5.3 carries into the
+specification), so that every implementation can state the stack it needs for
+2D + 100 levels. The defaults:
 
 - **Steps: 1,000,000,** the engine's value (`workflow:expr.go:16`): about 15 ms
   of language work at the spike's cost per node (I). v2 and expr default to
@@ -1453,6 +1454,13 @@ func Load[T any](ctx context.Context, env *Env, x *Expr, vars Vars, dst *T) erro
 
 ### B.4 Host functions
 
+> **Superseded by Part E** (R201) where they disagree. The Go binding's
+> `Function` is `{Name, Type, Impl}` with the signature as text (E.3). There
+> is no `Rule` and no `Native`. The registration of any Go function that this
+> section and S4 describe is planned as helpers by `19-13`: `risor.Func`,
+> `risor.Methods`, and the generator `risor-bind` as a follow-up. None is
+> built yet.
+
 ```go
 // Function declares a host function. It is a Decl.
 type Function struct {
@@ -1491,6 +1499,10 @@ type CallCheck struct{ Args []Arg; Span Span }
   `c.Context()`. Scope-dependent typing is a redeclaration in a child `Env`.
 
 ### B.5 Diagnostics
+
+> **Superseded by Part E** (R201) where they disagree: E.8 has the
+> diagnostics and the three renderings. A nested Risor error's message is
+> ruled by `20-9`, a Core amendment not yet built.
 
 ```go
 // Error is the only error type this package returns.
@@ -1558,6 +1570,10 @@ position (`expr:check.go:18-20`, `:185-191`). v2's lexer counts runes
 
 ### B.6 Templates
 
+> **Superseded by Part E** (R201) where they disagree: E.5 has the template
+> surface, with `IsSingle`, `Part` and `Program` in place of `Single` and
+> `Expr`.
+
 ```go
 func ParseTemplate(text string, opts ...ParseOption) (*Template, error)
 
@@ -1575,6 +1591,12 @@ expr has a separate `Template.Check` and `Template.Render` (`expr:check.go:76`,
 (`risor:internal/tmpl/string_template.go:57`).
 
 ### B.7 Conveniences of the Go binding
+
+> **Superseded by Part E** (R201) where they disagree. The binding offers
+> `TypeOf` and the other conveniences of E.1 row 5; `Fields`, `Bind`,
+> `Opaque` and `Method(name, impl)` are not its surface (E.3 has
+> `OpaqueType` and `Method(type, name, f)`). The helpers of `19-13` are
+> planned, not built.
 
 These derive declarations from Go types by reflection. They are outside the
 model (`O:P5`); `Describe` writes their result as type text.

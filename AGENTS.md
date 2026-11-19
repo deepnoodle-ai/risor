@@ -10,14 +10,17 @@ v2 is released and is maintained on the `v2` branch.
 
 v3 is a new language and a new code base. It is not a revision of v2.
 
-**Status: Core is built; the follow-on packages are being built.** The design
+**Status: Core and the follow-on packages F1 to F14 are built.** The design
 is written. The specification is in `spec/`: Core in `spec/core/`, and one
 chapter for each follow-on package in `spec/packages/`. The conformance suite
-is in `suite/`. All three implementations pass Core with the type checker:
-Go in `go/`, TypeScript in `ts/` and Rust in `rust/`. Each then builds the
-packages in a fixed order (`spec/core/03-host.md` 3.11); the Go implementation is the furthest along.
+is in `suite/`. All three implementations pass Core with the type checker,
+and offer the packages F1 to F14 in their fixed order (`spec/core/03-host.md`
+3.11): Go in `go/`, TypeScript in `ts/` and Rust in `rust/`.
 `experiments/v3/design/14-implementation-plan.md` is the plan: what Core is,
-what follows it, and the order.
+what follows it, and the order. Its section 5.3 orders the work after the
+alpha as tracks A to F: Core amendments first, then annotations, recursion
+and function parameters, entry points, and author feedback. Plans `17` to
+`21` describe that work; none of it is built yet.
 
 ## What v3 is
 
@@ -96,9 +99,14 @@ The design is in `experiments/v3/design/`. Read `00-overview.md` first.
 | `07` to `13` | One feature each: checked conversion (`as`, `is`), strings, tagged unions, errors, testing, config files, queries |
 | `14-implementation-plan.md` | Core and the follow-on packages, the milestones, the rules of the work |
 | `15-build-rulings.md` | Every ruling made while building: decisions taken, design rules changed, new rules |
+| `17` to `20` | One feature each, from the review of issues #640, #641 and #644: entry points and annotations; recursion, function parameters and `match` guards; host calls and opaque values; feedback to authors |
+| `21-scope.md` | The scope of v3 (a recommendation, D59), and sketches of the next expression features: explaining a result, `glob`, moving off expr |
 
-A plan (`07` to `13`) is the authority for its feature. `02` to `06` carry its
-rules and cite it.
+A plan (`07` to `13`, `17` to `20`) is the authority for its feature. `02` to
+`06` carry its rules and cite it. There is no `16`: regular expressions were
+withdrawn (D52). Plans `17` to `20` describe changes the specification does
+not have yet; each track of `14` 5.3 brings its part into `spec/` as it
+lands.
 
 ## The specification, the suite and the implementations
 
@@ -158,7 +166,9 @@ yet confirmed.
 
 ## Order of work
 
-Section 5.2 of the overview has the full list. In short:
+Section 5.2 of the overview has the full list, as it was planned before Core
+was built. The work after the alpha is ordered in `14` section 5.3. In short,
+the original order was:
 
 1. The owner settles the decisions that are still open.
 2. The conformance format and first cases; a Go lexer, parser and AST.

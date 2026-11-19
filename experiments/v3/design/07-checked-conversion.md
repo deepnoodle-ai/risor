@@ -293,9 +293,9 @@ enforced. The name of the feature and its documentation must say "type".
 | Coercion: `"42"` accepted as `int`, a missing field filled from a default | It makes `as` a second set of conversion rules beside `int(x)` and `??`. Lax-by-default validators are a known source of surprise (M). | Not planned |
 | Removing undeclared keys | The result would be a new value, so `as` would allocate, `(x as T) == x` could be false, and `is` could not agree with `as`. | A library function could do it later |
 | Tagged unions: `{type: "a", x: int} \| {type: "b", y: string}` | A type has one alternative per kind (`03:2.1`), so the two records join. This plan gives the feature its first consumer. | Its own plan, since written and accepted: `09-tagged-unions.md` (D47) |
-| Recursive types: a tree, a comment thread | They end the bound on the walk's depth and on the checker's type depth, and they are the first cyclic structure in the design (R3). Write `any` at the point of recursion. | Its own plan |
+| Recursive types: a tree, a comment thread | They end the bound on the walk's depth and on the checker's type depth, and they are the first cyclic structure in the design (R3). Write `any` at the point of recursion. | Its own plan, since written and accepted: `18-recursion.md` (D54), in F17 |
 | Value constraints: a range, a length, a pattern | A value-level type system (`03:2.1`, "Refinements"). | Not planned |
-| Annotations: `const o: Order = x` | Already reserved (`02:8.1`, question 8). An annotation is a claim checked statically. `as` is a test. They are different things and both are useful. | A minor version, with `type` lines |
+| Annotations: `const o: Order = x` | Already reserved (`02:8.1`, question 8). An annotation is a claim checked statically. `as` is a test. They are different things and both are useful. | Moved forward by D53: with `type` lines, in the first slice (D1) of F16 (`17`) |
 | Generic named types: `Page<T>` | No user generics (`03:2.1`). | Not planned |
 
 ## 4. Changes to the other documents
