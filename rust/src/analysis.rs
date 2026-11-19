@@ -52,7 +52,13 @@ pub struct Analysis {
     pub names: Vec<String>,
     /// One reference for each read, by the start of the read.
     pub refs: Vec<Ref>,
-    /// The calls, by the start of their span.
+    /// The calls, by the start of their span. Every call of a host function
+    /// that is not a method is here (F2 3.6 item 6). A method of an opaque
+    /// value is not, as analysis has no environment: on a free `w`,
+    /// `w.text()` shows as a call with the namespace `w`, which a host drops,
+    /// and on any other receiver it does not show at all (3.6 item 8). So a
+    /// host that caches results on this report treats a program that may
+    /// read an opaque value as volatile.
     pub calls: Vec<CallSite>,
     /// The value of the program when it is a literal (3.7).
     pub literal: Option<Data>,

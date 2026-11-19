@@ -330,6 +330,50 @@ fn host_numbers_that_cannot_enter() {
     assert_eq!(run("bigs()[1]"), Err("number-range"));
 }
 
+/// `03-host.md` 3.4.6 item 6 and 3.5.2 item 5: the host owns an opaque
+/// value's state, a method may change it, and no call is cached.
+#[test]
+fn an_opaque_value_state_belongs_to_the_host() {
+    use std::sync::Mutex;
+    let env = Env::builder()
+        .var_record("{w: Label}")
+        .opaque("Label")
+        .method("Label", "text", "() => string", |_, args| match &args[0] {
+            Value::Opaque(o) => {
+                let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
+                Ok(Data::Str(m.lock().unwrap().clone()))
+            }
+            _ => Ok(Data::Null),
+        })
+        .method(
+            "Label",
+            "setText",
+            "(s: string) => null",
+            |_, args| match (&args[0], &args[1]) {
+                (Value::Opaque(o), Value::Str(s)) => {
+                    let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
+                    *m.lock().unwrap() = s.as_str().to_string();
+                    Ok(Data::Null)
+                }
+                _ => Ok(Data::Null),
+            },
+        )
+        .build()
+        .unwrap();
+    let w = OpaqueRef::new("Label", Mutex::new("a".to_string()));
+    let v = vars(&[("w", Data::Opaque(w.clone()))]);
+    let p = program(
+        &env,
+        r#"{ const a = w.text(); const _ = w.setText("x"); [a, w.text()] }"#,
+    );
+    assert_eq!(outcome(&p, &v), Ok(r#"["a", "x"]"#.into()));
+    // The host keeps the value across runs and sees the change.
+    let m = w.value.downcast_ref::<Mutex<String>>().unwrap();
+    assert_eq!(*m.lock().unwrap(), "x");
+    let p = program(&env, "w.text()");
+    assert_eq!(outcome(&p, &v), Ok("\"x\"".into()));
+}
+
 /// `03-host.md` 3.4.4: NaN and the infinities never enter, as a variable,
 /// inside a list or a map, or as a host function's result.
 #[test]
