@@ -623,16 +623,33 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 		r.pending = nil
 		r.raise(p)
 	}
+	var msg string
+	if crashed == nil && err != nil {
+		// Reading the error runs the host's own methods (Error, Unwrap, As),
+		// so a crash in one of them is a crash in host code too.
+		msg, crashed = safeErrorMessage(err)
+	}
 	if crashed != nil {
 		ff := fail("function-panic", "", sp, messages.Word("name", name))
 		ff.cause = fmt.Errorf("%v", crashed)
 		r.raise(ff)
 	}
 	if err != nil {
-		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: hostErrorMessage(err), ownMsg: true, cause: err}
+		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: msg, ownMsg: true, cause: err}
 		r.raise(ff)
 	}
 	return r.read(res, sp)
+}
+
+// safeErrorMessage is hostErrorMessage, with a crash in the host's error
+// caught and reported.
+func safeErrorMessage(err error) (msg string, crashed any) {
+	defer func() {
+		if x := recover(); x != nil {
+			crashed = x
+		}
+	}()
+	return hostErrorMessage(err), nil
 }
 
 // hostErrorMessage is the message of a function-error (03-host.md 3.5.3):

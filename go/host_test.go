@@ -122,6 +122,37 @@ func TestNestedRisorError(t *testing.T) {
 	assert.Nil(t, d.Cause)
 }
 
+// badError is a host error whose methods crash.
+type badError struct{ inError bool }
+
+func (e badError) Error() string {
+	if e.inError {
+		panic("bug in Error")
+	}
+	return "offline"
+}
+
+func (e badError) Unwrap() error {
+	if !e.inError {
+		panic("bug in Unwrap")
+	}
+	return nil
+}
+
+// 03-host.md 3.5.3: a crash in host code is function-panic. The methods of a
+// host's error are host code: reading the error for its message must not let
+// their crash leave the run as an internal error.
+func TestHostErrorThatCrashes(t *testing.T) {
+	for _, e := range []badError{{inError: false}, {inError: true}} {
+		env, err := risor.NewEnv(risor.Function{Name: "h", Type: "() => int !",
+			Impl: func(c *risor.Call, args []any) (any, error) { return nil, e }})
+		assert.NoError(t, err)
+		d := runErr(t, env, "try { h() } catch { 0 }", nil)
+		assert.Equal(t, d.Code, "function-panic")
+		assert.Equal(t, d.Message, "host function h crashed")
+	}
+}
+
 func TestHostFunctions(t *testing.T) {
 	env, err := risor.NewEnv(
 		risor.Function{Name: "boom", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
