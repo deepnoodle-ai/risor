@@ -102,7 +102,10 @@ export interface HostFunction {
   type: string;
   /**
    * Synchronous. Throw an `Error` (a `HostError`, say) to return an error:
-   * `function-error`. Any other thrown value is a crash: `function-panic`.
+   * `function-error`, whose message is the error's message. A `RisorError`,
+   * such as the failure of a nested run, gives the message of its first
+   * diagnostic, which is the diagnostic's `cause` (03 3.5.3). Any other thrown
+   * value is a crash: `function-panic`.
    */
   call(handle: Call, ...args: unknown[]): unknown;
 }
@@ -1287,6 +1290,13 @@ export interface Ref {
 export class Analysis {
   readonly names: string[];
   readonly refs: Ref[];
+  /**
+   * Every call of a host function that is not a method of an opaque type (f02
+   * 3.6 item 6). A method call on a free name, `w.text()`, shows as a call of
+   * the namespace `w`, which a host drops when `w` is a variable; on any other
+   * receiver it is not reported (item 8). A program that may read an opaque
+   * value may give another result with the same report and variables.
+   */
   readonly calls: CallSite[];
   readonly literal: { value: unknown } | false;
   readonly segments: ({ text: string; span: Span } | { part: Span; span: Span })[] | null;

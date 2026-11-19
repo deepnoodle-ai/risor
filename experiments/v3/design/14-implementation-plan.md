@@ -330,8 +330,10 @@ is offered. The owner is asked.
    the fallback of 300 is taken. If 300 fails the same test, the limit is
    the largest multiple of 50 that passes it, and not below the default of
    200. The default already passes: 1.5 times 200 is 300, and the worst
-   measured form ran to 435. (A ruling to record, not yet seen by the
-   owner.)
+   measured form ran to 435.
+
+   **Done (R214).** After the stack work every binding passes at 400, so
+   neither fallback is taken.
 2. **The Core amendments**, in one pull request, in `spec/core/`,
    `suite/core-run/`, `suite/core-check/`, `go/`, `ts/` and `rust/`:
    - absence under `??` for every operand of a chain but the last (`20` 3.1),

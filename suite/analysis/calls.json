@@ -855,6 +855,43 @@
      ]
     }
    }
+  },
+  {
+   "name": "a method of an opaque value on a free name shows only as a call of a namespace (3.6 item 8)",
+   "source": "w.child().text()",
+   "expect": {
+    "analysis": {
+     "names": [
+      "w"
+     ],
+     "calls": [
+      {
+       "name": "w.child",
+       "namespace": "w",
+       "span": [
+        1,
+        1,
+        1,
+        10
+       ],
+       "args": [],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a method of an opaque value on a bound name is not reported (3.6 item 8)",
+   "source": "const v = w; v.text()",
+   "expect": {
+    "analysis": {
+     "names": [
+      "w"
+     ],
+     "calls": []
+    }
+   }
   }
  ]
 }

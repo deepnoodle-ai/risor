@@ -163,6 +163,8 @@ pub struct Fail<'h> {
     /// The calls in progress, the innermost first: each call adds its entry
     /// as the failure leaves it (`f08-errors.md` 4). Built only on failure.
     pub trace: Vec<(Range, String, Option<usize>)>,
+    /// The inner diagnostic of a `function-error` (`03-host.md` 3.5.3).
+    pub cause: Option<Box<Diagnostic>>,
 }
 
 impl Fail<'_> {
@@ -198,6 +200,7 @@ impl Fail<'_> {
         d.class = self.class();
         d.data = self.data.as_ref().map(|v| Box::new(v.to_data()));
         d.path = self.path.clone().map(Box::new);
+        d.cause = self.cause.clone();
         if !self.trace.is_empty() {
             d.trace = Some(Box::new(
                 self.trace
@@ -422,6 +425,7 @@ fn fail<'h>(
         text: None,
         data: None,
         host_number: false,
+        cause: None,
         path: None,
         trace: Vec::new(),
     })
@@ -433,6 +437,21 @@ fn fail<'h>(
 #[inline(never)]
 fn traced<'h>(mut f: Box<Fail<'h>>, span: Range, entry: &str, index: usize) -> Box<Fail<'h>> {
     f.trace.push((span, entry.to_string(), Some(index)));
+    f
+}
+
+/// `function-error` from a host function's error (`03-host.md` 3.5.3): the
+/// text, or the message of the inner diagnostic, which is kept as the
+/// cause. Nothing else of the inner diagnostic reaches the run, and the
+/// error carries no `data`.
+#[cold]
+#[inline(never)]
+fn function_error<'h>(e: crate::host::HostError, span: Range) -> Box<Fail<'h>> {
+    let mut f = fail("function-error", "default", span, vec![]);
+    f.text = Some(e.message());
+    if let crate::host::HostError::Risor(inner) = e {
+        f.cause = inner.diagnostics.into_iter().next().map(Box::new);
+    }
     f
 }
 
@@ -467,6 +486,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: false,
+            cause: None,
             path: None,
             trace: Vec::new(),
         })
@@ -501,6 +521,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: true,
+            cause: None,
             path: None,
             trace: Vec::new(),
         })
@@ -1653,13 +1674,15 @@ impl<'h> Run<'h> {
     }
 
     /// A field read `.name` or `?.name`, the step of a chain. `None` is a
-    /// null receiver of an optional read.
+    /// null receiver of an optional read. The last step of a coalesced read
+    /// under `??` gives null for an absent key (`01-language.md` 6.6).
     #[inline]
-    fn member(
+    pub(crate) fn member(
         &mut self,
         v: Value<'h>,
         name: &str,
         optional: bool,
+        coalesced: bool,
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         match &v {
@@ -1680,7 +1703,7 @@ impl<'h> Run<'h> {
         match found {
             Some(Value::BadNum) => Err(self.host_number(Some(span))),
             Some(x) => Ok(Some(x)),
-            None if optional => Ok(Some(Value::Null)),
+            None if optional || coalesced => Ok(Some(Value::Null)),
             None => Err(fail(
                 "missing-field",
                 "field",
@@ -1719,7 +1742,10 @@ impl<'h> Run<'h> {
         let ast = self.ast;
         match &ast.nodes[s.index()].kind {
             NodeKind::Each { .. } => self.each_step(s, v),
-            NodeKind::Member { name, optional, .. } => self.member(v, name, *optional, ast.span(s)),
+            NodeKind::Member { name, optional, .. } => {
+                let coalesced = self.p.coalesced[s.index()];
+                self.member(v, name, *optional, coalesced, ast.span(s))
+            }
             NodeKind::Index { .. } => self.index_step(s, v),
             NodeKind::MethodCall { .. } => self.method(s, v),
             _ => Err(self.internal(ast.span(s))),
@@ -1764,7 +1790,8 @@ impl<'h> Run<'h> {
             return self.index_receiver(&v, *optional, span);
         }
         let iv = self.eval(*index)?;
-        self.index_read(v, k, iv, *optional, span)
+        let coalesced = self.p.coalesced[s.index()];
+        self.index_read(v, k, iv, *optional, coalesced, span)
     }
 
     /// The receiver of an index that is not a list, a string or a map:
@@ -1795,6 +1822,7 @@ impl<'h> Run<'h> {
         k: Kind,
         iv: Value<'h>,
         optional: bool,
+        coalesced: bool,
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         if iv.is_null() {
@@ -1813,7 +1841,7 @@ impl<'h> Run<'h> {
                 self.charge(1 + size(key.as_str()))?;
                 match v.field(key.as_str()) {
                     Some(x) => Ok(Some(self.read(x, span)?)),
-                    None if optional => Ok(Some(Value::Null)),
+                    None if optional || coalesced => Ok(Some(Value::Null)),
                     None => Err(fail(
                         "missing-field",
                         "key",
@@ -2194,11 +2222,7 @@ impl<'h> Run<'h> {
                 span,
                 vec![("name", name.to_string())],
             )),
-            Ok(Err(e)) => {
-                let mut f = fail("function-error", "default", span, vec![]);
-                f.text = Some(e.0);
-                Err(f)
-            }
+            Ok(Err(e)) => Err(function_error(e, span)),
             Ok(Ok(d)) => self.read(Value::from_data(&d), span),
         }
     }
@@ -3099,7 +3123,7 @@ impl Program {
         // the whole program's.
         if d.span.is_none() && crate::diag::code::LIMIT.contains(&f.code) {
             let s = self.parsed.ast.node(self.parsed.ast.root).span;
-            d.range = Some(s);
+            d.set_range(s);
             d.span = Some(self.parsed.source.line_span(s));
         }
         d.class = self.class_of(f);

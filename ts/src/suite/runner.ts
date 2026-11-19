@@ -146,7 +146,10 @@ function stubFunction(st: Stub, cls: () => Classifier, unmatched: Unmatched[], n
         }
         handle.charge(r.charge);
         handle.allocate(r.allocate);
-        if (r.error !== undefined) throw new HostError(r.error);
+        if (typeof r.error === "string") throw new HostError(r.error);
+        // 3.10.4: a diagnostic object is the failure of a run, in this binding's type for one:
+        // one diagnostic of phase `run`, with its code and message, and no span.
+        if (r.error !== undefined) throw new RisorError([{ phase: "run", code: r.error.code, message: r.error.message }]);
         return r.hostResult;
       }
       unmatched.push({ name, args });

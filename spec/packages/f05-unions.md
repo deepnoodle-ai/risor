@@ -368,8 +368,11 @@ is present reads as required, as in Core.
 | `s.kind` | `"circle" \| "rect"` |
 | `s.r` | `float`, and `maybe-absent` on `r`: only some variants list it |
 | `s?.r` | `float \| null` |
+| `s.r ?? 0` | `float`, and no `maybe-absent`: a coalesced read under `??` (`01-language.md` 6.6) reads flat(U) by the column of a coalesced read of `05-types.md` 9.2 |
 | `s.color` | `no-field` on `color`: no variant lists it, and every variant is exact |
+| `s.color ?? 0` | `no-field` on `color`, as plain |
 | `s.color`, with one variant open | `any`, and a `dynamic` site on `s` |
+| `s.color ?? 0`, with one variant open | `any`, and no site |
 | `s[k]`, `k: string` | `maybe-absent` on `k`; `float \| "circle" \| "rect"` |
 | `const {r = 0} = s` | `r: float` |
 

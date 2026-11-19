@@ -198,7 +198,7 @@ fn a_host_site_on_an_argument_is_not_the_outer_calls() {
             Ok(crate::Data::Str("x".into()))
         })
         .function("geo.distance", "(a: string, b: string) => float", |_, _| {
-            Err(crate::HostError("far".into()))
+            Err(crate::HostError::Text("far".into()))
         })
         .build()
         .unwrap();
@@ -214,7 +214,7 @@ fn a_host_site_on_an_argument_is_not_the_outer_calls() {
     // The marked call itself is at its own `host` site.
     let env = Env::builder()
         .function("rate", "(code: string) => string !", |_, _| {
-            Err(crate::HostError("no".into()))
+            Err(crate::HostError::Text("no".into()))
         })
         .build()
         .unwrap();

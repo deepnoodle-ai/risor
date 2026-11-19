@@ -71,6 +71,88 @@ func TestDeadlineAndCancel(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Code, "cancelled")
 }
 
+// 03-host.md 3.5.3 items 5 to 7: a host function whose error is a failure of
+// Risor, such as a nested run's, gives function-error with the inner
+// diagnostic's message, keeps that failure as the cause, and carries no
+// data. A chain of nested runs gives the innermost message.
+func TestNestedRisorError(t *testing.T) {
+	inner, err := risor.NewEnv(risor.VarRecord("{city: string}"))
+	assert.NoError(t, err)
+	tool := compile(t, inner, `city == "Paris" ? 18 : fail("unknown city " + string(city), {city})`)
+	call := func(c *risor.Call, args []any) (any, error) {
+		v, err := tool.Run(c.Context(), risor.Map{"city": args[0]})
+		if err != nil {
+			return nil, fmt.Errorf("tool weather: %w", err) // found through wrapping
+		}
+		return v, nil
+	}
+	mid, err := risor.NewEnv(risor.VarRecord("{city: string}"),
+		risor.Function{Name: "weather", Type: "(city: string) => float !", Impl: call})
+	assert.NoError(t, err)
+	// The middle program calls weather, so its failure is a function-error
+	// whose own message came from the innermost run.
+	agent := compile(t, mid, "weather(city) + 1")
+	outer, err := risor.NewEnv(risor.Function{Name: "ask", Type: "(city: string) => float !",
+		Impl: func(c *risor.Call, args []any) (any, error) {
+			return agent.Run(c.Context(), risor.Map{"city": args[0]})
+		}})
+	assert.NoError(t, err)
+
+	d := runErr(t, mid, "weather(city)", risor.Map{"city": "Atlantis"})
+	assert.Equal(t, d.Code, "function-error")
+	assert.Equal(t, d.Message, "unknown city Atlantis")
+	var cause *risor.Error
+	assert.True(t, errors.As(d.Cause, &cause))
+	assert.Equal(t, cause.Diagnostics[0].Code, "failed")
+	assert.Equal(t, cause.Diagnostics[0].Data, any(map[string]any{"city": "Atlantis"}))
+
+	d = runErr(t, outer, `ask("Atlantis")`, nil)
+	assert.Equal(t, d.Code, "function-error")
+	assert.Equal(t, d.Message, "unknown city Atlantis")
+	assert.True(t, errors.As(d.Cause, &cause))
+	assert.Equal(t, cause.Diagnostics[0].Code, "function-error")
+
+	// The error value: the code and the message only; no data.
+	v := run(t, outer, `try { ask("Atlantis") } catch (e) { e }`, nil)
+	assert.Equal(t, v, any(map[string]any{"code": "function-error",
+		"message": "unknown city Atlantis", "path": nil, "data": nil}))
+	// Any other error keeps its text, and a diagnostic of another code has
+	// no cause.
+	d = runErr(t, outer, `fail("x")`, nil)
+	assert.Nil(t, d.Cause)
+}
+
+// badError is a host error whose methods crash.
+type badError struct{ inError bool }
+
+func (e badError) Error() string {
+	if e.inError {
+		panic("bug in Error")
+	}
+	return "offline"
+}
+
+func (e badError) Unwrap() error {
+	if !e.inError {
+		panic("bug in Unwrap")
+	}
+	return nil
+}
+
+// 03-host.md 3.5.3: a crash in host code is function-panic. The methods of a
+// host's error are host code: reading the error for its message must not let
+// their crash leave the run as an internal error.
+func TestHostErrorThatCrashes(t *testing.T) {
+	for _, e := range []badError{{inError: false}, {inError: true}} {
+		env, err := risor.NewEnv(risor.Function{Name: "h", Type: "() => int !",
+			Impl: func(c *risor.Call, args []any) (any, error) { return nil, e }})
+		assert.NoError(t, err)
+		d := runErr(t, env, "try { h() } catch { 0 }", nil)
+		assert.Equal(t, d.Code, "function-panic")
+		assert.Equal(t, d.Message, "host function h crashed")
+	}
+}
+
 func TestHostFunctions(t *testing.T) {
 	env, err := risor.NewEnv(
 		risor.Function{Name: "boom", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
@@ -287,21 +369,47 @@ func TestFlatPrograms(t *testing.T) {
 	}
 }
 
-// StackNeeds documents and tests the stack this binding needs:
-// to parse at the nesting limit, and to run at the depth limits 200 and
-// 1,000. Go grows a goroutine's stack as needed; the test caps it at
-// stackCap to show that the deepest programs fit.
-const stackCap = 1 << 20
+// StackNeeds documents and tests the stack this binding needs
+// (03-host.md 3.9.1): to parse at the nesting limit, and to run at the
+// default depth limit, 200, and the largest, 400, with calls by name, calls
+// that map and flatMap make of a lambda, and walks. stackDoc is the stack
+// the binding documents (risor.go); the test caps every goroutine's stack at
+// stackDoc divided by 1.5, so a deepest case that needs more crashes the
+// test. Go grows a goroutine's stack as needed, and it grows by doubling: a
+// case that needs a little more than 512 KiB holds a stack of 1 MiB, and
+// the cap is tested against the stack held, not the bytes in use.
+const (
+	stackDoc = 2 << 20
+	stackCap = stackDoc * 2 / 3
+)
+
+// linkChain is a program of n + 1 const-bound lambdas, f0 to fn, each link
+// calling the one before by the text of link, and a call of fn.
+func linkChain(base, link string, n int) string {
+	var b strings.Builder
+	b.WriteString(base)
+	b.WriteString("\n")
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, link+"\n", i, i-1)
+	}
+	fmt.Fprintf(&b, "f%d(1)", n)
+	return b.String()
+}
 
 func TestStackNeeds(t *testing.T) {
-	old := debug.SetMaxStack(stackCap)
-	defer debug.SetMaxStack(old)
+	// The documented stack is that of an ordinary build (03-host.md 3.9.1).
+	// The race detector makes frames larger, so under it the deepest cases
+	// still run, with no cap.
+	if !raceBuild {
+		old := debug.SetMaxStack(stackCap)
+		defer debug.SetMaxStack(old)
+	}
 	// Parse at the nesting limit: 100 levels of every kind.
 	deep := strings.Repeat("[(-{a: ", 25) + "1" + strings.Repeat("})]", 25)
 	_, err := risor.Parse(deep)
 	assert.NoError(t, err)
 
-	for _, depth := range []int{200, 1000} {
+	for _, depth := range []int{200, 400} {
 		env, _ := risor.NewEnv(risor.VarRecord("{v: any, xs: int[]}"), risor.Limits{Depth: depth, Steps: risor.NoLimit, Allocation: risor.NoLimit})
 		// A value nested to the depth limit, compared and rendered.
 		var v any = []any{}
@@ -323,6 +431,21 @@ func TestStackNeeds(t *testing.T) {
 		fmt.Fprintf(&b, "f%d(1)", k)
 		d = runErr(t, env, b.String(), nil)
 		assert.Equal(t, d.Code, "depth-exceeded")
+		// Chains whose every link adds 1 to the depth count: by name, and
+		// through a call that map or flatMap makes of a lambda. With depth - 1
+		// links the count at f0 is the limit; one more link passes it. The
+		// checker bounds the nesting of uses at 100 (05-types.md 20.2), so
+		// these compile without the type rules, as compile does.
+		chains := []struct{ base, link string }{
+			{"const f0 = x => x;", "const f%d = x => f%d(x);"},
+			{"const f0 = x => x;", "const f%d = x => [x].map(f%d)[0];"},
+			{"const f0 = x => [x];", "const f%d = x => [x].flatMap(f%d);"},
+		}
+		for _, c := range chains {
+			assert.NotNil(t, run(t, env, linkChain(c.base, c.link, depth-1), nil), c.link)
+			d = runErr(t, env, linkChain(c.base, c.link, depth), nil)
+			assert.Equal(t, d.Code, "depth-exceeded", c.link)
+		}
 	}
 }
 
@@ -348,12 +471,15 @@ func TestMapEqualKeyOrder(t *testing.T) {
 }
 
 func TestBadLimit(t *testing.T) {
-	for _, l := range []risor.Limits{{Depth: 1001}, {Depth: -1}, {Steps: -5}, {Allocation: -9}} {
+	for _, l := range []risor.Limits{{Depth: 401}, {Depth: 1001}, {Depth: -1}, {Steps: -5}, {Allocation: -9}} {
 		_, err := risor.NewEnv(l)
 		var e *risor.Error
 		assert.True(t, errors.As(err, &e))
 		assert.Equal(t, e.Diagnostics[0].Code, "bad-limit")
 	}
+	// 03-host.md 3.6.1: the largest depth limit is 400.
+	_, err := risor.NewEnv(risor.Limits{Depth: 400})
+	assert.NoError(t, err)
 }
 
 func TestDeclare(t *testing.T) {

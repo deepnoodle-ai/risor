@@ -58,7 +58,12 @@ export interface Diagnostic {
   data?: unknown;
   /** Package F8: the calls in progress when a run failed, from the outermost in (f08 4). */
   trace?: TraceEntry[];
-  /** For `function-error`: the host's own error. */
+  /**
+   * For `function-error`: the host's own error, as thrown. When that error is a
+   * RisorError (a nested run's failure, say), its first diagnostic, the inner
+   * diagnostic, whose message is this one's (03 3.5.3 items 5 to 7). A rendering
+   * never writes it (f08 5.1 rule 3).
+   */
   cause?: unknown;
 }
 

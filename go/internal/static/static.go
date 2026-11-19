@@ -108,6 +108,10 @@ type Result struct {
 	// Consts holds each Member that reads a constant of a group, with its
 	// value (F6 2.4 item 2).
 	Consts map[*syntax.Member]float64
+	// Coalesced holds the last step, a Member or an Index, of each
+	// coalesced read under ?? (01-language.md 6.6). The node alone decides
+	// it, so a checked and an unchecked compile agree.
+	Coalesced map[syntax.Node]bool
 }
 
 type scope struct {
@@ -136,16 +140,20 @@ type walker struct {
 	names *Names
 	res   *Result
 	seen  map[diagKey]bool
+	// notLast holds each ?? node whose operands are all operands of its
+	// chain other than the last (01-language.md 6.6).
+	notLast map[*syntax.Binary]bool
 }
 
 // Check applies the static rules to a program and resolves its names.
 func Check(prog *syntax.Program, names *Names) *Result {
 	w := &walker{names: names, seen: map[diagKey]bool{}, res: &Result{
-		Idents:  map[*syntax.Ident]*Binding{},
-		Calls:   map[syntax.Node]*Callee{},
-		NSCalls: map[*syntax.MethodCall]bool{},
-		Slots:   map[any]int{},
-		AsTypes: map[*syntax.As]*types.Type{},
+		Idents:    map[*syntax.Ident]*Binding{},
+		Calls:     map[syntax.Node]*Callee{},
+		NSCalls:   map[*syntax.MethodCall]bool{},
+		Slots:     map[any]int{},
+		AsTypes:   map[*syntax.As]*types.Type{},
+		Coalesced: map[syntax.Node]bool{},
 	}}
 	outer := &scope{names: map[string]*Binding{}, vars: names.Vars}
 	s := &scope{parent: outer, names: map[string]*Binding{}}
@@ -531,6 +539,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 			if !ok || b.Op == "**" {
 				break
 			}
+			w.coalesce(b)
 			rights = append(rights, b.Y)
 			x = b.X
 		}
@@ -542,6 +551,38 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		for _, c := range syntax.Children(n) {
 			w.expr(c, s)
 		}
+	}
+}
+
+// coalesce marks the operands of a ?? node that are not the last operand
+// of its chain (01-language.md 6.6): its left operand always, and its right
+// operand when the node itself is not last. The left spine is visited from
+// the outermost node in, so a node is marked before it is visited.
+func (w *walker) coalesce(b *syntax.Binary) {
+	if b.Op != "??" {
+		return
+	}
+	w.notLastOperand(b.X)
+	if w.notLast[b] {
+		w.notLastOperand(b.Y)
+	}
+}
+
+// notLastOperand records an operand of a ?? chain other than its last: a
+// ?? node, whose own operands are then not last either, or a coalesced
+// read, by the node of its last step.
+func (w *walker) notLastOperand(n syntax.Node) {
+	if b, ok := n.(*syntax.Binary); ok {
+		if b.Op == "??" {
+			if w.notLast == nil {
+				w.notLast = map[*syntax.Binary]bool{}
+			}
+			w.notLast[b] = true
+		}
+		return
+	}
+	if step := syntax.CoalescedStep(n); step != nil {
+		w.res.Coalesced[step] = true
 	}
 }
 

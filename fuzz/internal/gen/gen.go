@@ -1037,7 +1037,9 @@ func (g *Gen) coal(t *Ty, d int) ast.Expr {
 		if g.loose {
 			name = pick(g.r, []string{"a", "zz"})
 		}
-		left = &ast.Member{X: g.expr(recordOf([]TField{{Name: "a", T: t}}), d), Name: name, Opt: true}
+		// A plain step is a coalesced read: an absent key gives null
+		// (01-language.md 6.6), as ?. does.
+		left = &ast.Member{X: g.expr(recordOf([]TField{{Name: "a", T: t}}), d), Name: name, Opt: g.r.IntN(2) == 0}
 	case 2:
 		left = &ast.MethodCall{X: g.expr(listOf(t, -1), d), Name: pick(g.r, []string{"first", "last"})}
 	default:

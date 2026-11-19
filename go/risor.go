@@ -13,11 +13,18 @@
 // nesting, and through calls in progress and walks over values, so a run's
 // recursion is bounded by the limits (02-evaluation.md 8.5). A long flat
 // program (100,000 terms, chain steps, else-if parts or const lines) costs
-// no stack. Measured on darwin/arm64 with Go 1.26: parsing at the nesting
-// limit and running at the depth limits 200 and 1,000 need less than
-// 512 KiB of goroutine stack. TestStackNeeds runs the deepest programs with
-// the stack capped at 1 MiB. Go grows a goroutine's stack as needed, so a
-// host needs no setting for this.
+// no stack. This binding needs 2 MiB of goroutine stack to parse at the
+// nesting limit and to run at the depth limits 200 and 400 (03-host.md
+// 3.9.1). Go grows a goroutine's stack as needed, by doubling, so a host
+// needs no setting for this, and the stack a run holds is the next power of
+// two above the bytes it uses. The deepest case is a chain of calls that
+// flatMap makes of a lambda, at depth 400. On linux/amd64 with Go 1.26.11
+// each link of it uses 1,360 bytes (read from a stack trace), about 545 KiB
+// in all, so the goroutine holds 1 MiB. On darwin/arm64 with Go 1.26.2 the
+// same chain holds 512 KiB. A chain of calls by name and a walk of a value
+// nested 400 deep each hold at most 128 KiB (darwin/arm64). TestStackNeeds
+// runs the deepest cases at both limits with the stack capped at 2 MiB
+// divided by 1.5, which a stack of 1 MiB passes and one of 2 MiB does not.
 //
 // # Memory
 //

@@ -719,10 +719,52 @@ There are seven kinds of value.
 | `a && b` | If `a` is falsy, `a`, and `b` is not evaluated. Otherwise `b` |
 | `a \|\| b` | If `a` is truthy, `a`, and `b` is not evaluated. Otherwise `b` |
 | `a ?? b` | If `a` is not null, `a`, and `b` is not evaluated. Otherwise `b` |
+| `a ?? b`, where an operand is a coalesced read | As above, except that when the key of a coalesced read's last step is absent from its receiver, that operand is null |
 
 1. `&&` and `||` give back one of their operands, not a bool.
 2. None of the four fails on any kind of operand. `??` does not catch a failure
-   of `a`.
+   of an operand.
+
+**The operands of a `??` chain.** Take a `??` node that is not an operand of a
+`??` node. The `??` nodes of its chain are that node and every `??` node that
+is an operand of a `??` node of the chain. The **operands of the chain** are
+the operands of its `??` nodes that are not `??` nodes, in source order. The
+last of them is the chain's last operand. Parentheses have no node (4.2), so
+`a ?? b ?? c`, `(a ?? b) ?? c` and `a ?? (b ?? c)` each have the operands `a`,
+`b` and `c`, and `c` is the last.
+
+**A coalesced read** is an operand of a `??` chain, other than its last
+operand, whose node is one of these, with or without an `OptChain` around it
+(4.1). The read's **last step** is that `Member` or `Index` node.
+
+| Node | Condition |
+| --- | --- |
+| `Member` | `optional` is false |
+| `Index` | `optional` is false, and the index is a `String` node (4.2: a template with no interpolation is one) |
+
+3. When the receiver of the last step is a map that does not have the step's
+   key, the coalesced read gives null instead of failing with `missing-field`
+   (7.1). Nothing else changes.
+4. Only the last step is affected. `a.b.c ?? d` with no key `b` fails with
+   `missing-field` at `a.b`.
+5. Only absence is affected. A null receiver of the last step still fails with
+   `null-operand`, and a receiver of a kind 7.1 does not list for the step with
+   `wrong-kind` (7.1 items 1 and 2). So `a?.b.c ?? d` fails on `.c` with
+   `null-operand` when `a.b` is null, and when `a` has no key `b`, since `a?.b`
+   is then null for that step (7.4 rule 3). When `a.b` is a map with no key
+   `c`, its value is `d`.
+6. The rule depends on the node only, never on a type, so a checked and an
+   unchecked run give the same value (`03-host.md` 3.7.6 item 3).
+7. A coalesced read charges what the read charges (`02-evaluation.md` 5.2),
+   whether the key is present or not.
+8. These are not coalesced reads, and fail on an absent key as 7.1 says: the
+   last operand (`d ?? a.f`); a read with a computed key (`m[k] ?? d`, where
+   `m?.[k] ?? d` is the form to write); a read that is not an operand of `??`
+   (`const v = a.f; v ?? d`); an operand of `||` (`a.f || d`); and an operand
+   whose node is of another kind, such as a method call or a projection of
+   follow-on F7.
+9. A host value that breaks its declared type is read by the same rule
+   (`03-host.md` 3.4.8 item 2).
 
 ### 6.7 Equality and order
 
@@ -794,6 +836,9 @@ There are seven kinds of value.
 5. `.` reads a field and never a method. `x.name` with no `(` after it reads the
    key `name`, whatever methods the kind of `x` has.
 6. There are no negative indexes and no slices.
+7. The last step of a coalesced read under `??` gives null where the last column
+   says `missing-field` (6.6). Every other row of the column is unchanged for
+   it.
 
 ### 7.2 Method calls
 
@@ -1378,7 +1423,7 @@ node in the third column (4.3). The `path` of each is null.
 | `wrong-kind` | A computed key that is not a string (10.2) | The `Entry` |
 | `wrong-kind` | A map pattern matched against a value that is not a map; a list pattern against a value that is not a list (8.4) | The `MapPat` or `ListPat` |
 | `wrong-kind` | An opaque value is rendered, at any depth (12) | The `Template` |
-| `missing-field` | A plain `.name` or `[k]` on a map that has no key `name` or `k` (7.1) | The `Member` or `Index` |
+| `missing-field` | A plain `.name` or `[k]` on a map that has no key `name` or `k` (7.1), except the last step of a coalesced read under `??`, which gives null (6.6) | The `Member` or `Index` |
 | `missing-field` | A field of a map pattern whose key is absent and that has no default (8.4) | The field |
 | `index-range` | A plain `[i]` on a list or a string with `i` whole and below 0 or not below the length (7.1) | The `Index` |
 | `index-range` | An element of a list pattern that is absent and has no default (8.4) | The element |
@@ -1494,3 +1539,7 @@ tags: []}`. A value is shown as a literal.
 | 58 | `2 ** -2000` | `0` |
 | 59 | `0.1 ** -400` | `number-range` |
 | 60 | `0 ** -1` | `divide-by-zero` |
+| 61 | `u.missing ?? "none"` | `"none"`: a coalesced read (6.6) |
+| 62 | `u.missing.x ?? "none"` | `missing-field` at `u.missing`: only the last step is coalesced |
+| 63 | `null ?? u.missing` | `missing-field`: the last operand is not a coalesced read |
+| 64 | `u.missing \|\| "none"` | `missing-field` |

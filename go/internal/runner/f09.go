@@ -341,7 +341,7 @@ func fixtures(env *risor.Env, c *casefile.Case) ([]any, string, bool) {
 			res := anyVars(s.Result)
 			for i, row := range stubs[n].Calls {
 				place := []any{kind, n, "calls", float64(i)}
-				if row.Error != nil {
+				if row.HasError() {
 					if !s.Fails {
 						return append(place, "error"), noBangMessage, true
 					}

@@ -42,8 +42,8 @@ pub struct HostMethod {
 pub struct Limits {
     pub steps: Option<u64>,
     pub allocation: Option<u64>,
-    /// From 1 to 1,000. The stack a run needs grows with it: the crate's
-    /// documentation (Stack) gives the figures.
+    /// From 1 to 400 (`03-host.md` 3.6.1). The stack a run needs grows
+    /// with it: the crate's documentation (Stack) gives the figures.
     pub depth: u32,
     pub deadline: Option<Duration>,
 }
@@ -836,7 +836,7 @@ impl EnvBuilder {
             .or(parent.as_ref().map(|p| p.limits))
             .unwrap_or_default();
         // `03-host.md` 3.3.4, `bad-limit`: a step or allocation limit must be a whole number
-        // (`02-evaluation.md` 3.1 item 2, at most 2^53 - 1), and the depth from 1 to 1,000.
+        // (`02-evaluation.md` 3.1 item 2, at most 2^53 - 1), and the depth from 1 to 400.
         const MAX_WHOLE: u64 = crate::value::MAX_WHOLE as u64;
         if limits.steps.is_some_and(|n| n > MAX_WHOLE) {
             bad(
@@ -850,10 +850,10 @@ impl EnvBuilder {
                 "the allocation limit is above 2^53 - 1".to_string(),
             );
         }
-        if !(1..=1000).contains(&limits.depth) {
+        if !(1..=400).contains(&limits.depth) {
             bad(
                 code::BAD_LIMIT,
-                format!("the depth limit {} is outside 1 to 1,000", limits.depth),
+                format!("the depth limit {} is outside 1 to 400", limits.depth),
             );
         }
         let reject = match self.reject {

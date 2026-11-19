@@ -143,13 +143,26 @@ type Stub struct {
 
 // Row is one row of a stub.
 type Row struct {
-	Args     []any
-	HasArgs  bool
-	Result   any
+	Args    []any
+	HasArgs bool
+	Result  any
+	// Error is the text of an error; Diag, the code and message of an
+	// error that is a Risor diagnostic (3.10.4 item 5). At most one is set.
 	Error    *string
+	Diag     *StubDiag
 	Charge   int64
 	Allocate int64
 }
+
+// StubDiag is the diagnostic object of a row: the failure of a nested run,
+// with one diagnostic of phase run (3.10.4 item 5).
+type StubDiag struct {
+	Code    string
+	Message string
+}
+
+// HasError reports whether the row answers with an error of either form.
+func (r *Row) HasError() bool { return r.Error != nil || r.Diag != nil }
 
 // Expect is the field expect: a result, or a failure when Phase is set.
 type Expect struct {
@@ -299,6 +312,7 @@ var (
 	diagFields         = set("code", "class", "span", "path", "message", "data", "trace")
 	stubFields         = set("type", "calls")
 	rowFields          = set("args", "result", "error", "charge", "allocate")
+	stubDiagFields     = set("code", "message")
 	limitFields        = set("steps", "allocation", "depth")
 	siteFields         = set("class", "span")
 	phases             = set("declare", "parse", "check", "run")
@@ -535,7 +549,7 @@ func (v *validator) fields(m map[string]any, where string) error {
 		}
 		for k, val := range lm {
 			n, ok := isWhole(val)
-			if !ok || n < 0 || (k == "depth" && (n < 1 || n > 1000)) {
+			if !ok || n < 0 || (k == "depth" && (n < 1 || n > diag.MaxDepth)) {
 				return v.invalid("%s: limits.%s is out of range", where, k)
 			}
 		}
@@ -662,8 +676,8 @@ func (v *validator) stub(s any, where string) error {
 					return v.invalid("%s must have exactly one of result and error", w)
 				}
 				if hasError {
-					if _, ok := e.(string); !ok {
-						return v.invalid("%s: error is not a string", w)
+					if err := v.stubError(e, w); err != nil {
+						return err
 					}
 				}
 				for _, k := range []string{"charge", "allocate"} {
@@ -678,6 +692,28 @@ func (v *validator) stub(s any, where string) error {
 		return nil
 	}
 	return v.invalid("%s is neither a signature nor an object", where)
+}
+
+// stubError checks the error of a row: a string, or a diagnostic object of
+// exactly a code and a message (3.10.4 item 5, 3.10.10 item 10).
+func (v *validator) stubError(e any, w string) error {
+	switch e := e.(type) {
+	case string:
+		return nil
+	case map[string]any:
+		if err := v.checkFields(e, stubDiagFields, w+": error"); err != nil {
+			return err
+		}
+		code, ok := e["code"].(string)
+		if !ok || !codeRe.MatchString(code) {
+			return v.invalid("%s: error: code is not a code", w)
+		}
+		if _, ok := e["message"].(string); !ok {
+			return v.invalid("%s: error: message is not a string", w)
+		}
+		return nil
+	}
+	return v.invalid("%s: error is neither a string nor a diagnostic object", w)
 }
 
 func optString(m map[string]any, k string) *string {
@@ -909,6 +945,9 @@ func (v *validator) buildStub(s any, where, name string, opaque []string) (*Stub
 					row.Result = cr
 				}
 				row.Error = optString(rm, "error")
+				if d, ok := rm["error"].(map[string]any); ok {
+					row.Diag = &StubDiag{Code: d["code"].(string), Message: d["message"].(string)}
+				}
 				row.Charge, _ = isWhole(rm["charge"])
 				row.Allocate, _ = isWhole(rm["allocate"])
 				st.Calls = append(st.Calls, row)

@@ -136,8 +136,8 @@ enum Value<'h> {
   of `List` and `Map` get a `Drop` that moves each child it owns alone onto a
   work list and drops them in a loop.
 - **Walks** (`==`, rendering, the JSON text) count nesting against the depth
-  limit (`02-evaluation.md`), so their recursion is bounded by it; if the
-  measured stack at depth 1,000 is too large, they move to an explicit stack.
+  limit (`02-evaluation.md`), so their recursion is bounded by it. At the
+  largest limit, 400, their stack is small beside that of calls (Stack).
 - **Memory (`02-evaluation.md` 8.5 item 2).** On 64-bit targets (`Value<'h>` is
   24 bytes, `Str<'h>` is 24 bytes), the heap memory a run creates as values of
   the language is at most 208 bytes per allocation unit charged plus 0 bytes per
@@ -214,6 +214,16 @@ lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
 
+**Coalesced reads.** `Ast::coalesced_reads` marks, once per program, the
+last step of each coalesced read under `??` (`01-language.md` 6.6): every
+operand of a `??` chain but the last, counted across the whole `??` tree,
+whose node is a plain `Member` or a plain `Index` by a `String` node. The
+mark depends on the nodes alone. The evaluator gives null for an absent key
+at a marked step, and the checker reads a marked step on a record by the
+column of `05-types.md` 9.2 for a coalesced read, which is the column
+"Optional" after a plain null step. Both read the same mark, so a checked
+and an unchecked run agree.
+
 ### The compiled form
 
 `compile` also builds, for the hot node kinds, a closure per node
@@ -262,8 +272,7 @@ and macOS usually has 8 MiB.
 | Depth limit | Optimized | Unoptimized |
 | --- | --- | --- |
 | 200, the default | 1 MiB (2.6 times the need) | 2 MiB (2.0 times) |
-| 400 | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
-| 1,000, while the limit allows it (measured, not tested) | 3 MiB (2.0 times) | 8 MiB (1.9 times) |
+| 400, the largest | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
 
 **Measured.** rustc 1.100.0 (the pinned toolchain), aarch64 macOS; optimized
 is the release profile and unoptimized the dev profile. The least stack, to
@@ -278,7 +287,6 @@ less; `filter` and `reduce`, 4 to 17% less.
 | Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 83 KiB | 611 KiB |
 | Run the worst form at depth limit 200 | 387 KiB | 1,043 KiB |
 | Run the worst form at depth limit 400 | 691 KiB | 1,859 KiB |
-| Run the worst form at depth limit 1,000 | 1,555 KiB | 4,289 KiB |
 
 The cost of one unit: the stack of a chain at the limit divided by the limit,
 optimized at depth 400 and unoptimized at depth 200, so it carries a share of
@@ -400,6 +408,23 @@ A call handle is valid only until its host function returns, and holds by
 construction here: `Call` borrows the run's meter mutably for the duration of
 one call, and a host implementation is a `'static` closure that receives
 `&mut Call<'_>`, so it cannot keep the handle past its return.
+
+## Host errors
+
+A host function returns `Result<Data, HostError>`. `HostError` is an enum of
+two variants, so the binding tells a Risor failure from any other error by
+its type, which `03-host.md` 3.5.3 item 5 leaves to the binding:
+
+| Variant | Made by | The run's `function-error` |
+| --- | --- | --- |
+| `Text(String)` | `"no".into()`, or `HostError::Text` | The text is the message. No cause |
+| `Risor(Box<Error>)` | `?` on any `Result<_, risor::Error>`, such as a nested `parse`, `compile` or `run` | The message of the error's first diagnostic, the inner diagnostic, whole. The inner diagnostic is `Diagnostic::cause` |
+
+The cause is a public field, `cause: Option<Box<Diagnostic>>`, named as the
+specification names it (3.7.1). `std::error::Error::source` gives the same
+diagnostic, on `Diagnostic` and on `Error`, so a chain of nested runs walks
+with the standard trait. The renderings never write it (`f08-errors.md` 6).
+A plain text error has no cause: its text is already the message.
 
 ## Package F1, host types
 

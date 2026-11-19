@@ -97,6 +97,40 @@ steps or units.
 A host does not use its own language's truthiness in place of the truthiness
 test, and does not write its own list of falsy values.
 
+### 3.2.5 Hosts that live long (informative)
+
+This section adds no rule. It shows how a host that lives longer than one run,
+such as a user interface or a server that handles events, builds on the rules
+of this chapter. Core has 19 run codes (3.7.4), and this section needs no
+other.
+
+| The pattern | The rule it rests on |
+| --- | --- |
+| The host owns all state. A program holds none between runs | The state of a run belongs to that run only (3.2.2) |
+| Each event is one run, with the state and the event as variables: `{state: State, ev: Tap}` | 3.4.1 |
+| The result is data: the next state, and a list of actions. A tagged union of follow-on F5 types the actions: `{kind: "openDialog", title: string} \| {kind: "setText", widget: Label, text: string}` | The run never changes a host value (3.4.2) |
+| The host applies the actions through its own code. An opaque value in an action, such as `widget`, is one the host gave the run | The host owns an opaque value's state (3.4.6 item 6) |
+| Limits apply to each event, so a slow handler cannot freeze the host | 3.6 |
+| One compiled program serves every event, so a run per event costs no compile | 3.2.2 |
+
+**The poisoned run.** A host that must cut a run off from the host at once,
+without waiting for the next test of the cancellation signal, keeps a flag
+for the run.
+
+1. A host function that must cut the run off sets the flag and returns an
+   error.
+2. Every later host call of that run returns an error at once, and does
+   nothing else.
+3. When the run ends, the host discards its outcome, whatever it is, if the
+   flag is set.
+4. The flag does not stop the run. A `catch` may catch the first error
+   (3.5.3), and the program may then go on computing. Nothing it does reaches
+   the host.
+5. Cancellation stops the run, within one test interval of steps (3.6.1 item
+   3), so the host also cancels it. Without cancellation the run ends where
+   its limits end it. A host that turns the step limit off and sets no
+   deadline has no bound on that.
+
 ## 3.3 The environment
 
 ### 3.3.1 Declarations
@@ -202,7 +236,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A removed entry whose name names no entry of the library, in the version the environment has: `lenn`, `repeat` (a method is named with its kind), `string.map`, `list`, `number.abs`. Removing one entry twice, in one environment or in a child, is no error | `bad-name` |
 | A rejected class that is not a check class | `bad-class` |
-| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
+| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 400 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
@@ -266,6 +300,18 @@ in declared type text.
 
 ### 3.4.4 Numbers that cannot enter
 
+**An integer past 2^53 − 1 enters as a string.** A number of the language is a
+binary64 value, and a whole number has a magnitude of at most 2^53 − 1,
+9007199254740991 (`01-language.md` 6.2). This is the same in every
+implementation, TypeScript among them. So a host passes an integer of a
+larger magnitude as a string, both as a variable or a result and inside JSON
+text: an int64 SQL id such as `"9223372036854775807"`, and a timestamp in
+nanoseconds such as `"1700000000123456789"`. Given as a host integer, such a
+value fails where it is read (item 3). Written as an integer in JSON text that
+a program parses, it fails too (follow-on F6: `json.parse` gives
+`invalid-argument`, form `integer-range`). A program can compare such strings
+with `==`, use them as keys and render them, as any text.
+
 1. Three kinds of host number cannot enter the language: a value of a host
    integer type whose magnitude is over 2^53 − 1, a NaN, and an infinity.
 2. A value of a host floating type enters whenever it is finite, whatever its
@@ -314,6 +360,15 @@ in declared type text.
    test says they are the same (`01-language.md`). The test cannot fail and
    charges nothing beyond what `==` charges (`02-evaluation.md`).
 5. Opaque types and their declared methods are in Core.
+6. **The host owns an opaque value's state.** An opaque value stands for host
+   state. A method or a host function may change that state. A host may keep
+   an opaque value, from a variable, an argument or a result, across runs. The
+   run never changes it (3.4.2 item 3); the host does, through its own code.
+   The duties of 3.5.4 that keep values read-only and not kept apply to
+   language values, not to an opaque value's state or lifetime. A host call is
+   never cached (3.5.2 item 5), so `const a = w.text(); const _ =
+   w.setText("x"); w.text()` calls `text` twice, and the second call may give
+   another value.
 
 ### 3.4.7 Nesting past the limit
 
@@ -328,7 +383,13 @@ with `depth-exceeded`. No walk over host data loops for ever.
 2. Where a run reads a value that does not fit its declared type, the run
    fails with the code of what it found: `null-operand`, `wrong-kind`,
    `missing-field`, `number-range` or `no-match`. It never crashes and never
-   gives a wrong value.
+   gives a wrong value, except a coalesced read under `??` (`01-language.md`
+   6.6), which gives the default for an absent key whatever the declared type
+   says. On a host record declared `{id: int}` that lacks `id`, `x.id ?? 0`
+   gives 0 and no `missing-field`. The value given is the author's own
+   default, not a value made from data. The rule cannot be limited to fields
+   the type calls optional: it would then depend on a type, and a checked and
+   an unchecked run must give the same value (3.7.6 item 3).
 3. The run finds such a value only where it reads it.
 4. The class of the failure is given by 3.7.6.
 
@@ -369,30 +430,59 @@ with `depth-exceeded`. No walk over host data loops for ever.
 | The function | The run sees | Class | `catch` |
 | --- | --- | --- | --- |
 | Returns a value | The value, as a host value (3.4) | — | — |
-| Returns an error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` at a `host` site; in a checked program, `environment` when the signature has no `!` (3.7.6) | Catches |
+| Returns an error that is a Risor diagnostic (item 5) | `function-error`, at the span of the call. The message is the message of the inner diagnostic, whole, with nothing added. The inner diagnostic is the diagnostic's `cause` | As the next row | Catches |
+| Returns any other error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` at a `host` site; in a checked program, `environment` when the signature has no `!` (3.7.6) | Catches |
 | Crashes: a panic, or a thrown value that is not an error | `function-panic`, at the span of the call | `host` | Passes |
 
 1. A value that a host function returns is read as any host value is. A
    result that does not fit the declared result type fails where it is read,
    as 3.4.8 says.
-2. A host function's error carries no `data`.
+2. A host function's error carries no `data`, also when it is a Risor
+   diagnostic whose own `data` is not null.
 3. What counts as an error and what counts as a crash is the binding's matter.
 4. The mark `!` is a promise. A function or method whose signature has no `!`
    returns no error. When one does, the run fails with `function-error` as
    above, and in a checked program its class is `environment`: the host broke
    its promise, as when a value breaks its declared type (`05-types.md` 18.4).
+5. **A Risor diagnostic as an error.** A host function may fail with a
+   failure of a binding of Risor: the failure of a nested run, or of any other
+   stage (3.2.1), or one the binding builds in its own type for such a
+   failure. That failure is a list of one or more diagnostics. Its first
+   diagnostic is the **inner diagnostic**. How a binding tells such an error
+   from any other is the binding's matter, as in item 3.
+6. Only the message changes. The code stays `function-error`, `catch` catches
+   it, and its class, span and `data` are those of the row "Returns any other
+   error". The inner diagnostic's code, class, span, path and data do not
+   reach the run.
+7. The message is taken from the inner diagnostic, one level down. When the
+   inner diagnostic is itself a `function-error` of a nested run, its message
+   is already the message below it, so a chain of nested runs gives the
+   innermost message. The binding's own text for its failure type, which may
+   hold a code and a span, is never the message. So a rendering of the outer
+   diagnostic (follow-on F8) does not repeat the inner one's code and span:
+   `error[function-error] 5:38-5:66: unknown city "Atlantis"`.
 
 ### 3.5.4 Duties of a host function
 
 | Duty | Effect when it is not met |
 | --- | --- |
-| Treat the arguments as read-only, and do not keep them after the call returns | Values shared between runs may change. Nothing checks this duty |
+| Treat the arguments that are language values (null, bool, number, string, list, map) as read-only, and do not keep them after the call returns. An opaque argument's state and lifetime are the host's (3.4.6 item 6) | Values shared between runs may change. Nothing checks this duty |
+| Until the run ends, do not change host memory that the run has already read in place as a language value (3.4.2), or received as a result of a host function or method, nor memory reachable from such a value. A method that changes its opaque value's state has this duty too | A `const` changes under the program. `const xs = w.items(); const _ = w.add(1); xs` must give the list as `w.items()` returned it. Nothing checks this duty |
 | Call `charge` in proportion to the work done: one step for each element visited, and text at the rate of `02-evaluation.md` | The step budget does not bound the run |
 | Call `allocate` before building a result whose size depends on the input | The allocation budget does not bound the run |
 | Stop when the cancellation signal says so, if the function can wait | The run cannot be interrupted while the function waits |
 
 A host function that charges nothing costs the one step of its call. The
 limits cover a host function exactly as far as it charges.
+
+The second duty keeps values unchangeable (`01-language.md` 6.1 item 3) where
+the host's own memory stands behind them: a result may share memory with host
+data (3.4.2 item 4), and a method may change its object (3.4.6 item 6). So a
+method that gives a view of an opaque value's state, such as `w.items()`,
+gives memory that no later call of the same run changes: a copy, or a
+snapshot that a change replaces rather than edits. The duty does not cover a
+variable the run has not yet asked for (3.4.1): the run gets the value the
+host supplies when it asks.
 
 ## 3.6 Limits and usage
 
@@ -406,7 +496,7 @@ host sets the limits as a declaration of the environment.
 | Steps | 1,000,000 | Set a whole number, or turn it off | `steps-exceeded` |
 | Allocation | 1,000,000 units | Set a whole number, or turn it off | `allocation-exceeded` |
 | Deadline | Off | Give it as a duration of wall-clock time, measured from the start of the run, or turn it off | `deadline-exceeded` |
-| Depth | 200 | Set a whole number from 1 to 1,000. It cannot be turned off | `depth-exceeded` |
+| Depth | 200 | Set a whole number from 1 to 400. It cannot be turned off | `depth-exceeded` |
 | Source nesting | 100 levels | Nothing. It is fixed | `nesting-exceeded`, of phase `parse` |
 
 1. A host cancels a run through the cancellation signal it passed to the run.
@@ -423,6 +513,26 @@ host sets the limits as a declaration of the environment.
 
 Steps, allocation and depth are deterministic. The deadline and cancellation
 are not.
+
+Determinism covers the run's **interactions** with the host, in the order the
+run makes them:
+
+| Interaction | Holds |
+| --- | --- |
+| A read | The name of a variable the run asks the host for (3.4.1) |
+| A call | The host function's name, with its namespace, or the opaque type and the name for a method; the argument values, the receiver first for a method; each `charge` and `allocate` the function made, in order; and its outcome: a value, an error with its text, or a crash |
+
+1. Given the same program, version, environment, limits and variable values,
+   the interactions of a run are fixed by the outcomes and charges of the
+   calls before them. Two implementations make the same reads and the same
+   calls, with `==` arguments, in the same order, up to the first call that
+   differs in outcome or in charges.
+2. This holds up to the first failure of class `limit`. A run stopped by its
+   deadline or by cancellation makes a prefix of the interactions; where it
+   stops is not fixed (`02-evaluation.md` 9 item 3).
+3. A host may build on this rule. A journal of the host's own calls, given
+   back with their outcomes and their charges, gives the same run.
+   `02-evaluation.md` 9 item 6 states it for the evaluator.
 
 ### 3.6.3 Usage
 
@@ -454,7 +564,7 @@ the list has the same phase. A run fails with exactly one diagnostic.
 | `help` | What to write instead | Optional | No |
 | `expected`, `found` | Two types in type text | Optional | No |
 | `fix` | A span and its replacement text | Optional | No |
-| `cause` | The host's own error, for `function-error` | Optional | No |
+| `cause` | The host's own error, for `function-error`. When that error is a Risor diagnostic, the inner diagnostic (3.5.3 item 5) | Optional | No |
 | An offset | A position in a unit of the implementation's choice | Optional | No |
 
 1. A diagnostic may carry further fields that a later package of the
@@ -531,8 +641,9 @@ codes.
 
 The message of `failed` is the first argument of `fail`, whole and not cut.
 The message of `function-error` is the text of the host's error, as the
-binding gives it, whole and not cut. Every other code has its message from the
-catalog (3.8).
+binding gives it, or, when that error is a Risor diagnostic, the message of the
+inner diagnostic (3.5.3), whole and not cut. Every other code has its message
+from the catalog (3.8).
 
 ### 3.7.6 The class of a run diagnostic
 
@@ -671,7 +782,7 @@ else.
 | --- | --- | --- |
 | No I/O | The language and its library read no file, network, clock, environment or random source | What a host function does |
 | No mutation | The run never writes to a value it did not create | That a host function does not change its arguments. A result may share memory with host data |
-| Determinism | The same program, version, values, host function results and limits give the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
+| Determinism | The same program, version, values, host function results and charges, and limits give the same reads and calls of the host, in the same order (3.6.2), and the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
 | Steps | The work of the language and its library is proportional to the steps charged. The run stops at the same point in every implementation and version | The time one step takes. Work in a host function beyond what it charges |
 | Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken | Live memory. Host data. What a host function builds without charging |
 | Deadline | A run that passes its deadline, or that is cancelled, stops within one test interval of steps | That a blocked host function returns |
@@ -682,10 +793,25 @@ The limits make accidents cheap. They are not a sandbox for hostile code.
 
 **The stack a binding needs.** Each binding documents the stack that an
 optimized build needs to parse a program at the source nesting limit, and to
-run at the depth limits 200 and 1,000. It has a test that runs its deepest
-cases on a thread with that stack. A binding never answers a program or data
-within the limits with a stack overflow. This specification fixes no number of
-bytes for all bindings.
+run at the default depth limit, 200, and at the largest, 400 (3.6.1). It has a
+stack test. The test runs each of the deepest cases below at both depth
+limits, on a thread whose stack is the documented stack divided by 1.5, and
+passes. A binding never answers a program or data within the limits with a
+stack overflow. This specification fixes no number of bytes for all bindings.
+
+| Deepest case | What it reaches |
+| --- | --- |
+| Parse | A program that opens 100 levels of nesting (`01-language.md` 13.1), of every kind of level |
+| Calls by name | A chain of `const`-bound lambdas, each calling the one before by name, whose depth count passes the depth limit (`02-evaluation.md` 8.4) |
+| Calls that a library entry makes of a lambda | The same chain, where each link calls the one before through `map`, and in a second case through `flatMap`, at a cost of 1 to the depth count for each link: `const f1 = x => [x].map(f0)[0];`, `const f1 = x => [x].flatMap(f0);`. The depth count passes the depth limit |
+| A walk | A value nested to the depth limit, compared with `==` and rendered (`02-evaluation.md` 8.4 item 5) |
+
+The calls through a library entry are in the list because an evaluator spends
+more of its own stack on them than on a call by name (informative). Measured on
+`main` before they were listed: the TypeScript binding overflowed the default
+stack of Node at a depth of about 600 through `map`, and at about 435 in a
+browser's Web Worker, and the Rust binding aborted on a thread of 2 MiB at a
+depth of 1,000 through `map`. Only calls by name had been tested.
 
 ### 3.9.2 Versions
 
@@ -826,17 +952,18 @@ a function name to a stub.
 | Matter | Rule |
 | --- | --- |
 | Form | A signature text alone, which is a stub with no rows. Or an object `{"type": signature, "calls": [row, ...]}`. `type` may be left out when the base environment declares the name. `calls` may be left out, which gives no rows |
-| A row | An object. `args`: a list of JSON values, optional. Exactly one of `result`, a JSON value, and `error`, a string. Optional: `charge` and `allocate`, two whole numbers of 0 or more |
+| A row | An object. `args`: a list of JSON values, optional. Exactly one of `result`, a JSON value, and `error`, a string or a diagnostic object (item 5). Optional: `charge` and `allocate`, two whole numbers of 0 or more |
 | Matching | At each call the rows are tried in order. A row with no `args` matches every call. A row with `args` matches when the call has that many arguments and each argument is `==` to the row's value (`01-language.md`). The first row that matches answers |
-| Answer | The stub passes the row's `charge` to `charge(steps)`, then the row's `allocate` to `allocate(units)`, then answers. With `result`, it returns the value, supplied as a host value as `vars` are. With `error`, it returns an error whose text is the string |
+| Answer | The stub passes the row's `charge` to `charge(steps)`, then the row's `allocate` to `allocate(units)`, then answers. With `result`, it returns the value, supplied as a host value as `vars` are. With `error` a string, it returns an error whose text is the string. With `error` an object, it returns an error that is a Risor diagnostic (3.5.3 item 5): the failure of a run, in the binding's own type for one, with one diagnostic of phase `run`, the object's `code` and `message`, and no span |
 | No row matches | The stub returns an error. The case's verdict is `fail` with the difference `functions`, whatever the run then gives. A `try` in the program does not change this |
 | Where it is declared | In the case's environment. A name the base environment declares is replaced in the child only. With no `type`, the base's signature is kept and only the implementation is replaced |
 | Cost | Matching is the runner's work and charges nothing. A stubbed call costs the one step of any call, plus its row's `charge` steps, plus its row's `allocate` units. So the usage of a case does not depend on the implementation |
 
 1. A stub with `error` gives the run `function-error`, with the class of
    3.7.6: `host` when its signature has `!`. Its message is the string of
-   `error`. A stub with `error` whose signature has no `!` breaks the
-   precondition, so its case carries `"precondition": false` (3.10.3).
+   `error`, or the `message` of its object. A stub with `error` whose
+   signature has no `!` breaks the precondition, so its case carries
+   `"precondition": false` (3.10.3).
 2. **A method's stub.** A method of an opaque type, in `methods`, is stubbed
    like a host function, with one difference: the receiver is the first value
    of a row's `args`, and the method's arguments follow it. So a row of a
@@ -846,6 +973,12 @@ a function name to a stub.
    environment declares that method.
 4. A case cannot describe a function that crashes, or one that waits until it
    is cancelled. Each binding tests those with tests of its own.
+5. **A diagnostic object** is a JSON object with exactly two keys: `code`, a
+   string of lower-case words joined by `-` (the pattern of a code in
+   3.10.11), and `message`, a string. Example: `{"error": {"code": "failed",
+   "message": "unknown city \"Atlantis\""}}`. It stands for the failure of a
+   nested run, so a case can test 3.5.3 items 5 to 7. The code need not be a
+   code of 3.7.3: it does not reach the run.
 
 ### 3.10.5 How a case is run
 
@@ -934,8 +1067,9 @@ Each element of `diagnostics` is an object with these fields.
    `missing-field`, `no-match`, `not-conforming` and `function-error`. A case
    with `"check": false` states instead the class of the column "not checked" of
    `05-types.md` 18.5, and every runner compares it for every code.
-9. For `function-error`, the message is the string of the stub's `error`. For
-   `failed`, it is the text given to `fail`.
+9. For `function-error`, the message is the string of the stub's `error`, or
+   the `message` of its diagnostic object. For `failed`, it is the text given
+   to `fail`.
 10. Step and unit counts are exact, for a result and for a run failure whose
     code is not a limit code. A case states them as whole numbers in `steps`
     and `allocated`. A case may leave either out, and then it is not compared.
@@ -1003,7 +1137,8 @@ verdict `invalid`.
    rule.
 8. A `file` that cannot be read.
 9. A key of `vars` that is not a field of `env`.
-10. A stub row with both `result` and `error`, or with neither.
+10. A stub row with both `result` and `error`, or with neither. An `error`
+    that is neither a string nor a diagnostic object of 3.10.4 item 5.
 11. A stub with no `type`, for a function or a method the base environment
     does not declare. A stub with no `type` whose name is a library entry is
     among these: a library entry is not a host function.
@@ -1102,7 +1237,7 @@ the static codes.
       "properties": {
         "steps": {"type": "integer", "minimum": 0},
         "allocation": {"type": "integer", "minimum": 0},
-        "depth": {"type": "integer", "minimum": 1, "maximum": 1000}
+        "depth": {"type": "integer", "minimum": 1, "maximum": 400}
       },
       "additionalProperties": false
     },
@@ -1121,7 +1256,14 @@ the static codes.
       "properties": {
         "args": {"type": "array", "items": {"$ref": "#/$defs/hostValue"}},
         "result": {"$ref": "#/$defs/hostValue"},
-        "error": {"type": "string"},
+        "error": {"oneOf": [
+          {"type": "string"},
+          {"type": "object",
+           "required": ["code", "message"],
+           "properties": {
+             "code": {"type": "string", "pattern": "^[a-z]+(-[a-z0-9]+)*$"},
+             "message": {"type": "string"}},
+           "additionalProperties": false}]},
         "charge": {"type": "integer", "minimum": 0},
         "allocate": {"type": "integer", "minimum": 0}
       },

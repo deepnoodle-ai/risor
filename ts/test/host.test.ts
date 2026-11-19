@@ -1,6 +1,7 @@
 // Unit tests of the host API, for what no data case can raise (03
 // 3.10): the deadline, cancellation, a host crash, opaque values,
-// host numbers that cannot enter, ill-formed host text.
+// host numbers that cannot enter, ill-formed host text, a nested run's
+// failure from a host function.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -118,6 +119,78 @@ describe("host functions", () => {
   });
 });
 
+describe("03 3.4.4: a NaN or an infinity from the host cannot enter", () => {
+  // The suite cannot hold these numbers: JSON has no NaN and no infinity.
+  const bad: [string, number][] = [["NaN", NaN], ["+Infinity", Infinity], ["-Infinity", -Infinity]];
+  const env = createEnv({ varRecord: "{x: any}", functions: { f: { type: "() => float", call: () => current } } });
+  let current = 0;
+  const outcome = (src: string, x: unknown, check: boolean) => {
+    const o = execute(env.compile(parse(src), { check }), { x });
+    return o.ok ? "ok" : `${o.diagnostic.code} ${o.diagnostic.class}`;
+  };
+  for (const [name, n] of bad) {
+    test(`${name} as a variable, in a list, in a map, and as a host function's result`, () => {
+      current = n;
+      for (const check of [true, false]) {
+        assert.equal(outcome("x", n, check), "number-range environment");
+        assert.equal(outcome("x[1]", [1, n], check), "number-range environment");
+        assert.equal(outcome("x.a", { a: n }, check), "number-range environment");
+        assert.equal(outcome("x.map(v => v)", [n], check), "number-range environment");
+        assert.equal(outcome("f()", null, check), "number-range environment");
+      }
+      // Copying or measuring a container does not read its elements (item 5).
+      assert.equal(outcome("len(x)", [n], false), "ok");
+    });
+  }
+});
+
+describe("03 3.5.3 items 5 to 7: a host function that fails with a RisorError", () => {
+  // `city` fails with `failed`; `weather` runs it as a nested run, and `outer` runs a program that calls `weather`.
+  const city = createEnv({ varRecord: "{name: string}" }).compile(parse('fail(`unknown city "${name}"`, {code: 7})'));
+  const weatherEnv = createEnv({
+    functions: {
+      weather: { type: "(name: string) => float !", call: (_h, name) => city.run({ name: name as string }) as number },
+      own: { type: "() => int !", call: () => { throw new RisorError([{ phase: "run", code: "not-found", message: "no such row" }]); } },
+    },
+  });
+  const outerEnv = createEnv({
+    functions: { outer: { type: "() => float !", call: () => weatherEnv.compile(parse('weather("Atlantis")')).run() as number } },
+  });
+  test("function-error with the inner message, whole; the inner diagnostic is the cause", () => {
+    const o = execute(weatherEnv.compile(parse('weather("Atlantis")')));
+    assert.ok(!o.ok);
+    const d = o.diagnostic as typeof o.diagnostic & { cause?: unknown };
+    assert.equal(d.code, "function-error");
+    assert.equal(d.message, 'unknown city "Atlantis"');
+    assert.equal(d.class, "host");
+    assert.equal(d.data, undefined);
+    const cause = d.cause as { code: string; message: string; data: unknown };
+    assert.equal(cause.code, "failed");
+    assert.equal(cause.message, 'unknown city "Atlantis"');
+    // The inner diagnostic keeps its data; the outer one has none (item 2).
+    assert.equal(jsonText(cause.data), '{"code":7}');
+  });
+  test("catch catches it; its code, path and data are not the inner diagnostic's", () => {
+    const v = weatherEnv.compile(parse('try { weather("Atlantis") } catch (e) { [e.code, e.message, e.path, e.data] }')).run();
+    assert.equal(jsonText(v), '["function-error","unknown city \\"Atlantis\\"",null,null]');
+  });
+  test("a chain of nested runs gives the innermost message", () => {
+    try {
+      outerEnv.compile(parse("outer()")).run();
+      assert.fail("expected a failure");
+    } catch (e) {
+      assert.ok(e instanceof RisorError);
+      const d = e.diagnostics[0];
+      assert.equal(d.code, "function-error");
+      assert.equal(d.message, 'unknown city "Atlantis"');
+      assert.equal((d.cause as { code: string }).code, "function-error");
+    }
+  });
+  test("a RisorError the host builds itself", () => {
+    assert.equal(weatherEnv.compile(parse("try { own() } catch (e) { e.message }")).run(), "no such row");
+  });
+});
+
 describe("opaque values (03 3.4.6)", () => {
   const env = createEnv({ varRecord: "{t: Time, u: Time}", opaque });
   const t = new Time(1);
@@ -138,6 +211,28 @@ describe("opaque values (03 3.4.6)", () => {
   test("a declared method", () => {
     const r = env.compile(parse("t.add(5)"), { check: false }).run({ t, u: t }) as Time;
     assert.equal(r.ms, 6);
+  });
+  test("item 6: a method may change its value's state, and a call is never cached", () => {
+    class Widget {
+      text = "a";
+      reads = 0;
+    }
+    const wenv = createEnv({
+      varRecord: "{w: Widget}",
+      opaque: {
+        Widget: {
+          test: (v) => v instanceof Widget,
+          methods: {
+            text: { type: "() => string", call: (_h, w) => ((w as Widget).reads++, (w as Widget).text) },
+            setText: { type: "(s: string) => bool", call: (_h, w, s) => (((w as Widget).text = s as string), true) },
+          },
+        },
+      },
+    });
+    const w = new Widget();
+    const p = wenv.compile(parse('const a = w.text(); const _ = w.setText("x"); [a, w.text()]'));
+    assert.equal(jsonText(p.run({ w })), '["a","x"]');
+    assert.equal(w.reads, 2);
   });
   test("the shape test on an opaque receiver", () => {
     assert.equal(code(() => env.compile(parse("t.nope()"), { check: false }).run({ t, u: t })), "wrong-kind");
@@ -195,14 +290,15 @@ describe("03 3.3.4: bad-limit", () => {
     assert.equal(declareCode({ steps: "10" }), "bad-limit");
     assert.equal(declareCode({ deadlineMs: -5 }), "bad-limit");
   });
-  test("a depth limit outside 1 to 1,000", () => {
+  test("a depth limit outside 1 to 400 (03 3.6.1)", () => {
     assert.equal(declareCode({ depth: 0 }), "bad-limit");
-    assert.equal(declareCode({ depth: 1001 }), "bad-limit");
+    assert.equal(declareCode({ depth: 401 }), "bad-limit");
+    assert.equal(declareCode({ depth: 1000 }), "bad-limit");
     assert.equal(declareCode({ depth: 2.5 }), "bad-limit");
   });
   test("limits in range, and limits turned off, are accepted", () => {
     assert.equal(declareCode({ steps: 0, allocation: 0, depth: 1 }), "ok");
-    assert.equal(declareCode({ steps: null, allocation: null, depth: 1000, deadlineMs: null }), "ok");
+    assert.equal(declareCode({ steps: null, allocation: null, depth: 400, deadlineMs: null }), "ok");
   });
 });
 

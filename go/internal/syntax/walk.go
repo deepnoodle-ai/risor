@@ -21,6 +21,28 @@ func Walk(n Node, fn func(Node) bool) {
 	}
 }
 
+// CoalescedStep gives the last step of n when n has the form of a coalesced
+// read under ?? (01-language.md 6.6): a Member that is not optional, or an
+// Index that is not optional and whose index is a String node, with or
+// without an OptChain around it. It gives nil for every other node. Whether
+// n is an operand of a ?? chain other than its last is the caller's test.
+func CoalescedStep(n Node) Node {
+	if oc, ok := n.(*OptChain); ok {
+		n = oc.X
+	}
+	switch t := n.(type) {
+	case *Member:
+		if !t.Optional {
+			return t
+		}
+	case *Index:
+		if _, ok := t.Index.(*String); ok && !t.Optional {
+			return t
+		}
+	}
+	return nil
+}
+
 // Children returns the nodes directly under n, in written order. A pattern
 // field's or element's default is a child of its pattern.
 func Children(n Node) []Node { return AppendChildren(nil, n) }

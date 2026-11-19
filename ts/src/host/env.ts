@@ -34,6 +34,9 @@ export interface Limits {
 
 export const DEFAULT_LIMITS: Limits = { steps: 1_000_000, allocation: 1_000_000, depth: 200 };
 
+/** The largest depth limit a host may set (03 3.6.1). */
+export const MAX_DEPTH = 400;
+
 export interface FunctionDecl {
   name: string; // with its namespace, as `geo.distance`
   namespace: string | null;
@@ -145,8 +148,8 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   // 03 3.3.4: `bad-limit`.
   for (const [k, v] of Object.entries(d.limits ?? {})) {
     if (k === "depth") {
-      if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > 1000) {
-        errs.push(diag("bad-limit", `the depth limit must be a whole number from 1 to 1,000`));
+      if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > MAX_DEPTH) {
+        errs.push(diag("bad-limit", `the depth limit must be a whole number from 1 to ${MAX_DEPTH}`));
       }
     } else if (v !== null && (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0)) {
       errs.push(diag("bad-limit", `the ${k} limit must be a whole number of 0 or more, or off`));

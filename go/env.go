@@ -150,8 +150,8 @@ func (l Limits) apply(e *Env) {
 		e.limits.Timeout = l.Deadline
 	}
 	if l.Depth != 0 {
-		if l.Depth < 1 || l.Depth > 1000 {
-			e.errf(diag.CodeBadLimit, "the depth limit must be from 1 to 1000")
+		if l.Depth < 1 || l.Depth > diag.MaxDepth {
+			e.errf(diag.CodeBadLimit, fmt.Sprintf("the depth limit must be from 1 to %d", diag.MaxDepth))
 		}
 		e.limits.Depth = l.Depth
 	}

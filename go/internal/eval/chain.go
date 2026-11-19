@@ -1,10 +1,12 @@
 package eval
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"unicode/utf8"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/static"
@@ -113,6 +115,9 @@ const (
 type stepCode struct {
 	kind     stepKind
 	optional bool
+	// coalesce marks the last step of a coalesced read under ??
+	// (01-language.md 6.6): an absent key gives null, as for optional.
+	coalesce bool
 	name     string
 	size     int64
 	idx      code
@@ -252,6 +257,9 @@ loop:
 		goT = stepGoType(goT, sc)
 		steps = append(steps, sc)
 	}
+	if len(nodes) > 0 && c.res.Coalesced[nodes[0]] {
+		steps[len(steps)-1].coalesce = true
+	}
 	// F11: the leading field reads on a base of known Go type are planned.
 	if tc, k := c.typedChain(x, steps, func(k int) code {
 		if k == len(steps) {
@@ -344,7 +352,7 @@ func (r *run) member(s *stepCode, v any) any {
 // The map case has charged its step already.
 func (r *run) memberMore(s *stepCode, v any) any {
 	if _, ok := v.(map[string]any); ok {
-		if s.optional {
+		if s.optional || s.coalesce {
 			return nil
 		}
 		r.raise(fail("missing-field", "field", s.span, messages.Word("name", s.name)))
@@ -354,7 +362,7 @@ func (r *run) memberMore(s *stepCode, v any) any {
 		r.step(1 + s.size)
 		x, ok := value.Get(v, s.name)
 		if !ok {
-			if s.optional {
+			if s.optional || s.coalesce {
 				return nil
 			}
 			r.raise(fail("missing-field", "field", s.span, messages.Word("name", s.name)))
@@ -390,7 +398,7 @@ func (r *run) index(s *stepCode, v any) any {
 		r.step(1 + value.Size(key))
 		x, ok := value.Get(v, key)
 		if !ok {
-			if s.optional {
+			if s.optional || s.coalesce {
 				return nil
 			}
 			r.raise(fail("missing-field", "key", s.span, messages.Val("key", key)))
@@ -615,16 +623,48 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 		r.pending = nil
 		r.raise(p)
 	}
+	var msg string
+	if crashed == nil && err != nil {
+		// Reading the error runs the host's own methods (Error, Unwrap, As),
+		// so a crash in one of them is a crash in host code too.
+		msg, crashed = safeErrorMessage(err)
+	}
 	if crashed != nil {
 		ff := fail("function-panic", "", sp, messages.Word("name", name))
 		ff.cause = fmt.Errorf("%v", crashed)
 		r.raise(ff)
 	}
 	if err != nil {
-		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: err.Error(), ownMsg: true, cause: err}
+		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: msg, ownMsg: true, cause: err}
 		r.raise(ff)
 	}
 	return r.read(res, sp)
+}
+
+// safeErrorMessage is hostErrorMessage, with a crash in the host's error
+// caught and reported.
+func safeErrorMessage(err error) (msg string, crashed any) {
+	defer func() {
+		if x := recover(); x != nil {
+			crashed = x
+		}
+	}()
+	return hostErrorMessage(err), nil
+}
+
+// hostErrorMessage is the message of a function-error (03-host.md 3.5.3):
+// the message of the inner diagnostic when the host's error is a Risor
+// failure (a *diag.Error, found through wrapping), else the error's text.
+// The message of a Risor failure is taken with nothing added (3.5.3), so
+// the text of an error that wraps one is not in it; the cause keeps it.
+// A nested function-error already holds the message below it, so one level
+// of unwrapping gives the innermost message.
+func hostErrorMessage(err error) string {
+	var de *diag.Error
+	if errors.As(err, &de) && de != nil && len(de.Diagnostics) > 0 {
+		return de.Diagnostics[0].Message
+	}
+	return err.Error()
 }
 
 func (r *run) safeCall(f HostFunc, c *Call, args []any) (res any, err error, crashed any) {

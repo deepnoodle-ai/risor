@@ -701,6 +701,31 @@ and a method call's arguments are expressions of their own.
   chain goes on. So with `b?: {c: int}`, `a?.b.c` is `maybe-null` on `a?.b`, and
   `a?.b?.c` is `int | null`.
 
+**A coalesced read.** The last step of a coalesced read under `??`
+(`01-language.md` 6.6) gives null at run time for an absent key. When its
+receiver is a record, after steps 2 to 4 of 9.1, the step is read by this
+table in place of the column "Plain". Every other step, and the last step on
+every other receiver, is read by the column "Plain".
+
+| Receiver | Step | A coalesced read |
+| --- | --- | --- |
+| A record | Field `f`, or `["f"]` with a `String` node: f required | Its type, as plain |
+| | The same: f optional, or unlisted with a rest that is not `never` or `any` | That type with null added. No `maybe-absent` |
+| | The same: f unlisted, rest `any` | `any`, and no site |
+| | The same: f unlisted, rest `never` | `no-field`; `never`. A key that no type allows is a typo, not an absence |
+
+- The rule reads the node, not a type: which steps are coalesced is fixed by
+  the text alone, as at run time. The type only decides what the step gives.
+- A key that a fact says is present reads as required, as above.
+- A receiver of type `any` is read by 9.3 as for a plain step: its `dynamic`
+  site is recorded, since the receiver may be null or not a map.
+- A computed key, `m[k] ?? d`, is not a coalesced read: the row of `[e]` with
+  any other e reports `maybe-absent` as before, and `m?.[k] ?? d` is the form
+  that checks.
+- So with `o: {id: int, note?: string}`, `o.note ?? ""` is `string` with no
+  diagnostic, `o.nite ?? ""` is `no-field` on `nite`, and `o.note || ""` is
+  still `maybe-absent` on `note`.
+
 ### 9.3 `any` in a chain
 
 Every step on an `any` receiver records a `dynamic` site on that receiver, and
@@ -1219,7 +1244,7 @@ the type rules only.
 | `duplicate-key` | A literal key written twice in one map literal (22.8) | The later key | | The later entry stands. |
 | `no-field` | A read of a field that a record cannot have (9.2, 12.2) | The field's name or key | | `never` |
 | `no-method` | No method of that name for the receiver's kind (13.3) | The method's name | | As `undefined-function` |
-| `maybe-absent` | A plain read of an optional or unlisted field, or an index read of a record (9.2, 12.2) | The field's name, the key, or the index expression | | The field's type (9.2) |
+| `maybe-absent` | A plain read of an optional or unlisted field, or an index read of a record (9.2, 12.2). Not the last step of a coalesced read under `??` (9.2) | The field's name, the key, or the index expression | | The field's type (9.2) |
 | `maybe-null` | An operand that may be null where null is not accepted (1.3) | The operand; for a read, the receiver; for a pattern, the value bound; for an argument, each place of failure (15.1) | | nonnull of the operand's type |
 | `kind` | An operand of the wrong kind (7, 8, 9, 12); a rendered expression whose type has an opaque type (7.3) | The operand; for two operands that do not go together, the whole `Binary` (8.3); for a read or a method call, the receiver; for a computed index of a record, the index expression (9.2); for a rendered expression, that expression | | `bool` for `<`, `<=`, `>`, `>=`, `in` and `not in`; else `never` |
 | `never-equal` | An equality or a `match` literal that can never hold, neither side being `never` nor exactly `null`, and the literal not being a duplicate (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal, its `-` included | | `bool`; the literal is ignored |
@@ -1340,7 +1365,7 @@ expression (7.3). The class of a failure (18.5) uses this definition.
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
 | A site | The receiver of a read or a method call; an operand of `-`, arithmetic, order or `+`; the right operand of `in`, or the left when the right is a string or a record; a spread's operand; a computed key; a destructured value; a map pattern's field unlisted in a record whose rest is `any`; a rendered expression whose type has `any` at any depth (7.3); an index expression; an argument, a result or a part of one whose fit used any (15.1); a bound that held by any (13.5). |
-| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter that is not rendered, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right; read with `?.` at an unlisted key of an open record, by a field step or by a computed key. |
+| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter that is not rendered, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right; read with `?.` at an unlisted key of an open record, by a field step or by a computed key; read at an unlisted key of an open record by the last step of a coalesced read under `??` (9.2). |
 
 Sites inside the body of a `try` are dropped. Sites of the check of an unused
 const-bound lambda are dropped (13.9). A dropped site is never a diagnostic
@@ -1889,6 +1914,30 @@ hosts: string[], listen: string, max_body?: int}` (15.1).
 | 144 | `{...base, ...blob}` | Checks, with `dynamic` sites 1:1-1:19 and 1:14-1:18 |
 | 145 | `{...part, max_body: 1}` | `result-mismatch` 1:1-1:23: no entry surely gives `listen` |
 | 146 | `{...base, db: {...base.db, prot: 1}}` | `result-mismatch` 1:28-1:32, on the key `prot` of the inner map |
+
+### 21.17 Absence under `??`
+
+The environment of 21.1. Each read under `??` is a coalesced read or not by
+`01-language.md` 6.6, and is typed by 9.2.
+
+| # | Program | Result |
+| --- | --- | --- |
+| 147 | `input.note ?? ""` | `string`: no `maybe-absent` |
+| 148 | `input["note"] ?? ""` | `string` |
+| 149 | `(input.note) ?? ""` | `string`: parentheses have no node |
+| 150 | `scores.a ?? scores.b ?? 0` | `float`: every operand but the last is a coalesced read |
+| 151 | `null ?? input.note` | `maybe-absent` 1:15-1:19: the last operand is read by the column "Plain" |
+| 152 | `event.title ?? "none"` | `any`; no site: an unlisted key of an open record |
+| 153 | `gate.faild ?? 0` | `no-field` 1:6-1:11: a key that no type allows |
+| 154 | `gate.failed ?? 0` | `int`: a required field reads as plain |
+| 155 | `scores[input.role] ?? 0` | `maybe-absent` 1:8-1:18: a computed key is not a coalesced read |
+| 156 | `input.note \|\| ""` | `maybe-absent` 1:7-1:11: `\|\|` is not `??` |
+| 157 | `event.pull_request.number ?? 0` | `maybe-absent` 1:7-1:19: only the last step is coalesced |
+| 158 | `event?.pull_request.number ?? 0` | `maybe-null` 1:1-1:20: an absent `pull_request` is null for its step, and `.number` fails on null |
+| 159 | `input.options.retries ?? 3` | `maybe-null` 1:1-1:14, and no `maybe-absent`: only absence is coalesced |
+| 160 | `(gate.failed > 0 ? {a: 1} : {b: "x"}).a ?? 0` | `int`: the receiver is the Join `{a?: int, b?: string}` (4.1) |
+| 161 | `blob.x ?? 0` | `any`; site `dynamic` 1:1-1:5: a receiver of type `any` may be null or not a map |
+| 162 | `input.note ?? null` | `string \| null` |
 
 ## 22. The static rules alone
 

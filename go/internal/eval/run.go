@@ -492,6 +492,9 @@ func (f *failure) diagnostic(file *syntax.File, whole syntax.Span) diag.Diagnost
 	if f.code == "failed" {
 		d.Data, d.HasData = f.data, true
 	}
+	if f.code == "function-error" {
+		d.Cause = f.cause
+	}
 	if f.hasPath {
 		d.Path = f.path
 	}

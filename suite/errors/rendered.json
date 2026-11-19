@@ -306,5 +306,42 @@
     "json": "{\"class\":\"index\",\"code\":\"may-fail\",\"message\":\"this index may be outside its list or string, and this environment rejects index sites\",\"phase\":\"check\",\"span\":[1,1,1,6]}\n"
    }
   }
+ },
+ {
+  "name": "rendered: a host error that is a Risor diagnostic repeats no prefix",
+  "source": "weather(\"Atlantis\")",
+  "functions": {
+   "weather": {
+    "type": "(city: string) => float !",
+    "calls": [
+     {
+      "error": {
+       "code": "failed",
+       "message": "unknown city \"Atlantis\""
+      }
+     }
+    ]
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "function-error",
+     "span": [
+      1,
+      1,
+      1,
+      20
+     ],
+     "class": "host",
+     "message": "unknown city \"Atlantis\""
+    }
+   ],
+   "rendered": {
+    "line": "error[function-error] 1:1-1:20: unknown city \"Atlantis\"\n",
+    "json": "{\"class\":\"host\",\"code\":\"function-error\",\"message\":\"unknown city \\\"Atlantis\\\"\",\"phase\":\"run\",\"span\":[1,1,1,20],\"trace\":[]}\n"
+   }
+  }
  }
 ]

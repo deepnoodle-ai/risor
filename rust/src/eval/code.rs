@@ -127,6 +127,8 @@ enum Step {
     Member {
         name: Box<str>,
         optional: bool,
+        /// The last step of a coalesced read under `??`.
+        coalesced: bool,
         span: Range,
     },
     Method(NodeId),
@@ -135,7 +137,12 @@ enum Step {
 }
 
 /// The closures of a program's nodes, indexed by node.
-pub(crate) fn build(ast: &Ast, res: &[Res], var_index: &[u32]) -> Vec<Option<Code>> {
+pub(crate) fn build(
+    ast: &Ast,
+    res: &[Res],
+    var_index: &[u32],
+    coalesced: &[bool],
+) -> Vec<Option<Code>> {
     let n = ast.nodes.len();
     // The depth of each node's subtree; `u32::MAX` while unknown, so that a
     // child built after its parent counts as too deep.
@@ -175,7 +182,7 @@ pub(crate) fn build(ast: &Ast, res: &[Res], var_index: &[u32]) -> Vec<Option<Cod
     for i in 0..n {
         let id = NodeId(i as u32);
         let c = if depth[i] <= MAX_DEPTH && !inner[i] {
-            node(ast, res, var_index, id, &code)
+            node(ast, res, var_index, coalesced, id, &code)
         } else {
             None
         };
@@ -196,6 +203,7 @@ fn node(
     ast: &Ast,
     res: &[Res],
     var_index: &[u32],
+    coalesced: &[bool],
     id: NodeId,
     code: &[Option<Code>],
 ) -> Option<Code> {
@@ -353,6 +361,7 @@ fn node(
                     NodeKind::Member { name, optional, .. } => Step::Member {
                         name: name.as_str().into(),
                         optional: *optional,
+                        coalesced: coalesced[s.index()],
                         span: ast.span(s),
                     },
                     NodeKind::MethodCall { .. } => Step::Method(s),
@@ -370,8 +379,9 @@ fn node(
                         Step::Member {
                             name,
                             optional,
+                            coalesced,
                             span,
-                        } => r.member(v, name, *optional, *span),
+                        } => r.member(v, name, *optional, *coalesced, *span),
                         Step::Method(s) => r.method(*s, v),
                         Step::Index(s) => r.index_step(*s, v),
                         Step::Node(s) => r.step(*s, v),

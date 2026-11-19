@@ -68,7 +68,7 @@ Types are in `05-types.md`.
 | Binary operator other than `&&`, `\|\|`, `??` | The left operand, the right operand, then the operator |
 | `a && b` | `a`. If `a` is falsy, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
 | `a \|\| b` | `a`. If `a` is truthy, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
-| `a ?? b` | `a`. If `a` is not null, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
+| `a ?? b` | `a`. If `a` is not null, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value. An operand that is a coalesced read (`01-language.md` 6.6) gives null, instead of failing with `missing-field`, when the key of its last step is absent from its receiver. It charges what the read charges (5.2) |
 | `c ? a : b` | `c`. Then `a` if `c` is truthy, else `b`. The other branch is not evaluated |
 | `if` | Each test in order, up to the first truthy one. Then the branch of that test, or the `else` branch if no test is truthy. No later test and no other branch is evaluated |
 | `match` | The subject, once. Then each arm in order: the subject is compared with `==` to each literal of the arm, left to right, and the arm stops at its first equal literal. The first arm with an equal literal, or the arm `_`, is taken. Then the result of the arm taken. No other result is evaluated. If no arm is taken, the failure `no-match` |
@@ -617,6 +617,18 @@ In this table `f` is a `const`-bound lambda.
 | `inc(inc(x))`, with `inc` a `const`-bound lambda, at the inner `inc` | 1: the outer `inc` is not in progress while its argument runs | 2: the inner `inc` stands inside the outer's `(`, 1 level, so 1 + 1. When it returns, the outer `inc` is tested at 1 + 0 = 1 |
 | ``xs.map(x => `${v}`)``, with `v` `[[1]]` | 1, and a walk, at the inner list | 3: `map` is 1, and the walk has entered the outer list and the inner list, 2 |
 
+**Levels, not calls.** This paragraph and its table are informative. The count
+is in levels of nesting, not in calls: where a call stands in its body changes
+what it costs. So a chain of calls written one way reaches the depth limit in
+half as many calls as the same chain written another way.
+
+| Body of a `const`-bound lambda, with `f` another one | What the body's calls add to the count while `f` runs |
+| --- | --- |
+| `f(x) + 1` | 1: `f` is the left operand of `+`, which opens no level |
+| `1 + f(x)` | 2: `f` stands inside the level of `+` |
+| `[x].map(f)[0]` | 1: the measure of the call of `map`, by item 3. `map` calls `f`, so no call by name adds more |
+| `xs.map(y => f(y))` | 2: 1 for the call of `map`, and 1 for the call of `f` by name in the lambda's body |
+
 ### 8.5 What the limits guarantee
 
 1. The work the language does in a run is at most a constant times the steps
@@ -630,7 +642,8 @@ In this table `f` is a `const`-bound lambda.
    implementation publishes its constants.
 3. An evaluator's recursion over the source, through every call in progress, is
    at most `D` + 100 levels, where `D` is the depth limit. A walk adds at most
-   `D` more. A run in all is at most 2`D` + 100 levels.
+   `D` more. A run in all is at most 2`D` + 100 levels: 500 at the default
+   limit, 200, and 900 at the largest, 400 (`03-host.md` 3.6.1).
 4. The limits do not cover a host function beyond what it charges, host data,
    live memory or the fixed state of a run. They are not a security boundary.
 
@@ -648,7 +661,8 @@ In this table `f` is a `const`-bound lambda.
 
 1. The same program, the same variable values, the same results and charges of
    host functions, the same step limit, the same allocation limit and the same
-   depth limit give the same outcome and the same usage in every implementation.
+   depth limit give the same outcome, the same usage and the same interactions
+   with the host (item 6) in every implementation.
 2. The same outcome is the same value, or a failure with the same code, span,
    message, path and data.
 3. These may differ:
@@ -667,6 +681,15 @@ In this table `f` is a `const`-bound lambda.
    - give the number results of section 3 on every platform;
    - charge by sections 5 and 6;
    - use no clock, random source or shared state but the deadline check.
+6. **The interactions.** The interactions of a run are its requests for
+   variables and its calls of host functions and methods, with their
+   arguments, charges and outcomes (`03-host.md` 3.6.2). They are fixed by the
+   inputs of item 1 and by the outcomes and charges of the calls before them.
+   Two implementations make the same requests and the same calls, with `==`
+   arguments, in the order of section 2, up to the first call that differs in
+   outcome or in charges, or the first failure of class `limit`. 10.1 items 2
+   and 3 already require this of an optimized evaluation; this item makes it a
+   promise a host may build on.
 
 ## 10. Optimizing
 
@@ -787,7 +810,7 @@ no message is built.
 | The map of four entries | 0 | 9 |
 | `code` | 0 | 0. A code is text of the specification |
 | `message` built from a template of the catalog | 1 + size of the message | 1 + size of the message |
-| `message` of `failed` or `function-error` | 0 | 0. It is the string `fail` was given, or the host's text, which already exists |
+| `message` of `failed` or `function-error` | 0 | 0. It is the string `fail` was given, or the host's text or the message of the inner diagnostic (`03-host.md` 3.5.3), which already exists |
 | `path` | 0 | 0. In Core it is null for every failure |
 | `data` | 0 | 0. It is the value `fail` was given, the same value and not a copy, or null |
 

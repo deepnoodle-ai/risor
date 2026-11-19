@@ -86,7 +86,7 @@ pub mod code {
 
 /// One problem found by a stage.
 ///
-/// `range` is the span in code-point offsets, for the implementation's own
+/// `range()` is the span in code-point offsets, for the implementation's own
 /// use. `span` is the same span as lines and columns, which is what the
 /// specification compares.
 #[derive(Clone, Debug, PartialEq)]
@@ -94,7 +94,11 @@ pub struct Diagnostic {
     pub phase: Phase,
     pub code: &'static str,
     pub class: Option<&'static str>,
-    pub(crate) range: Option<Range>,
+    /// The span in code-point offsets, when `has_range`: read it with
+    /// `range()`. Two fields and not an `Option` keep a diagnostic at 120
+    /// bytes, so that a `Result` of one stays small.
+    offsets: Range,
+    has_range: bool,
     pub span: Option<Span>,
     pub message: String,
     /// For `failed`: the second argument of `fail`, or null.
@@ -106,6 +110,11 @@ pub struct Diagnostic {
     /// from the outermost in (`f08-errors.md` 4). `None` is an empty trace,
     /// and every other phase has none. Read it with `trace()`.
     pub trace: Option<Box<Vec<TraceEntry>>>,
+    /// For `function-error` from a host error that is a failure of a binding
+    /// of Risor: that failure's first diagnostic, the inner diagnostic
+    /// (`03-host.md` 3.5.3 item 5, 3.7.1). `std::error::Error::source`
+    /// gives it too. It is never rendered (`f08-errors.md` 6).
+    pub cause: Option<Box<Diagnostic>>,
 }
 
 /// An entry of a trace (`f08-errors.md` 4.2).
@@ -128,6 +137,17 @@ pub enum PathStep {
 }
 
 impl Diagnostic {
+    /// The span in code-point offsets, for the implementation's own use.
+    pub(crate) fn range(&self) -> Option<Range> {
+        self.has_range.then_some(self.offsets)
+    }
+
+    /// Set the span in code-point offsets.
+    pub(crate) fn set_range(&mut self, r: Range) {
+        self.offsets = r;
+        self.has_range = true;
+    }
+
     /// The trace of a `run` diagnostic, from the outermost call in
     /// (`f08-errors.md` 4.1).
     pub fn trace(&self) -> &[TraceEntry] {
@@ -146,12 +166,14 @@ impl Diagnostic {
             phase,
             code,
             class: None,
-            range: Some(range),
+            offsets: range,
+            has_range: true,
             span: Some(src.line_span(range)),
             message: message.into(),
             data: None,
             path: None,
             trace: None,
+            cause: None,
         }
     }
 
@@ -161,12 +183,14 @@ impl Diagnostic {
             phase,
             code,
             class: None,
-            range: None,
+            offsets: Range::default(),
+            has_range: false,
             span: None,
             message: message.into(),
             data: None,
             path: None,
             trace: None,
+            cause: None,
         }
     }
 }
@@ -215,4 +239,21 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    /// The cause of the first diagnostic.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.diagnostics
+            .first()
+            .and_then(|d| d.cause.as_deref())
+            .map(|d| d as &(dyn std::error::Error + 'static))
+    }
+}
+
+impl std::error::Error for Diagnostic {
+    /// The inner diagnostic of a `function-error` (`03-host.md` 3.5.3).
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.cause
+            .as_deref()
+            .map(|d| d as &(dyn std::error::Error + 'static))
+    }
+}

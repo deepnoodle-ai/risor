@@ -101,6 +101,22 @@
   {"name": "21.11 #107: [1, 2].join(\",\")", "source": "[1, 2].join(\",\")", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 2, 1, 3]}, {"code": "arg-mismatch", "span": [1, 5, 1, 6]}]}},
   {"name": "22.13 S26: gate.items.map(), the full checker", "source": "gate.items.map()", "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 1, 1, 17]}]}},
   {"name": "22.13 S27: gate.items.map(t => t.nmae), the full checker", "source": "gate.items.map(t => t.nmae)", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 23, 1, 27]}]}},
-  {"name": "22.13 S28: const inc = n => n + 1; [1, 2].map(inc), the full checker", "source": "const inc = n => n + 1; [1, 2].map(inc)", "expect": {"type": "int[]", "sites": []}}
+  {"name": "22.13 S28: const inc = n => n + 1; [1, 2].map(inc), the full checker", "source": "const inc = n => n + 1; [1, 2].map(inc)", "expect": {"type": "int[]", "sites": []}},
+  {"name": "21.17 #147: input.note ?? \"\"", "source": "input.note ?? \"\"", "expect": {"type": "string", "sites": []}},
+  {"name": "21.17 #148: input[\"note\"] ?? \"\"", "source": "input[\"note\"] ?? \"\"", "expect": {"type": "string", "sites": []}},
+  {"name": "21.17 #149: (input.note) ?? \"\"", "source": "(input.note) ?? \"\"", "expect": {"type": "string", "sites": []}},
+  {"name": "21.17 #150: scores.a ?? scores.b ?? 0", "source": "scores.a ?? scores.b ?? 0", "expect": {"type": "float", "sites": []}},
+  {"name": "21.17 #151: null ?? input.note", "source": "null ?? input.note", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 15, 1, 19]}]}},
+  {"name": "21.17 #152: event.title ?? \"none\"", "source": "event.title ?? \"none\"", "expect": {"type": "any", "sites": []}},
+  {"name": "21.17 #153: gate.faild ?? 0", "source": "gate.faild ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 6, 1, 11]}]}},
+  {"name": "21.17 #154: gate.failed ?? 0", "source": "gate.failed ?? 0", "expect": {"type": "int", "sites": []}},
+  {"name": "21.17 #155: scores[input.role] ?? 0", "source": "scores[input.role] ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 8, 1, 18]}]}},
+  {"name": "21.17 #156: input.note || \"\"", "source": "input.note || \"\"", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 7, 1, 11]}]}},
+  {"name": "21.17 #157: event.pull_request.number ?? 0", "source": "event.pull_request.number ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 7, 1, 19]}]}},
+  {"name": "21.17 #158: event?.pull_request.number ?? 0", "source": "event?.pull_request.number ?? 0", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 1, 1, 20]}]}},
+  {"name": "21.17 #159: input.options.retries ?? 3", "source": "input.options.retries ?? 3", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 1, 1, 14]}]}},
+  {"name": "21.17 #160: (gate.failed > 0 ? {a: 1} : {b: \"x\"}).a ?? 0", "source": "(gate.failed > 0 ? {a: 1} : {b: \"x\"}).a ?? 0", "expect": {"type": "int", "sites": []}},
+  {"name": "21.17 #161: blob.x ?? 0", "source": "blob.x ?? 0", "expect": {"type": "any", "sites": [{"class": "dynamic", "span": [1, 1, 1, 5]}]}},
+  {"name": "21.17 #162: input.note ?? null", "source": "input.note ?? null", "expect": {"type": "string | null", "sites": []}}
  ]
 }

@@ -70,7 +70,7 @@ fn function_panic_is_not_caught() {
     let env = Env::builder()
         .function("boom", "() => int", |_, _| panic!("a host bug"))
         .function("err", "() => int", |_, _| {
-            Err(crate::HostError("no".into()))
+            Err(crate::HostError::Text("no".into()))
         })
         .build()
         .unwrap();
@@ -89,9 +89,9 @@ fn a_host_function_charges_through_its_handle() {
     let env = Env::builder()
         .function("h", "(x: float) => float", |call, args| {
             call.charge(3)
-                .map_err(|_| crate::HostError("stop".into()))?;
+                .map_err(|_| crate::HostError::Text("stop".into()))?;
             call.allocate(2)
-                .map_err(|_| crate::HostError("stop".into()))?;
+                .map_err(|_| crate::HostError::Text("stop".into()))?;
             match args[0] {
                 Value::Num(n) => Ok(Data::Float(n * 2.0)),
                 _ => Ok(Data::Null),
@@ -328,6 +328,212 @@ fn host_numbers_that_cannot_enter() {
     assert_eq!(run("big()"), Err("number-range"));
     assert_eq!(run("bigs()[0]"), Ok("1".into()));
     assert_eq!(run("bigs()[1]"), Err("number-range"));
+}
+
+/// `03-host.md` 3.4.6 item 6 and 3.5.2 item 5: the host owns an opaque
+/// value's state, a method may change it, and no call is cached.
+#[test]
+fn an_opaque_value_state_belongs_to_the_host() {
+    use std::sync::Mutex;
+    let env = Env::builder()
+        .var_record("{w: Label}")
+        .opaque("Label")
+        .method("Label", "text", "() => string", |_, args| match &args[0] {
+            Value::Opaque(o) => {
+                let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
+                Ok(Data::Str(m.lock().unwrap().clone()))
+            }
+            _ => Ok(Data::Null),
+        })
+        .method(
+            "Label",
+            "setText",
+            "(s: string) => null",
+            |_, args| match (&args[0], &args[1]) {
+                (Value::Opaque(o), Value::Str(s)) => {
+                    let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
+                    *m.lock().unwrap() = s.as_str().to_string();
+                    Ok(Data::Null)
+                }
+                _ => Ok(Data::Null),
+            },
+        )
+        .build()
+        .unwrap();
+    let w = OpaqueRef::new("Label", Mutex::new("a".to_string()));
+    let v = vars(&[("w", Data::Opaque(w.clone()))]);
+    let p = program(
+        &env,
+        r#"{ const a = w.text(); const _ = w.setText("x"); [a, w.text()] }"#,
+    );
+    assert_eq!(outcome(&p, &v), Ok(r#"["a", "x"]"#.into()));
+    // The host keeps the value across runs and sees the change.
+    let m = w.value.downcast_ref::<Mutex<String>>().unwrap();
+    assert_eq!(*m.lock().unwrap(), "x");
+    let p = program(&env, "w.text()");
+    assert_eq!(outcome(&p, &v), Ok("\"x\"".into()));
+}
+
+/// `03-host.md` 3.4.4: NaN and the infinities never enter, as a variable,
+/// inside a list or a map, or as a host function's result.
+#[test]
+fn non_finite_host_numbers_do_not_enter() {
+    for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let env = Env::builder()
+            .var_record("{n: float, xs: float[], m: map<float>}")
+            .function("bad", "() => float", move |_, _| Ok(Data::Float(x)))
+            .function("bads", "() => float[]", move |_, _| {
+                Ok(Data::List(vec![Data::Float(1.0), Data::Float(x)]))
+            })
+            .function("badm", "() => map<float>", move |_, _| {
+                Ok(Data::Map([("a".to_string(), Data::Float(x))].into()))
+            })
+            .build()
+            .unwrap();
+        let m: BTreeMap<String, Data> = [("a".to_string(), Data::Float(x))].into();
+        let v = vars(&[
+            ("n", Data::Float(x)),
+            ("xs", Data::List(vec![Data::Float(1.0), Data::Float(x)])),
+            ("m", Data::Map(m)),
+        ]);
+        for src in [
+            "n",
+            "n + 0",
+            "xs[1]",
+            "m.a",
+            "m[\"a\"]",
+            "bad()",
+            "bads()[1]",
+            "badm().a",
+        ] {
+            let p = program(&env, src);
+            let f = p.outcome(&v).result.err();
+            let f = f.unwrap_or_else(|| panic!("{x} {src}: no failure"));
+            assert_eq!(f.code, "number-range", "{x} {src}");
+            assert_eq!(f.class(), Some("environment"), "{x} {src}");
+        }
+        // The finite neighbours enter.
+        let p = program(&env, "xs[0] + bads()[0]");
+        assert_eq!(format!("{:?}", p.outcome(&v).result.unwrap()), "2");
+    }
+}
+
+/// `03-host.md` 3.5.3 items 5 to 7: a host function that fails with a
+/// failure of this binding, such as that of a nested run.
+#[test]
+fn a_nested_failure_is_a_function_error_with_its_cause() {
+    fn nested(
+        src: &'static str,
+    ) -> impl Fn(&mut crate::Call<'_>, &[Value<'_>]) -> Result<Data, crate::HostError> {
+        move |_, _| {
+            let env = Env::builder().build()?;
+            let p = env.compile(&parse(src)?, crate::CompileOptions::default())?;
+            let v = p.run(&NoVars)?;
+            Ok(if crate::truthy(&v) {
+                Data::Bool(true)
+            } else {
+                Data::Null
+            })
+        }
+    }
+    let env = Env::builder()
+        .function(
+            "city",
+            "() => bool !",
+            nested(r#"fail("unknown city", {n: 1})"#),
+        )
+        .function("syntax", "() => bool !", nested("1 +"))
+        .build()
+        .unwrap();
+    let p = program(&env, "city()");
+    let e = p.run(&NoVars).unwrap_err();
+    let d = e.first();
+    assert_eq!(d.code, "function-error");
+    assert_eq!(d.class, Some("host"));
+    // The message is the inner diagnostic's, whole; the data stays null.
+    assert_eq!(d.message, "unknown city");
+    assert!(d.data.is_none());
+    let cause = d.cause.as_deref().expect("a cause");
+    assert_eq!(
+        (cause.code, cause.message.as_str()),
+        ("failed", "unknown city")
+    );
+    assert!(cause.data.is_some());
+    // `source` gives the same diagnostic.
+    let src = std::error::Error::source(&e).expect("a source");
+    let src = src
+        .downcast_ref::<crate::Diagnostic>()
+        .expect("a Diagnostic");
+    assert_eq!(src.code, "failed");
+    // `catch` catches it, by its own code.
+    let p = program(
+        &env,
+        "try { city() } catch (e) { `${e.code}: ${e.message}` }",
+    );
+    assert_eq!(
+        format!("{:?}", p.run(&NoVars).unwrap()),
+        "\"function-error: unknown city\""
+    );
+    // A failure of another stage gives its message the same way.
+    let p = program(&env, "syntax()");
+    let e = p.run(&NoVars).unwrap_err();
+    let cause = e.first().cause.as_deref().expect("a cause");
+    assert_eq!(cause.phase, crate::Phase::Parse);
+    assert_eq!(e.first().message, cause.message);
+    // A rendering writes neither the cause nor its code (`f08-errors.md` 6).
+    let p = program(&env, "city()");
+    let e = p.run(&NoVars).unwrap_err();
+    for r in [
+        crate::render_line(&e.diagnostics),
+        crate::render_json(&e.diagnostics),
+        crate::render_detail(&e.diagnostics, Some("city()")),
+    ] {
+        assert!(r.contains("function-error"), "{r}");
+        assert!(r.contains("unknown city"), "{r}");
+        assert!(!r.contains("failed") && !r.contains("cause"), "{r}");
+    }
+    // A plain error has no cause.
+    let env = Env::builder()
+        .function("err", "() => int !", |_, _| Err("no".into()))
+        .build()
+        .unwrap();
+    let e = program(&env, "err()").run(&NoVars).unwrap_err();
+    assert_eq!(e.first().message, "no");
+    assert!(e.first().cause.is_none());
+}
+
+/// 3.5.3 item 7: a chain of nested runs gives the innermost message.
+#[test]
+fn a_chain_of_nested_runs_gives_the_innermost_message() {
+    let env = Env::builder()
+        .function("outer", "() => int !", |_, _| {
+            let inner = Env::builder()
+                .function("deep", "() => int !", |_, _| {
+                    let env = Env::builder().build()?;
+                    let p = env.compile(&parse(r#"fail("at the bottom")"#)?, Default::default())?;
+                    p.run(&NoVars)?;
+                    Ok(Data::Int(0))
+                })
+                .build()?;
+            let p = inner.compile(&parse("deep()")?, Default::default())?;
+            p.run(&NoVars)?;
+            Ok(Data::Int(0))
+        })
+        .build()
+        .unwrap();
+    let e = program(&env, "outer()").run(&NoVars).unwrap_err();
+    let d = e.first();
+    assert_eq!(
+        (d.code, d.message.as_str()),
+        ("function-error", "at the bottom")
+    );
+    let cause = d.cause.as_deref().expect("a cause");
+    assert_eq!(cause.code, "function-error");
+    let root = cause.cause.as_deref().expect("a second cause");
+    assert_eq!(
+        (root.code, root.message.as_str()),
+        ("failed", "at the bottom")
+    );
 }
 
 #[test]
@@ -572,10 +778,10 @@ fn flat_programs_run() {
     );
 }
 
-/// A depth limit outside 1 to 1,000 is `bad-limit` (`03-host.md` 3.3.4).
+/// A depth limit outside 1 to 400 is `bad-limit` (`03-host.md` 3.3.4).
 #[test]
 fn a_depth_limit_out_of_range_is_bad_limit() {
-    for depth in [0, 1001] {
+    for depth in [0, 401, 1000] {
         let e = Env::builder()
             .limits(Limits {
                 depth,
@@ -586,7 +792,7 @@ fn a_depth_limit_out_of_range_is_bad_limit() {
             .expect("the environment is refused");
         assert_eq!(e.first().code, "bad-limit");
     }
-    for depth in [1, 1000] {
+    for depth in [1, 400] {
         assert!(Env::builder()
             .limits(Limits {
                 depth,

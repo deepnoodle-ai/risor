@@ -193,13 +193,13 @@ fn fixture_test(case: &Case, env: &Env) -> Option<(Vec<Json>, String)> {
                         return Some(with_path(place("result"), &d));
                     }
                 }
-                Answer::Error(_) if !sig.fails => {
+                Answer::Error(_) | Answer::Failure { .. } if !sig.fails => {
                     return Some((
                         place("error"),
                         "the signature has no !, so the stub may not return an error".into(),
                     ));
                 }
-                Answer::Error(_) => {}
+                Answer::Error(_) | Answer::Failure { .. } => {}
             }
         }
         None
@@ -615,7 +615,7 @@ impl Interner {
 
 struct RowData {
     args: Option<Vec<Data>>,
-    answer: Result<Data, String>,
+    answer: Result<Data, HostError>,
     charge: u64,
     allocate: u64,
 }
@@ -638,7 +638,12 @@ fn stub_impl(
                 .map(|a| a.iter().map(|x| interner.data(x)).collect()),
             answer: match &r.answer {
                 Answer::Result(v) => Ok(interner.data(v)),
-                Answer::Error(e) => Err(e.clone()),
+                Answer::Error(e) => Err(HostError::Text(e.clone())),
+                // 3.10.4: the failure of a run, in this binding's own type,
+                // with one diagnostic of phase `run` and no span.
+                Answer::Failure { code, message } => Err(HostError::from(Error::one(
+                    Diagnostic::bare(Phase::Run, static_code(code), message.clone()),
+                ))),
             },
             charge: r.charge,
             allocate: r.allocate,
@@ -652,9 +657,9 @@ fn stub_impl(
             };
             if fits {
                 if call.charge(r.charge).is_err() || call.allocate(r.allocate).is_err() {
-                    return Err(HostError("a limit was passed".into()));
+                    return Err(HostError::from("a limit was passed"));
                 }
-                return r.answer.clone().map_err(HostError);
+                return r.answer.clone();
             }
         }
         let args: Vec<Json> = args.iter().map(value_to_json).collect();
@@ -662,8 +667,35 @@ fn stub_impl(
             "no row of {name} matches {}",
             form(&Json::Arr(args))
         ));
-        Err(HostError("no row of the stub matches the call".into()))
+        Err(HostError::from("no row of the stub matches the call"))
     })
+}
+
+/// A code of a stub's diagnostic object, as the `&'static str` of a
+/// `Diagnostic`: the catalog's own text when the catalog has the code, else
+/// the text kept for the rest of the process. Only the case runner makes
+/// one, and only from the codes its files hold. The code need not be one of
+/// the run (3.10.4 item 5): it never reaches the run.
+fn static_code(code: &str) -> &'static str {
+    if let Some(e) = crate::messages::catalog()
+        .entries
+        .iter()
+        .find(|e| e.code == code)
+    {
+        return e.code.as_str();
+    }
+    static MORE: std::sync::OnceLock<std::sync::Mutex<Vec<&'static str>>> =
+        std::sync::OnceLock::new();
+    let mut more = MORE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = more.iter().find(|c| **c == code) {
+        return c;
+    }
+    let c: &'static str = Box::leak(code.to_string().into_boxed_str());
+    more.push(c);
+    c
 }
 
 /// The case's environment, as a child of the suite's base environment.

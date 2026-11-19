@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createEnv, parse, RisorError } from "../src/host/api.ts";
 
-const env = createEnv({ varRecord: "{s: string, t: float}", groups: ["json", "time"], limits: { steps: null, allocation: null, depth: 1000 } });
+const env = createEnv({ varRecord: "{s: string, t: float}", groups: ["json", "time"], limits: { steps: null, allocation: null, depth: 400 } });
 
 function code(f: () => unknown): string {
   try {

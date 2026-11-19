@@ -409,7 +409,7 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
 1. The entries of the `parse` phase are in `suite/messages-parse.json`, and
    those of the `check` phase in `suite/messages-check.json`. Each file has the
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
-2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 96
+2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 97
    templates. `messages-check.json` has one entry for each of the 29 check codes
    (`05-types.md` 16.1, F4 6.7), with 71 templates.
 3. An entry of either file has no field `caught`.
@@ -837,7 +837,9 @@ A program cannot see one: it never reaches a run.
 
 1. **Length.** Each call in progress counts at least 1 against the depth limit
    (`02-evaluation.md` 8.4), so a trace has at most as many entries as the depth
-   limit, and at most 1,000. It is never cut.
+   limit, and at most 400 (`03-host.md` 3.6.1). The trace of `depth-exceeded`
+   may hold one entry more, 401 at most: the call whose own depth test failed
+   is in progress from that test (4.1 item 2). It is never cut.
 2. **Cost.** None. A trace is not a value of the language, and a program cannot
    read it. Building it charges no step and no unit, and a run that does not
    fail builds none.
@@ -882,7 +884,9 @@ with index 2, `total` `[2, 17, 2, 25]` with index null, and `map` `[1, 20, 1,
 2. A rendering is the same text, code point for code point, in every
    implementation.
 3. A rendering holds only the fields this section names. `help`, `fix`,
-   `expected`, `found`, `cause` and an offset are never written in it.
+   `expected`, `found`, `cause` and an offset are never written in it. A
+   `cause` that is a Risor diagnostic (`03-host.md` 3.5.3 item 5) is not
+   written either: the message of `function-error` is already its message.
 4. **A position** is written `L:C`, the line and the column (`03-host.md`
    3.7.7). **A span** is written `L1:C1-L2:C2`, always with all four numbers.
 5. **A path** is written from its steps, in order: a key that is a `Word`
