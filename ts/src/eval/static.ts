@@ -77,6 +77,12 @@ export interface Resolution {
   asTypes: Map<A.As, Type | null>;
   /** Package F6: each `Member` that reads a constant of a group, with its value (f06 2.4 item 2). */
   constants: Map<A.Member, number>;
+  /**
+   * The last step of each coalesced read under `??` (01 6.6): a step that
+   * gives null, not `missing-field`, when its key is absent from its
+   * receiver. Fixed by the nodes alone (01 6.6 item 6).
+   */
+  coalesced: Set<A.Member | A.Index>;
   slotCount: number;
 }
 
@@ -119,7 +125,20 @@ export function staticRules(program: A.Program, env: StaticEnv, source?: Source)
 
 class Walker {
   readonly diags: Diagnostic[] = [];
-  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), asTypes: new Map(), constants: new Map(), slotCount: 0 };
+  readonly res: Resolution = {
+    refs: new Map(),
+    targets: new Map(),
+    slots: new Map(),
+    catchSlots: new Map(),
+    lambdas: [],
+    lambdaArgs: new Set(),
+    asTypes: new Map(),
+    constants: new Map(),
+    coalesced: new Set(),
+    slotCount: 0,
+  };
+  /** The `??` nodes of the chains already marked (coalesce). */
+  private readonly chained = new Set<A.Binary>();
   private readonly scopes: Map<string, Binding>[] = [];
   private readonly env: StaticEnv;
 
@@ -345,6 +364,32 @@ class Walker {
     this.walkArgs(args);
   }
 
+  /**
+   * 01 6.6: the coalesced reads of the `??` chain whose top node is `top`.
+   * The chain's operands are the operands of its `??` nodes that are not `??`
+   * nodes, in source order; each but the last whose node is a plain `Member`,
+   * or a plain `Index` by a `String` node, with or without an `OptChain`
+   * around it, is a coalesced read, and that node is its last step. A walk
+   * reaches the top of a chain before any other of its `??` nodes, so each
+   * chain is marked once, from its top.
+   */
+  private coalesce(top: A.Binary): void {
+    if (this.chained.has(top)) return;
+    const operands: A.Expr[] = [];
+    const stack: A.Expr[] = [top];
+    while (stack.length > 0) {
+      const n = stack.pop()!;
+      if (n.kind === "Binary" && n.op === "??") {
+        this.chained.add(n);
+        stack.push(n.y, n.x);
+      } else operands.push(n);
+    }
+    for (let i = 0; i < operands.length - 1; i++) {
+      const o = operands[i].kind === "OptChain" ? (operands[i] as A.OptChain).x : operands[i];
+      if ((o.kind === "Member" && !o.optional) || (o.kind === "Index" && !o.optional && o.index.kind === "String")) this.res.coalesced.add(o);
+    }
+  }
+
   private expr(e: A.Expr): void {
     for (;;) {
       switch (e.kind) {
@@ -383,6 +428,7 @@ class Walker {
           let x: A.Expr = e;
           while (x.kind === "Binary") {
             spine.push(x);
+            if (x.op === "??") this.coalesce(x);
             x = x.x;
           }
           this.expr(x);

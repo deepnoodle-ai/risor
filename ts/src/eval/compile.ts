@@ -1158,6 +1158,7 @@ class Compiler {
   private memberSlow(s: A.Member): (r: Run, v: unknown) => unknown {
     const { name, optional, span } = s;
     const nameSize = size(name);
+    const absentNull = optional || this.res.coalesced.has(s);
     return (r, v) => {
       const k = r.kind(v);
       if (k === "null") {
@@ -1168,7 +1169,7 @@ class Compiler {
       r.charge(1 + nameSize);
       const g = mapGet(v as object, name);
       if (g === ABSENT) {
-        if (optional) return null;
+        if (absentNull) return null;
         throw new RunFailure("missing-field", span, "field", { name });
       }
       return r.read(g, span);
@@ -1177,9 +1178,10 @@ class Compiler {
 
   /** A field step `.name` after an operand that never gives SHORT, with the fast path for a map. */
   private memberOn(prev: Operand, s: A.Member): Code {
-    const { name, optional, span } = s;
+    const { name, span } = s;
     const cost = 1 + size(name);
     const slow = this.memberSlow(s);
+    const absentNull = s.optional || this.res.coalesced.has(s);
     return (r) => {
       const v = prev.k === 0 ? prev.c(r) : ev(r, prev);
       const q = quickMap(r, v);
@@ -1187,7 +1189,7 @@ class Compiler {
       r.charge(cost);
       const g = quickGet(v as object, q, name);
       if (g === ABSENT) {
-        if (optional) return null;
+        if (absentNull) return null;
         throw new RunFailure("missing-field", span, "field", { name });
       }
       return readQ(r, g, span);
@@ -1197,16 +1199,18 @@ class Compiler {
   /** A read: a field step or an index step, applied to the value before it. */
   private step(s: A.Expr): Step {
     if (s.kind === "Member") {
-      const { name, optional, span } = s;
+      const { name, span } = s;
       const cost = 1 + size(name);
       const slow = this.memberSlow(s);
+      // 01 6.6: the last step of a coalesced read gives null for an absent key, as `?.` does.
+      const absentNull = s.optional || this.res.coalesced.has(s);
       return (r, v) => {
         const q = quickMap(r, v);
         if (q === 0) return slow(r, v);
         r.charge(cost);
         const g = quickGet(v as object, q, name);
         if (g === ABSENT) {
-          if (optional) return null;
+          if (absentNull) return null;
           throw new RunFailure("missing-field", span, "field", { name });
         }
         return readQ(r, g, span);
@@ -1215,6 +1219,7 @@ class Compiler {
     if (s.kind === "Index") {
       const { optional, span } = s;
       const index = this.expr(s.index);
+      const absentNull = optional || this.res.coalesced.has(s);
       return (r, v) => {
         const k = r.kind(v);
         if (k === "null") {
@@ -1230,7 +1235,7 @@ class Compiler {
           r.charge(1 + size(i as string));
           const g = mapGet(v as object, i as string);
           if (g === ABSENT) {
-            if (optional) return null;
+            if (absentNull) return null;
             throw new RunFailure("missing-field", span, "key", { key: i });
           }
           return r.read(g, span);

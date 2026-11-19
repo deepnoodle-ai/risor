@@ -1330,6 +1330,10 @@ class Checker {
   private step(s: A.Expr, cur: Type, recvSpan: Span, f: Facts, present: boolean): Type {
     if (s.kind === "MethodCall") return this.methodCall(s, cur, recvSpan, f);
     const optional = (s as A.Member | A.Index).optional;
+    // 9.2: the last step of a coalesced read under `??` (01 6.6) reads a field of a
+    // record as `?.` does: an absent key gives null, and no `maybe-absent`. On every
+    // other receiver it is a plain step.
+    const absentNull = optional || this.res.coalesced.has(s as A.Member | A.Index);
     if (s.kind === "Index") {
       if (isAny(cur)) {
         this.synth(s.index, f);
@@ -1344,7 +1348,7 @@ class Checker {
       }
       if (s.index.kind === "String" && cur.map) {
         this.synth(s.index, f);
-        return this.readKey(cur.map, s.index.value, optional, s.index.span, recvSpan, present, [s.span], cur);
+        return this.readKey(cur.map, s.index.value, absentNull, s.index.span, recvSpan, present, [s.span], cur);
       }
       let k = this.synth(s.index, f);
       const need = cur.map ? STRING : INT;
@@ -1390,7 +1394,7 @@ class Checker {
       return this.site("dynamic", recvSpan, s.span) ? NEVER : ANY;
     }
     if (isNever(cur)) return NEVER;
-    if (cur.map) return this.readKey(cur.map, m.name, optional, m.nameSpan, recvSpan, present, [s.span], cur);
+    if (cur.map) return this.readKey(cur.map, m.name, absentNull, m.nameSpan, recvSpan, present, [s.span], cur);
     this.kind(recvSpan, "field-read", { type: cur });
     return NEVER;
   }
