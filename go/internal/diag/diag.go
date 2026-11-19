@@ -154,6 +154,10 @@ const (
 	CodeBadLimit           = "bad-limit"
 )
 
+// MaxDepth is the largest depth limit a host may set (03-host.md 3.6.1). A
+// larger one is the declare error bad-limit.
+const MaxDepth = 400
+
 // LimitCodes are the run codes of class limit (03-host.md 3.7.4).
 var LimitCodes = map[string]bool{
 	"steps-exceeded":      true,

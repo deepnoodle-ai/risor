@@ -25,7 +25,7 @@ func TestValid(t *testing.T) {
 		"functions": {"rate": {"type": "(code: string) => float !",
 			"calls": [{"args": ["A"], "result": 0.1, "charge": 2}, {"error": "no"}]},
 			"g": "() => int"},
-		"limits": {"steps": 10, "depth": 1000},
+		"limits": {"steps": 10, "depth": 400},
 		"precondition": false,
 		"cases": [
 			{"name": "a", "vars": {"d": 0}, "expect": {"phase": "run", "steps": 1,
@@ -45,7 +45,7 @@ func TestValid(t *testing.T) {
 	assert.Equal(t, a.Functions["rate"].Calls[0].Charge, int64(2))
 	assert.Equal(t, *a.Functions["rate"].Calls[1].Error, "no")
 	assert.Equal(t, *a.Functions["g"].Type, "() => int")
-	assert.Equal(t, *a.Limits.Depth, int64(1000))
+	assert.Equal(t, *a.Limits.Depth, int64(400))
 	assert.Equal(t, f.Cases[1].Source, "1 + 2")
 	assert.Equal(t, f.Cases[1].File, "prog.risor")
 	assert.Equal(t, f.Cases[2].Source, "x")
@@ -92,7 +92,7 @@ func TestInvalid(t *testing.T) {
 		{"4 version pattern", c(`"expect": {}, "version": "3"`)},
 		{"4 methods key", c(`"expect": {}, "methods": {"time.format": "() => string"}`)},
 		{"4 depth range", c(`"expect": {}, "limits": {"depth": 0}`)},
-		{"4 depth range", c(`"expect": {}, "limits": {"depth": 1001}`)},
+		{"4 depth range", c(`"expect": {}, "limits": {"depth": 401}`)},
 		{"4 steps whole", c(`"expect": {}, "limits": {"steps": 1.5}`)},
 		{"4 span", c(`"expect": {"phase": "parse", "diagnostics": [{"code": "x", "span": [0, 1, 1, 1]}]}`)},
 		{"4 span length", c(`"expect": {"phase": "parse", "diagnostics": [{"code": "x", "span": [1, 1, 1]}]}`)},

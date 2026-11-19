@@ -258,11 +258,30 @@ func TestFlatPrograms(t *testing.T) {
 	}
 }
 
-// StackNeeds documents and tests the stack this binding needs:
-// to parse at the nesting limit, and to run at the depth limits 200 and
-// 1,000. Go grows a goroutine's stack as needed; the test caps it at
-// stackCap to show that the deepest programs fit.
-const stackCap = 1 << 20
+// StackNeeds documents and tests the stack this binding needs
+// (03-host.md 3.9.1): to parse at the nesting limit, and to run at the
+// default depth limit, 200, and the largest, 400, with calls by name, calls
+// that map and flatMap make of a lambda, and walks. stackDoc is the stack
+// the binding documents (risor.go); the test caps every goroutine's stack at
+// stackDoc divided by 1.5, so a deepest case that needs more crashes the
+// test. Go grows a goroutine's stack as needed.
+const (
+	stackDoc = 1 << 20
+	stackCap = stackDoc * 2 / 3
+)
+
+// linkChain is a program of n + 1 const-bound lambdas, f0 to fn, each link
+// calling the one before by the text of link, and a call of fn.
+func linkChain(base, link string, n int) string {
+	var b strings.Builder
+	b.WriteString(base)
+	b.WriteString("\n")
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, link+"\n", i, i-1)
+	}
+	fmt.Fprintf(&b, "f%d(1)", n)
+	return b.String()
+}
 
 func TestStackNeeds(t *testing.T) {
 	old := debug.SetMaxStack(stackCap)
@@ -272,7 +291,7 @@ func TestStackNeeds(t *testing.T) {
 	_, err := risor.Parse(deep)
 	assert.NoError(t, err)
 
-	for _, depth := range []int{200, 1000} {
+	for _, depth := range []int{200, 400} {
 		env, _ := risor.NewEnv(risor.VarRecord("{v: any, xs: int[]}"), risor.Limits{Depth: depth, Steps: risor.NoLimit, Allocation: risor.NoLimit})
 		// A value nested to the depth limit, compared and rendered.
 		var v any = []any{}
@@ -294,6 +313,21 @@ func TestStackNeeds(t *testing.T) {
 		fmt.Fprintf(&b, "f%d(1)", k)
 		d = runErr(t, env, b.String(), nil)
 		assert.Equal(t, d.Code, "depth-exceeded")
+		// Chains whose every link adds 1 to the depth count: by name, and
+		// through a call that map or flatMap makes of a lambda. With depth - 1
+		// links the count at f0 is the limit; one more link passes it. The
+		// checker bounds the nesting of uses at 100 (05-types.md 20.2), so
+		// these compile without the type rules, as compile does.
+		chains := []struct{ base, link string }{
+			{"const f0 = x => x;", "const f%d = x => f%d(x);"},
+			{"const f0 = x => x;", "const f%d = x => [x].map(f%d)[0];"},
+			{"const f0 = x => [x];", "const f%d = x => [x].flatMap(f%d);"},
+		}
+		for _, c := range chains {
+			assert.NotNil(t, run(t, env, linkChain(c.base, c.link, depth-1), nil), c.link)
+			d = runErr(t, env, linkChain(c.base, c.link, depth), nil)
+			assert.Equal(t, d.Code, "depth-exceeded", c.link)
+		}
 	}
 }
 
@@ -319,12 +353,15 @@ func TestMapEqualKeyOrder(t *testing.T) {
 }
 
 func TestBadLimit(t *testing.T) {
-	for _, l := range []risor.Limits{{Depth: 1001}, {Depth: -1}, {Steps: -5}, {Allocation: -9}} {
+	for _, l := range []risor.Limits{{Depth: 401}, {Depth: 1001}, {Depth: -1}, {Steps: -5}, {Allocation: -9}} {
 		_, err := risor.NewEnv(l)
 		var e *risor.Error
 		assert.True(t, errors.As(err, &e))
 		assert.Equal(t, e.Diagnostics[0].Code, "bad-limit")
 	}
+	// 03-host.md 3.6.1: the largest depth limit is 400.
+	_, err := risor.NewEnv(risor.Limits{Depth: 400})
+	assert.NoError(t, err)
 }
 
 func TestDeclare(t *testing.T) {

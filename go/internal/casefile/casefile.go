@@ -535,7 +535,7 @@ func (v *validator) fields(m map[string]any, where string) error {
 		}
 		for k, val := range lm {
 			n, ok := isWhole(val)
-			if !ok || n < 0 || (k == "depth" && (n < 1 || n > 1000)) {
+			if !ok || n < 0 || (k == "depth" && (n < 1 || n > diag.MaxDepth)) {
 				return v.invalid("%s: limits.%s is out of range", where, k)
 			}
 		}

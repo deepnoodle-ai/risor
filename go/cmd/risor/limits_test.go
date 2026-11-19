@@ -28,8 +28,8 @@ func TestLimitFlagsAndWholeBounds(t *testing.T) {
 	assert.Equal(t, code, 1)
 	assert.True(t, strings.Contains(errOut, "error[steps-exceeded]"), errOut)
 
-	// --depth 0 and --depth 1001 are declare-phase bad-limit errors (exit 1).
-	for _, d := range []string{"0", "1001"} {
+	// --depth 0 and --depth 401 are declare-phase bad-limit errors (exit 1).
+	for _, d := range []string{"0", "401"} {
 		code, _, errOut = runCLI("eval", lit, "--depth", d)
 		assert.Equal(t, code, 1, d)
 		assert.True(t, strings.Contains(errOut, "error[bad-limit]"), errOut)
