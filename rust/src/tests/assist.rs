@@ -35,6 +35,21 @@ fn the_repair_closes_what_is_open() {
     assert_eq!(labels("[1, 2].map((x, i) => x + i‸"), ["i", "int"]);
 }
 
+/// F12 3.6 item 1 (R255): the own name of a `const`-bound lambda is listed
+/// with the names of its `const` line's scope, at its place in the order
+/// bound, typed or not.
+#[test]
+fn a_lambda_own_name_is_in_the_scope_of_its_line() {
+    assert_eq!(
+        labels("const qg = 1; const qf = (qn: int): int => { const qh = 2; q‸"),
+        ["qh", "qn", "qg", "qf"]
+    );
+    assert_eq!(
+        labels("const qg = 1; const qf = qn => 1; const qh = 2; const qk = qx => q‸"),
+        ["qx", "qg", "qf", "qh", "qk"]
+    );
+}
+
 #[test]
 fn positions_outside_the_text() {
     let c = complete(&env(), "us", &Expected::Nothing, 9);

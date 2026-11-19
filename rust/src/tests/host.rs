@@ -784,6 +784,66 @@ fn deepest_programs(depth: u32) {
     );
     let p = program(&env, &chain("x => x", link, "{N}(1)", links + 2));
     assert_eq!(outcome(&p, &v), Err("depth-exceeded".into()));
+    // F17 11.6: a typed lambda that calls itself, directly and through
+    // `map` and `flatMap`, each call adding 1. With N one less than the
+    // limit the run reaches it; with N the limit it passes it.
+    for (src, want) in [
+        (
+            "const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)",
+            "0",
+        ),
+        (
+            "const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(N)",
+            "0",
+        ),
+        (
+            "const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(N)",
+            "[]",
+        ),
+    ] {
+        let at = |n: usize| src.replace('N', &n.to_string());
+        assert_eq!(run(&at(d - 1)), Ok(want.into()), "{src}");
+        assert_eq!(run(&at(d)), Err("depth-exceeded".into()), "{src}");
+    }
+}
+
+/// F17 11.5: each call reads the names of the calls on its own chain. A
+/// lambda two frames down calls itself from a lambda three down and reads
+/// the names of the frame above it after each call; one lambda calls
+/// another of the same depth, whose call must give back the caller's frame;
+/// and a failure that unwinds calls leaves the names of the `try`'s call as
+/// they were. Each runs checked and with the static rules alone.
+#[test]
+fn each_call_reads_the_frames_of_its_own_chain() {
+    let env = Env::default();
+    let none = BTreeMap::new();
+    let cases = [
+        (
+            "const outer = (a: int): int => { const inner = (b: int): int => \
+             b <= 0 ? a : [b].map(k => inner(k - 1) + a + b)[0]; inner(a) }; \
+             [outer(3), outer(1)]",
+            "[18, 3]",
+        ),
+        (
+            "const g = (n: int): int => n * 10; \
+             const f = (n: int): int => n <= 0 ? 0 : g(n) + f(n - 1) + n; f(3)",
+            "66",
+        ),
+        (
+            "const f = (n: int): int => n <= 0 ? fail(\"x\") : f(n - 1); \
+             const h = (n: int, acc: string): string => n <= 0 ? acc : \
+             h(n - 1, acc + `${n}:${try { f(n) } catch { n }},`); h(3, \"\")",
+            "\"3:3,2:2,1:1,\"",
+        ),
+    ];
+    for (src, want) in cases {
+        let unchecked = program(&env, src);
+        assert_eq!(outcome(&unchecked, &none), Ok(want.into()), "{src}");
+        let checked = env
+            .compile(&parse(src).unwrap(), crate::CompileOptions::default())
+            .unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(outcome(&checked, &none), Ok(want.into()), "{src}");
+    }
 }
 
 /// What opens no level costs no stack at run time either (13.2 rule 6).
