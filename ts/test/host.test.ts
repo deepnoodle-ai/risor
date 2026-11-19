@@ -195,14 +195,15 @@ describe("03 3.3.4: bad-limit", () => {
     assert.equal(declareCode({ steps: "10" }), "bad-limit");
     assert.equal(declareCode({ deadlineMs: -5 }), "bad-limit");
   });
-  test("a depth limit outside 1 to 1,000", () => {
+  test("a depth limit outside 1 to 400 (03 3.6.1)", () => {
     assert.equal(declareCode({ depth: 0 }), "bad-limit");
-    assert.equal(declareCode({ depth: 1001 }), "bad-limit");
+    assert.equal(declareCode({ depth: 401 }), "bad-limit");
+    assert.equal(declareCode({ depth: 1000 }), "bad-limit");
     assert.equal(declareCode({ depth: 2.5 }), "bad-limit");
   });
   test("limits in range, and limits turned off, are accepted", () => {
     assert.equal(declareCode({ steps: 0, allocation: 0, depth: 1 }), "ok");
-    assert.equal(declareCode({ steps: null, allocation: null, depth: 1000, deadlineMs: null }), "ok");
+    assert.equal(declareCode({ steps: null, allocation: null, depth: 400, deadlineMs: null }), "ok");
   });
 });
 

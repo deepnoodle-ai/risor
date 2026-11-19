@@ -47,7 +47,8 @@ try {
 
 ## Limits
 
-Steps, allocation, a deadline and a depth limit bound every run:
+Steps, allocation, a deadline and a depth limit bound every run. The depth
+limit is 200 unless set, and can be set to a whole number from 1 to 400:
 
 ```ts
 const env = createEnv({ vars: { n: "int" }, limits: { steps: 10_000, allocation: 100_000, deadlineMs: 50 } });

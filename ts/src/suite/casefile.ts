@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
 import { parseType } from "../types/typetext.ts";
+import { MAX_DEPTH } from "../host/env.ts";
 
 export type LineSpan = [number, number, number, number];
 
@@ -331,7 +332,7 @@ function checkShared(o: JsonObject, where: string): void {
       if (k === "steps" || k === "allocation") {
         if (!isInt(v, 0)) fail(`${where}: limits.${k} is not a whole number of 0 or more`);
       } else if (k === "depth") {
-        if (!isInt(v, 1) || v > 1000) fail(`${where}: limits.depth is not from 1 to 1000`);
+        if (!isInt(v, 1) || v > MAX_DEPTH) fail(`${where}: limits.depth is not from 1 to ${MAX_DEPTH}`);
       } else fail(`${where}: limits has a field ${k}`);
     }
   }

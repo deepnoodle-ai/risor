@@ -1,5 +1,5 @@
-// The deepest programs within the limits (02 8.4, 01 13.2). Run by deep.test.ts in
-// a child process with a small V8 stack. Prints one line per program.
+// The deepest programs within the limits (02 8.4, 01 13.2, 03 3.9.1). Run by
+// deep.test.ts in a child process with a small V8 stack. Prints one line.
 
 import { createEnv, execute, parse } from "../../src/host/api.ts";
 import { FORMS, VALUES, VARS, deepSource } from "./deep-forms.ts";
@@ -51,6 +51,10 @@ function form(name: string, depth: number): string {
   return JSON.stringify(o.value) === JSON.stringify(f.expect) ? "ok" : "wrong-value";
 }
 
-const out = ["calls 200", calls(200), "calls 1000", calls(1000), "walk 1000", walk(1000), "nesting 100", nesting()];
-for (const f of FORMS) out.push(`${f.name} 400`, form(f.name, 400));
+// 03 3.9.1: each deepest case at the default depth limit, 200, and at the largest, 400.
+const out = ["nesting 100", nesting()];
+for (const depth of [200, 400]) {
+  out.push(`calls ${depth}`, calls(depth), `walk ${depth}`, walk(depth));
+  for (const f of FORMS) out.push(`${f.name} ${depth}`, form(f.name, depth));
+}
 console.log(out.join(" "));

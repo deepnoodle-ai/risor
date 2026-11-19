@@ -1,10 +1,9 @@
-// 02 8.4, 01 13.2, 03 3.9.1: the stack this binding needs. The deepest programs
-// within the limits run in a child process whose V8 stack is 656 KB, two
-// thirds of Node's default (984 KB), so they pass with 1.5 times headroom at
-// the default: calls by name and a walk at depth limit 1,000, 100 levels of
-// source nesting, and the forms of fixtures/deep-forms.ts, whose calls go
-// through a library entry that calls a lambda, at depth limit 400. What each
-// needs is measured in src/index.ts (STACK).
+// 02 8.4, 01 13.2, 03 3.9.1: the stack this binding needs. The binding
+// documents Node's default stack, 984 KB (src/index.ts, STACK), so the deepest
+// cases run in a child process whose V8 stack is that divided by 1.5, 656 KB:
+// 100 levels of source nesting, and at the default depth limit, 200, and the
+// largest, 400, calls by name, a walk, and the forms of fixtures/deep-forms.ts,
+// whose calls go through a library entry that calls a lambda.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +15,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 test("the deepest programs run with a 656 KB stack", () => {
   const out = execFileSync(process.execPath, ["--stack-size=656", join(here, "fixtures", "deepest.ts")], { encoding: "utf8" });
-  assert.equal(out.trim(), "calls 200 ok calls 1000 ok walk 1000 ok nesting 100 ok map 400 ok flatMap 400 ok heaviest 400 ok");
+  assert.equal(
+    out.trim(),
+    [
+      "nesting 100 ok",
+      "calls 200 ok walk 200 ok map 200 ok flatMap 200 ok heaviest 200 ok",
+      "calls 400 ok walk 400 ok map 400 ok flatMap 400 ok heaviest 400 ok",
+    ].join(" "),
+  );
 });
 
 test("long flat programs need no stack (01 13.2 rule 6)", async () => {
