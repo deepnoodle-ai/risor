@@ -977,8 +977,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F14. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+/** The packages this implementation offers: F1 to F14, and F17 as far as step E0 (f17 1.4). */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

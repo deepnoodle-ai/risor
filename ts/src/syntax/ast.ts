@@ -201,6 +201,8 @@ export interface Arm extends Base {
   /** The literals of the arm; empty for the default arm `_`. */
   literals: Literal[];
   isDefault: boolean;
+  /** Package F17: the guard `if (e)`, or null (f17 2.2). */
+  guard: Expr | null;
   result: Expr;
 }
 

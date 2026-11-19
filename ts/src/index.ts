@@ -36,6 +36,7 @@
 //   100 levels of nesting, parsed and run          144 KB
 //   calls by name                               75 KB      107 KB
 //   a walk                                      89 KB      141 KB
+//   a call of `walk` (F17), nodes to the limit  56 KB       56 KB
 //   deep-forms.ts `map`                        134 KB      224 KB
 //   deep-forms.ts `flatMap`                    138 KB      231 KB
 //   deep-forms.ts `heaviest`                   162 KB      281 KB
