@@ -212,6 +212,28 @@ describe("opaque values (03 3.4.6)", () => {
     const r = env.compile(parse("t.add(5)"), { check: false }).run({ t, u: t }) as Time;
     assert.equal(r.ms, 6);
   });
+  test("item 6: a method may change its value's state, and a call is never cached", () => {
+    class Widget {
+      text = "a";
+      reads = 0;
+    }
+    const wenv = createEnv({
+      varRecord: "{w: Widget}",
+      opaque: {
+        Widget: {
+          test: (v) => v instanceof Widget,
+          methods: {
+            text: { type: "() => string", call: (_h, w) => ((w as Widget).reads++, (w as Widget).text) },
+            setText: { type: "(s: string) => bool", call: (_h, w, s) => (((w as Widget).text = s as string), true) },
+          },
+        },
+      },
+    });
+    const w = new Widget();
+    const p = wenv.compile(parse('const a = w.text(); const _ = w.setText("x"); [a, w.text()]'));
+    assert.equal(jsonText(p.run({ w })), '["a","x"]');
+    assert.equal(w.reads, 2);
+  });
   test("the shape test on an opaque receiver", () => {
     assert.equal(code(() => env.compile(parse("t.nope()"), { check: false }).run({ t, u: t })), "wrong-kind");
     assert.equal(code(() => env.compile(parse("t.add(x => x)"), { check: false }).run({ t, u: t })), "wrong-kind");
