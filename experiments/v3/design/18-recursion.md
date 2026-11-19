@@ -1,4 +1,4 @@
-# Risor v3 design: recursion, recursive types, function parameters and `match` guards
+# Risor v3 design: recursion, function parameters and `match` guards
 
 Status: plan, accepted by the owner on 2026-11-14 (D54 in `00-overview.md`),
 and revised on 2026-11-19. The owner chose self-recursion over the two

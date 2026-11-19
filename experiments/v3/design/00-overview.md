@@ -41,6 +41,15 @@ expression with `catch`, as in v2; config files are data only; imports come in
 a minor version after 3.0; and messages come from one catalog. `02` to `06` are
 revised to match.
 
+Eighth revision. Issues #640 and #641 were reviewed on 2026-11-14, and plans
+`16` to `20` were written from the review (D52 to D56). On 2026-11-19, after a
+further review and issue #644, the owner withdrew D52, trimmed D54 to D56, and
+settled D57 (passing functions to user-defined functions) and D58 (a lower
+largest depth). D59 and D60 are open. Section 4 has the rows and "Where the
+plans meet"; `14` section 5 orders the work as tracks A to F. `02` to `06`
+are not yet revised for D53 to D58: each track revises the specification
+when it lands, and the plans are the authority until then.
+
 Each decision has a status:
 
 - **Owner**: the owner said it. Do not reopen it.
@@ -108,7 +117,7 @@ integers only to 2^53.
 | B6 | **`a && b` and `a \|\| b` return an operand, not a bool,** as in JavaScript: `a \|\| b` is `a` when `a` is truthy, else `b`. `!a` is a bool. A condition in `? :`, in a `match` arm, and the result of a callback to `filter`, `find`, `some` and `every` are tested by truthiness. `\|\|` replaces any falsy value and `??` replaces null only; both stay. | Ruling |
 | B7 | **The checker types truthiness.** `a \|\| b` has the type of `a` without its null alternative, joined with `b`. `a && b` has the part of `a` that can be falsy, joined with `b`. A true branch narrows null away, as before. A condition whose type can never be falsy, or is always falsy, is a diagnostic: it is the same class of mistake TypeScript reports as "this condition will always return true". `03` defines the two codes, `always-truthy` and `always-falsy`, and makes them errors. Tightening a declared type from `T \| null` to `T` would then break a stored `x && x.f`, and nothing else about tightening a type breaks a program. So the two codes form a check class, `constant-condition`. An environment carries the set of classes its check rejects. This class is in the default set, and a host may take it out, for example to re-check stored programs after a schema changes. When it is out, the two codes are not reported (D32). | Ruling, confirmed by the owner |
 | B8 | **A host that needs a real boolean checks the result type.** The workflow engine rejects `when: verify` when `verify` is a list. That stays possible: the host checks that the program's type is `bool`. Truthiness is a rule of the operators, not of what a host accepts. The price is real: the guard most authors will write, `report && report.verdict == "APPROVE"`, has type `bool \| null` and such a host rejects it. So a host has a second choice: it may test the result by truthiness, with the binding's own test, and ask the checker for a condition and not a `bool` (`05` A.3). The workflow engine takes the second choice for `when:` (D33). | Ruling, confirmed by the owner |
-| B2 | A missing field is an error with `.` and null with `?.`. An optional field (`f?: T`) is distinct from a field whose value may be null. | Ruling (all documents agree). B2 holds except at the last step of a read under `??`, where an absent key gives null (D56, `20` 3.1). |
+| B2 | A missing field is an error with `.` and null with `?.`. An optional field (`f?: T`) is distinct from a field whose value may be null. | Ruling (all documents agree). B2 holds except at the last step of a coalesced read: an operand of a `??` chain other than its last, where an absent key gives null (D56, `20` 3.1). A key that a closed record cannot have stays `no-field`. |
 | B3 | **The optional index is spelled `?.[`**, as in JavaScript. `03` wrote `?[`. | Ruling |
 | B4 | **`?.` short-circuits the rest of its chain, as in JavaScript, TypeScript, C# and Swift.** `a?.b.c` is null when `a` is null. `02` chose per-access, following v2 and expr. The syntax is JavaScript's, so its meaning should be too (C2). | Ruling; `02` to specify exactly what "the rest of the chain" covers |
 
@@ -127,9 +136,9 @@ directions below unless the revised `02` says otherwise.
 | E3 | **Destructuring of records in lambda parameters and `const`**: `entries.map(({key, value}) => ...)`. `06` makes `entries` return records, which makes this the natural way to use them. | Candidate for `02` |
 | E4 | **The `**` operator.** `02` removed it because its result type depended on a value. With one kind of number that reason is gone. | Candidate for `02` |
 | E5 | **Everything stays an expression.** No statement that exists only for its effect. No assignment. | Ruling |
-| E6 | **No recursion and no loops in 3.0**, so every program terminates and its work is bounded by its text and its data. Lambdas are arguments and `const` values, not general values. This is the one place where C5 is chosen over C4. | Ruling, confirmed by the owner. Partly reversed by D54: a `const`-bound lambda with typed parameters and result may call itself, and every run ends at its value, a failure or a limit (`18` 3.4). Loops stay out. |
+| E6 | **No recursion and no loops in 3.0**, so every program terminates and its work is bounded by its text and its data. Lambdas are arguments and `const` values, not general values. This is the one place where C5 is chosen over C4. | Ruling, confirmed by the owner. Partly reversed by D54: a `const`-bound lambda with typed parameters and result may call itself, and every run ends at its value, a failure or a limit (`18` 3.4). Loops stay out. D57 lets a function reach a user lambda's `Fn` parameter, and still not a list, a map, a result or the host. |
 | E7 | **Names in the library follow least surprise for a JavaScript-shaped language.** `06` chose expr's names (`upper`, `any`, `all`) and gives hints for JavaScript's (`toUpperCase`, `some`, `every`, `includes`). `06` is to set the two columns side by side and choose again with C2 as the test. | Candidate for `06` |
-| E9 | **E6's claim has a hole.** `02` allows a lambda as an argument to a `const`-bound lambda, and a parameter may be called. Then `const om = x => x(y => x(y)); om(z => om(w => z(w)))` never returns, although nothing refers to itself. Today such a program ends at the checker's limit on body checks or at the depth limit, so it ends by a limit and not by construction. The fix `02` recommends: a lambda may be passed only to a library function or method, and a parameter cannot be called. The call graph is then fixed by the text. The cost is a user-written helper such as `const twice = (f, x) => f(f(x))`. | Ruling, confirmed by the owner (D34): a lambda is passed only to a library function or method, and a parameter cannot be called |
+| E9 | **E6's claim has a hole.** `02` allows a lambda as an argument to a `const`-bound lambda, and a parameter may be called. Then `const om = x => x(y => x(y)); om(z => om(w => z(w)))` never returns, although nothing refers to itself. Today such a program ends at the checker's limit on body checks or at the depth limit, so it ends by a limit and not by construction. The fix `02` recommends: a lambda may be passed only to a library function or method, and a parameter cannot be called. The call graph is then fixed by the text. The cost is a user-written helper such as `const twice = (f, x) => f(f(x))`. | Ruling, confirmed by the owner (D34): a lambda is passed only to a library function or method, and a parameter cannot be called. Revised by D57: a lambda may also be passed to a parameter typed with an `Fn`, which may then be called. The hole stays closed, because an `Fn` takes no function: `x(y => x(y))` cannot be written (`18` 7.5) |
 | E8 | **Sequence builders may return.** `06` dropped `range`, `repeat` and padding because nothing bounded their output. With allocation charged before the work (section 2.5), that reason is gone. | Candidate for `06` |
 
 ### 2.5 Limits on work, memory and time (C5)
@@ -170,8 +179,8 @@ immutable, so complete accounting is practical. C5 makes it a goal.
 | --- | --- | --- |
 | S1 | `06` needs namespaces (`math.sqrt`); `05` dropped modules and read `math.sqrt(x)` as a method call on a variable. | A namespace is a compile-time prefix on a function name, resolved by the checker. It is not a value. Declaring a variable with a namespace's name is an error when the environment is built. `05` adds declaring a namespaced function and enabling an optional group. |
 | S2 | `05` said a host function may mutate its arguments; `04` shares constant collections between runs. | A host function must treat its arguments as read-only and must not keep them after the call. This is a contract, not an enforced check. |
-| S3 | `04` lets a host function receive a function value; `05` rules it out; `06` notes hosts then cannot add higher-order operations. | Not in 3.0: a lambda cannot be passed to a host function. This keeps a closure from outliving its run in every implementation. Revisit after 3.0. Kept by D55 (`19-10`), with the reasons recorded there. |
-| S4 | `05` types a host function by its Go signature; `04` needs a call path with no reflection. | Go binding detail. Registration accepts any Go function, chooses a reflection-free adapter for the signatures that have one, falls back to reflection for the rest, and can report which path a function got. Built by D55 (`19-13`): `risor.Func`, `risor.Methods` and a generator. |
+| S3 | `04` lets a host function receive a function value; `05` rules it out; `06` notes hosts then cannot add higher-order operations. | Not in 3.0: a lambda cannot be passed to a host function. This keeps a closure from outliving its run in every implementation. Revisit after 3.0. Kept by D55 (`19-10`), with the reasons recorded there, and by D57, which passes a function to a user lambda only. |
+| S4 | `05` types a host function by its Go signature; `04` needs a call path with no reflection. | Go binding detail. Registration accepts any Go function, chooses a reflection-free adapter for the signatures that have one, falls back to reflection for the rest, and can report which path a function got. Planned by D55 (`19-13`), Go only (track C): `risor.Func`, `risor.Methods`, and a generator as a follow-up. Not built yet. |
 | S5 | `03` puts types in a `types` package; `05` assumes the root package. | Go binding detail, owned by `05`. The portable form of a type is its text. |
 | S6 | `03` checks assignment, `return`, `throw`, destructuring `let` and blocks; `02` removed most of them. | `03` covers exactly the constructs in the revised `02`. |
 | S7 | `03` wanted integer overflow to promote to float; `02` wanted an error. | An error (N2, N6). |
@@ -197,9 +206,9 @@ specification needs anyway. Rust is what shows it.
 | --- | --- | --- |
 | R1 | **Three native implementations, each written from the specification and the suite: Go, Rust and TypeScript.** 3.0 is final when all three pass the suite. | Owner (C1) |
 | R2 | **The embedding model must not assume reflection.** "An object with named fields" (`05` A.3) is supplied through an interface the binding defines. In Go that is reflection. In TypeScript it is the object's own properties. In Rust it is a trait, which the host implements by hand or by a derive macro, with implementations supplied for the standard collections and for JSON values. Reading in place stays the rule in all three. | Ruling |
-| R3 | **No implementation needs a garbage collector, and the specification keeps it that way.** Values are immutable, a function value cannot be stored (E6), and nothing is recursive, so no value a run creates can refer to itself. Reference counting, or one region of memory released when the run ends, is complete. A later feature that could make a cycle (a recursive `const`, a lazy value, a mutable cell) must say how an implementation without a collector handles it. This is a second reason for E6. | Ruling |
+| R3 | **No implementation needs a garbage collector, and the specification keeps it that way.** Values are immutable, a function value cannot be stored (E6), and nothing is recursive, so no value a run creates can refer to itself. Reference counting, or one region of memory released when the run ends, is complete. A later feature that could make a cycle (a recursive `const`, a lazy value, a mutable cell) must say how an implementation without a collector handles it. This is a second reason for E6. | Ruling. Kept by D54 and D57: a recursive call and a call through an `Fn` parameter build only acyclic values, and no function is stored, returned or given to the host (`18` 3.4, 8) |
 | R4 | **The allocation budget fits a region allocator exactly.** MiniJinja, in Rust and in Go, is the closest precedent for L3: one cumulative counter, about one unit per 64 bytes, charged before a value of known size is made. No project found fixes its counts across implementations, so L6 is new (`01` 4.1). L3 counts what a run creates, not what is live. An implementation that takes every value from one region and frees it at the end holds at most the budget times its constant. | Ruling (no change to L3) |
-| R5 | **Every recursion an implementation performs is bounded by a number the specification fixes, and passing it is the same error everywhere.** A stack overflow in Rust ends the process. In JavaScript it can be caught, but the depth at which it comes depends on the engine. Neither can be the limit. There are three recursions: over the source (parser, checker, compiler), over calls, and over values (`==`, rendering, encoding). The documents bound the second and third with the depth limit and say only that "the parser limits" the first. Missing, and now required: a maximum nesting of source in the specification, tested by the suite; and a statement of how the limits combine, because call depth times the nesting of each body is the stack an evaluator really uses. `02` 2.16 now supplies both. Source may open 100 levels at once, counted on the text, where a bracket, a prefix operator and the right operand of a binary operator each open one. A long sum, a long method chain, an else chain and a long run of `const` lines open none, and an implementation must loop along them. The depth limit counts each call as 1 plus its nesting within its body, so the stack is a sum and not a product: 2D + 100 levels for a run, 500 at the default, against 20,100. `03` 2.17 bounds the checker's own recursion the same way, and type depth at 64. | Ruling. The numbers are D31 |
+| R5 | **Every recursion an implementation performs is bounded by a number the specification fixes, and passing it is the same error everywhere.** A stack overflow in Rust ends the process. In JavaScript it can be caught, but the depth at which it comes depends on the engine. Neither can be the limit. There are three recursions: over the source (parser, checker, compiler), over calls, and over values (`==`, rendering, encoding). The documents bound the second and third with the depth limit and say only that "the parser limits" the first. Missing, and now required: a maximum nesting of source in the specification, tested by the suite; and a statement of how the limits combine, because call depth times the nesting of each body is the stack an evaluator really uses. `02` 2.16 now supplies both. Source may open 100 levels at once, counted on the text, where a bracket, a prefix operator and the right operand of a binary operator each open one. A long sum, a long method chain, an else chain and a long run of `const` lines open none, and an implementation must loop along them. The depth limit counts each call as 1 plus its nesting within its body, so the stack is a sum and not a product: 2D + 100 levels for a run, 500 at the default, against 20,100. `03` 2.17 bounds the checker's own recursion the same way, and type depth at 64. | Ruling. The numbers are D31. D58 sets the largest depth a host may set at 400, from 1,000 (R20) |
 | R6 | **Releasing a value is not a walk the language makes, so no limit covers it.** MiniJinja overflowed its stack on a value built by about 1,500 concatenations, with no deep source (`01` 3.4). `xs.reduce((acc, x) => [acc], [])` builds a value nested as deep as `xs` is long, and that is legal. An implementation that frees values by recursion must not: it frees iteratively or from a region. This is a note for Rust; Go and JavaScript are unaffected. | Ruling |
 | R7 | **A host function cannot keep or change its arguments (S2, S3). Rust enforces this at compile time,** by lending the arguments for the length of the call. It stays a contract in Go and TypeScript. | Note |
 | R8 | **The fallback for a host in any other language is the Rust implementation,** built for WebAssembly or behind a C interface, with data copied in. It replaces "offer a WebAssembly build" in `01`. A Go core built for WebAssembly is the largest and slowest option. | Ruling |
@@ -315,6 +324,9 @@ Each line points at the document that owns the detail.
 | Host model | Parse, analyze, check, compile, run. An immutable environment declares names and types; values arrive per run. One error type with stable codes, a trace, and messages from one catalog. Templates with `${{ }}`. Tests as data. Analysis of names, paths and calls without an environment. | `05` |
 | Library | 78 functions and methods and 2 constants. 59 are in the default core and all 59 are exact across implementations. Optional groups: `math`, `time`, `json`, `base64`. One specification table defines every entry, with its cost formulas and its examples as conformance cases. | `06` |
 
+This table is the design as built on `main`. D53 to D58 change it as `14`
+section 5 schedules, and the Counts table of section 4 lists what moves.
+
 ### Evidence, and its limits
 
 | Claim | Basis |
@@ -339,9 +351,11 @@ D27 and D31 were not asked. D35 and D36 were put and are settled as recommended.
 new details of `if`, ruled here and not asked. D39 to D45 were put and are
 settled as recommended. D46 to D51 are six plans, each accepted with every
 decision as it recommends; within them the owner chose the form of `try`, the
-timing of imports, the message catalog and the direction for queries by name. D52 to D56 are
-five plans from the review of issues #640 and #641; the owner settled the
-direction of each, and each plan marks which of its parts are settled.
+timing of imports, the message catalog and the direction for queries by name.
+D52 to D56 are five plans from the review of issues #640 and #641; the owner
+settled the direction of each on 2026-11-14, then withdrew D52 and trimmed D54
+to D56 on 2026-11-19. D57 and D58 were put and settled the same day. D59 is a
+recommendation the owner has not confirmed, and D60 is open.
 
 ### 4.1 Strategy
 
@@ -361,7 +375,7 @@ direction of each, and each plan marks which of its parts are settled.
 | D33 | Does the workflow engine keep requiring a real `bool` for `when:`, or test by truthiness (B8)? | **Settled:** truthiness, with `condition` as the expected type. It is what the language now does everywhere else, and it accepts `report && report.verdict == "APPROVE"` | A list or a string in `when:` is accepted when it can be empty, and reported only when it never can |
 | D30 | The falsy set: null, `false`, zero and anything empty (B5), or JavaScript's set, where an empty list and an empty map are truthy | **Settled:** the first | `xs \|\| ys` with an empty `xs` gives `ys`, where JavaScript gives `xs`. It joins the list of differences in `02` 3.1 |
 | D5 | `/` is true division (N4) | **Settled: yes** | `7 / 2` was `3` in v2 and expr. An index from a division needs `int(...)` |
-| D34 | Close the hole in E6: a lambda is passed only to library functions, and a parameter cannot be called (E9) | **Settled:** yes. It is what makes "every program terminates" true, which is the reason for D6 | Helpers that take a function, such as `const twice = (f, x) => f(f(x))`, cannot be written |
+| D34 | Close the hole in E6: a lambda is passed only to library functions, and a parameter cannot be called (E9) | **Settled:** yes. It is what makes "every program terminates" true, which is the reason for D6 | Helpers that take a function, such as `const twice = (f, x) => f(f(x))`, cannot be written. Revised by D57: a parameter typed with an `Fn` may be called, so `const twice = (f: (x: int) => int, x: int): int => f(f(x))` can |
 | D6 | No recursion or loops in 3.0 (E6) | **Settled: yes** | A v2 script that uses a loop, a statement or mutation has no direct v3 form. It is rewritten with `map`, `filter` and `reduce`, moved into a host function, or left on v2. This is the one break that C7 does not make cheap. Partly reversed by D54: self-recursion with types is in. Loops stay out. |
 | D7 | JavaScript's names for string and list methods (`toUpperCase`, `some`, `every`), expr's for functions (`len`, `int`, `round`) | **Settled: yes** (and C6) | Longer names than expr's. The other spellings give a compile error that names the fix |
 | D8 | `len`, `int` and `float` reject null | Yes | `len(x ?? [])` where expr accepts nil today (v3: null) |
@@ -388,7 +402,7 @@ Checked conversion (`07`, section 9). All settled by the owner as recommended:
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | D39 | `as` and `is` as the words, with `as` tested and not trusted as in TypeScript | **Settled:** yes. Reserve both in 3.0 whatever the timing |
-| D40 | Timing | **Settled:** the host's function, `as`, `is` and host-declared names in 3.0. `type` lines and annotations in a minor version. Moved forward by D53: annotations and `type` lines come with entry points (`17`). |
+| D40 | Timing | **Settled:** the host's function, `as`, `is` and host-declared names in 3.0. `type` lines and annotations in a minor version. Moved forward by D53: annotations and `type` lines come in slice D1 of F16 (`17`), ahead of entry points. |
 | D41 | `x as {id: string}` fails when the value has any other key, because a record with no `...` is exact | **Settled:** keep, with a message that names the fix. The least sure of the seven: most prior art allows other keys |
 | D42 | `note?: string` does not accept `note: null` | **Settled:** keep |
 | D43 | A named type from a JSON Schema carries no value constraint into `as` | **Settled:** types only |
@@ -412,40 +426,68 @@ Hosts and agents. Issues #640 (Risor as the language of AI agent tools) and
 #641 (a stateful GUI host, fynerisor) were reviewed on 2026-11-14 with two
 independent reviews. The owner asked for the design to take in what the
 language should have, not deferrals, and settled the direction of each plan
-below. Each plan's own table marks its parts as settled or as recommendations.
+below. On 2026-11-19, after a further review and issue #644 (recursion and
+functions as arguments), the owner withdrew D52, trimmed D54 to D56, and
+settled D57 and D58. Each plan's own table marks its parts as settled, as
+rulings to record, or as recommendations. `14` section 5 orders the work as
+tracks A to F.
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | D52 | Regular expressions | **Withdrawn by the owner, 2026-11-19.** D9 stands. Only the reservation of the namespace `regexp` ships, in Core (PR #642). Plan `16` is not kept: three hand-written matchers would have to stay identical for a released entry, and `glob` (`21` 2.6) covers the common matching. The number F15 stays unused |
-| D53 | Entry points, annotations, descriptions and schemas (`17-1` to `17-14`) | **Settled:** a host calls an `export const` lambda by name, as one bounded run with conformed arguments. Parameter and result annotations and `type` lines now, moving D40 forward. Doc comments are descriptions. F1 gains `SchemaOf`, reversing R114; host docs reach hover, reversing R188 |
-| D54 | Recursion, recursive types and `match` guards (`18-1` to `18-12`) | **Settled:** a `const`-bound lambda may call itself when its parameters and result are typed, partly reversing E6 and D6; no mutual recursion; D34 and R3 stand. Recursive named types, reversing R112. `iterate` and `walk`. Guards on `match` arms. The owner chose self-recursion over both reviews |
-| D55 | Host calls, replay and opaque values (`19-1` to `19-15`) | **Settled:** the sequence of host interactions is part of determinism. A run code `suspended` that `catch` never catches. `remaining()` and runs nested in the caller's budget. Effect marks and prefetch of `read` calls. Lambdas still never reach a host function (S3 kept). The host owns an opaque value's state. Opaque interfaces. S4 built. Integers past 2^53 − 1 stay out, with a `json.parse` option |
-| D56 | Feedback to authors (`20-1` to `20-11`) | **Settled:** an absent key at the last step of a read under `??` gives null. Hints from tables in the message, the `wrong` lists made normative, a table of foreign names. Parse codes for `await` and `;` between expressions. A brief rendering for a model. A nested Risor error keeps its message. `time.format` takes a portable layout |
+| D53 | Entry points, annotations, descriptions and schemas (`17-1` to `17-17`) | **Settled:** a host calls an `export const` lambda by name, as one bounded run with conformed arguments. Parameter and result annotations, `type` lines and the syntax of an `Fn` parameter, moving D40 forward. Doc comments are descriptions, kept through identity only. F1 gains `SchemaOf`, reversing R114; host docs reach hover, reversing R188. Kept on 2026-11-19 and built in three slices, D1 to D3 (`17`, `14` 5). An `export const` takes no `Fn` parameter. A ruling to record: beside an `export const`, a top-level `const` that binds no name is `bad-export` (17-15) |
+| D54 | Recursion, recursive types, `walk` and `match` guards (`18-1` to `18-12`) | **Settled:** a `const`-bound lambda may call itself when its parameters and result are typed, partly reversing E6 and D6; no mutual recursion; R3 stands. The scope of a lambda's own name is a Core amendment that lands with annotations (`18` 3.1). Recursive named types, reversing R112. `walk`. Guards on `match` arms. The owner chose self-recursion over both reviews. **`iterate` dropped, 2026-11-19:** an unfold fails the readability test (`21` 1). Per-call frames are the reference path in every evaluator (`18` 8, a ruling to record) |
+| D55 | Host calls and opaque values (`19-1` to `19-15`) | **Settled, and trimmed on 2026-11-19.** Kept: the sequence of host interactions is part of determinism (`19-1`); the host owns an opaque value's state, with a duty not to change memory a run has read (`19-11`); host opaque interfaces as a design track, with no source-level `interface` (`19-12`); S4's helpers in Go (`19-13`); a plain statement that integers past 2^53 − 1 enter as strings (`19-14`); a section for event-driven hosts, with the poisoned-run pattern (`19-15`). **Won't do:** the run code `suspended`, so Core stays at 19 run codes; replay and journals; `remaining()`, `runWithin` and `callWithin`; effect marks and `readOnly`; prefetch; `Batch`; `bigInts`. `19` 8 keeps the reasons. Lambdas still never reach a host function (S3) |
+| D56 | Feedback to authors (`20-1` to `20-11`) | **Settled, and trimmed on 2026-11-19.** An absent key at the last step of a read gives null when the read is an operand of a `??` chain other than its last; a key a closed record cannot have stays `no-field`. Hints from tables in the message, the `wrong` lists made normative, a table of foreign names. Parse codes for `await` and `;` between expressions. A nested Risor error keeps its message. **Dropped:** the brief rendering and layouts for `time.format` |
+| D57 | Passing functions to user-defined functions (#644a, `18` 7) | **Settled by the owner, 2026-11-19.** A parameter typed with an `Fn` may be called, and a lambda may be passed to it. First-order only: an `Fn` takes no function. Revises D34, E9 and `01-language.md` 8.2 rules 2 and 4. A function still cannot be stored, returned or passed to a host function: R3 and S3 hold. Static rules keep an unchecked run safe (`18` 7.1). `Fn` types have no type variable yet; `18` 7.6 recommends an additive follow-up |
+| D58 | The largest depth limit a host may set | **Settled by the owner, 2026-11-19:** 400, down from 1,000 (R20). The default stays 200. The fallback is 300, if the TypeScript binding cannot run the deepest forms at 400 with 1.5 times headroom in a browser Web Worker. With it goes a rule for `03-host.md` 3.9.1: each binding's stack test covers calls that a library entry makes of a lambda (`map`, `flatMap`), not only direct calls, and passes with 1.5 times headroom. The evidence is below |
+| D59 | Scope: what v3 is (`21` 1) | **A recommendation the owner has not confirmed.** Write it into `AGENTS.md` and this file as a constraint: v3 is an embedded expression language; a file may hold several named entry points; nothing outlives a run (no closure kept by the host, no event loop, no mutation, no loops). The two tests of `21` 1 come with it: does a proposal make writing, checking or running an expression over host data better; and does a TypeScript programmer read it without an explanation |
+| D60 | Keep the name "Risor v3", or rename v3 as expr's successor | **Open.** No recommendation. `21` 5 notes the case for a rename: if the Risor name keeps bringing requests for scripting |
 
-**Where the five plans meet.** These are fixed here, so that no plan needs the
+**The evidence for D58** (measured 2026-11-19, `main` `aeaaf1fd`). Chains of
+`const` lambdas, compiled without the type rules, at depth limit 1,000. Each
+figure is the deepest limit that ran with no stack fault:
+
+| Build | Direct call | Through `map` | Through `flatMap` |
+| --- | --- | --- | --- |
+| Go | 1,000 | 1,000 | 1,000 |
+| Node 22, default stack | 1,000 | 643 | 604 |
+| Chrome 157, main thread | 1,000 | 992 | 992 |
+| Chrome 157, Web Worker | 1,000 | 435 | 497 |
+| Rust release, 2 MiB thread | runs | aborts the process (about 2.7 MiB needed at 1,000) | aborts the process |
+
+Rust debug needs about 5 MiB for a chain through `map` at depth 200. Safari
+and Firefox were not measured. By these figures neither 400 nor 300 has 1.5
+times headroom in a Web Worker today: that needs 600 or 450, and `map` ran to
+435. So the TypeScript binding must spend fewer frames on a call through a
+library entry before either number holds (inference; `18` 9).
+
+**Where the plans meet.** These are fixed here, so that no plan needs the
 others' text:
 
 | Matter | Ruling |
 | --- | --- |
-| Package numbers | F15 is not used (D52 withdrawn). F16 entry points and annotations (`17`), F17 recursion and guards (`18`), F18 host calls (`19`), F19 author feedback (`20`). They are offered after F14 and before F12, which stays last: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16, F17, F18, F19, F12 (`03-host.md` 3.10 package order). `14` section 5 gives their dependencies |
-| Core before 3.0 is final | The parts that pass test T1 of `14` 2.1 change Core, not a package: the `regexp` reservation (PR #642); the run code `suspended` (`19-4`); the interactions in the determinism guarantee (`19-1`); the host's ownership of opaque state (`19-11`); absence under `??` (`20-1`), with its exception to `03-host.md` 3.4.8 item 2 (`20` 3.1), which the owner is asked to confirm; a nested Risor error's message (`20-9`); and the scope of a lambda's own name (`18` 3.1 rule 1), under which a reference to its own name is `recursion-needs-types` in Core until F16 and F17 let it be typed |
+| Package numbers | Not renumbered. F15 is not used: D52 is withdrawn, and its number is not given to another package, as F11 keeps its number with no chapter (R193). F16 entry points and annotations (`17`), built in three slices; F17 recursion, recursive types, function parameters, `walk` and guards (`18`); F18 host opaque interfaces (`19-12`), a design track; F19 author feedback (`20`). F16, F17 and F19 are offered after F14 and before F12, which stays last: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16, F17, F19, F12 (`03-host.md` 3.11 item 2). F18 joins the order when its design is settled. The Go helpers of `19-13` are a convenience of the Go binding, with no package number |
+| Core before 3.0 is final | The parts that pass test T1 of `14` 2.1 change Core, not a package. In track B: the `regexp` reservation (PR #642); absence under `??` (`20-1`, `20-2`), with its exception to `03-host.md` 3.4.8 item 2 (`20` 3.1), which the owner is asked to confirm; the interactions in the determinism guarantee (`19-1`); the host's ownership of opaque state, with the aliasing duty and the note on F2 (`19-11`); the plain statement on big integers (`19-14`); hosts that live long (`19-15`); a nested Risor error's message (`20-9`); the largest depth of D58; and no change to the description of an environment, so that interfaces can come later as new keys (`19` 5.2). In track D1: the scope of a lambda's own name and `recursion-needs-types` (`18` 3.1), with annotations, so that no build asks for types it cannot parse. Core stays at 19 run codes |
 | The diagnostic for a body that does not fit its annotated result | `result-mismatch` at the body, in `17` and `18` alike |
 | A recursive type in `SchemaOf` | It is written once under `$defs`, by its name, and referred to with `$ref` (`17` 3.7) |
-| Nested entry calls | `callWithin` of `19-6` runs an entry point (`17`) inside a host function's budget |
-| Counts | The additions are listed by plan below. The totals are fixed when each chapter is written, because two counts are already in doubt at `main`: `messages-parse.json` holds 97 templates where F8 3.1 says 96 (`20` 3.5), and the package chapters each count library entries as if the others were absent |
+| An entry point and a function | An `export const` has no `Fn` parameter (`bad-export`, `17` 3.3): a host cannot pass a function (S3) |
+| Frames | Per-call frames are the reference path in every evaluator, from step E1 (`18` 8) |
+| Counts | The additions are listed below. The totals are fixed when each chapter is written. Two counts are already in doubt at `main`: `suite/messages-parse.json` holds 97 templates (ran), where F8 3.1 says 96, and track B corrects the chapter; and the package chapters each count library entries as if the others were absent |
 
 | Count | Additions |
 | --- | --- |
-| Library entries | 2 (F17: `iterate`, `walk`) |
-| Run codes | 1 (`suspended`): 19 become 20, and the codes that `catch` passes 8 become 9 |
-| Run templates | `suspended`; `invalid-argument` `bad-layout` (F19) |
-| Check codes | `bad-export` (F16), `recursion-needs-types` (Core) |
-| Check templates | 2 for `bad-export`, 1 for `recursion-needs-types`, 5 in F19 (four hints and `maybe-absent` `pattern`) |
-| Parse codes | 2 (F19: `async-await`, `statement-sequence`), with 4 templates |
-| Declare codes | 2 (F16: `no-result`, `no-input-record`) |
+| Library entries | 1 (F17: `walk`, in the default group). The totals of section 3, 78 and 59, become 79 and 60 |
+| Run codes and run templates | None: 19 codes, 64 templates |
+| Check codes | `recursion-needs-types` (Core: 27 become 28) and `bad-export` (F16). The catalog's 29 become 31 |
+| Static codes (`05-types.md` 16.1, 22.1) | The same two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation) |
+| Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`): 71 become 81. Up to 3 more in F17 if `18` 7.2 is taken |
+| Parse codes | 2 (F19: `async-await`, `statement-sequence`), with 4 templates: 58 become 60, and 97 templates 101. `type-annotation`, `type-declaration` and `export-statement` narrow and change their text, by my reading with no change of count (`17` 3.1) |
+| Declare codes | 2 (F16: `no-result`, `no-input-record`), beside the 9 of Core |
 | Reserved namespaces | 1 (`regexp`) |
+| The largest depth a host may set | 1,000 becomes 400 (D58): `03-host.md` 3.3.4, 3.6.1, 3.9.1 and the schema of 3.10.11 |
+| Keys of an environment's description (F1 5.3) | 7, unchanged. 9 when F18 lands (`interfaces`, `implements`) |
 | Reserved words, node kinds | None |
-
 
 ### 4.4 Limits
 
@@ -454,7 +496,7 @@ others' text:
 | D15 | The unit of text size is the UTF-16 length in blocks of 64 (L7, R10) | Yes, but it is closer than it was. JavaScript has it for free. Go and Rust scan strings of 64 bytes or more: in Go, comparing two equal 4 KB strings goes from 46 ns to 483 ns. UTF-8 bytes would be free in Go and Rust and would make JavaScript measure every string of 22 units or more, at 20 ns and up. Short strings are the common case, and weight is the unit that makes them free everywhere |
 | D16 | Step and unit counts are fixed per specification version (L6) | Yes. Optimizations that stop early are then forbidden, and a wrong rate stays until the next version |
 | D17 | Defaults: 1,000,000 steps, 1,000,000 allocation units, depth 200, no deadline | Yes. A deadline is the one limit that is not deterministic |
-| D31 | Source nesting is at most 100 levels, fixed by the specification and not settable by a host, and the depth limit counts a call as 1 plus its nesting (R5, `02` 2.16) | Yes. Without it a deep program is an error in one implementation, a crash in another and a success in the third. Settle the numbers after the Rust reference evaluator has run the limit cases in its least favorable build (`01`, question 7) |
+| D31 | Source nesting is at most 100 levels, fixed by the specification and not settable by a host, and the depth limit counts a call as 1 plus its nesting (R5, `02` 2.16) | Yes. Without it a deep program is an error in one implementation, a crash in another and a success in the third. Settle the numbers after the Rust reference evaluator has run the limit cases in its least favorable build (`01`, question 7). D58 settles the largest depth a host may set: 400 |
 
 ### 4.5 Hosts and the repository
 
@@ -516,7 +558,7 @@ R9 is the fallback if that proves too much for the third checker.
 
 | Thing | Fate |
 | --- | --- |
-| Risor v2 | Kept in maintenance on its own branch. Its users are expected to move (C7), except for scripts with statements, loops, recursion or mutation, which have no v3 form (D6). v3 is a new module path |
+| Risor v2 | Kept in maintenance on its own branch. Its users are expected to move (C7), except for scripts with statements, loops or mutation, which have no v3 form (D6; recursion gains one with D54). v3 is a new module path |
 | Removed from v2 for v3 | The compiler, bytecode, VM, object model, syntax allow-list, modules as objects, script test runner and language server: about 18,900 lines of core, plus tools |
 | Kept from v2 | The Pratt parser's structure and depth limit, the error list with positions, the suggestion code, the caret rendering |
 | expr | Replaced by v3 (D1). Its type model, narrowing, template splitting and test tables are reused |
@@ -539,7 +581,7 @@ fixing in v2 whatever happens to v3:
 | --- | --- | --- |
 | The three implementations drift | The prior art says this is the normal state of second and third implementations, that the lag sits in the checker and the library, and that the bindings diverge more than the evaluators. One Go port of a Rust policy language had a decoder that turned a deny into an allow (`01` 3.1) | Step and unit counts asserted in suite cases; a public conformance report per implementation; steps 4 and 5 early; D27 |
 | Three of everything is too much work | A checker and a 78-entry library, three times, for a project with few maintainers | The language is small by ruling; the suite and the library table are shared data; R9 as a fallback |
-| A deep program crashes a Rust host | A stack overflow cannot be caught there | R5, R6 and D31: every recursion has a specified bound, and release is not recursive |
+| A deep program crashes a Rust host | A stack overflow cannot be caught there | R5, R6, D31 and D58: every recursion has a specified bound, release is not recursive, and each binding's stack test covers calls through the library |
 | The whole-number range hurts Go hosts | 64-bit ids and nanosecond times are common in Go data | The error is loud and at the read; the binding can present a field as a string. D3 should be confirmed knowing this |
 | The cost table is wrong and frozen | A released rate cannot change within a specification version | Calibrate the rates on the real evaluator before 3.0; the accounting test bounds real time and memory per unit |
 | The break is large for existing users | Division, method names and the loss of statements all change | The owner judges the user base small and willing (C7). Truthiness now matches v2 and expr. Errors name the fix. The loss of statements is the part with no mechanical answer (D6) |
