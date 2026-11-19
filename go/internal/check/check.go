@@ -684,10 +684,20 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 			}
 			kids = syntax.Children(n)
 		case *syntax.MapPat:
-			// A field's failure is at a site on its key (18.3).
+			// A field's failure is at a site on its key, or on the value
+			// bound, which for a parameter is the pattern itself (12.3,
+			// 18.3).
+			whole := c.dynSites[n.Span()]
 			for _, f := range n.Fields {
-				if c.dynSites[f.KeySpan] {
+				if whole || c.dynSites[f.KeySpan] {
 					out[f.Span] = true
+				}
+			}
+		case *syntax.ListPat:
+			// The same for an element of a parameter's list pattern.
+			if c.dynSites[n.Span()] {
+				for _, e := range n.Elems {
+					out[e.Span] = true
 				}
 			}
 		case *syntax.Each:
