@@ -217,14 +217,15 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
   (`method`, `call_lib`) drops every such frame the entry pushed, whether it
   gave a value or failed (`end_callbacks`). A lambda with patterns or
   defaults gets a frame for each call, as a call by name does.
-- **Measured** (`examples/bench.rs`, the 31 programs of `suite/bench`, three
-  interleaved rounds, medians, release, aarch64 macOS): a frame pushed and
-  dropped for every call cost 13.6% in the geometric mean against fixed
-  places, up to 54% (`heavy/reduce_10k`); with the shared frame of a library
-  entry and the display kept by the thread between runs, 4.7%. The largest
-  costs left are 15% to 19%, in `filter` and `map` over 10,000 elements and
-  `sortBy` (`lists-10k`); the noise between rounds is a few percent. No
-  fixed-place path is kept.
+- **Measured** (`examples/bench.rs`, the 31 programs of `suite/bench`,
+  interleaved rounds against the build before step E1, medians, release,
+  rustc 1.100.0, aarch64 macOS): a frame pushed and dropped for every call
+  cost 13.6% in the geometric mean against fixed places (three rounds), up
+  to 54% (`heavy/reduce_10k`); with the shared frame of a library entry and
+  the display kept by the thread between runs, 3.9% (five rounds). The
+  largest costs left are 10% to 15%: `workflow/any`, `lists-10k/count_by`,
+  `lists-10k/sort_top5` and `workflow/filter_map`; a program can differ by a
+  few percent from one round to the next. No fixed-place path is kept.
 
 ### The meter
 
