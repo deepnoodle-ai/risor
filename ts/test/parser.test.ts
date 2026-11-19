@@ -445,6 +445,16 @@ describe("01 4: nodes and spans", () => {
     const e = (result("{a: (1)}") as A.MapLit).entries[0];
     assert.deepEqual(e.span, { start: 1, end: 7 });
   });
+  test("f17 2.2: a guard is a child of its Arm with its own span; the Arm's span is unchanged", () => {
+    const [a, b] = (result("match x { 1 if ((c)) => 2, _ => 3 }") as A.Match).arms;
+    assert.deepEqual(a.span, { start: 10, end: 25 });
+    assert.equal(a.guard?.kind, "Ident");
+    assert.deepEqual(a.guard?.span, { start: 17, end: 18 });
+    assert.equal(b.guard, null);
+    const d = (result("match x { _ if (c) => 3 }") as A.Match).arms[0];
+    assert.ok(d.isDefault);
+    assert.deepEqual(d.span, { start: 10, end: 23 });
+  });
   test("a branch with const lines is a Block; without, its expression", () => {
     const c = result("if (a) { const b = 1; b } else { 2 }") as A.Cond;
     assert.equal(c.then.kind, "Block");
