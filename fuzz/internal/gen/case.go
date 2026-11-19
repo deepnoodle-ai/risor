@@ -87,6 +87,9 @@ type Case struct {
 	// Broken writes "precondition": false: a variable's value does not
 	// conform to its declared type, on purpose.
 	Broken bool
+	// F17 is set when the program has a form of package F17: a guard or a
+	// call of walk. It is not written to the case file.
+	F17 bool
 }
 
 // Text gives the program text: the printed tree, or the mangled source.
