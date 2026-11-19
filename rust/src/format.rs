@@ -1083,6 +1083,13 @@ impl<'a> B<'a> {
         for (i, (_, ws, t)) in f.params.iter().enumerate() {
             if i > 0 {
                 v.push(self.text(","));
+                // F12 2.12 item 5: the trailing comments of the last token
+                // of a parameter's type are written after its comma.
+                let last = self.tb(f.params[i - 1].2.span.end);
+                if self.pass2 && self.defer[last] {
+                    self.defer[last] = false;
+                    v.push(self.trail_doc(last, None));
+                }
                 v.push(self.sp());
             }
             let w = self.ti(ws.start);
@@ -2350,11 +2357,37 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
         let _ = write!(out, "({}", n.kind.name());
         let mut kids: Vec<NodeId> = Vec::new();
         match &n.kind {
+            // F16: the type lines, in their places among the `const` lines.
+            NodeKind::Program {
+                consts,
+                result,
+                types,
+            } if !types.is_empty() => {
+                let mut lines: Vec<(u32, String)> =
+                    consts
+                        .iter()
+                        .map(|&c| (ast.span(c).start, "c".to_string()))
+                        .chain(types.iter().map(|t| {
+                            (t.span.start, format!("t{:?}{}", t.name, ptype_canon(&t.ty)))
+                        }))
+                        .collect();
+                lines.sort_by_key(|(s, _)| *s);
+                for (_, l) in lines {
+                    let _ = write!(out, " {l}");
+                }
+                kids.extend(consts);
+                kids.push(*result);
+            }
             NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
                 kids.extend(consts);
                 kids.push(*result);
             }
-            NodeKind::Const { pattern, value, .. } => kids.extend([*pattern, *value]),
+            NodeKind::Const { pattern, value, ty } => {
+                if let Some(t) = ty {
+                    let _ = write!(out, " :{}", ptype_canon(t));
+                }
+                kids.extend([*pattern, *value]);
+            }
             NodeKind::Ident { name } => {
                 let _ = write!(out, " {name:?}");
             }
@@ -2465,13 +2498,34 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 kids.extend(args);
             }
             NodeKind::OptChain { x } => kids.push(*x),
-            NodeKind::Lambda { params, body, .. } => {
+            NodeKind::Lambda {
+                params,
+                body,
+                result,
+            } => {
+                if let Some(t) = result {
+                    let _ = write!(out, " ->{}", ptype_canon(t));
+                }
                 kids.extend(params);
                 kids.push(*body);
             }
             NodeKind::Param {
-                pattern, default, ..
+                pattern,
+                default,
+                ty,
+                fn_,
             } => {
+                if let Some(t) = ty {
+                    let _ = write!(out, " :{}", ptype_canon(t));
+                }
+                if let Some(f) = fn_ {
+                    out.push_str(" fn(");
+                    for (w, _, t) in &f.params {
+                        let _ = write!(out, "{w:?}:{},", ptype_canon(t));
+                    }
+                    let r = f.result.as_ref().map_or("unknown".to_string(), ptype_canon);
+                    let _ = write!(out, ")=>{r}");
+                }
                 kids.push(*pattern);
                 kids.extend(default);
             }
