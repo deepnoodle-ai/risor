@@ -183,6 +183,7 @@ export class InvalidFile extends Error {}
 const STATIC_CODE_SET = new Set([
   "undefined-name", "undefined-function", "call-of-parameter", "lambda-to-lambda", "not-a-value",
   "arity", "duplicate-name", "shadows-namespace", "duplicate-key", "duplicate-case", "unreachable-arm",
+  "recursion-needs-types",
 ]);
 
 /** f04 6.1 item 4: in suite/conversion/, two more codes are static at a program type. */
@@ -190,6 +191,17 @@ export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SE
 
 /** The static codes of suite/config/ (f10 10.3 item 3): Core's and `untagged-union`. */
 export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "untagged-union"]);
+
+/** The static codes of suite/entry-points/ (f16 3.1 item 11): Core's, the two of a program type, and `name-clash`. */
+export const ENTRY_POINTS_STATIC: ReadonlySet<string> = new Set([...CONVERSION_STATIC, "name-clash"]);
+
+/** The static codes of the case files in a directory of the suite. */
+export function staticCodesOf(dirName: string): ReadonlySet<string> | undefined {
+  if (dirName === "conversion" || dirName === "unions" || dirName === "facts") return CONVERSION_STATIC;
+  if (dirName === "config") return CONFIG_STATIC;
+  if (dirName === "entry-points") return ENTRY_POINTS_STATIC;
+  return undefined;
+}
 
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
@@ -203,7 +215,8 @@ const TOOL_FIELDS = ["format", "formatTemplate", "complete", "hover"] as const;
 const FORMAT_ALLOWED = ["name", "format", "formatTemplate", "env", "vars", "skip", "expect"];
 const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "skip", "expect"];
 const CANDIDATE_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "key", "literal", "type"]);
-const HOVER_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant"]);
+// f16 7.3: the hover kind `type`.
+const HOVER_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "type"]);
 
 /** Read and validate a case file on disk. */
 export interface ReadOptions {
@@ -580,7 +593,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" || basename(dir) === "facts" ? CONVERSION_STATIC : basename(dir) === "config" ? CONFIG_STATIC : STATIC_CODE_SET;
+      const staticCodes = staticCodesOf(basename(dir)) ?? STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }

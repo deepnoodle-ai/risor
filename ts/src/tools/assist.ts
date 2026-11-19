@@ -15,7 +15,8 @@ import type { LineSpan, Position, Span } from "../syntax/source.ts";
 import { HOLE } from "../syntax/token.ts";
 import type { Token } from "../syntax/token.ts";
 import { FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS, METHODS } from "../library/registry.ts";
-import { fromNode, isAny, isNever, join, joinAll, nonnull, printType } from "../types/type.ts";
+import { fromNode, isAny, isNever, join, joinAll, nonnull, opaque, printType } from "../types/type.ts";
+import type { TypeNode } from "../types/typetext.ts";
 import type { Alts, Rec, Type } from "../types/type.ts";
 import type { Resolution } from "../eval/static.ts";
 import type { CheckResult } from "../types/check.ts";
@@ -271,8 +272,10 @@ function scopesAt(root: A.Program, target: object): Bound[][] | null {
       const inner = [scope, ...scopes];
       for (const c of consts) {
         // A const name is not in scope in its own value; a pattern's name is in the defaults to its right.
+        // With the Core amendment, a const-bound lambda's name is in scope in its body (f16 7.2 item 5).
         visitPattern(c.pattern, [[...scope], ...scopes]);
-        visit(c.value as A.Node, [[...scope], ...scopes]);
+        const own = c.value.kind === "Lambda" && c.pattern.kind === "NamePat" ? patternNames(c.pattern).map((b) => ({ ...b, lambda: true })) : [];
+        visit(c.value as A.Node, [[...scope, ...own], ...scopes]);
         if (found !== null) return;
         for (const b of patternNames(c.pattern)) scope.push({ ...b, lambda: c.value.kind === "Lambda" && c.pattern.kind === "NamePat" });
       }
@@ -410,7 +413,7 @@ export function complete(env: Env, text: string, pos: Position, returns?: string
     list.splice(endIdx, 0, hole);
   } else if (lastReal !== undefined && lastReal.end === cut && lastReal.kind === "word") {
     prefixStart = lastReal.start;
-    hole = { kind: "word", start: lastReal.start, end: cut, text: HOLE, gap: lastReal.gap };
+    hole = { kind: "word", start: lastReal.start, end: cut, text: HOLE, gap: lastReal.gap, holePrefix: lastReal.text };
     list.splice(endIdx - 1, 1, hole);
   } else {
     hole = { kind: "word", start: cut, end: cut, text: HOLE, gap: true };
@@ -499,6 +502,8 @@ class Context {
   /** The node that holds the hole, and its parents. */
   private locate(hole: Token): { node: A.Node; parents: A.Node[]; where: string } | null {
     let out: { node: A.Node; parents: A.Node[]; where: string } | null = null;
+    // f16 7.2 item 1: a hole in the type of a type line, or of an annotation, is in the types context.
+    for (const l of this.prog.types) if (typeHasHole(l.type.type)) return { node: this.prog, parents: [], where: "type" };
     walk(this.prog, (n, ps) => {
       if (out !== null) return false;
       const at = (s: Span) => s.start === hole.start && s.end === hole.end;
@@ -518,6 +523,11 @@ class Context {
           break;
         case "As":
           if (typeHasHole(n.type)) out = { node: n, parents: ps, where: "type" };
+          break;
+        case "Const":
+        case "Param":
+        case "Lambda":
+          if (annotationsOf(n).some((a) => typeHasHole(a.type))) out = { node: n, parents: ps, where: "type" };
           break;
       }
       return undefined;
@@ -540,7 +550,7 @@ class Context {
       case "member":
         return this.members(loc.node as A.Member);
       case "type":
-        return this.types();
+        return this.types(hole);
       case "string":
         return this.strings(loc.node as A.StringLit, loc.parents, isString);
     }
@@ -606,9 +616,11 @@ class Context {
     return out;
   }
 
-  private types(): Candidate[] {
+  private types(hole: Token): Candidate[] {
     const e = this.env.environment;
-    const words = ["any", "bool", "float", "int", "map", "never", "null", "string", ...e.named.keys(), ...e.opaque];
+    // f16 7.2 item 1: with the names of the type lines that end before the hole.
+    const lines = this.prog.types.filter((l) => l.span.end <= hole.start).map((l) => l.name);
+    const words = ["any", "bool", "float", "int", "map", "never", "null", "string", ...e.named.keys(), ...e.opaque, ...lines];
     return [...new Set(words)].sort(compareText).map((w) => ({ label: w, kind: "type", detail: null, insert: w }));
   }
 
@@ -758,6 +770,22 @@ function safeType(env: Env, text: string): Type | null {
   }
 }
 
+/** Package F16: the annotations a node holds itself: a const line's, a parameter's, a lambda's result (f16 2.3). */
+function annotationsOf(n: A.Node): A.TypeAnn[] {
+  switch (n.kind) {
+    case "Const":
+      return n.type !== null ? [n.type] : [];
+    case "Param":
+      if (n.type !== null) return [n.type];
+      if (n.fn !== null) return [...n.fn.params.map((p) => p.type), ...(n.fn.result !== null ? [n.fn.result] : [])];
+      return [];
+    case "Lambda":
+      return n.result !== null ? [n.result] : [];
+    default:
+      return [];
+  }
+}
+
 function typeHasHole(n: unknown): boolean {
   if (n === null || typeof n !== "object") return false;
   const o = n as Record<string, unknown>;
@@ -827,7 +855,47 @@ export function hover(env: Env, text: string, pos: Position, returns?: string): 
   return hoverRecord(env, prog, resolution, check, { start: ws, end: we }, src);
 }
 
+/** Package F16: a hover on a type name, or on the name of a type line (f16 7.3). */
+function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: Source): HoverResult | null {
+  const e = env.environment;
+  const same = (s: Span) => s.start === word.start && s.end === word.end;
+  const rec = (type: Type, decl: Span | null): HoverResult => ({ kind: "type", span: src.lineSpan(word), type: printType(type), signature: null, doc: null, declaration: decl === null ? null : src.lineSpan(decl) });
+  const fromEnv = (name: string): HoverResult | null => {
+    const n = e.named.get(name);
+    if (n !== undefined) return rec(n, null);
+    if (e.opaque.has(name)) return rec(opaque(name), null);
+    return null;
+  };
+  // f16 7.3 items 1 and 2: the name of a type line stands for what the line declares.
+  for (const l of prog.types) {
+    if (!same(l.nameSpan)) continue;
+    const t = res.typeLines.get(l);
+    return t !== undefined ? rec(t, l.nameSpan) : fromEnv(l.name);
+  }
+  // A type name in a program type: of a type line, an annotation, or `as` and `is`.
+  const maps: ReadonlyMap<TypeNode, Span>[] = prog.types.map((l) => l.type.spans);
+  walk(prog, (n) => {
+    if (n.kind === "As") maps.push(n.typeSpans);
+    for (const a of annotationsOf(n)) maps.push(a.spans);
+  });
+  for (const m of maps) {
+    for (const [node, span] of m) {
+      if (node.t !== "name" || !same(span)) continue;
+      const name = node.name;
+      // The last type line before the word with that name, when that line declares it; else the environment's type.
+      let last: A.TypeLine | null = null;
+      for (const l of prog.types) if (l.name === name && l.span.end <= word.start) last = l;
+      const t = last === null ? undefined : res.typeLines.get(last);
+      if (last !== null && t !== undefined) return rec(t, last.nameSpan);
+      return fromEnv(name);
+    }
+  }
+  return null;
+}
+
 function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResult, word: Span, src: Source): HoverResult | null {
+  const th = typeHover(env, prog, res, word, src);
+  if (th !== null) return th;
   const e = env.environment;
   const ls = (s: Span) => src.lineSpan(s);
   const same = (s: Span) => s.start === word.start && s.end === word.end;

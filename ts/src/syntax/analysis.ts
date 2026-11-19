@@ -69,8 +69,9 @@ class Walker {
 
   private constLine(c: A.Const): void {
     if (c.value.kind === "Lambda") {
-      this.lambda(c.value);
+      // f16 6 item 2, with the Core amendment: the name is bound in its own body (01 5 rule 6).
       this.bind((c.pattern as A.NamePat).name);
+      this.lambda(c.value);
       return;
     }
     this.expr(c.value);

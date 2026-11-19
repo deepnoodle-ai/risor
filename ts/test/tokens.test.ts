@@ -48,6 +48,21 @@ describe("tokens", () => {
     assert.deepEqual(show(`a?.b`), ["name:a", "operator:?.", "property:b"]);
   });
 
+  test("package F16: type is a keyword where it begins a type line, and a name elsewhere", () => {
+    assert.deepEqual(show(`const a = 1; type Id = string; a`), [
+      "keyword:const", "name:a", "operator:=", "number:1", "punctuation:;",
+      "keyword:type", "name:Id", "operator:=", "name:string", "punctuation:;", "name:a",
+    ]);
+    assert.deepEqual(show(`type Id = int; 1`)[0], "keyword:type");
+    // Not a type line: a call, a name, a lower-case word, or a line in a block.
+    assert.deepEqual(show(`type(1)`)[0], "function:type");
+    assert.deepEqual(show(`const type = 1; type`).slice(-1), ["name:type"]);
+    assert.deepEqual(show(`type foo = int; 1`)[0], "name:type");
+    assert.deepEqual(show(`{ const a = 1; type Id = int; a }`)[6], "name:type");
+    // The words of an annotation are names, as the words of `as` are.
+    assert.deepEqual(show(`const f = (x: Order): int => x`).slice(3, 9), ["punctuation:(", "name:x", "punctuation::", "name:Order", "punctuation:)", "punctuation::"]);
+  });
+
   test("a template and its interpolations", () => {
     assert.deepEqual(show("`n ${a + 1} of ${b}!`"), [
       "template:`n ", "interpolation:${", "name:a", "operator:+", "number:1", "interpolation:}",

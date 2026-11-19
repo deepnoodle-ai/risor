@@ -15,7 +15,7 @@ import type { Token } from "../syntax/token.ts";
 
 /** The class of a token, for its colour. */
 export type TokenClass =
-  | "keyword" // a reserved word other than the constants
+  | "keyword" // a reserved word other than the constants; and `type` where it begins a type line (package F16)
   | "constant" // true, false, null
   | "name" // a word that is not reserved
   | "function" // a word directly before `(`
@@ -110,6 +110,8 @@ type Frame =
 
 function flatten(toks: Token[], base: number, out: ColourToken[]): void {
   const stack: Frame[] = [{ k: "list", toks, i: 0 }];
+  // The brackets open in the top list: `type` begins a type line only at the top level (f16 2.2 rule 1).
+  let depth = 0;
   while (stack.length > 0) {
     const f = stack[stack.length - 1];
     if (f.k === "template") {
@@ -150,6 +152,7 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         if (t.prefix) cls = "string";
         else if (t.text === "true" || t.text === "false" || t.text === "null") cls = "constant";
         else if (isReserved(t.text)) cls = "keyword";
+        else if (t.text === "type" && stack.length === 1 && depth === 0 && beginsTypeLine(all, i)) cls = "keyword";
         else if (prev?.kind === "punct" && (prev.text === "." || prev.text === "?.")) cls = "property";
         else if (next?.kind === "punct" && next.text === "(") cls = "function";
         else cls = "name";
@@ -166,6 +169,10 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         stack.push({ k: "template", t, p: 0, at: start });
         break;
       case "punct":
+        if (stack.length === 1) {
+          if (t.text === "(" || t.text === "[" || t.text === "{" || t.text === "?.[") depth++;
+          else if (t.text === ")" || t.text === "]" || t.text === "}") depth = Math.max(0, depth - 1);
+        }
         out.push({ class: BRACKETS.has(t.text) ? "punctuation" : "operator", start, end });
         break;
       case "interpEnd":
@@ -176,6 +183,19 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         break;
     }
   }
+}
+
+/**
+ * f16 2.2 rule 1: the word `type` at index i of the top list begins a type line: it stands where a line
+ * may begin (the start, or after a `;` at the top level), and a Word that begins with `A` to `Z` and
+ * then `=` follow it.
+ */
+function beginsTypeLine(all: Token[], i: number): boolean {
+  const prev = all[i - 1];
+  const name = all[i + 1];
+  const eq = all[i + 2];
+  if (prev !== undefined && !(prev.kind === "punct" && prev.text === ";")) return false;
+  return name !== undefined && name.kind === "word" && /^[A-Z]/.test(name.text) && eq !== undefined && eq.kind === "punct" && eq.text === "=";
 }
 
 /** The comments in a gap between tokens: each run of code points that is not white space. */

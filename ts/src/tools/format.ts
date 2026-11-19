@@ -543,14 +543,31 @@ class Formatter {
   // ---- nodes (f12 2.8) -------------------------------------------------------
 
   program(p: A.Program): Doc {
-    const items = [...p.consts.map((c) => this.constItem(c)), { d: this.expr(p.result), first: this.firstTok(p.result), semi: "" as Doc }];
+    // f16 7.1: a type line is a line of the program, as a const line is, in the order of the text.
+    const lines = [...p.consts.map((c) => ({ at: c.span.start, item: () => this.constItem(c) })), ...p.types.map((l) => ({ at: l.span.start, item: () => this.typeItem(l) }))];
+    lines.sort((a, b) => a.at - b.at);
+    const items = [...lines.map((l) => l.item()), { d: this.expr(p.result), first: this.firstTok(p.result), semi: "" as Doc }];
     return [this.lines(items), H, this.endMark(), H];
+  }
+
+  /** f16 7.1: `"type" sp name sp "=" sp type ";"`, the type on one line. */
+  private typeItem(l: A.TypeLine): { d: Doc; first: number; semi: Doc } {
+    const kw = this.at(l.span.start);
+    const name = this.at(l.nameSpan.start);
+    const semi = this.find(";", l.type.span.end);
+    return { d: [this.tok(kw), SP, this.tok(name), SP, this.tok(name + 1), SP, this.typeDoc(l.type.span)], first: kw, semi: this.tok(semi) };
   }
 
   private constItem(c: A.Const): { d: Doc; first: number; semi: Doc } {
     const kw = this.at(c.span.start);
-    const eq = this.find("=", this.outer(c.pattern).end);
     const semi = this.find(";", this.outer(c.value).end);
+    if (c.type !== null) {
+      // f16 7.1: `"const" sp ‹pattern› ":" sp type sp "=" assigned(value) ";"`.
+      const colon = this.find(":", this.outer(c.pattern).end);
+      const eq = this.find("=", c.type.span.end);
+      return { d: [this.tok(kw), SP, this.pattern(c.pattern), this.tok(colon), SP, this.typeDoc(c.type.span), SP, this.tok(eq), this.assigned(c.value)], first: kw, semi: this.tok(semi) };
+    }
+    const eq = this.find("=", this.outer(c.pattern).end);
     return { d: [this.tok(kw), SP, this.pattern(c.pattern), SP, this.tok(eq), this.assigned(c.value)], first: kw, semi: this.tok(semi) };
   }
 
@@ -916,8 +933,10 @@ class Formatter {
   }
 
   private lambda(e: A.Lambda): Doc {
-    const arrow = this.find("=>", e.params.length > 0 ? this.paramEnd(e.params[e.params.length - 1]) : e.span.start);
-    const single = e.params.length === 1 && e.params[0].pattern.kind === "NamePat" && e.params[0].default === null;
+    const arrow = this.find("=>", e.result !== null ? e.result.span.end : e.params.length > 0 ? this.paramEnd(e.params[e.params.length - 1]) : e.span.start);
+    // f16 7.1: with an annotation the rule of one bare parameter does not apply.
+    const annotated = e.result !== null || e.params.some((p) => p.type !== null || p.fn !== null);
+    const single = !annotated && e.params.length === 1 && e.params[0].pattern.kind === "NamePat" && e.params[0].default === null;
     let params: Doc;
     const firstI = this.at(e.span.start);
     if (single) {
@@ -927,19 +946,39 @@ class Formatter {
       const lp = firstI;
       const rp = this.match.get(lp)!;
       params = this.seq(lp, e.params.map((p) => ({ d: this.param(p), first: this.at(p.pattern.span.start) })), rp);
+      // f16 7.1: params `":" sp type sp "=>" assigned(body)`.
+      if (e.result !== null) params = [params, this.tok(rp + 1), SP, this.typeDoc(e.result.span)];
     }
     return [params, SP, this.tok(arrow), this.assigned(e.body)];
   }
 
+  /** The end of a parameter: its default, its annotation or its pattern (f16 2.3 item 1). */
   private paramEnd(p: A.Param): number {
-    return p.default !== null ? this.outer(p.default).end : p.pattern.span.end;
+    return p.span.end;
   }
 
   private param(p: A.Param): Doc {
-    const pat = this.pattern(p.pattern);
+    let pat = this.pattern(p.pattern);
+    // f16 7.1: `‹pattern› ":" sp type`, or a function type on one line.
+    const ann = p.type !== null ? p.type.span : p.fn !== null ? p.fn.span : null;
+    if (ann !== null) pat = [pat, this.tok(this.find(":", p.pattern.span.end)), SP, p.fn !== null ? this.fnDoc(p.fn) : this.typeDoc(ann)];
     if (p.default === null) return pat;
-    const eq = this.find("=", p.pattern.span.end);
+    const eq = this.find("=", ann !== null ? ann.end : p.pattern.span.end);
     return [pat, SP, this.tok(eq), this.assigned(p.default)];
+  }
+
+  /** f16 7.1: `"(" w ":" sp type { "," sp w ":" sp type } ")" sp "=>" sp result`, on one line. */
+  private fnDoc(fn: A.FnAnn): Doc {
+    const lp = this.at(fn.span.start);
+    const rp = this.match.get(lp)!;
+    const out: Doc[] = [this.tok(lp)];
+    fn.params.forEach((fp, n) => {
+      const w = this.at(fp.span.start);
+      if (n > 0) out.push(this.tok(w - 1), SP);
+      out.push(this.tok(w), this.tok(w + 1), SP, this.typeDoc(fp.type.span));
+    });
+    out.push(this.tok(rp), SP, this.tok(rp + 1), SP, this.typeDoc(fn.resultSpan));
+    return out;
   }
 
   pattern(p: A.Pattern): Doc {
@@ -1210,7 +1249,7 @@ function binLevel(op: A.BinaryOp): number {
 }
 
 /** The keys a tree's equality ignores: spans, and the levels that parentheses change (f12 2.2 item 1). */
-const IGNORED = new Set(["span", "outer", "parens", "nameSpan", "keySpan", "typeSpan", "typeSpans", "starSpan", "recvSpan", "level", "maxLevel"]);
+const IGNORED = new Set(["span", "outer", "parens", "nameSpan", "keySpan", "typeSpan", "typeSpans", "starSpan", "recvSpan", "level", "maxLevel", "resultSpan", "spans"]);
 
 /** Two trees are equal, spans aside (f12 2.2 item 1). */
 export function treeEqual(a: unknown, b: unknown): boolean {

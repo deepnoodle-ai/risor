@@ -193,8 +193,23 @@ function spanOf(a: Span, b: Span): Span {
   return { start: a.start, end: b.end };
 }
 
-/** A lambda argument: a Lambda node, or the name of a const-bound lambda. */
-type LambdaArg = { lambda: A.Lambda; id: number | null; span: Span };
+/**
+ * A lambda argument: a Lambda node, or the name of a const-bound lambda.
+ * `self`: the name is a reference of the lambda to its own name (05 22.5).
+ */
+type LambdaArg = { lambda: A.Lambda; id: number | null; span: Span; self: boolean };
+
+/**
+ * How a lambda's body is checked (13.9, f16 3.4): with the values a library
+ * function or method passes (`lib`), at a call by name (`call`), once where it
+ * is written (`once`), or with no use (`nouse`).
+ */
+type Mode = "lib" | "call" | "once" | "nouse";
+
+/** f16 3.4: a const-bound lambda with at least one annotation, and every parameter annotated. */
+function checkedOnce(l: A.Lambda): boolean {
+  return l.params.every((p) => p.type !== null || p.fn !== null) && (l.params.length > 0 || l.result !== null);
+}
 
 class Checker {
   readonly diags: DiagRec[] = [];
@@ -230,6 +245,10 @@ class Checker {
   /** The facts in force where each const-bound lambda was written. */
   private readonly lambdaFacts = new Map<number, Facts>();
   private readonly used = new Set<number>();
+  /** Package F16: the result type of each lambda checked once (f16 3.4). */
+  private readonly onceTypes = new Map<number, Type>();
+  /** Package F16: a fit at an annotation, where a fit that uses `any` does not hold (f16 3.3). */
+  private strict = false;
   private uses = 0;
   /** expanded nesting of a node = node.level + offset (20.2). */
   private offset = 0;
@@ -244,9 +263,9 @@ class Checker {
       if (!this.memberFacts.has(m)) this.memberFacts.set(m, []);
       this.memberFacts.get(m)!.push(f);
     }
-    // A read of the name as a value is not a use (13.9).
-    for (const [id, r] of res.refs) if (r.k === "lambda" && res.lambdaArgs.has(id)) this.used.add(r.id);
-    for (const t of res.targets.values()) if (t.k === "lambda") this.used.add(t.id);
+    // A read of the name as a value is not a use, nor a reference in its own body or defaults (13.9).
+    for (const [id, r] of res.refs) if (r.k === "lambda" && res.lambdaArgs.has(id) && !res.recursive.has(id)) this.used.add(r.id);
+    for (const [node, t] of res.targets) if (t.k === "lambda" && !(node.kind === "Call" && res.recursive.has(node))) this.used.add(t.id);
   }
 
   // ---- diagnostics and sites -----------------------------------------------
@@ -556,17 +575,35 @@ class Checker {
 
   private constLine(c: A.Const, f: Facts): Facts {
     if (c.value.kind === "Lambda") {
-      const id = this.res.lambdas.indexOf(c.value);
+      const l = c.value;
+      const id = this.res.lambdas.indexOf(l);
       this.lambdaFacts.set(id, f);
+      if (checkedOnce(l)) {
+        // f16 3.4: checked once, where it is written, under the facts there; its sites are kept.
+        // One check against 20.3, and its nesting where it is written against 20.2.
+        this.onceTypes.set(id, this.useLimit(l, l.level - 1, c.pattern.span) ? this.lambdaBody(l, [], f, "once") : NEVER);
+        return f;
+      }
       if (!this.used.has(id)) {
         // No use: checked once, parameters `any`, sites dropped (13.9).
         this.drop++;
-        this.lambdaBody(c.value, c.value.params.map(() => ({ given: true, type: ANY })), f);
+        this.lambdaBody(c.value, c.value.params.map(() => ({ given: true, type: ANY })), f, "nouse");
         this.drop--;
       }
       return f;
     }
     const v = this.synth(c.value, f);
+    if (c.type !== null) {
+      // f16 3.3: the value fits the annotation, surely; the name is bound to the annotation.
+      const t = this.res.annTypes.get(c.type) ?? null;
+      if (t === null) {
+        this.failedPattern(c.pattern, f);
+        return f;
+      }
+      this.fitStrict(c.value, t, () => "result-mismatch");
+      this.bindPattern(c.pattern, t, c.value.span, f);
+      return f;
+    }
     this.bindPattern(c.pattern, v, c.value.span, f);
     return f;
   }
@@ -1436,10 +1473,10 @@ class Checker {
   // ---- calls (13) -------------------------------------------------------------------
 
   private lambdaArg(a: A.Arg): LambdaArg | null {
-    if (a.kind === "Lambda") return { lambda: a, id: null, span: a.span };
+    if (a.kind === "Lambda") return { lambda: a, id: null, span: a.span, self: false };
     if (a.kind === "Ident") {
       const r = this.res.refs.get(a);
-      if (r !== undefined && r.k === "lambda") return { lambda: this.res.lambdas[r.id], id: r.id, span: a.span };
+      if (r !== undefined && r.k === "lambda") return { lambda: this.res.lambdas[r.id], id: r.id, span: a.span, self: this.res.recursive.has(a) };
     }
     return null;
   }
@@ -1456,7 +1493,14 @@ class Checker {
       this.plainArgs(args, f);
       return NEVER;
     }
-    if (target.k === "lambda") return this.lambdaCall(node, target.id, f);
+    if (target.k === "lambda") {
+      // 13.9: a call of a lambda's own name in its body has type never; its plain arguments are synthesized.
+      if (node.kind === "Call" && this.res.recursive.has(node)) {
+        this.plainArgs(args, f);
+        return NEVER;
+      }
+      return this.lambdaCall(node, target.id, f);
+    }
     const sig = target.k === "library" ? this.env.library.get(target.name) : this.env.functions.get(target.name);
     if (sig === undefined) {
       this.plainArgs(args, f);
@@ -1474,7 +1518,7 @@ class Checker {
       for (const a of s.args) {
         const la = this.lambdaArg(a);
         if (la === null) this.synth(a as A.Expr, f);
-        else this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level);
+        else if (!la.self) this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level, s.name);
       }
       // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3).
       this.siteName = s.name;
@@ -1561,6 +1605,8 @@ class Checker {
     if (over) return this.sizeFail(span);
     // 3. Lambda arguments.
     for (const { i, la } of lambdas) {
+      // 13.9: nothing is checked at a lambda's own name given in its body.
+      if (la.self) continue;
       if (this.drop === 0) this.callbacks.push({ body: sp(la.lambda.body.span), call: sp(span) });
       const fn = paramAt(i).type as Extract<SigNode["params"][number]["type"], { t: "fn" }>;
       if (la.lambda.params.length > fn.params.length) {
@@ -1576,14 +1622,14 @@ class Checker {
       const r = fn.result;
       const level = node.level;
       if (r === "unknown") {
-        const b = this.lambdaUse(la, qs.map(inst), f, level);
+        const b = this.lambdaUse(la, qs.map(inst), f, level, false, callName);
         if (b !== null) this.tested(b.type, la.lambda.body.span);
         if (b !== null && sig.narrows && i === 0) this.narrowed = { la, elem: qs.length > 0 ? inst(qs[0]) : NEVER };
         continue;
       }
       const before = new Map(sol);
       const m = this.mark();
-      let b = this.lambdaUse(la, qs.map(inst), f, level);
+      let b = this.lambdaUse(la, qs.map(inst), f, level, false, callName);
       if (b === null) continue;
       // 3a. The seed rule of 13.5, also on a fit that used any. With F17 (f17
       // 5.6 item 2) it reads with R in place of the Var: it fires when B does
@@ -1601,7 +1647,7 @@ class Checker {
         });
         sol.set(seed, got.t === null ? before.get(seed)! : join(before.get(seed)!, got.t));
         if (typeSize(sol.get(seed)!) > SIZE_LIMIT) return this.sizeFail(span);
-        b = this.lambdaUse(la, qs.map(inst), f, level, true);
+        b = this.lambdaUse(la, qs.map(inst), f, level, true, callName);
         if (b === null) continue;
         // No bind on the second check (13.5).
       } else {
@@ -1717,7 +1763,8 @@ class Checker {
     const place = span ?? e.span;
     const t = given ?? this.types.get(e) ?? NEVER;
     const fit = fits(t, want);
-    if (fit === 2) {
+    // f16 3.3: at an annotation a fit that uses `any` is a place of failure.
+    if (fit === 2 && !this.strict) {
       this.site("dynamic", place, ...owners);
       return;
     }
@@ -1729,7 +1776,7 @@ class Checker {
         if (it.kind === "Spread") {
           const st = this.types.get(it.value) ?? NEVER;
           const sf = fits(st, listOf(elem));
-          if (sf === 0) this.fitFail(code(st, listOf(elem)), it.value.span, st, listOf(elem));
+          if (sf === 0 || (sf === 2 && this.strict)) this.fitFail(code(st, listOf(elem)), it.value.span, st, listOf(elem));
           else if (sf === 2) this.site("dynamic", it.value.span, ...owners);
         } else this.fitForm(it, elem, code, undefined, owners);
       }
@@ -1859,7 +1906,7 @@ class Checker {
         }
         if (reported.has(it.spread)) continue;
         const fit = fits(g.type, rt);
-        if (fit === 0) {
+        if (fit === 0 || (fit === 2 && this.strict)) {
           reported.add(it.spread);
           this.fitFail(code(g.type, rt), it.spread.value.span, g.type, rt);
         } else if (fit === 2 && it.m !== "any") this.site("dynamic", it.spread.value.span, ...owners);
@@ -1870,25 +1917,49 @@ class Checker {
   // ---- lambdas (13.2, 13.9) ------------------------------------------------------------
 
   /** Check a lambda written in place, with its parameters bound to `qs`. */
-  private lambdaInPlace(la: LambdaArg, qs: Type[], f: Facts, level: number): { type: Type } | null {
-    return this.lambdaUse(la, qs, f, level);
+  private lambdaInPlace(la: LambdaArg, qs: Type[], f: Facts, level: number, callName: string): { type: Type } | null {
+    return this.lambdaUse(la, qs, f, level, false, callName);
   }
 
   /**
    * A use of a lambda argument: a Lambda written there, or a const-bound
    * lambda by name, which counts against the limits of 20.2 and 20.3.
    */
-  private lambdaUse(la: LambdaArg, qs: Type[], f: Facts, level: number, again = false): { type: Type } | null {
+  private lambdaUse(la: LambdaArg, qs: Type[], f: Facts, level: number, again = false, callName = ""): { type: Type } | null {
     if (la.id === null) {
-      const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), f);
+      const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), f, "lib", callName);
       return { type: t };
+    }
+    if (checkedOnce(la.lambda)) {
+      // f16 3.4: its body is not checked again; each value passed is fitted to its parameter.
+      la.lambda.params.forEach((p, i) => this.passed(p, qs[i] ?? NEVER, callName));
+      return { type: this.onceTypes.get(la.id) ?? NEVER };
     }
     if (!again && !this.useLimit(la.lambda, level + 1, la.span)) return null;
     const saved = this.offset;
     this.offset = level + 1 + this.offset + 1 - la.lambda.level;
-    const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), this.lambdaFacts.get(la.id) ?? NO_FACTS);
+    const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), this.lambdaFacts.get(la.id) ?? NO_FACTS, "lib", callName);
     this.offset = saved;
     return { type: t };
+  }
+
+  /** f16 3.3: a value the library passes to an annotated parameter must surely fit it, at the annotation. */
+  private passed(p: A.Param, q: Type, callName: string): void {
+    if (p.fn !== null) {
+      this.say("arg-mismatch", p.fn.span, "fn-value", { name: callName, found: printType(q) });
+      return;
+    }
+    if (p.type === null) return;
+    const t = this.res.annTypes.get(p.type) ?? null;
+    if (t !== null && fits(q, t) !== 1) this.say("arg-mismatch", p.type.span, "argument", { expected: printType(t), found: printType(q) });
+  }
+
+  /** f16 3.3: e fitted to an annotation through its form, where a fit that uses `any` does not hold. */
+  private fitStrict(e: A.Expr, want: Type, code: (place: Type, want: Type) => string): void {
+    const saved = this.strict;
+    this.strict = true;
+    this.fitForm(e, want, code);
+    this.strict = saved;
   }
 
   /** The limits of 20.2 and 20.3 at a use. False: `check-limit` was reported. */
@@ -1903,9 +1974,24 @@ class Checker {
     return true;
   }
 
-  private lambdaBody(l: A.Lambda, args: { given: boolean; type: Type }[], f: Facts): Type {
+  private lambdaBody(l: A.Lambda, args: { given: boolean; type: Type }[], f: Facts, mode: Mode = "call", callName = ""): Type {
+    // f16 3.4: with no use, a fit that uses `any` holds, as the sites of that check are dropped.
+    const fitAnn = (e: A.Expr, want: Type) => (mode === "nouse" ? this.fitForm(e, want, () => "result-mismatch") : this.fitStrict(e, want, () => "result-mismatch"));
     l.params.forEach((p, i) => {
       const a = args[i] ?? { given: false, type: NEVER };
+      if (p.fn !== null || p.type !== null) {
+        // f16 3.3, 3.4: an annotated parameter is bound to its annotation; a function type, or an annotation
+        // with a static diagnostic, binds never. Its default is fitted to the annotation.
+        if (mode === "lib") this.passed(p, a.type, callName);
+        const t = p.type === null ? null : (this.res.annTypes.get(p.type) ?? null);
+        if (p.default !== null) {
+          this.synth(p.default, f);
+          if (t !== null) fitAnn(p.default, t);
+        }
+        if (t === null) this.failedPattern(p.pattern, f);
+        else this.bindPattern(p.pattern, t, p.pattern.span, f);
+        return;
+      }
       let t: Type;
       if (p.default !== null) {
         const d = this.synth(p.default, f);
@@ -1913,7 +1999,13 @@ class Checker {
       } else t = a.type;
       this.bindPattern(p.pattern, t, p.pattern.span, f);
     });
-    return this.synth(l.body, f);
+    const body = this.synth(l.body, f);
+    if (l.result === null) return body;
+    // f16 3.3: the body fits the result annotation, which is the lambda's result type.
+    const r = this.res.annTypes.get(l.result) ?? null;
+    if (r === null) return NEVER;
+    fitAnn(l.body, r);
+    return r;
   }
 
   private lambdaCall(node: A.Call | A.MethodCall, id: number, f: Facts): Type {
@@ -1928,6 +2020,21 @@ class Checker {
       return NEVER;
     }
     const given = args.map((a) => (this.lambdaArg(a) !== null ? { given: true, type: NEVER } : { given: true, type: this.synth(a as A.Expr, f) }));
+    // f16 3.3: each plain argument at an annotated parameter is fitted to it; with a default, to T | null.
+    const name = this.res.lambdaNames?.get(id) ?? "";
+    const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
+    args.forEach((a, i) => {
+      const p = l.params[i];
+      if (this.lambdaArg(a) !== null || p === undefined) return;
+      if (p.fn !== null) {
+        this.say("arg-mismatch", a.span, "function", { param: p.pattern.kind === "NamePat" ? (p.pattern.name ?? "") : "", name });
+        return;
+      }
+      const t = p.type === null ? null : (this.res.annTypes.get(p.type) ?? null);
+      if (t !== null) this.fitStrict(a as A.Expr, p.default !== null ? withNull(t) : t, argCode);
+    });
+    // f16 3.4: a use of a lambda checked once counts against no limit; the call's type is its result type.
+    if (checkedOnce(l)) return this.onceTypes.get(id) ?? NEVER;
     if (!this.useLimit(l, node.level, node.span)) return NEVER;
     const saved = this.offset;
     this.offset = node.level + this.offset + 1 - l.level;
