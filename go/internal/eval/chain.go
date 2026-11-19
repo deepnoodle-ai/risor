@@ -638,6 +638,8 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 // hostErrorMessage is the message of a function-error (03-host.md 3.5.3):
 // the message of the inner diagnostic when the host's error is a Risor
 // failure (a *diag.Error, found through wrapping), else the error's text.
+// The message of a Risor failure is taken with nothing added (3.5.3), so
+// the text of an error that wraps one is not in it; the cause keeps it.
 // A nested function-error already holds the message below it, so one level
 // of unwrapping gives the innermost message.
 func hostErrorMessage(err error) string {

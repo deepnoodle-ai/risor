@@ -70,8 +70,12 @@ type Diagnostic struct {
 	// Cause is the host's own error, for the code "function-error". When
 	// that error is a failure of Risor, an *Error such as a nested run's,
 	// found through wrapping, its first diagnostic is the inner diagnostic,
-	// and Message is that diagnostic's message (03-host.md 3.5.3). Nil for
-	// every other code. No rendering writes it (package F8 5.1).
+	// and Message is that diagnostic's message (03-host.md 3.5.3). Text a
+	// host puts around the failure, as in fmt.Errorf("fetch order: %w",
+	// err), is not in Message: it stays here, in Cause. A host that wants
+	// its own text as the message returns an error that does not wrap the
+	// failure. Nil for every other code. No rendering writes it (package
+	// F8 5.1).
 	Cause error
 }
 
