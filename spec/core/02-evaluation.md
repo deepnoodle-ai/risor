@@ -661,7 +661,8 @@ half as many calls as the same chain written another way.
 
 1. The same program, the same variable values, the same results and charges of
    host functions, the same step limit, the same allocation limit and the same
-   depth limit give the same outcome and the same usage in every implementation.
+   depth limit give the same outcome, the same usage and the same interactions
+   with the host (item 6) in every implementation.
 2. The same outcome is the same value, or a failure with the same code, span,
    message, path and data.
 3. These may differ:
@@ -680,6 +681,15 @@ half as many calls as the same chain written another way.
    - give the number results of section 3 on every platform;
    - charge by sections 5 and 6;
    - use no clock, random source or shared state but the deadline check.
+6. **The interactions.** The interactions of a run are its requests for
+   variables and its calls of host functions and methods, with their
+   arguments, charges and outcomes (`03-host.md` 3.6.2). They are fixed by the
+   inputs of item 1 and by the outcomes and charges of the calls before them.
+   Two implementations make the same requests and the same calls, with `==`
+   arguments, in the order of section 2, up to the first call that differs in
+   outcome or in charges, or the first failure of class `limit`. 10.1 items 2
+   and 3 already require this of an optimized evaluation; this item makes it a
+   promise a host may build on.
 
 ## 10. Optimizing
 

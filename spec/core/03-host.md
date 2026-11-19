@@ -97,6 +97,35 @@ steps or units.
 A host does not use its own language's truthiness in place of the truthiness
 test, and does not write its own list of falsy values.
 
+### 3.2.5 Hosts that live long (informative)
+
+This section adds no rule. It shows how a host that lives longer than one run,
+such as a user interface or a server that handles events, builds on the rules
+of this chapter. Core has 19 run codes (3.7.4), and this section needs no
+other.
+
+| The pattern | The rule it rests on |
+| --- | --- |
+| The host owns all state. A program holds none between runs | The state of a run belongs to that run only (3.2.2) |
+| Each event is one run, with the state and the event as variables: `{state: State, ev: Tap}` | 3.4.1 |
+| The result is data: the next state, and a list of actions. A tagged union of follow-on F5 types the actions: `{kind: "openDialog", title: string} \| {kind: "setText", widget: Label, text: string}` | The run never changes a host value (3.4.2) |
+| The host applies the actions through its own code. An opaque value in an action, such as `widget`, is one the host gave the run | The host owns an opaque value's state (3.4.6 item 6) |
+| Limits apply to each event, so a slow handler cannot freeze the host | 3.6 |
+| One compiled program serves every event, so a run per event costs no compile | 3.2.2 |
+
+**The poisoned run.** A host that must stop a run at once, without waiting
+for the next test of the cancellation signal, keeps a flag for the run.
+
+1. A host function that must stop the run sets the flag and returns an error.
+2. Every later host call of that run returns an error at once, and does
+   nothing else.
+3. When the run ends, the host discards its outcome, whatever it is, if the
+   flag is set.
+4. A `catch` may catch the first error (3.5.3), but nothing the program does
+   after it reaches the host.
+5. The host may also cancel the run, which then stops within one test interval
+   of steps (3.6.1 item 3).
+
 ## 3.3 The environment
 
 ### 3.3.1 Declarations
@@ -265,6 +294,18 @@ in declared type text.
 
 ### 3.4.4 Numbers that cannot enter
 
+**An integer past 2^53 − 1 enters as a string.** A number of the language is a
+binary64 value, and a whole number has a magnitude of at most 2^53 − 1,
+9007199254740991 (`01-language.md` 6.2). This is the same in every
+implementation, TypeScript among them. So a host passes an integer of a
+larger magnitude as a string, both as a variable or a result and inside JSON
+text: an int64 SQL id such as `"9223372036854775807"`, and a timestamp in
+nanoseconds such as `"1700000000123456789"`. Given as a host integer, such a
+value fails where it is read (item 3). Written as an integer in JSON text that
+a program parses, it fails too (follow-on F6: `json.parse` gives
+`invalid-argument`, form `integer-range`). A program can compare such strings
+with `==`, use them as keys and render them, as any text.
+
 1. Three kinds of host number cannot enter the language: a value of a host
    integer type whose magnitude is over 2^53 − 1, a NaN, and an infinity.
 2. A value of a host floating type enters whenever it is finite, whatever its
@@ -313,6 +354,15 @@ in declared type text.
    test says they are the same (`01-language.md`). The test cannot fail and
    charges nothing beyond what `==` charges (`02-evaluation.md`).
 5. Opaque types and their declared methods are in Core.
+6. **The host owns an opaque value's state.** An opaque value stands for host
+   state. A method or a host function may change that state. A host may keep
+   an opaque value, from a variable, an argument or a result, across runs. The
+   run never changes it (3.4.2 item 3); the host does, through its own code.
+   The duties of 3.5.4 that keep values read-only and not kept apply to
+   language values, not to an opaque value's state or lifetime. A host call is
+   never cached (3.5.2 item 5), so `const a = w.text(); const _ =
+   w.setText("x"); w.text()` calls `text` twice, and the second call may give
+   another value.
 
 ### 3.4.7 Nesting past the limit
 
@@ -410,13 +460,23 @@ with `depth-exceeded`. No walk over host data loops for ever.
 
 | Duty | Effect when it is not met |
 | --- | --- |
-| Treat the arguments as read-only, and do not keep them after the call returns | Values shared between runs may change. Nothing checks this duty |
+| Treat the arguments that are language values (null, bool, number, string, list, map) as read-only, and do not keep them after the call returns. An opaque argument's state and lifetime are the host's (3.4.6 item 6) | Values shared between runs may change. Nothing checks this duty |
+| Until the run ends, do not change host memory that the run has already read in place as a language value (3.4.2), or received as a result of a host function or method, nor memory reachable from such a value. A method that changes its opaque value's state has this duty too | A `const` changes under the program. `const xs = w.items(); const _ = w.add(1); xs` must give the list as `w.items()` returned it. Nothing checks this duty |
 | Call `charge` in proportion to the work done: one step for each element visited, and text at the rate of `02-evaluation.md` | The step budget does not bound the run |
 | Call `allocate` before building a result whose size depends on the input | The allocation budget does not bound the run |
 | Stop when the cancellation signal says so, if the function can wait | The run cannot be interrupted while the function waits |
 
 A host function that charges nothing costs the one step of its call. The
 limits cover a host function exactly as far as it charges.
+
+The second duty keeps values unchangeable (`01-language.md` 6.1 item 3) where
+the host's own memory stands behind them: a result may share memory with host
+data (3.4.2 item 4), and a method may change its object (3.4.6 item 6). So a
+method that gives a view of an opaque value's state, such as `w.items()`,
+gives memory that no later call of the same run changes: a copy, or a
+snapshot that a change replaces rather than edits. The duty does not cover a
+variable the run has not yet asked for (3.4.1): the run gets the value the
+host supplies when it asks.
 
 ## 3.6 Limits and usage
 
@@ -447,6 +507,26 @@ host sets the limits as a declaration of the environment.
 
 Steps, allocation and depth are deterministic. The deadline and cancellation
 are not.
+
+Determinism covers the run's **interactions** with the host, in the order the
+run makes them:
+
+| Interaction | Holds |
+| --- | --- |
+| A read | The name of a variable the run asks the host for (3.4.1) |
+| A call | The host function's name, with its namespace, or the opaque type and the name for a method; the argument values, the receiver first for a method; each `charge` and `allocate` the function made, in order; and its outcome: a value, an error with its text, or a crash |
+
+1. Given the same program, version, environment, limits and variable values,
+   the interactions of a run are fixed by the outcomes and charges of the
+   calls before them. Two implementations make the same reads and the same
+   calls, with `==` arguments, in the same order, up to the first call that
+   differs in outcome or in charges.
+2. This holds up to the first failure of class `limit`. A run stopped by its
+   deadline or by cancellation makes a prefix of the interactions; where it
+   stops is not fixed (`02-evaluation.md` 9 item 3).
+3. A host may build on this rule. A journal of the host's own calls, given
+   back with their outcomes and their charges, gives the same run.
+   `02-evaluation.md` 9 item 6 states it for the evaluator.
 
 ### 3.6.3 Usage
 
@@ -696,7 +776,7 @@ else.
 | --- | --- | --- |
 | No I/O | The language and its library read no file, network, clock, environment or random source | What a host function does |
 | No mutation | The run never writes to a value it did not create | That a host function does not change its arguments. A result may share memory with host data |
-| Determinism | The same program, version, values, host function results and limits give the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
+| Determinism | The same program, version, values, host function results and charges, and limits give the same reads and calls of the host, in the same order (3.6.2), and the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
 | Steps | The work of the language and its library is proportional to the steps charged. The run stops at the same point in every implementation and version | The time one step takes. Work in a host function beyond what it charges |
 | Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken | Live memory. Host data. What a host function builds without charging |
 | Deadline | A run that passes its deadline, or that is cancelled, stops within one test interval of steps | That a blocked host function returns |

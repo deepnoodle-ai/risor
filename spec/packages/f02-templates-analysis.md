@@ -399,13 +399,27 @@ order. A binding gives the same contents in its own types.
    with spans in the whole text, so a host can analyze, check or compile it
    alone. An argument that reads a name the program binds does not compile
    alone. A lambda argument is not a program.
-6. **The calls are complete.** A run calls a host function only at a `Call`
-   whose name is free, or at a `MethodCall` of the second row that resolution
-   made a `Call` (`01-language.md` 4.2, 7.3). Each is reported. A call with
-   `lambda` true may run many times or not at all.
+6. **The calls of host functions are complete, except methods.** A run calls a
+   host function that is not a method of an opaque type only at a `Call` whose
+   name is free, or at a `MethodCall` of the second row that resolution made a
+   `Call` (`01-language.md` 4.2, 7.3). Each is reported. A call with `lambda`
+   true may run many times or not at all. A method of an opaque type is a host
+   function too (`03-host.md` 3.5.1 item 4); item 8 says how it shows.
 7. A call of a `const`-bound lambda by its name is not reported. The calls in
    its body are reported once, with `lambda` true, whether the lambda is called
    or not.
+8. **Methods of opaque values are not in `calls`.** A call of a method of an
+   opaque type is a `MethodCall` that resolution leaves a method call.
+   Analysis has no environment, so it cannot tell it from a call of a library
+   method. When its receiver is a free `Ident`, as in `w.text()`, it is
+   reported by the second row with the `namespace` `w`, which the host drops
+   by item 3, since `w` is a variable and not a namespace. On any other
+   receiver it is not reported at all: the `.text()` of `w.child().text()`,
+   and `v.text()` in `const v = w; v.text()`. An opaque value's state belongs
+   to the host and may change between runs and within one (`03-host.md` 3.4.6
+   item 6). So a host that caches results on this report treats a program
+   that may read an opaque value as volatile: two runs with the same report
+   and the same variable values may give different results.
 
 ### 3.7 Literal
 
