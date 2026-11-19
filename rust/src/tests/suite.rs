@@ -429,7 +429,7 @@ fn a_stub_with_no_type_reads_the_base() {
     assert!(crate::testing::from_text(text, false, &plain).is_err());
     let base = crate::env::Env::builder()
         .function("rate", "(code: string) => float !", |_, _| {
-            Err(crate::host::HostError("not in a test".into()))
+            Err(crate::host::HostError::Text("not in a test".into()))
         })
         .build()
         .expect("a base");

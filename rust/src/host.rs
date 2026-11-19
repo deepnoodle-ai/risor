@@ -149,14 +149,70 @@ impl<T: Host> Vars for std::collections::HashMap<String, T> {
     }
 }
 
-/// The error a host function returns: `function-error` with this text.
+/// The error a host function returns. The run sees `function-error`
+/// (`03-host.md` 3.5.3).
+///
+/// A failure of this binding converts with `?`: a host function that runs a
+/// nested program returns its [`Error`](crate::Error) as it is.
 #[derive(Clone, Debug, PartialEq)]
-pub struct HostError(pub String);
+pub enum HostError {
+    /// Any other error. Its text is the message of `function-error`.
+    Text(String),
+    /// A failure of a binding of Risor, such as that of a nested run
+    /// (3.5.3 item 5). The message of `function-error` is the message of its
+    /// first diagnostic, the inner diagnostic, whole; the inner diagnostic
+    /// is the run diagnostic's [`cause`](crate::Diagnostic::cause). Only the
+    /// message reaches the run: the code stays `function-error`, and the
+    /// inner code, class, span, path and data do not.
+    Risor(Box<crate::diag::Error>),
+}
 
-impl fmt::Display for HostError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+impl HostError {
+    /// The message of the run's `function-error`: the text, or the message
+    /// of the inner diagnostic.
+    pub fn message(&self) -> String {
+        match self {
+            HostError::Text(t) => t.clone(),
+            HostError::Risor(e) => match e.diagnostics.first() {
+                Some(d) => d.message.clone(),
+                None => e.to_string(),
+            },
+        }
     }
 }
 
-impl std::error::Error for HostError {}
+impl From<String> for HostError {
+    fn from(t: String) -> HostError {
+        HostError::Text(t)
+    }
+}
+
+impl From<&str> for HostError {
+    fn from(t: &str) -> HostError {
+        HostError::Text(t.to_string())
+    }
+}
+
+impl From<crate::diag::Error> for HostError {
+    fn from(e: crate::diag::Error) -> HostError {
+        HostError::Risor(Box::new(e))
+    }
+}
+
+impl fmt::Display for HostError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HostError::Text(t) => f.write_str(t),
+            HostError::Risor(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for HostError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            HostError::Text(_) => None,
+            HostError::Risor(e) => Some(e.as_ref()),
+        }
+    }
+}

@@ -207,11 +207,11 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
 /// duplicates removed (22.10, 6.1).
 pub fn sort_diagnostics(d: &mut Vec<Diagnostic>) {
     d.sort_by(|a, b| {
-        let ka = a.range.unwrap_or_default();
-        let kb = b.range.unwrap_or_default();
+        let ka = a.range().unwrap_or_default();
+        let kb = b.range().unwrap_or_default();
         (ka.start, ka.end, a.code).cmp(&(kb.start, kb.end, b.code))
     });
-    d.dedup_by(|a, b| a.code == b.code && a.range == b.range);
+    d.dedup_by(|a, b| a.code == b.code && a.range() == b.range());
 }
 
 struct Resolver<'a> {

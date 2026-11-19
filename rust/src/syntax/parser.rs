@@ -64,7 +64,7 @@ fn parse_with(text: &str, core: bool) -> Result<Expr, Error> {
         let toks = lex(&source).map_err(|d| {
             // Rows A1 to A5 are lexical: the lexer gives their codes.
             if core && !CORE_CODES.contains(&d.code) {
-                let span = d.range.unwrap_or_default();
+                let span = d.range().unwrap_or_default();
                 let msg = super::message::parse_message(
                     &source,
                     code::UNEXPECTED_CHARACTER,

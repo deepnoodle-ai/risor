@@ -143,10 +143,11 @@ fn lex_before(ch: &[char], cut: usize, strings: bool) -> Lexed {
         }
         Some(d) if d.code == CUT_OPEN => Lexed::Ok(r.tokens, closers(&r.open)),
         Some(d) if d.code == crate::diag::code::UNTERMINATED_STRING && strings => {
-            let s = d.range.map(|s| s.start as usize).unwrap_or(0);
+            let s = d.range().map(|s| s.start as usize).unwrap_or(0);
             let q = ch.get(s).copied().unwrap_or(' ');
             let triple = ch.get(s + 1) == Some(&q) && ch.get(s + 2) == Some(&q);
-            if !(q == '"' || q == '\'') || triple || d.range.is_none_or(|r| r.end as usize != cut) {
+            if !(q == '"' || q == '\'') || triple || d.range().is_none_or(|r| r.end as usize != cut)
+            {
                 return Lexed::Fail;
             }
             match lex_before(ch, s, false) {
@@ -171,7 +172,7 @@ fn inside_literal(ch: &[char], cut: usize) -> bool {
             matches!(
                 d.code,
                 crate::diag::code::UNTERMINATED_STRING | crate::diag::code::UNTERMINATED_COMMENT
-            ) && d.range.is_some_and(|r| r.end as usize == cut)
+            ) && d.range().is_some_and(|r| r.end as usize == cut)
         }
     }
 }

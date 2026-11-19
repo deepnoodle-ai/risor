@@ -38,7 +38,7 @@ fn env(reject: &[&str]) -> Env {
             Ok(Data::Str(String::new()))
         })
         .function("rate", "(code: string) => float !", |_, _| {
-            Err(HostError("x".into()))
+            Err(HostError::Text("x".into()))
         })
         .function("geo.distance", "(a: string, b: string) => float", |_, _| {
             Ok(Data::Float(0.0))

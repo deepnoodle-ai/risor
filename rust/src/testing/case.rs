@@ -18,7 +18,14 @@ pub struct Stub {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Answer {
     Result(Json),
+    /// `error` a string: an error with that text.
     Error(String),
+    /// `error` a diagnostic object (3.10.4 item 5): the failure of a nested
+    /// run, with one diagnostic of this code and message.
+    Failure {
+        code: String,
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -928,14 +935,22 @@ fn read_row(r: &Json) -> Row {
     let count = |k: &str| r.get(k).and_then(|v| v.as_integer()).unwrap_or(0.0) as u64;
     Row {
         args: r.get("args").and_then(|a| a.as_arr()).map(|a| a.to_vec()),
-        answer: match r.get("result") {
-            Some(v) => Answer::Result(v.clone()),
-            None => Answer::Error(
-                r.get("error")
-                    .and_then(|e| e.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            ),
+        answer: match (r.get("result"), r.get("error")) {
+            (Some(v), _) => Answer::Result(v.clone()),
+            (None, Some(Json::Obj(_))) => {
+                let e = r.get("error");
+                let s = |k: &str| {
+                    e.and_then(|e| e.get(k))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                Answer::Failure {
+                    code: s("code"),
+                    message: s("message"),
+                }
+            }
+            (None, e) => Answer::Error(e.and_then(|e| e.as_str()).unwrap_or_default().to_string()),
         },
         charge: count("charge"),
         allocate: count("allocate"),
@@ -1893,6 +1908,28 @@ fn check_stub(v: &Json) -> V<()> {
     }
 }
 
+/// A row's `error`: a string, or a diagnostic object of exactly `code`, a
+/// code, and `message`, a string (3.10.4 item 5, 3.10.10 item 10).
+fn check_error(x: &Json) -> V<()> {
+    if x.as_str().is_some() {
+        return Ok(());
+    }
+    let bad = || "error is neither a string nor a diagnostic object".to_string();
+    let m = x.as_obj().ok_or_else(bad)?;
+    let code = m
+        .iter()
+        .find(|(k, _)| k == "code")
+        .and_then(|(_, v)| v.as_str());
+    let message = m
+        .iter()
+        .find(|(k, _)| k == "message")
+        .and_then(|(_, v)| v.as_str());
+    match (code, message) {
+        (Some(c), Some(_)) if m.len() == 2 && is_code(c) => Ok(()),
+        _ => Err(bad()),
+    }
+}
+
 fn check_row(r: &Json) -> V<()> {
     let m = r.as_obj().ok_or("a row is not an object")?;
     for (k, x) in m {
@@ -1901,9 +1938,7 @@ fn check_row(r: &Json) -> V<()> {
                 x.as_arr().ok_or("args is not an array")?;
             }
             "result" => {}
-            "error" => {
-                x.as_str().ok_or("error is not a string")?;
-            }
+            "error" => check_error(x)?,
             "charge" | "allocate" => check_count(x).map_err(|e| format!("{k}: {e}"))?,
             _ => return Err(format!("a row has the field {k:?}")),
         }

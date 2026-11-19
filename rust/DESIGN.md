@@ -409,6 +409,23 @@ construction here: `Call` borrows the run's meter mutably for the duration of
 one call, and a host implementation is a `'static` closure that receives
 `&mut Call<'_>`, so it cannot keep the handle past its return.
 
+## Host errors
+
+A host function returns `Result<Data, HostError>`. `HostError` is an enum of
+two variants, so the binding tells a Risor failure from any other error by
+its type, which `03-host.md` 3.5.3 item 5 leaves to the binding:
+
+| Variant | Made by | The run's `function-error` |
+| --- | --- | --- |
+| `Text(String)` | `"no".into()`, or `HostError::Text` | The text is the message. No cause |
+| `Risor(Box<Error>)` | `?` on any `Result<_, risor::Error>`, such as a nested `parse`, `compile` or `run` | The message of the error's first diagnostic, the inner diagnostic, whole. The inner diagnostic is `Diagnostic::cause` |
+
+The cause is a public field, `cause: Option<Box<Diagnostic>>`, named as the
+specification names it (3.7.1). `std::error::Error::source` gives the same
+diagnostic, on `Diagnostic` and on `Error`, so a chain of nested runs walks
+with the standard trait. The renderings never write it (`f08-errors.md` 6).
+A plain text error has no cause: its text is already the message.
+
 ## Package F1, host types
 
 - **Shared types.** A type's element and record slots are `Arc`, not `Box`,
