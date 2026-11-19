@@ -1653,13 +1653,15 @@ impl<'h> Run<'h> {
     }
 
     /// A field read `.name` or `?.name`, the step of a chain. `None` is a
-    /// null receiver of an optional read.
+    /// null receiver of an optional read. The last step of a coalesced read
+    /// under `??` gives null for an absent key (`01-language.md` 6.6).
     #[inline]
-    fn member(
+    pub(crate) fn member(
         &mut self,
         v: Value<'h>,
         name: &str,
         optional: bool,
+        coalesced: bool,
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         match &v {
@@ -1680,7 +1682,7 @@ impl<'h> Run<'h> {
         match found {
             Some(Value::BadNum) => Err(self.host_number(Some(span))),
             Some(x) => Ok(Some(x)),
-            None if optional => Ok(Some(Value::Null)),
+            None if optional || coalesced => Ok(Some(Value::Null)),
             None => Err(fail(
                 "missing-field",
                 "field",
@@ -1719,7 +1721,10 @@ impl<'h> Run<'h> {
         let ast = self.ast;
         match &ast.nodes[s.index()].kind {
             NodeKind::Each { .. } => self.each_step(s, v),
-            NodeKind::Member { name, optional, .. } => self.member(v, name, *optional, ast.span(s)),
+            NodeKind::Member { name, optional, .. } => {
+                let coalesced = self.p.coalesced[s.index()];
+                self.member(v, name, *optional, coalesced, ast.span(s))
+            }
             NodeKind::Index { .. } => self.index_step(s, v),
             NodeKind::MethodCall { .. } => self.method(s, v),
             _ => Err(self.internal(ast.span(s))),
@@ -1764,7 +1769,8 @@ impl<'h> Run<'h> {
             return self.index_receiver(&v, *optional, span);
         }
         let iv = self.eval(*index)?;
-        self.index_read(v, k, iv, *optional, span)
+        let coalesced = self.p.coalesced[s.index()];
+        self.index_read(v, k, iv, *optional, coalesced, span)
     }
 
     /// The receiver of an index that is not a list, a string or a map:
@@ -1795,6 +1801,7 @@ impl<'h> Run<'h> {
         k: Kind,
         iv: Value<'h>,
         optional: bool,
+        coalesced: bool,
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         if iv.is_null() {
@@ -1813,7 +1820,7 @@ impl<'h> Run<'h> {
                 self.charge(1 + size(key.as_str()))?;
                 match v.field(key.as_str()) {
                     Some(x) => Ok(Some(self.read(x, span)?)),
-                    None if optional => Ok(Some(Value::Null)),
+                    None if optional || coalesced => Ok(Some(Value::Null)),
                     None => Err(fail(
                         "missing-field",
                         "key",

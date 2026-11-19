@@ -215,6 +215,9 @@ struct Checker<'a> {
     /// F5 5.2 item 3: the nodes whose type a fact of a test of a field
     /// narrowed where they stand.
     field_narrowed: std::collections::HashSet<u32>,
+    /// For each node, whether it is the last step of a coalesced read under
+    /// `??` (`01-language.md` 6.6), read by the column of 9.2 for one.
+    coalesced: Vec<bool>,
     lambda_facts: HashMap<u32, Vec<Path>>,
     uses: HashMap<u32, usize>,
     body_checks: usize,
@@ -298,6 +301,7 @@ impl<'a> Checker<'a> {
             sites: Vec::new(),
             types: vec![Ty::never(); parsed.ast.nodes.len()],
             field_narrowed: std::collections::HashSet::new(),
+            coalesced: parsed.ast.coalesced_reads(),
             lambda_facts: HashMap::new(),
             uses,
             body_checks: 0,
@@ -2087,7 +2091,11 @@ impl<'a> Checker<'a> {
                             self.types[index.index()] = Ty::lit(&k);
                         }
                         let present = next_path.as_ref().is_some_and(|p| self.covered(p));
-                        self.read_field(&cur, &k, ks, rs, optional, present)
+                        // 9.2: the last step of a coalesced read is read by
+                        // its own column, which on a record is the column
+                        // "Optional". The null step before it stays plain.
+                        let coalesced = self.coalesced[s.index()];
+                        self.read_field(&cur, &k, ks, rs, optional || coalesced, present)
                     }
                 }
             };

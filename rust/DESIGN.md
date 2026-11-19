@@ -214,6 +214,16 @@ lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
 
+**Coalesced reads.** `Ast::coalesced_reads` marks, once per program, the
+last step of each coalesced read under `??` (`01-language.md` 6.6): every
+operand of a `??` chain but the last, counted across the whole `??` tree,
+whose node is a plain `Member` or a plain `Index` by a `String` node. The
+mark depends on the nodes alone. The evaluator gives null for an absent key
+at a marked step, and the checker reads a marked step on a record by the
+column of `05-types.md` 9.2 for a coalesced read, which is the column
+"Optional" after a plain null step. Both read the same mark, so a checked
+and an unchecked run agree.
+
 ### The compiled form
 
 `compile` also builds, for the hot node kinds, a closure per node

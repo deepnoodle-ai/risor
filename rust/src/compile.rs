@@ -72,6 +72,9 @@ pub struct Program {
     pub(crate) code: Vec<Option<crate::eval::code::Code>>,
     /// The slots of each lambda's parameters, when all are plain names.
     pub(crate) params: Vec<Option<Box<[Option<u32>]>>>,
+    /// For each node, whether it is the last step of a coalesced read under
+    /// `??` (`01-language.md` 6.6).
+    pub(crate) coalesced: Vec<bool>,
     /// For each variable of the environment, its place among the variables
     /// the program reads (`u32::MAX` for one it never reads); and their
     /// count.
@@ -137,12 +140,14 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
             }
         }
     }
-    let code = crate::eval::code::build(&parsed.ast, &r.res, &var_index);
+    let coalesced = parsed.ast.coalesced_reads();
+    let code = crate::eval::code::build(&parsed.ast, &r.res, &var_index, &coalesced);
     let params = crate::eval::code::params(&parsed.ast, &r.res);
     Ok(Program {
         env: env.clone(),
         code,
         params,
+        coalesced,
         var_index,
         vars_read: vars_read as usize,
         parsed,
