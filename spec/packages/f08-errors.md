@@ -305,6 +305,11 @@ item 2 keeps. They are tried in this order.
 7. E22 covers `{max-retries: 3}` and `const {max-retries: r} = m;`, and comes
    before E23, so `x => {max-retries: 1}` is `unquoted-key`. `{a - b: 1}`, with
    spaces, stays `unexpected-token`.
+8. A word after `.` or `?.` is a field's name, whatever the word
+   (`01-language.md` 14.2), and it ends an operand. No row reads it as the word
+   of a form: `a.if = 1` and `a.try = 1` are E7, `a.if !is int` is E2's
+   `negated-is` (F4 2.6), and `a.try x` and `a.if x` stay `unexpected-token`,
+   where E6 and E4 name the word `try` of a `Try` and the word `if` of an `If`.
 
 ### 2.8 Spans
 
