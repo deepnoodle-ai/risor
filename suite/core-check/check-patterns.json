@@ -69,6 +69,9 @@
   {"name": "const {action, zz} = event; action", "source": "const {action, zz} = event; action", "expect": {"type": "string", "sites": [{"class": "dynamic", "span": [1, 16, 1, 18]}]}},
   {"name": "const {a} = n; a + \"s\"", "source": "const {a} = n; a + \"s\"", "expect": {"phase": "check", "diagnostics": [{"code": "kind", "span": [1, 13, 1, 14]}]}},
   {"name": "const {a: x, b = x} = r; b", "source": "const {a: x, b = x} = r; b", "expect": {"type": "int | string", "sites": []}},
-  {"name": "gate.items.map(({ms = 0}) => ms)", "source": "gate.items.map(({ms = 0}) => ms)", "expect": {"type": "float[]", "sites": []}}
+  {"name": "gate.items.map(({ms = 0}) => ms)", "source": "gate.items.map(({ms = 0}) => ms)", "expect": {"type": "float[]", "sites": []}},
+  {"name": "a field missing from a callback's map pattern fails at the pattern's site", "source": "vs.map(({tags: k}) => k)", "env": "{vs: any[]}", "vars": {"vs": [{}]}, "expect": {"phase": "run", "diagnostics": [{"code": "missing-field", "span": [1, 10, 1, 17], "class": "dynamic"}]}},
+  {"name": "the same in a const-bound lambda called by name", "source": "const f = ({tags: k}) => k; f(v)", "env": "{v: any}", "vars": {"v": {}}, "expect": {"phase": "run", "diagnostics": [{"code": "missing-field", "span": [1, 13, 1, 20], "class": "dynamic"}]}},
+  {"name": "a callback's map pattern given a number fails at the pattern's site", "source": "vs.map(({a}) => a)", "env": "{vs: any[]}", "vars": {"vs": [1]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 9, 1, 12], "class": "dynamic"}]}}
  ]
 }
