@@ -67,7 +67,6 @@ func TestValid(t *testing.T) {
 	assert.Equal(t, len(f.Cases), 1)
 }
 
-// 03-host.md 3.10.10, item by item.
 // 03-host.md 3.10.4 item 5: a row's error may be a diagnostic object.
 func TestStubDiagnostic(t *testing.T) {
 	f, err := load(t, `[{"name": "a", "source": "f()", "expect": {},
@@ -87,6 +86,7 @@ func TestStubDiagnostic(t *testing.T) {
 	}
 }
 
+// 03-host.md 3.10.10, item by item.
 func TestInvalid(t *testing.T) {
 	c := func(fields string) string {
 		return `[{"name": "x", "source": "1", ` + fields + `}]`
