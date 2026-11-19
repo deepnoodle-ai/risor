@@ -224,9 +224,11 @@ pub enum NodeKind {
     },
     /// 24
     Match { subject: NodeId, arms: Vec<NodeId> },
-    /// Kind 25. `literals` is `None` for the default arm `_`.
+    /// Kind 25. `literals` is `None` for the default arm `_`. `guard` is
+    /// the expression of `if (e)`, package F17 (`f17-recursion.md` 2.2).
     Arm {
         literals: Option<Vec<ArmLit>>,
+        guard: Option<NodeId>,
         result: NodeId,
     },
     /// 26

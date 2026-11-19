@@ -1592,7 +1592,12 @@ impl<'a> B<'a> {
     }
 
     fn arm(&mut self, a: NodeId) -> DocId {
-        let NodeKind::Arm { literals, result } = self.kind(a) else {
+        let NodeKind::Arm {
+            literals,
+            guard,
+            result,
+        } = self.kind(a)
+        else {
             return self.empty();
         };
         let mut v = Vec::new();
@@ -1613,6 +1618,24 @@ impl<'a> B<'a> {
                     }
                 }
             }
+        }
+        // F17 7.1: `sp "if" sp "(" g(i(S ‹guard›) S) ")"`, the guard
+        // unindented as the test of an `if` is (2.8 item 4).
+        if let Some(g) = guard {
+            let lp = self.tb(self.outer(*g).start);
+            let rp = self.partner[lp].unwrap_or(lp);
+            v.push(self.sp());
+            v.push(self.tk(lp.saturating_sub(1)));
+            v.push(self.sp());
+            v.push(self.tk(lp));
+            let s1 = self.soft();
+            let gd = self.node(*g, false);
+            let gl = self.list(vec![s1, gd]);
+            let gi = self.indent(gl);
+            let s2 = self.soft();
+            let gg = self.list(vec![gi, s2]);
+            v.push(self.group(gg));
+            v.push(self.tk(rp));
         }
         v.push(self.sp());
         let arrow = self.tb(self.outer(*result).start);
@@ -2362,7 +2385,11 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 kids.push(*subject);
                 kids.extend(arms);
             }
-            NodeKind::Arm { literals, result } => {
+            NodeKind::Arm {
+                literals,
+                guard,
+                result,
+            } => {
                 match literals {
                     None => out.push_str(" _"),
                     Some(ls) => {
@@ -2370,6 +2397,10 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                             let _ = write!(out, " {:?}", l.lit);
                         }
                     }
+                }
+                if let Some(g) = guard {
+                    out.push_str(" if");
+                    kids.push(*g);
                 }
                 kids.push(*result);
             }
