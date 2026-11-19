@@ -17,7 +17,7 @@ import (
 )
 
 // libCall is one call of a library entry. A callback argument is a
-// *lambdaCode.
+// *fn.
 type libCall struct {
 	e       *library.Entry
 	info    *entryInfo
@@ -352,7 +352,7 @@ func (r *run) testArgs(c *libCall) {
 		if p.callback {
 			// A value where a function takes a callback: no kind is
 			// accepted there (F17 5.5 item 3).
-			if _, ok := v.(*lambdaCode); !ok {
+			if _, ok := v.(*fn); !ok {
 				r.raise(fail("wrong-kind", "argument", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
 			}
 			continue
@@ -408,10 +408,11 @@ func (r *run) elemFail(tested int, f *failure) {
 // callback calls a lambda for one element: 2 steps, the depth test, the
 // call (04-library.md 4.4).
 // The index i is made a value only when the lambda has a parameter for it.
-func (r *run) callback(c *libCall, lam *lambdaCode, e any, i int) any {
+func (r *run) callback(c *libCall, lam *fn, e any, i int) any {
 	r.step(2)
 	c.idx = i
 	r.enterCall(c.measure)
+	fp, base := r.enterFn(lam)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, e, true)
 	}
@@ -422,15 +423,17 @@ func (r *run) callback(c *libCall, lam *lambdaCode, e any, i int) any {
 		}
 	}
 	v := lam.body(r)
+	r.leave(fp, base)
 	r.depth -= c.measure
 	return v
 }
 
 // callback2 is callback with two values before the index, for reduce.
-func (r *run) callback2(c *libCall, lam *lambdaCode, a, e any, i int) any {
+func (r *run) callback2(c *libCall, lam *fn, a, e any, i int) any {
 	r.step(2)
 	c.idx = i
 	r.enterCall(c.measure)
+	fp, base := r.enterFn(lam)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, a, true)
 	}
@@ -444,6 +447,7 @@ func (r *run) callback2(c *libCall, lam *lambdaCode, a, e any, i int) any {
 		}
 	}
 	v := lam.body(r)
+	r.leave(fp, base)
 	r.depth -= c.measure
 	return v
 }
@@ -905,7 +909,7 @@ var implemented = map[string]libFunc{
 
 	// 5.4 Lists.
 	"list.filter": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		// A first capacity of at most 8, a constant, saves the first growths
 		// without a size taken from the data.
 		out := make([]any, 0, min(n, 8))
@@ -924,7 +928,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.map": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		out := make([]any, n)
 		for i := 0; i < n; i++ {
 			out[i], _, _ = r.callbackAt(c, lam, i)
@@ -935,7 +939,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.flatMap": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		var parts []any
 		k := 0
 		for i := 0; i < n; i++ {
@@ -958,7 +962,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.some": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		for i := 0; i < n; i++ {
 			if v, _, _ := r.callbackAt(c, lam, i); value.Truthy(v) {
 				return true
@@ -967,7 +971,7 @@ var implemented = map[string]libFunc{
 		return false
 	},
 	"list.every": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		for i := 0; i < n; i++ {
 			if v, _, _ := r.callbackAt(c, lam, i); !value.Truthy(v) {
 				return false
@@ -976,7 +980,7 @@ var implemented = map[string]libFunc{
 		return true
 	},
 	"list.find": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		for i := 0; i < n; i++ {
 			v, e, boxed := r.callbackAt(c, lam, i)
 			if value.Truthy(v) {
@@ -989,7 +993,7 @@ var implemented = map[string]libFunc{
 		return nil
 	},
 	"list.count": func(r *run, c *libCall) any {
-		lam, k, n := c.args[0].(*lambdaCode), 0, c.n()
+		lam, k, n := c.args[0].(*fn), 0, c.n()
 		for i := 0; i < n; i++ {
 			if v, _, _ := r.callbackAt(c, lam, i); value.Truthy(v) {
 				k++
@@ -998,7 +1002,7 @@ var implemented = map[string]libFunc{
 		return numBox(float64(k))
 	},
 	"list.reduce": func(r *run, c *libCall) any {
-		lam, acc, n := c.args[0].(*lambdaCode), c.args[1], c.n()
+		lam, acc, n := c.args[0].(*fn), c.args[1], c.n()
 		for i := 0; i < n; i++ {
 			e, _ := c.elemArg(r, lam, i)
 			acc = r.callback2(c, lam, acc, e, i)
@@ -1051,7 +1055,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.sortBy": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		elems, keys := make([]any, n), make([]any, n)
 		for i := 0; i < n; i++ {
 			elems[i] = c.elem(r, i)
@@ -1073,7 +1077,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.groupBy": func(r *run, c *libCall) any {
-		lam, n := c.args[0].(*lambdaCode), c.n()
+		lam, n := c.args[0].(*fn), c.n()
 		groups := map[string][]any{}
 		var w int64
 		for i := 0; i < n; i++ {

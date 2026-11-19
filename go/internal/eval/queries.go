@@ -32,7 +32,7 @@ func init() {
 
 // keysOf calls f once for each element, in order (2 steps each).
 func keysOf(r *run, c *libCall) (elems, keys []any) {
-	lam, n := c.args[0].(*lambdaCode), c.n()
+	lam, n := c.args[0].(*fn), c.n()
 	elems, keys = make([]any, n), make([]any, n)
 	for i := 0; i < n; i++ {
 		elems[i] = c.elem(r, i)
@@ -110,7 +110,7 @@ func uniqueBy(r *run, c *libCall) any {
 // stringKeys calls f for each element and tests each result when that call
 // returns: a string, else wrong-kind, template result (6.2).
 func stringKeys(r *run, c *libCall) (elems []any, keys []string, w int64) {
-	lam, n := c.args[0].(*lambdaCode), c.n()
+	lam, n := c.args[0].(*fn), c.n()
 	elems, keys = make([]any, n), make([]string, n)
 	for i := 0; i < n; i++ {
 		elems[i] = c.elem(r, i)
@@ -158,7 +158,7 @@ func countBy(r *run, c *libCall) any {
 // mapValues is 6.9: the keys put in key order first, then f for each entry
 // with its value and its key.
 func mapValues(r *run, c *libCall) any {
-	lam := c.args[0].(*lambdaCode)
+	lam := c.args[0].(*fn)
 	n := value.Len(c.recv)
 	var w int64
 	value.ForEachKey(c.recv, func(k string) { w += value.Weight(k) })
@@ -172,6 +172,7 @@ func mapValues(r *run, c *libCall) any {
 		r.step(2)
 		c.idx = i // F8 4.2 item 2: the key's position
 		r.enterCall(c.measure)
+		fp, base := r.enterFn(lam)
 		if lam.nparams > 0 {
 			lam.bind(r, 0, v, true)
 		}
@@ -179,6 +180,7 @@ func mapValues(r *run, c *libCall) any {
 			lam.bind(r, 1, k, true)
 		}
 		out[k] = lam.body(r)
+		r.leave(fp, base)
 		r.depth -= c.measure
 	}
 	r.libUnits(c, f)

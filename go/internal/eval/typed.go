@@ -228,8 +228,9 @@ func (c *compiler) typedChain(x syntax.Node, steps []*stepCode, general func(k i
 	if b.Kind == static.Value {
 		slot := b.Slot
 		c.slotUses[slot]++
+		pl := c.place(slot)
 		return func(r *run) any {
-			rv, ref, ok := p.slotRoot(r.slots[slot])
+			rv, ref, ok := p.slotRoot(r.get(pl))
 			if ok {
 				if fv, ok := p.walk(rv); ok {
 					r.step(p.total)
@@ -237,7 +238,7 @@ func (c *compiler) typedChain(x syntax.Node, steps []*stepCode, general func(k i
 				}
 			}
 			if ref != nil {
-				r.slots[slot] = ref.box(r)
+				r.set(pl, ref.box(r))
 			}
 			return fallback(r)
 		}, k
@@ -426,7 +427,7 @@ func (e *elemRef) box(r *run) any { return e.c.elem(r, e.i) }
 // elemArg gives element i for a lambda: by reference when the lambda takes
 // it so and the receiver has the planned Go type, else the value. boxed
 // reports a value.
-func (c *libCall) elemArg(r *run, lam *lambdaCode, i int) (any, bool) {
+func (c *libCall) elemArg(r *run, lam *fn, i int) (any, bool) {
 	if ri := lam.ref; ri != nil {
 		if !c.rvSet {
 			c.rvSet = true
@@ -451,7 +452,7 @@ func (c *libCall) elemArg(r *run, lam *lambdaCode, i int) (any, bool) {
 
 // callbackAt calls the lambda for element i. It gives the result, and the
 // element when it was made a value.
-func (r *run) callbackAt(c *libCall, lam *lambdaCode, i int) (any, any, bool) {
+func (r *run) callbackAt(c *libCall, lam *fn, i int) (any, any, bool) {
 	e, boxed := c.elemArg(r, lam, i)
 	return r.callback(c, lam, e, i), e, boxed
 }
@@ -526,9 +527,9 @@ func (c *compiler) typedStrEq(x syntax.Node, lit string, neg bool, general code)
 		return (s == lit) != neg, true
 	}
 	if b.Kind == static.Value {
-		slot := b.Slot
+		pl := c.place(b.Slot)
 		return func(r *run) any {
-			rv, ref, ok := p.slotRoot(r.slots[slot])
+			rv, ref, ok := p.slotRoot(r.get(pl))
 			if ok {
 				if fv, ok := p.walk(rv); ok {
 					if v, ok := eq(r, fv); ok {
@@ -537,7 +538,7 @@ func (c *compiler) typedStrEq(x syntax.Node, lit string, neg bool, general code)
 				}
 			}
 			if ref != nil {
-				r.slots[slot] = ref.box(r)
+				r.set(pl, ref.box(r))
 			}
 			return general(r)
 		}
