@@ -1,4 +1,4 @@
-// The state of one run: usage, the four limits, slots, variables (02 sections 5, 6, 8).
+// The state of one run: usage, the four limits, slots, frames, variables (02 sections 5, 6, 8; f17 11.5).
 
 import type { Span } from "../syntax/source.ts";
 import { BAD_NUMBER, Classifier, readHost } from "../value/value.ts";
@@ -38,11 +38,21 @@ function supplied(vars: VarSource, name: string): unknown {
   return v === undefined ? ABSENT_VAR : v;
 }
 
+/** The frame of the program: its names are the run's slots, so it holds nothing (f17 11.5). */
+const PROGRAM_FRAME: unknown[] = [];
+
 export class Run {
   steps = 0;
   units = 0;
   /** The depth count of the calls in progress (02 8.4). */
   depth = 0;
+  /**
+   * The frame of the call in progress (f17 11.5): the names its lambda binds,
+   * at index 1 and up, and at index 0 the frame of the call in which the
+   * lambda was evaluated, or null for a lambda of the program. The program's
+   * own names are in `slots`.
+   */
+  frame: unknown[] = PROGRAM_FRAME;
   readonly stepLimit: number;
   readonly unitLimit: number;
   readonly depthLimit: number;
