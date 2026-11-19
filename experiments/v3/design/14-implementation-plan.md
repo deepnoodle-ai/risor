@@ -302,8 +302,9 @@ is offered. The owner is asked.
 1. Merge PR #642, which reserves `regexp` in Core. It waits on one Rust
    clippy lint, `needless_range_loop` under Rust 1.100, at
    `rust/src/syntax/parser.rs:2309`.
-2. Reconcile PR #643: plans 16 to 20 trimmed to D52 to D56 as the owner left
-   them, `21` revised, and this section. That PR carries it.
+2. Reconcile PR #643: plan 16 removed (D52), plans 17 to 20 trimmed to D53
+   to D56 as the owner left them, D57 and D58 settled, `21` revised, and
+   this section. That PR carries it.
 3. F8 3.1 item 2 says `suite/messages-parse.json` has 96 templates. The file
    has 58 codes and 97 templates (ran, 2026-11-19). The chapter is corrected
    in track B.
@@ -326,7 +327,11 @@ is offered. The owner is asked.
    By the measurements the TypeScript binding has less than 1.5 times
    headroom at either number in a Web Worker, so it first spends fewer frames
    on a call through a library entry (`18` 9). If it still cannot meet 400,
-   the fallback of 300 is taken.
+   the fallback of 300 is taken. If 300 fails the same test, the limit is
+   the largest multiple of 50 that passes it, and not below the default of
+   200. The default already passes: 1.5 times 200 is 300, and the worst
+   measured form ran to 435. (A ruling to record, not yet seen by the
+   owner.)
 2. **The Core amendments**, in one pull request, in `spec/core/`,
    `suite/core-run/`, `suite/core-check/`, `go/`, `ts/` and `rust/`:
    - absence under `??` for every operand of a chain but the last (`20` 3.1),

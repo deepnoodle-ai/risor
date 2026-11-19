@@ -488,7 +488,9 @@ no stack fault):
 Safari and Firefox were not measured.
 
 1. The fallback is 300, if the TypeScript binding cannot run the deepest
-   forms at 400 with 1.5 times headroom in a browser Web Worker.
+   forms at 400 with 1.5 times headroom in a browser Web Worker. If 300
+   fails the same test, the limit is the largest multiple of 50 that passes
+   it, and not below the default of 200 (`14` 5.3 track B).
 2. **Not met today, either way (I, from the table).** 1.5 times 400 is 600,
    and 1.5 times 300 is 450. The Web Worker ran `map` to 435. So the
    TypeScript binding must spend fewer JavaScript frames on a Risor call

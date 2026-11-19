@@ -218,7 +218,8 @@ fix. The first rows:
 | `print`, `println`, `printf` | function | `Risor has no output: a program's only output is its value` |
 | `undefined` | name | `use null` |
 | `await` | function | `remove await: a host call gives its value directly` |
-| `includes` | method of a list or a string | `use the operator in: x in xs` |
+| `includes`, `contains` | method of a list or a string | `use the operator in: x in xs` |
+| `has` | method of a list or a map | `use the operator in: x in xs, or key in m` |
 | `push` | method of a list | `values never change: build a new list with [...xs, x]` |
 | `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
 | `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
@@ -402,7 +403,8 @@ The largest cost is the suite: cases for every template and every foreign row.
 | `spec/core/05-types.md` | 9.2 | The column for a coalesced read (3.1) |
 | | 16.1, row `maybe-absent` | Not reported for a coalesced read |
 | | 21 (worked examples) | Cases for 20-1, with and without a rest |
-| `spec/core/03-host.md` | 3.5.3 | The case of 3.6; item 2 amended for `data` |
+| `spec/core/03-host.md` | 3.4.8 item 2 | The exception of 3.1: a coalesced read gives the default for an absent key, whatever the declared type says |
+| | 3.5.3 | The case of 3.6; item 2 amended for `data` |
 | | 3.8.3 item 3 | "A fix taken by exact name from a table of the specification is not a suggestion found by search" |
 | `spec/core/04-library.md` | 1.3, row `wrong` | Normative: "Names people try. The hints of F8 3.7 use them" |
 | | 2.3 | The last paragraph: a diagnostic gives the right name in its message, by F8 |

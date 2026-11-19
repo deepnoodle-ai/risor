@@ -317,14 +317,17 @@ A new informative section, `03-host.md` 3.2.5, **Hosts that live long**:
 6. The compiled program is shared by every event (3.2.2), so a run per event
    costs no compile (measured in #640: 6.0 µs a call for a small tool, against
    62.8 µs for the compile; ran: Go 1.26.0, darwin/arm64).
-7. **The poisoned run.** A host that must stop a run at once, without waiting
-   for the next cancellation check, keeps a flag for the run. A host function
-   that must stop it sets the flag and returns an error. Every later host call
-   of that run returns an error at once, and the host discards the run's
-   outcome, whatever it is, when the flag is set. A `catch` may catch the first
-   error, but nothing the program does after it reaches the host. The host may
-   also cancel the run, which then stops within one test interval (`03-host.md`
-   3.6.1). This needs no run code.
+7. **The poisoned run.** A host that must cut a run off from the host at
+   once, without waiting for the next cancellation check, keeps a flag for
+   the run. A host function that must cut it off sets the flag and returns an
+   error. Every later host call of that run returns an error at once, and the
+   host discards the run's outcome, whatever it is, when the flag is set. The
+   flag does not stop the run. A `catch` may catch the first error, and the
+   program may then go on computing; nothing it does reaches the host. What
+   stops the run is cancellation, within one test interval (`03-host.md`
+   3.6.1), so the host also cancels it. Without cancellation the run ends
+   where its limits end it, and a host that turns steps off and sets no
+   deadline has no bound on that. This needs no run code.
 
 ## 8. Dropped on 2026-11-19, and why
 
@@ -335,7 +338,7 @@ added later without a break unless the row says otherwise.
 | --- | --- | --- |
 | 19-2 | Case fields `calls` and `reads` to test the sequence of 19-1 | Their main use was replay. 19-1 is a promise each binding tests in its own tests. A suite field can be added later if the suite must test 19-1 directly |
 | 19-3 | A replay identity: SHA-256 of source and description, limits, entry, and a host key | Replay is the host's own work. A host that journals knows its own key |
-| 19-4 | A run code `suspended` that `catch` never catches | Core stays at 19 run codes. A run code cannot be added after 3.0 (`03-host.md` 3.7.4 item 4), so this is the one item here that cannot come back later. A host that must stop a run uses the poisoned run of 7.1 item 7 |
+| 19-4 | A run code `suspended` that `catch` never catches | Core stays at 19 run codes. A run code cannot be added after 3.0 (`03-host.md` 3.7.4 item 4), so this is the one item here that cannot come back later. A host that must stop a run cancels it, and the run then ends within one test interval; the poisoned run of 7.1 item 7 only keeps the run from reaching the host until it ends |
 | 19-5 | Journals record charges, and opaque values by host ids | Replay is the host's own work. 19-1 tells a host that a journal must replay the charges |
 | 19-6 | `remaining()` on the call handle; `runWithin` and `callWithin`, runs nested in the caller's budget | A nested run is a host's own run. A host that calls a tool from a tool charges the caller with `Call.Charge`, after the fact (#640 measured the gap). Within one file, entry points call each other in one run and budget (`17` 4.1) |
 | 19-7 | Effect marks `read` and `write`; `readOnly` in F2 | No language rule reads them once prefetch is gone. A host keeps its own list of read-only functions, as #640 did |

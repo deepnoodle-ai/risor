@@ -67,8 +67,11 @@ Data from JSON is often missing a field. `20` 3.1 lets `??` read a field that
 may be absent, for every operand of a chain but the last:
 
 ```js
-order.discount?.code ?? "none"
+order.coupon ?? "none"
 ```
+
+Only the last step is read this way. In `order.discount.code ?? "none"`, an
+`order` with no `discount` still fails at `order.discount`.
 
 It is a Core amendment in track B, and needs the owner to confirm the
 exception to `03-host.md` 3.4.8 item 2.
@@ -136,8 +139,9 @@ glob(file.name, "*.pdf") && glob(file.path, "reports/*/2026-*")
 
 | Rule | Why |
 | --- | --- |
-| `*` is any run of code points, `?` is one code point; nothing else is special | Small enough to be identical in three implementations |
-| No `/` rule, no `**`, no classes | Each is a question with several answers in other tools. They can come later without a break |
+| `*` is any run of code points, `?` is one code point | Small enough to be identical in three implementations |
+| `[`, `]`, `{`, `}`, `\` and two `*` in a row are refused in a pattern: an error, not a literal | Classes, alternation, an escape and `**` are each a question with several answers in other tools. Refused now, each can come later without changing the result of a pattern that runs today. A pattern that needs one of these characters as itself waits for the escape |
+| `*` crosses `/`, and that does not change | A path-aware match, if it comes, is another entry or an option, never a new meaning for `*` |
 | Cost is bounded up front by pattern length × text length | Exact in every implementation, whatever the matcher does |
 
 Extraction (#640's `"Order #1234 shipped"`) waits. If it comes, a scan
