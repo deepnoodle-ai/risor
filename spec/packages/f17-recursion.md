@@ -786,7 +786,9 @@ stack runs them; the stack test runs them on the stack divided by 1.5.
    not typed it is `never`. Its name as a lambda argument has the kind
    `lambda` and no type, as every such name has (F12 3.13; R245).
 3. **Completion** does not change. A lambda's own name is a candidate of kind
-   `lambda` in its body and its defaults (F12 3.6 item 1), typed or not.
+   `lambda` in its body and its defaults (F12 3.6 item 1), typed or not. It
+   is listed with the names of the scope that holds its `const` line, in the
+   order bound.
 4. **Analysis** (F2) does not change. A self-reference is bound to the lambda,
    so it is neither a free name nor a call of the environment (F2 3.2).
 
