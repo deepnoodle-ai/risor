@@ -2,8 +2,10 @@
 // documents Node's default stack, 984 KB (src/index.ts, STACK), so the deepest
 // cases run in a child process whose V8 stack is that divided by 1.5, 656 KB:
 // 100 levels of source nesting, and at the default depth limit, 200, and the
-// largest, 400, calls by name, a walk, and the forms of fixtures/deep-forms.ts,
-// whose calls go through a library entry that calls a lambda.
+// largest, 400, calls by name, a walk of nested data, a call of the library
+// function `walk` whose nodes reach the limit (f17 5.3, 5.4), and the forms of
+// fixtures/deep-forms.ts, whose calls go through a library entry that calls a
+// lambda.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,8 +21,8 @@ test("the deepest programs run with a 656 KB stack", () => {
     out.trim(),
     [
       "nesting 100 ok",
-      "calls 200 ok walk 200 ok map 200 ok flatMap 200 ok heaviest 200 ok",
-      "calls 400 ok walk 400 ok map 400 ok flatMap 400 ok heaviest 400 ok",
+      "calls 200 ok walk 200 ok walk() 200 ok map 200 ok flatMap 200 ok heaviest 200 ok",
+      "calls 400 ok walk 400 ok walk() 400 ok map 400 ok flatMap 400 ok heaviest 400 ok",
     ].join(" "),
   );
 });

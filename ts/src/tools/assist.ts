@@ -211,7 +211,7 @@ function children(n: A.Node): A.Node[] {
     case "Match":
       return [n.subject, ...n.arms];
     case "Arm":
-      return [...n.literals, n.result];
+      return n.guard !== null ? [...n.literals, n.guard, n.result] : [...n.literals, n.result];
     case "Try":
       return [n.body, n.handler];
     case "MapPat":
@@ -633,7 +633,8 @@ class Context {
     if (parent !== undefined && parent.kind === "Arm" && parent.literals.includes(lit)) {
       const m = parents[parents.length - 2] as A.Match;
       t = this.typeOf(m.subject) ?? null;
-      for (const arm of m.arms) if (arm !== parent) for (const l of arm.literals) if (l.kind === "String") exclude.add(l.value);
+      // f12 3.11 item 1, with F17 (f17 7.2 item 3): only a string that another arm with no guard lists is left out.
+      for (const arm of m.arms) if (arm !== parent && arm.guard === null) for (const l of arm.literals) if (l.kind === "String") exclude.add(l.value);
     } else if (parent !== undefined && parent.kind === "Binary" && (parent.op === "==" || parent.op === "!=")) {
       const other = parent.x === lit ? parent.y : parent.x;
       t = this.typeOf(other) ?? null;
@@ -677,6 +678,8 @@ class Context {
           return;
         case "Arm":
           for (const l of n.literals) visit(l, null);
+          // f17 7.2 item 2: a guard has no expected type.
+          if (n.guard !== null) visit(n.guard, null);
           visit(n.result, exp);
           return;
         case "Try":

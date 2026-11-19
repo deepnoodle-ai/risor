@@ -6,7 +6,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FUNCTIONS, METHODS } from "../src/library/registry.ts";
+import { FUNCTIONS, GROUP_FUNCTIONS, METHODS } from "../src/library/registry.ts";
 import type { Entry } from "../src/library/registry.ts";
 import { parseReceiver, parseSignature } from "../src/types/typetext.ts";
 import { createEnv, execute, parse, RisorError } from "../src/host/api.ts";
@@ -15,18 +15,30 @@ import { CASEMAP_UNICODE } from "../src/library/text.ts";
 
 interface Rec { name: string; receiver?: string; signature: string; steps: string; units: string }
 
-describe("the registry is suite/library.json and suite/library-queries.json", () => {
+describe("the registry is suite/library.json, suite/library-queries.json and suite/library-recursion.json", () => {
   const core = JSON.parse(readFileSync(join(SUITE, "library.json"), "utf8")) as Rec[];
   // f07 6.1: the queries' records, one of which extends `list.sortBy` in its place.
   const queries = JSON.parse(readFileSync(join(SUITE, "library-queries.json"), "utf8")) as (Rec & { extends?: string })[];
+  // f17 5.1: the record of `walk`, a function of the group core.
+  const recursion = JSON.parse(readFileSync(join(SUITE, "library-recursion.json"), "utf8")) as Rec[];
   const replaced = new Set(queries.filter((q) => q.extends !== undefined).map((q) => q.extends));
-  const records = [...core.filter((r) => !replaced.has(`${r.receiver === undefined ? "" : "list."}${r.name}`)), ...queries];
+  const records = [...core.filter((r) => !replaced.has(`${r.receiver === undefined ? "" : "list."}${r.name}`)), ...queries, ...recursion];
   const registered: Entry[] = [...FUNCTIONS.values(), ...[...METHODS.values()].flatMap((m) => [...m.values()])];
-  test("59 entries (53 of Core, 6 of F7), each implemented, none added in code alone", () => {
+  test("60 entries in the group core (53 of Core, 6 of F7, walk of F17), each implemented, none added in code alone", () => {
     assert.equal(core.length, 53);
-    assert.equal(records.length, 59);
-    assert.equal(registered.length, 59);
+    assert.equal(recursion.length, 1);
+    assert.equal(records.length, 60);
+    assert.equal(registered.length, 60);
     for (const e of registered) assert.ok(e.impl !== null, `${e.name} has no implementation`);
+  });
+  test("16 functions in the group core (15 of Core and walk)", () => {
+    assert.equal(FUNCTIONS.size, 16);
+    assert.ok(FUNCTIONS.has("walk"));
+  });
+  test("79 entries with the groups (f17 1.3 item 2): 60 of the group core, 8 of F6, 11 of F13", () => {
+    assert.equal(GROUP_FUNCTIONS.size, 19);
+    assert.equal(registered.length + GROUP_FUNCTIONS.size, 79);
+    for (const e of GROUP_FUNCTIONS.values()) assert.ok(e.impl !== null, `${e.name} has no implementation`);
   });
   for (const r of records) {
     test(`${r.receiver ?? ""}${r.receiver ? "." : ""}${r.name}`, () => {

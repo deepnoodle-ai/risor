@@ -1,10 +1,12 @@
-// The library's records (04-library.md), from the generated copy of
-// suite/library.json, and the calling convention of an entry.
+// The library's records (04-library.md), from the generated copies of
+// suite/library.json and the record files of the packages, and the calling
+// convention of an entry.
 
 import { LIBRARY } from "../generated/library.ts";
 import { GROUP_LIBRARY } from "../generated/library-groups.ts";
 import { QUERY_LIBRARY } from "../generated/library-queries.ts";
 import { MATH_LIBRARY } from "../generated/library-math.ts";
+import { RECURSION_LIBRARY } from "../generated/library-recursion.ts";
 import type { LibraryRecord } from "../generated/library.ts";
 import type { Span } from "../syntax/source.ts";
 import { parseReceiver, parseSignature } from "../types/typetext.ts";
@@ -121,6 +123,13 @@ for (const rec of QUERY_LIBRARY) {
   }
   if (e.kind === null) FUNCTIONS.set(e.name, e);
   else METHODS.get(e.kind)!.set(e.name, e);
+}
+
+// Package F17 (f17 5.1): `walk`, a function of the group core, in a file of its own.
+for (const rec of RECURSION_LIBRARY) {
+  const e = build(rec);
+  if (e.kind !== null || FUNCTIONS.has(e.name)) throw new Error(`library-recursion record ${rec.name}: a function no earlier record names`);
+  FUNCTIONS.set(e.name, e);
 }
 
 /** Package F6: the opt-in groups (f06 1.2). */

@@ -113,11 +113,21 @@ function paramTest(e: Entry, p: Param): ParamTest {
   return pt;
 }
 
-/** Test each argument against its parameter, left to right. Charges nothing. */
-export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: string): void {
+/**
+ * Test each argument against its parameter, left to right. Charges nothing.
+ * `lambdas`: the positions of the lambda arguments. A value at a callback
+ * parameter of a function, in a run compiled without the type rules, fails
+ * here with `argument` (f17 5.5 item 3); at a method, the shape test of the
+ * call has failed before (04 2.2).
+ */
+export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: string, lambdas: readonly number[]): void {
   for (let i = 0; i < args.length; i++) {
     const p = paramAt(e, i);
-    if (p.fn !== null || p.type === null) continue;
+    if (p.fn !== null) {
+      if (!lambdas.includes(i)) throw new RunFailure("wrong-kind", span, "argument", { name, kind: run.kind(args[i]) });
+      continue;
+    }
+    if (p.type === null) continue;
     const pt = paramTest(e, p);
     if (pt.any) continue;
     const v = args[i];

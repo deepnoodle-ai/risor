@@ -24,6 +24,19 @@ function walk(depth: number): string {
   return o.ok ? "ok" : o.diagnostic.code;
 }
 
+/**
+ * A call of the library function `walk` (package F17) over a chain of nodes
+ * `depth - 1` levels deep: the depth count reaches the limit at the deepest
+ * node (f17 5.4). A walk keeps its place in a stack of its own and costs no
+ * native stack for its levels (f17 5.3).
+ */
+function walkEntry(depth: number): string {
+  const env = createEnv({ limits: { depth, steps: null, allocation: null } });
+  const o = execute(env.compile(parse(`walk(0, (x, d) => d < ${depth - 1} ? [x + 1] : null)[${depth - 1}]`), { check: false }), {});
+  if (!o.ok) return o.diagnostic.code;
+  return o.value === depth - 1 ? "ok" : "wrong-value";
+}
+
 /** 100 levels of source nesting, in each kind of opener. */
 function nesting(): string {
   const env = createEnv({ varRecord: "{c: any}", limits: { steps: null, allocation: null } });
@@ -54,7 +67,7 @@ function form(name: string, depth: number): string {
 // 03 3.9.1: each deepest case at the default depth limit, 200, and at the largest, 400.
 const out = ["nesting 100", nesting()];
 for (const depth of [200, 400]) {
-  out.push(`calls ${depth}`, calls(depth), `walk ${depth}`, walk(depth));
+  out.push(`calls ${depth}`, calls(depth), `walk ${depth}`, walk(depth), `walk() ${depth}`, walkEntry(depth));
   for (const f of FORMS) out.push(`${f.name} ${depth}`, form(f.name, depth));
 }
 console.log(out.join(" "));

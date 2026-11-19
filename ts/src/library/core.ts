@@ -1,4 +1,5 @@
-// The 53 entries of the Core library (04-library.md section 5).
+// The 53 entries of the Core library (04-library.md section 5), and `walk`,
+// the function of the group core that package F17 adds (f17 5).
 //
 // Each entry runs after its receiver and arguments are evaluated, after the
 // tests of 2.6 and after the call's step (src/eval/compile.ts, callEntry).
@@ -537,6 +538,53 @@ implement("list", "flatMap", (c) => {
     lists.push(r as unknown[]);
   }
   return concatLists(c, lists);
+});
+
+/**
+ * Package F17 (f17 5): the nodes of a tree in pre-order. The place of the walk
+ * is a stack of its own (5.3): for each level entered, its list of children
+ * and the position of the next. The loop calls the lambda from this frame for
+ * every node, so a walk costs no native stack for its levels. The call for a
+ * node of depth d adds d to the depth count, beside the measure of the call
+ * (5.4); its index in the trace is the node's position in pre-order, which is
+ * the number of calls before it.
+ */
+implement(null, "walk", (c) => {
+  const r = c.run;
+  const f = c.args[1] as Callback;
+  const out: unknown[] = [];
+  const lists: unknown[][] = [];
+  const next: number[] = [];
+  // The root is the argument, read where it was evaluated (5.2 item 5).
+  let node = c.args[0];
+  let depth = 0;
+  for (;;) {
+    r.charge(2);
+    if (depth > 0) node = readElement(c, node);
+    out.push(node);
+    r.depth += depth;
+    const kids = f.call2(node, depth);
+    r.depth -= depth;
+    const k = r.kind(kids);
+    if (k === "list") {
+      if ((kids as unknown[]).length > 0) {
+        lists.push(kids as unknown[]);
+        next.push(0);
+      }
+    } else if (k !== "null") throw resultFail(c, kids);
+    // The next node in pre-order: the next child of the deepest level that has one.
+    let top = lists.length - 1;
+    while (top >= 0 && next[top] === lists[top].length) {
+      lists.pop();
+      next.pop();
+      top--;
+    }
+    if (top < 0) break;
+    node = lists[top][next[top]++];
+    depth = top + 1;
+  }
+  r.alloc(1 + out.length);
+  return out;
 });
 
 /** flatMap's results, the lists, as one list: k steps and 1 + k units for k elements in all. */

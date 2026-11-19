@@ -1251,9 +1251,19 @@ class Parser {
         literals.push(this.literal());
       }
     }
+    // Package F17 (f17 2.1, 2.3): a guard. Its `(` opens a level; the word `if` opens none.
+    let guard: A.Expr | null = null;
+    if (this.isW(this.cur, "if")) {
+      this.advance();
+      const lp = this.expect("(");
+      this.open(lp, "guard");
+      guard = this.expr();
+      this.expect(")");
+      this.close();
+    }
     this.expect("=>");
     const result = this.expr();
-    return { kind: "Arm", literals, isDefault, result, span: { start, end: this.outer(result).end } };
+    return { kind: "Arm", literals, isDefault, guard, result, span: { start, end: this.outer(result).end } };
   }
 
   /** Lit = [ "-" ] Number | String | "true" | "false" | "null". */

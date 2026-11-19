@@ -1114,29 +1114,36 @@ class Checker {
     let pt: Type | undefined = fp === null ? undefined : this.types.get(fp.pNode);
     if (fp === null || pt === undefined || !this.fieldFactsHold(pt, fp.p)) pt = undefined;
     for (const arm of e.arms) {
+      // Package F17 (f17 4.2, 4.3): a guarded arm covers nothing and gives later arms nothing.
+      const plain = arm.guard === null;
       let listsNull = false;
       const strs = new Set<string>();
+      const own = new Set<string | boolean | null | number>();
       let fresh = 0;
       let freshNull = false;
       for (const l of arm.literals) {
         const v = l.kind === "Null" ? null : l.value;
         if (l.kind === "Null") listsNull = true;
-        // 11.2: a literal equal to an earlier one is duplicate-case only.
-        if (covered.has(v)) continue;
-        covered.add(v);
+        // 11.2: a literal equal to an earlier one is duplicate-case only. With
+        // F17 (f17 4.1), the earlier ones are those of this arm and of the plain arms before it.
+        if (covered.has(v) || own.has(v)) continue;
+        own.add(v);
         fresh++;
         if (l.kind === "Null") freshNull = true;
         if (l.kind === "String") strs.add(l.value);
         // 11.2, never-equal: the conditions of `==` (8.2).
         if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.say("never-equal", l.span, "match", { type: printType(s), text: new TextAt(l.span) });
       }
-      if (arm.isDefault) hasDefault = true;
+      if (plain) {
+        for (const v of own) covered.add(v);
+        if (arm.isDefault) hasDefault = true;
+      }
       let armFacts = facts;
       if (pt !== undefined && fp !== null && !isAny(pt)) {
         const allStrings = arm.literals.length > 0 && arm.literals.every((l) => l.kind === "String");
         const hit = hitVariants(pt as Alts, fp.key, strs);
         if (allStrings && strs.size > 0 && hit.length > 0) armFacts = this.withFacts(facts, [this.typeFact("=", fp.p, variantsType(hit), true), fp.p]);
-        if (strs.size > 0) {
+        if (plain && strs.size > 0) {
           const all = allVariants(pt as Alts, fp.key, strs);
           if (all.length > 0) {
             facts = this.withFacts(facts, [this.typeFact("!", fp.p, variantsType(all), true)]);
@@ -1147,8 +1154,14 @@ class Checker {
       // f14 4.3: the arm of null alone, on a member path, gives null(p) to its result.
       const nf = this.nullFact(e.subject);
       if (nf !== null && !arm.isDefault && fresh === 1 && freshNull) armFacts = this.withFacts(armFacts, [nf]);
+      if (arm.guard !== null) {
+        // f17 4.2: the guard is a tested position, under the facts of its arm; its true facts hold in the result.
+        const gt = this.synth(arm.guard, armFacts);
+        this.tested(gt, arm.guard.span);
+        armFacts = this.withFacts(armFacts, this.facts(arm.guard).t);
+      }
       acc.add(this.synth(arm.result, armFacts));
-      if (listsNull && path !== null) facts = this.withFacts(facts, [path]);
+      if (plain && listsNull && path !== null) facts = this.withFacts(facts, [path]);
     }
     if (!hasDefault && !isNever(s)) {
       const values = finiteValues(s);
@@ -1572,12 +1585,21 @@ class Checker {
       const m = this.mark();
       let b = this.lambdaUse(la, qs.map(inst), f, level);
       if (b === null) continue;
-      // 3a. The seed rule of 13.5, also on a fit that used any.
+      // 3a. The seed rule of 13.5, also on a fit that used any. With F17 (f17
+      // 5.6 item 2) it reads with R in place of the Var: it fires when B does
+      // not fit R under the solution before the body, or fits it only by any,
+      // and the Var gains what bind(R, B) gathers for it. Where R is the Var,
+      // this is the rule as 13.5 states it.
       const qVars = new Set(qs.flatMap(varsOf));
-      const seed = varsOf(r).find((v) => qVars.has(v) && before.has(v) && fits(b!.type, before.get(v)!) !== 1);
-      if (seed !== undefined) {
+      const seed = varsOf(r).find((v) => qVars.has(v) && before.has(v));
+      const instBefore = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => before.get(v) ?? NEVER });
+      if (seed !== undefined && fits(b.type, instBefore(r)) !== 1) {
         this.rollback(m);
-        sol.set(seed, join(before.get(seed)!, b.type));
+        const got: { t: Type | null } = { t: null };
+        this.bind(r, b.type, (v, t) => {
+          if (v === seed) got.t = got.t === null ? t : join(got.t, t);
+        });
+        sol.set(seed, got.t === null ? before.get(seed)! : join(before.get(seed)!, got.t));
         if (typeSize(sol.get(seed)!) > SIZE_LIMIT) return this.sizeFail(span);
         b = this.lambdaUse(la, qs.map(inst), f, level, true);
         if (b === null) continue;
