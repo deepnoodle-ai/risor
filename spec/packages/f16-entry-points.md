@@ -454,9 +454,9 @@ This row adds to the table of F12 3.13 item 3:
    (F12 3.13 item 6).
 4. A hover on an annotated parameter gives the type it is bound to: its
    annotation.
-5. A type line whose type the repair supplied (F12 3.13 item 2) declares
-   nothing: in `type ‸Foo` and in `type ‸Foo = ` nothing declares `Foo`, and
-   there is no hover.
+5. A type line whose type the repair supplied, whole or in part (F12 3.13
+   item 2), declares nothing: in `type ‸Foo`, in `type ‸Foo = ` and in
+   `type ‸Foo = {a: ` nothing declares `Foo`, and there is no hover.
 
 ## 8. The cases
 

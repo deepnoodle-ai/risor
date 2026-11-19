@@ -38,6 +38,7 @@
     {"name": "no hover on the name of a type line whose type has a diagnostic", "hover": "type ‸Foo = Nope; 1", "expect": {"hover": null}},
     {"name": "no hover on a name after type that begins no type line", "hover": "type ‸Foo", "expect": {"hover": null}},
     {"name": "a second type line of one name lists the name the first declared", "complete": "type Aa = int; type Aa = ‸", "expect": {"completion": {"span": [1, 26, 1, 26], "items": [{"label": "Aa", "kind": "type", "detail": null, "insert": "Aa"}, {"label": "Order", "kind": "type", "detail": null, "insert": "Order"}, {"label": "Time", "kind": "type", "detail": null, "insert": "Time"}, {"label": "any", "kind": "type", "detail": null, "insert": "any"}, {"label": "bool", "kind": "type", "detail": null, "insert": "bool"}, {"label": "float", "kind": "type", "detail": null, "insert": "float"}, {"label": "int", "kind": "type", "detail": null, "insert": "int"}, {"label": "map", "kind": "type", "detail": null, "insert": "map"}, {"label": "never", "kind": "type", "detail": null, "insert": "never"}, {"label": "null", "kind": "type", "detail": null, "insert": "null"}, {"label": "string", "kind": "type", "detail": null, "insert": "string"}]}}},
-    {"name": "no hover on the name of a type line with no type yet", "hover": "type ‸Foo = ", "expect": {"hover": null}}
+    {"name": "no hover on the name of a type line with no type yet", "hover": "type ‸Foo = ", "expect": {"hover": null}},
+    {"name": "no hover on the name of a type line whose type is written in part", "hover": "type ‸Foo = {a: ", "expect": {"hover": null}}
  ]
 }
