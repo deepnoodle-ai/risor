@@ -806,6 +806,7 @@ When the hole is a string literal, the candidates are string values, kind
 | The name of a `Call` of a library function, or of a function of a group | `function` | The printed type of the `Call` | Its record signature | The `doc` of its record | null |
 | The name of a `Call` of a host function | `function` | The same | Its printed signature | null | null |
 | The name of a `Call` of a const-bound lambda | `lambda` | The printed type of the `Call` | null | null | The span of its name in its `const` line |
+| Any other `Ident` that names a const-bound lambda: a lambda argument (`05-types.md` 13.5), or a place that needs a value (`not-a-value`) | `lambda` | null | null | null | The span of its name in its `const` line |
 | The word of a `MethodCall` | `method` | The printed type of the `MethodCall` | The method the check resolved: a library method's record signature, an opaque type's method's printed signature without its receiver; or null | For a library method, the `doc` of its record; otherwise null | null |
 | The word of a `Member` | `field` | The printed type of the `Member` | null | null | null |
 | The `Ident` of a namespace | `namespace` | null | null | null | null |

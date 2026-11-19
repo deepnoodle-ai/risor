@@ -234,7 +234,10 @@ These rules apply in every compile, with or without the type rules, in phase
    stands, and the line declares nothing.
 4. **`duplicate-name`.** A type line whose name an earlier type line has, and
    that is not `name-clash`, is `duplicate-name` on its name. The later line
-   stands.
+   stands, also when its type has a diagnostic: it then declares nothing
+   (item 5), and the earlier line's declaration ends there. So in `type Aa =
+   int; type Aa = Nope; const x: Aa = 1; x` the `Aa` of the annotation is
+   `undefined-name`.
 5. **What a line declares.** A type line with no `name-clash` and no
    diagnostic in its type declares its name, for the rest of the program. A
    line whose type has a diagnostic declares nothing, so a later use of its
@@ -307,7 +310,7 @@ of failure, and the message prints the type found: `expected int, found any`.
 
 | Lambda | Rule |
 | --- | --- |
-| **Checked once**: a `const`-bound lambda with at least one annotation, and every parameter annotated | Checked once, where it is written, under the facts there. Each parameter is bound to its annotation; a parameter with a function type, or with an annotation that has a static diagnostic, is bound to `never`. Each default and the body's fit to the result annotation are 3.3's. Its sites are kept, also when it has no use. The check counts as one check against `05-types.md` 20.3, and its nesting where it is written against 20.2. Its **result type** is its result annotation, or the body's type |
+| **Checked once**: a `const`-bound lambda with at least one annotation, and every parameter annotated | Checked once, where it is written, under the facts there. Each parameter is bound to its annotation; a parameter with a function type, or with an annotation that has a static diagnostic, is bound to `never`. Each default and the body's fit to the result annotation are 3.3's. Its sites are kept, also when it has no use. The check counts as one check against `05-types.md` 20.3, and its nesting where it is written against 20.2; a `check-limit` of either is on the lambda, the whole of it (2.3). Its **result type** is its result annotation, or the body's type |
 | A use of a lambda checked once | Its body is not checked again, and the use counts against no limit. A call by name: `arity` (static); each plain argument synthesized and fitted to its parameter by 3.3; a lambda argument is `lambda-to-lambda` (static). The call's type is the result type. As a lambda argument of a library function or method (13.5), or of a method on `any` (13.3): each value passed is fitted to its parameter by 3.3, and the result type stands for the body's type |
 | **Partly annotated**: a parameter has no annotation | Checked at each use, by `05-types.md` 13.9. An annotated parameter is bound to its annotation, and the argument at it is fitted by 3.3; the others are bound as 13.9 says. A result annotation is fitted at each use, and the call's type is the annotation, or the body's type |
 | No use, and not checked once | The row "No use" of 13.9: an annotated parameter is bound to its annotation, any other to `any`. Its defaults and its result annotation are fitted by Fits (`05-types.md` 4.2): a fit that uses `any` holds there, as the sites of that check are dropped |
@@ -382,8 +385,18 @@ These rows add to F12 2.8.
 | `Lambda` with an annotation | The rule of one bare parameter does not apply: params is `seq("(", params, ")")`. With a result annotation: params `":" sp type sp "=>" assigned(body)` |
 
 1. The `type`, the name, the `=` and the `;` of a type line, and the `:` and
-   every token of an annotation, are kept tokens (F12 2.12 item 1).
+   every token of an annotation, are kept tokens (F12 2.12 item 1). So a
+   comment after the `:` stays there: `(x: /* t */ int)` is written as it
+   stands.
 2. A type line's type is written on one line, however long (F12 2.13).
+3. An annotation is part of its parameter, which is an element of its
+   sequence (F12 2.12 item 5): the trailing comments of the annotation's last
+   token are written after the parameter's comma. So `(x: int /* c */, y)`
+   gives `(x: int, /* c */ y)`.
+4. A parameter of a function type is as a field of a program type for F12
+   2.12 item 5: the trailing comments of its last token are written after the
+   comma that follows it. So `(f: (a: int /* a */, b: string) => bool, n)`
+   gives `(f: (a: int, /* a */ b: string) => bool, n)`.
 
 | Source | Formatted |
 | --- | --- |
@@ -396,7 +409,8 @@ These rows add to F12 2.8.
 1. **Types.** A hole in the program type of an annotation, of a `PFn`'s
    parameter or result, or of a type line is in the types context (F12 3.10).
    The candidates of 3.10 then include the names of the type lines that end
-   before the hole. A type line's own name is not one in its own type.
+   before the hole. A type line's own name is not one in its own type, unless
+   an earlier type line has that name: `type Pair = ‸` does not list `Pair`.
 2. A hole as a type line's name, or as a word of a `PFn`'s parameter, has no
    context.
 3. **The repair** (F12 3.3 item 7). At a place where an `Arg` or a `const`
@@ -414,9 +428,13 @@ These rows add to F12 2.8.
    names context is the type of its annotation, printed (F12 3.12): with
    `type Order = {id: string}`, a parameter `(order: Order)` has the detail
    `{id: string}`.
-7. At the end of the text, `type` followed by an upper-case word and nothing
-   more begins a type line: 2.2 rule 1 is decided from the tokens before the
-   end. So in `type Or‸` the hole is a type line's name (item 2).
+7. At the end of the text, at a place where 2.2 rule 1 applies, `type`
+   followed by one word and nothing more begins a type line, and the hole is
+   that word, which may be empty: 2.2 rule 1 is decided from the tokens before
+   the end, and no expression goes on with a word after the name `type`. The
+   word need not yet begin with an upper-case letter. So in `type ‸`, in
+   `type or‸` and in `type Or‸` the hole is a type line's name (item 2), and
+   the list is empty.
 
 ### 7.3 Hover
 
@@ -435,6 +453,9 @@ This row adds to the table of F12 3.13 item 3:
    (F12 3.13 item 6).
 4. A hover on an annotated parameter gives the type it is bound to: its
    annotation.
+5. A type line whose type the repair supplied (F12 3.13 item 2) declares
+   nothing: in `type ‸Foo` and in `type ‸Foo = ` nothing declares `Foo`, and
+   there is no hover.
 
 ## 8. The cases
 

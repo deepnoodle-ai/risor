@@ -400,6 +400,54 @@
    "expect": {
     "hover": null
    }
+  },
+  {
+   "name": "a const-bound lambda given as a lambda argument",
+   "hover": "const f = x => x; [1].map(‸f)",
+   "expect": {
+    "hover": {
+     "kind": "lambda",
+     "span": [
+      1,
+      27,
+      1,
+      28
+     ],
+     "type": null,
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      7,
+      1,
+      8
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const-bound lambda where a value is needed",
+   "hover": "const f = x => x; [‸f]",
+   "expect": {
+    "hover": {
+     "kind": "lambda",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ],
+     "type": null,
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      7,
+      1,
+      8
+     ]
+    }
+   }
   }
  ]
 }

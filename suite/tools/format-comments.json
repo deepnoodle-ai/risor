@@ -285,5 +285,12 @@
   "expect": {
    "formatted": "// one\n// two\nx\n"
   }
+ },
+ {
+  "name": "a comment after a field of a program type moves after its comma",
+  "format": "x as {a: int /* c */, b: int}",
+  "expect": {
+   "formatted": "x as {a: int, /* c */ b: int}\n"
+  }
  }
 ]
