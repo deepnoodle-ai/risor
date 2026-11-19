@@ -524,17 +524,18 @@ impl<'a> Parser<'a> {
         if !self.at_word("type") || self.peek().code.is_some() {
             return false;
         }
-        // F16 7.2 item 7: in a repair, an upper-case word, or a hole whose
-        // prefix is one, that ends the tokens before the end begins a type
-        // line.
-        let n = self.peek_n(1);
-        let upper = |w: &str| w.starts_with(|c: char| c.is_ascii_uppercase());
-        let word = match n.word() {
-            Some(HOLE) => upper(&self.src.param_text(n.span)),
-            Some(w) => upper(w),
+        // F16 7.2 item 7 (R242): in a repair, any word that ends the tokens
+        // before the end begins a type line, a hole among them whatever its
+        // prefix: no expression goes on with a word after the name `type`.
+        let at_end = self.pos + 2 == self.limit;
+        match self.peek_n(1).word() {
+            Some(_) if at_end => true,
+            Some(w) => {
+                w.starts_with(|c: char| c.is_ascii_uppercase())
+                    && self.peek_n(2).is_punct(P::Assign)
+            }
             None => false,
-        };
-        word && (self.peek_n(2).is_punct(P::Assign) || self.pos + 2 == self.limit)
+        }
     }
 
     /// Whether the token `n` after the current one is before the end of a

@@ -55,6 +55,9 @@ pub enum Res {
     /// defaults: a `Call` or an `Ident` lambda argument. It is
     /// `recursion-needs-types` (`05-types.md` 22.5), and no use (13.9).
     SelfRef(NodeId),
+    /// An `Ident` that names a `const`-bound lambda where a value is needed:
+    /// `not-a-value`, no use, and read only by hover (F12 3.13, R245).
+    NotValue(NodeId),
 }
 
 /// F16 7.3: a type name in a program type, or the name of a type line, with
@@ -495,7 +498,11 @@ impl Resolver<'_> {
                 });
                 self.type_lines.insert(t.name.clone(), (ty, t.name_span));
             }
-            (None, None) => {}
+            // R240: a later line stands also when its type fails; it
+            // declares nothing, and the earlier declaration ends here.
+            (None, None) => {
+                self.type_lines.remove(&t.name);
+            }
         }
     }
 
@@ -794,12 +801,15 @@ impl Resolver<'_> {
         match self.lookup(name) {
             Some(Bind::Slot(s)) => self.res[id.index()] = Res::Slot(s),
             Some(Bind::Var(v)) => self.res[id.index()] = Res::Var(v),
-            Some(Bind::Lambda(_)) => self.diag(
-                code::STATIC[2],
-                span,
-                "lambda",
-                &[("name", name.to_string())],
-            ),
+            Some(Bind::Lambda(l)) => {
+                self.res[id.index()] = Res::NotValue(l);
+                self.diag(
+                    code::STATIC[2],
+                    span,
+                    "lambda",
+                    &[("name", name.to_string())],
+                );
+            }
             None => {
                 let p = [("name", name.to_string())];
                 if self.env.is_namespace(name) {

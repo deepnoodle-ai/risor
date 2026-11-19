@@ -716,11 +716,15 @@ A plain text error has no cause: its text is already the message.
   the loop's `unexpected-token`. E9 keeps only its third case. In a repair
   (`parse_repair` sets `limit`), these choices read only the tokens before
   the end, and a `(` with no partner followed by a name or `_` and `:` begins
-  a parameter list (F16 7.2 items 3, 4 and 7).
+  a parameter list (F16 7.2 items 3, 4 and 7). There `type` and one word that
+  ends those tokens begin a type line whatever the word's first letter, and
+  also when the word is the hole with an empty prefix (R242).
 - **Static rules** (`compile.rs`): the lines of a program are walked in the
   order of the text. A type name resolves against the environment's named
   and opaque types, then the type lines that declared so far
-  (`Resolver::type_lines`). Each annotation is resolved once, where it
+  (`Resolver::type_lines`). A later line of one name whose type fails
+  removes the earlier line's entry: it stands and declares nothing (R240).
+  Each annotation is resolved once, where it
   stands, and kept in `Resolution::annots` by the start of its span, `None`
   when a static rule refused it. The resolver also keeps each type name that
   resolved, and each declaring type line's name, with the type and the
@@ -743,10 +747,14 @@ A plain text error has no cause: its text is already the message.
   prints every annotation token as a kept token; a `PFn` is one line.
   Completion is in the types context when the hole is in any annotation, a
   `PFn` or a type line's type, with the names of the type lines that end
-  before the hole. Hover answers a word that is a `TypeRef` first, with the
-  kind `type`.
-- **The runner**: `PACKAGES` holds 16 after 14 and before 17, so the files
-  named `until-f16-` are not run. `entry_points_package` runs
+  before the hole, less the line that holds the hole: the repair's `;` ends
+  that line at the hole too (R243). Hover answers a word that is a `TypeRef`
+  first, with the kind `type`. A repaired hover on a type line's name gives
+  nothing, since the cut is at the word's end and the repair wrote the type
+  (F16 7.3 item 5).
+- **The runner**: `PACKAGES` holds 16 after 14 and before 17. The files
+  named `until-f16-` were deleted when all three implementations offered the
+  slice (`03-host.md` 3.11 item 5). `entry_points_package` runs
   `suite/entry-points/`, its `tools-` files among them;
   `catalog_entry_points_cases` the cases of
   `suite/messages-entry-points.json`, whose entries add `name-clash` and the
@@ -773,9 +781,13 @@ A plain text error has no cause: its text is already the message.
   repair inserts one token, re-parses, and keeps it when the parser stands
   past it; `parse_repair` matches no bracket among the inserted tokens.
   `check::check_probe` gives the types of the nodes and of the slots where
-  the check first reached the hole (F12 3.12).
+  the check first reached the hole (F12 3.12). The resolver marks an `Ident`
+  that names a `const`-bound lambda where a value is needed
+  (`Res::NotValue`), as it marks a lambda argument (`Res::LambdaRef`), so a
+  hover on either gives the kind `lambda` with no type (R245).
 - **Records** (`library.rs`): a record keeps its `signature` text and `doc`
   verbatim, which completion and hover show.
 - **Cases** (`testing/tools.rs`): a format, completion or hover case is read
   as a program case whose source is its text, so its environment is built by
-  the same code.
+  the same code. Read for the outcome command, such a case may have no
+  `expect`; update mode does not write one for it.

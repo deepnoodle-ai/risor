@@ -986,6 +986,42 @@ fn an_outcome_line_leaves_out_a_limits_span() {
     );
 }
 
+/// R246: the outcome line writes `description` for a case with `types`
+/// (F4 9.5).
+#[test]
+fn an_outcome_line_describes_a_case_with_types() {
+    let doc = crate::json::parse(
+        r#"[{"name": "t", "source": "1", "types": [{"name": "Order", "type": "{id: string}"}]}]"#,
+    )
+    .unwrap();
+    let cases = crate::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let line = crate::testing::outcome_line(&cases[0]);
+    assert!(line.starts_with(r#"{"name":"t","description":{"#), "{line}");
+    assert!(line.contains(r#""Order""#), "{line}");
+}
+
+/// `suite/README.md` item 1: the outcome command reads a format, completion
+/// or hover case with no `expect`.
+#[test]
+fn an_outcome_line_for_tool_cases_with_no_expect() {
+    let doc = crate::json::parse(
+        r#"[{"name": "f", "format": "1+2"},
+            {"name": "c", "complete": "type ‸"},
+            {"name": "h", "hover": "const f = x => x; [‸f]"}]"#,
+    )
+    .unwrap();
+    let cases = crate::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let lines: Vec<String> = cases.iter().map(crate::testing::outcome_line).collect();
+    assert!(
+        lines[0].contains(r#""formatted":"1 + 2\n""#),
+        "{}",
+        lines[0]
+    );
+    assert!(lines[1].contains(r#""items":[]"#), "{}", lines[1]);
+    assert!(lines[2].contains(r#""kind":"lambda""#), "{}", lines[2]);
+    assert!(crate::testing::load_doc(&doc, std::path::Path::new(".")).is_err());
+}
+
 #[test]
 fn precharge_allocation_before_building_containers_and_strings() {
     let xs = numbers(100_000);

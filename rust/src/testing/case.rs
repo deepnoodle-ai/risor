@@ -550,7 +550,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         super::tools::ToolKind::Hover,
     ] {
         if own(kind.field()).is_some() {
-            return super::tools::read(kind, header, case, |obj| merge(header, obj, dir, lax));
+            return super::tools::read(kind, header, case, lax, |obj| merge(header, obj, dir, lax));
         }
     }
     // F8 7.4: a case of the third kind.

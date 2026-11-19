@@ -1011,7 +1011,8 @@ fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
 }
 
 /// The types context (F12 3.10), with the names of the type lines that end
-/// before the hole (F16 7.2 item 1).
+/// before the hole (F16 7.2 item 1). The line that holds the hole is not one
+/// of them, though the repair's `;` ends it there (R243).
 fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
     let mut v = type_words(env);
     let hole = ast.nodes.iter().find_map(|n| hole_span(&n.kind));
@@ -1020,7 +1021,10 @@ fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
     };
     if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
         for t in types {
-            if t.span.end <= hole.start && !v.iter().any(|c| c.label == t.name) {
+            if t.span.end <= hole.start
+                && type_hole_span(&t.ty).is_none()
+                && !v.iter().any(|c| c.label == t.name)
+            {
                 v.push(cand(&t.name, "type", None));
             }
         }
@@ -1235,6 +1239,18 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
             };
             let cut_src = Source::raw(&ch[..cut].iter().collect::<String>());
             let ast = repair(&cut_src, &pre, &post, cut)?;
+            // F16 7.3 item 5 (R243): a type line whose type the repair
+            // supplied, whole or in part, declares nothing, so its name has
+            // no hover. The cut is at the end of the word, so when the word
+            // is the line's name the repair wrote all of its type.
+            if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
+                if types
+                    .iter()
+                    .any(|t| t.name_span == wspan && t.ty.span.start as usize >= cut)
+                {
+                    return None;
+                }
+            }
             Expr {
                 source: cut_src,
                 ast,
@@ -1274,6 +1290,11 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
                         ..rec("name", t)
                     }),
                     Res::Var(_) => Some(rec("variable", t)),
+                    // R245: a lambda argument, or a place that needs a value.
+                    Res::LambdaRef(l) | Res::SelfRef(l) | Res::NotValue(l) => Some(RawHover {
+                        declaration: lambda_site(tree, *l),
+                        ..rec("lambda", None)
+                    }),
                     _ if env.is_namespace(name) => Some(rec("namespace", None)),
                     _ => None,
                 };
@@ -1375,16 +1396,19 @@ fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: RawHover) -> Option<RawHover> 
         }
         Res::CallLambda(l) | Res::SelfRef(l) => {
             h.kind = "lambda";
-            h.declaration = tree.ast.nodes.iter().find_map(|n| match &n.kind {
-                NodeKind::Const { pattern, value, .. } if value == l => {
-                    Some(tree.ast.span(*pattern))
-                }
-                _ => None,
-            });
+            h.declaration = lambda_site(tree, *l);
         }
         _ => {}
     }
     Some(h)
+}
+
+/// The span of a `const`-bound lambda's name in its `const` line.
+fn lambda_site(tree: &Tree<'_>, l: NodeId) -> Option<Range> {
+    tree.ast.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Const { pattern, value, .. } if *value == l => Some(tree.ast.span(*pattern)),
+        _ => None,
+    })
 }
 
 /// The span of the name that binds a slot.

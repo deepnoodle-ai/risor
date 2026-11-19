@@ -2191,9 +2191,9 @@ fn outcome_core(case: &Case) -> String {
             return out;
         }
     };
-    // F1 7.4: the description, when the case has `schemas`; F14 10.4: or
-    // `facts`.
-    if !case.schemas.is_empty() || case.facts.is_some() {
+    // F1 7.4: the description, when the case has `schemas`; F4 9.5: or
+    // `types` (R246); F14 10.4: or `facts`.
+    if !case.schemas.is_empty() || !case.types.is_empty() || case.facts.is_some() {
         out.push_str(",\"description\":");
         out.push_str(&env.description_text());
     }
