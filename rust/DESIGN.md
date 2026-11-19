@@ -49,7 +49,7 @@ grouped by the sections E.3 to E.8.
 | `src/diag.rs` | S1 | `Diagnostic`, `Error`, `Phase`, the code names |
 | `src/syntax/token.rs` | S1 | Tokens, the 26 reserved words |
 | `src/syntax/lexer.rs` | S1 | The lexer. Templates nest through an explicit stack |
-| `src/syntax/ast.rs` | S1 | The 30 node kinds, in an arena |
+| `src/syntax/ast.rs` | S1 | The 30 node kinds, in an arena; F16's type lines and annotations are fields, not nodes |
 | `src/syntax/parser.rs` | S1 | The parser: recursive descent, precedence climbing for binary operators |
 | `src/types/text.rs` | S1 | The parser of type text: `Type`, `Sig`, `Method`, with the counts of `05-types.md` 22.3 |
 | `src/json.rs` | S1 | The strict JSON reader |
@@ -378,7 +378,17 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 - A use of a `const`-bound lambda checks its body again with the use's
   parameter types, under the facts where the lambda was written. The limits
   of 20.2 and 20.3: the parser records the
-  greatest level open inside each lambda.
+  greatest level open inside each lambda. A lambda that F16 checks once is
+  the exception (below).
+- **A lambda's own name** (`01-language.md` 5 rule 6, `05-types.md` 22.5).
+  The resolver binds the name of a `const`-bound lambda before it walks the
+  lambda, and keeps a stack of the lambdas whose text it is in. A call of
+  one of them, or its name given as a lambda argument, resolves to
+  `Res::SelfRef`, not to a call or a lambda reference: the checker counts no
+  use of it, a call there has type `never` with its plain arguments
+  synthesized, and a lambda argument there is not checked. The first such
+  reference of each lambda, by start, is `recursion-needs-types`, reported
+  after the walk.
 - Signatures stay type text. Solving a call (13.5) binds and substitutes type
   variables in that text; `ty::substitute` gives the type with no depth test,
   and the checker tests depth where 20.4 says.
@@ -688,6 +698,62 @@ A plain text error has no cause: its text is already the message.
   `until-f17-` is not run; `recursion_package` runs
   `suite/recursion/`, its `tools-` files among them, and
   `library_recursion_cases` the record's cases.
+
+## Package F16, slice D1: annotations and type lines
+
+- **Nodes** (`syntax/ast.rs`): no node kind is added. `Program.types` holds
+  the type lines (`TypeLine`: name, span of the name, `PType`, span), which
+  are not nodes; `Const.ty`, `Lambda.result` and `Param.ty` hold a `PType`,
+  and `Param.fn_` a `PFn` (its words and types, and its result, `None` for
+  `unknown`). A walker that orders a program's lines merges `consts` and
+  `types` by start.
+- **Parsing** (`syntax/parser.rs`): `type` begins a type line only in the
+  loop of a program's lines, when an upper-case word and `=` follow it; a
+  block and a branch never look for one, so `type` there stays a name and E17
+  reports it. A `(` begins a lambda when its partner is followed by `=>` or
+  `:`. After the `:` of a parameter that is a name, `(` followed by `)`, or by
+  a word and `:`, begins a `PFn`; it takes no default, so a `=` after it is
+  the loop's `unexpected-token`. E9 keeps only its third case. In a repair
+  (`parse_repair` sets `limit`), these choices read only the tokens before
+  the end, and a `(` with no partner followed by a name or `_` and `:` begins
+  a parameter list (F16 7.2 items 3, 4 and 7).
+- **Static rules** (`compile.rs`): the lines of a program are walked in the
+  order of the text. A type name resolves against the environment's named
+  and opaque types, then the type lines that declared so far
+  (`Resolver::type_lines`). Each annotation is resolved once, where it
+  stands, and kept in `Resolution::annots` by the start of its span, `None`
+  when a static rule refused it. The resolver also keeps each type name that
+  resolved, and each declaring type line's name, with the type and the
+  declaration (`TypeRef`), for hover.
+- **The checker** (`check/mod.rs`): `fit_strict` is 15.1's fit through the
+  form with `strict` set: a fit that uses `any` is followed to its places of
+  failure and reported there, a spread with the types of its first key, and
+  `maybe-null` only for a value that surely fits without null. A
+  `const`-bound lambda whose parameters are all annotated, with at least one
+  annotation, is checked once at its `const` line (`check_once`): one count
+  against 20.3, its nesting where it is written against 20.2, its sites kept,
+  and its result type kept in `once_result`. A use of it fits each plain
+  argument (`fit_args`) and each value the library passes (`fit_passed`) and
+  takes the result type; its body is not checked again. A lambda that is
+  partly annotated is checked at each use as before, with each annotated
+  parameter bound to its annotation and the result annotation fitted. The
+  narrowing of `filter` and `find` reads Q, as before, not the annotation.
+- **Evaluation**: nothing. A run never reads an annotation or a type line.
+- **Tools**: the formatter merges type lines into the program's lines and
+  prints every annotation token as a kept token; a `PFn` is one line.
+  Completion is in the types context when the hole is in any annotation, a
+  `PFn` or a type line's type, with the names of the type lines that end
+  before the hole. Hover answers a word that is a `TypeRef` first, with the
+  kind `type`.
+- **The runner**: `PACKAGES` holds 16 after 14 and before 17, so the files
+  named `until-f16-` are not run. `entry_points_package` runs
+  `suite/entry-points/`, its `tools-` files among them;
+  `catalog_entry_points_cases` the cases of
+  `suite/messages-entry-points.json`, whose entries add `name-clash` and the
+  template `fn-value` of `arg-mismatch` to the catalog. In that directory
+  `name-clash`, `untagged-union` and `check-limit` are static codes beside
+  Core's twelve. The place of D1 before F17 is the recommendation of R211,
+  not yet confirmed (F16 1.5).
 
 ## Package F12, tools
 

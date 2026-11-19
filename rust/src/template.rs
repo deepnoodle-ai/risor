@@ -206,6 +206,7 @@ impl Template {
             NodeKind::Program {
                 consts: Vec::new(),
                 result: e,
+                types: Vec::new(),
             },
             span,
             0,
@@ -267,6 +268,7 @@ impl Template {
             NodeKind::Program {
                 consts: Vec::new(),
                 result,
+                types: Vec::new(),
             },
             span,
             0,

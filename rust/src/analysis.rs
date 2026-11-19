@@ -151,6 +151,7 @@ fn call_site(program: &Expr, c: CallRef) -> CallSite {
                 NodeKind::Program {
                     consts: Vec::new(),
                     result: a,
+                    types: Vec::new(),
                 },
                 span,
                 0,
@@ -274,13 +275,23 @@ impl<'p> Walker<'p> {
 
     fn visit(&mut self, id: NodeId, lam: bool, out: &mut Vec<Task>) {
         match self.kind(id) {
-            NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+            NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
                 out.push(Task::Push);
                 for &c in consts {
-                    if let NodeKind::Const { pattern, value } = self.kind(c) {
-                        // A name is not in scope in its own value.
-                        out.push(Task::Visit(*value, lam));
-                        out.push(Task::Pattern(*pattern, lam));
+                    if let NodeKind::Const { pattern, value, .. } = self.kind(c) {
+                        let lambda = matches!(self.kind(*value), NodeKind::Lambda { .. })
+                            && matches!(self.kind(*pattern), NodeKind::NamePat { name: Some(_) });
+                        if lambda {
+                            // F2 3.2 with `01-language.md` 5 rule 6: the
+                            // name of a `const`-bound lambda is in scope in
+                            // its own body and defaults (F16 6 item 2).
+                            out.push(Task::Pattern(*pattern, lam));
+                            out.push(Task::Visit(*value, lam));
+                        } else {
+                            // A name is not in scope in its own value.
+                            out.push(Task::Visit(*value, lam));
+                            out.push(Task::Pattern(*pattern, lam));
+                        }
                     }
                 }
                 out.push(Task::Visit(*result, lam));
@@ -315,10 +326,13 @@ impl<'p> Walker<'p> {
                     out.push(Task::Visit(a, lam));
                 }
             }
-            NodeKind::Lambda { params, body } => {
+            NodeKind::Lambda { params, body, .. } => {
                 out.push(Task::Push);
                 for &p in params {
-                    if let NodeKind::Param { pattern, default } = self.kind(p) {
+                    if let NodeKind::Param {
+                        pattern, default, ..
+                    } = self.kind(p)
+                    {
                         if let Some(d) = default {
                             out.push(Task::Visit(*d, true));
                         }
@@ -517,7 +531,7 @@ fn flat_steps(ast: &crate::syntax::ast::Ast, s: NodeId, out: &mut Vec<NodeId>) {
 /// The literal of a program (3.7): no `const` line, and a result that is a
 /// literal expression.
 fn literal_of(p: &Expr) -> Option<Json> {
-    let NodeKind::Program { consts, result } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program { consts, result, .. } = p.ast.kind(p.ast.root) else {
         return None;
     };
     if !consts.is_empty() {

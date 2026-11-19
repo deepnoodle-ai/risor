@@ -106,10 +106,13 @@ pub enum TypeDecl {
     Schema(String, Json, SchemaOptions),
 }
 
-/// The static codes of a case (`05-types.md` 22.1): in `suite/conversion/`
-/// also `untagged-union` and `check-limit` (F4 6.1 item 4).
+/// The static codes of a case (`05-types.md` 22.1): in `suite/conversion/`,
+/// `suite/unions/` and `suite/entry-points/` also `untagged-union` and
+/// `check-limit` (F4 6.1 item 4), and `name-clash`, which only a type line
+/// of F16 can give (`f16-entry-points.md` 3.1 item 11).
 pub fn is_static(code: &str, conversion: bool) -> bool {
-    code::STATIC.contains(&code) || (conversion && matches!(code, "untagged-union" | "check-limit"))
+    code::STATIC.contains(&code)
+        || (conversion && matches!(code, "untagged-union" | "check-limit" | "name-clash"))
 }
 
 impl ExpectResult {
@@ -478,10 +481,11 @@ pub fn load_file_lax(path: &Path) -> V<Vec<Case>> {
 }
 
 fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
-    // F4 6.1 item 4 and F5 11.2 item 3: two more static codes there.
+    // F4 6.1 item 4, F5 11.2 item 3 and F16 3.1 item 11: more static
+    // codes there.
     let conversion = dir
         .file_name()
-        .is_some_and(|d| d == "conversion" || d == "unions");
+        .is_some_and(|d| d == "conversion" || d == "unions" || d == "entry-points");
     let (header, cases): (&[(String, Json)], &[Json]) = match doc {
         Json::Arr(a) => (&[], a),
         Json::Obj(m) => {
@@ -729,7 +733,11 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             Expect::Failure(f) => {
                 f.phase == Phase::Check
                     && f.diagnostics.iter().any(|d| {
-                        !is_static(&d.code, dir.file_name().is_some_and(|n| n == "conversion"))
+                        !is_static(
+                            &d.code,
+                            dir.file_name()
+                                .is_some_and(|n| n == "conversion" || n == "entry-points"),
+                        )
                     })
             }
         };

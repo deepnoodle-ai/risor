@@ -12,7 +12,9 @@
 
 use crate::diag::Error;
 use crate::source::{Range, Source};
-use crate::syntax::ast::{Ast, BinaryOp, CondForm, EntryKey, NodeId, NodeKind, UnaryOp};
+use crate::syntax::ast::{
+    Ast, BinaryOp, CondForm, EntryKey, NodeId, NodeKind, PFn, PType, TypeLine, UnaryOp,
+};
 use crate::syntax::lexer::{lex_comments, lex_part_comments};
 use crate::syntax::token::{StrForm, Tok, Token, P};
 use crate::template::{parse_template, Seg, Segment};
@@ -1038,18 +1040,84 @@ impl<'a> B<'a> {
     /// expression.
     fn item(&mut self, id: NodeId) -> DocId {
         match self.kind(id) {
-            NodeKind::Param { pattern, default } => {
-                let p = self.pattern(*pattern);
-                match default {
-                    Some(d) => {
-                        let rest = self.default(*d);
-                        self.list(vec![p, rest])
-                    }
-                    None => p,
+            NodeKind::Param {
+                pattern,
+                default,
+                ty,
+                fn_,
+            } => {
+                let mut v = vec![self.pattern(*pattern)];
+                // F16 7.1: `‹pattern› ":" sp type`, then the default.
+                if let Some(t) = ty {
+                    v.push(self.annotation(t));
                 }
+                if let Some(f) = fn_ {
+                    let colon = self.tb(f.span.start);
+                    v.push(self.tk(colon));
+                    v.push(self.sp());
+                    v.push(self.pfn(f));
+                }
+                if let Some(d) = default {
+                    v.push(self.default(*d));
+                }
+                self.list(v)
             }
             _ => self.sub(id, false),
         }
+    }
+
+    /// F16 7.1: `":" sp type`, the type by 2.13.
+    fn annotation(&mut self, t: &PType) -> DocId {
+        let colon = self.tb(t.span.start);
+        let c = self.tk(colon);
+        let s = self.sp();
+        let d = self.ptype(t.span);
+        self.list(vec![c, s, d])
+    }
+
+    /// F16 7.1: a function type, on one line: `"(" w ":" sp type { "," sp w
+    /// ":" sp type } ")" sp "=>" sp result`.
+    fn pfn(&mut self, f: &PFn) -> DocId {
+        let open = self.ti(f.span.start);
+        let mut v = vec![self.tk(open)];
+        for (i, (_, ws, t)) in f.params.iter().enumerate() {
+            if i > 0 {
+                v.push(self.text(","));
+                // F12 2.12 item 5: the trailing comments of the last token
+                // of a parameter's type are written after its comma.
+                let last = self.tb(f.params[i - 1].2.span.end);
+                if self.pass2 && self.defer[last] {
+                    self.defer[last] = false;
+                    v.push(self.trail_doc(last, None));
+                }
+                v.push(self.sp());
+            }
+            let w = self.ti(ws.start);
+            v.push(self.tk(w));
+            v.push(self.annotation(t));
+        }
+        let close = self.partner[open].unwrap_or(open);
+        v.push(self.tk(close));
+        v.push(self.sp());
+        v.push(self.tk(close + 1));
+        v.push(self.sp());
+        v.push(self.ptype(f.result_span));
+        self.list(v)
+    }
+
+    /// F16 7.1: `"type" sp name sp "=" sp type ";"`, on one line.
+    fn type_line(&mut self, tl: &TypeLine) -> DocId {
+        let k = self.ti(tl.span.start);
+        let t = self.tk(k);
+        let s1 = self.sp();
+        let n = self.tk(k + 1);
+        let s2 = self.sp();
+        let e = self.tk(k + 2);
+        let s3 = self.sp();
+        let ty = self.ptype(tl.ty.span);
+        let semi = self.tb(tl.span.end);
+        let sc = self.tk(semi);
+        self.list(vec![t, s1, n, s2, e, s3, ty, sc])
     }
 
     /// `sp "=" assigned(default)`.
@@ -1091,17 +1159,30 @@ impl<'a> B<'a> {
     fn node(&mut self, id: NodeId, indent: bool) -> DocId {
         let span = self.ast.span(id);
         match self.kind(id) {
-            NodeKind::Program { consts, result } => {
-                let mut elems: Vec<NodeId> = consts.clone();
-                elems.push(*result);
+            NodeKind::Program {
+                consts,
+                result,
+                types,
+            } => {
+                // F16 7.1: the type lines among the `const` lines, in the
+                // order of the text.
+                let mut elems: Vec<(Range, Result<NodeId, &TypeLine>)> = consts
+                    .iter()
+                    .map(|&c| (self.outer(c), Ok(c)))
+                    .chain(types.iter().map(|t| (t.span, Err(t))))
+                    .collect();
+                elems.sort_by_key(|(r, _)| r.start);
+                elems.push((self.outer(*result), Ok(*result)));
                 let mut v = Vec::new();
-                for (k, &e) in elems.iter().enumerate() {
-                    let outer = self.outer(e);
+                for (k, (outer, e)) in elems.into_iter().enumerate() {
                     if k > 0 && self.blank_before(outer) {
                         v.push(self.push(D::Blank));
                     }
                     let last = self.elem_begin(outer);
-                    v.push(self.statement(e));
+                    v.push(match e {
+                        Ok(e) => self.statement(e),
+                        Err(t) => self.type_line(t),
+                    });
                     v.push(self.elem_end(last, outer, k > 0));
                     v.push(self.hard());
                 }
@@ -1109,17 +1190,23 @@ impl<'a> B<'a> {
                 v.push(self.lead_doc(end));
                 self.list(v)
             }
-            NodeKind::Const { pattern, value } => {
+            NodeKind::Const { pattern, value, ty } => {
                 let c = self.tk_at(span.start);
                 let s1 = self.sp();
                 let p = self.pattern(*pattern);
+                let mut v = vec![c, s1, p];
+                // F16 7.1: `":" sp type` after the pattern.
+                if let Some(t) = ty {
+                    v.push(self.annotation(t));
+                }
                 let s2 = self.sp();
                 let eq = self.tb(self.outer(*value).start);
                 let e = self.tk(eq);
                 let a = self.assigned(*value);
                 let semi = self.ti(self.outer(*value).end);
                 let sc = self.tk(semi);
-                self.list(vec![c, s1, p, s2, e, a, sc])
+                v.extend([s2, e, a, sc]);
+                self.list(v)
             }
             NodeKind::Block { consts, result } => {
                 let open = self.ti(span.start);
@@ -1257,16 +1344,24 @@ impl<'a> B<'a> {
                 v.push(self.args(open, args));
                 self.list(v)
             }
-            NodeKind::Lambda { params, body } => {
+            NodeKind::Lambda {
+                params,
+                body,
+                result,
+            } => {
+                // F16 7.1: an annotated lambda keeps its parentheses.
                 let bare = params.len() == 1
+                    && result.is_none()
                     && matches!(
                         self.kind(params[0]),
                         NodeKind::Param {
                             pattern,
-                            default: None
+                            default: None,
+                            ty: None,
+                            fn_: None,
                         } if matches!(self.kind(*pattern), NodeKind::NamePat { .. })
                     );
-                let p = if bare {
+                let mut p = if bare {
                     let NodeKind::Param { pattern, .. } = self.kind(params[0]) else {
                         unreachable!()
                     };
@@ -1277,6 +1372,10 @@ impl<'a> B<'a> {
                     let els = params.iter().map(|&x| El::Node(x)).collect();
                     self.seq(open, close, els)
                 };
+                if let Some(r) = result {
+                    let a = self.annotation(r);
+                    p = self.list(vec![p, a]);
+                }
                 let s = self.sp();
                 let arrow = self.tb(self.outer(*body).start);
                 let a = self.tk(arrow);
@@ -2258,11 +2357,37 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
         let _ = write!(out, "({}", n.kind.name());
         let mut kids: Vec<NodeId> = Vec::new();
         match &n.kind {
-            NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+            // F16: the type lines, in their places among the `const` lines.
+            NodeKind::Program {
+                consts,
+                result,
+                types,
+            } if !types.is_empty() => {
+                let mut lines: Vec<(u32, String)> =
+                    consts
+                        .iter()
+                        .map(|&c| (ast.span(c).start, "c".to_string()))
+                        .chain(types.iter().map(|t| {
+                            (t.span.start, format!("t{:?}{}", t.name, ptype_canon(&t.ty)))
+                        }))
+                        .collect();
+                lines.sort_by_key(|(s, _)| *s);
+                for (_, l) in lines {
+                    let _ = write!(out, " {l}");
+                }
                 kids.extend(consts);
                 kids.push(*result);
             }
-            NodeKind::Const { pattern, value } => kids.extend([*pattern, *value]),
+            NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+                kids.extend(consts);
+                kids.push(*result);
+            }
+            NodeKind::Const { pattern, value, ty } => {
+                if let Some(t) = ty {
+                    let _ = write!(out, " :{}", ptype_canon(t));
+                }
+                kids.extend([*pattern, *value]);
+            }
             NodeKind::Ident { name } => {
                 let _ = write!(out, " {name:?}");
             }
@@ -2373,11 +2498,34 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 kids.extend(args);
             }
             NodeKind::OptChain { x } => kids.push(*x),
-            NodeKind::Lambda { params, body } => {
+            NodeKind::Lambda {
+                params,
+                body,
+                result,
+            } => {
+                if let Some(t) = result {
+                    let _ = write!(out, " ->{}", ptype_canon(t));
+                }
                 kids.extend(params);
                 kids.push(*body);
             }
-            NodeKind::Param { pattern, default } => {
+            NodeKind::Param {
+                pattern,
+                default,
+                ty,
+                fn_,
+            } => {
+                if let Some(t) = ty {
+                    let _ = write!(out, " :{}", ptype_canon(t));
+                }
+                if let Some(f) = fn_ {
+                    out.push_str(" fn(");
+                    for (w, _, t) in &f.params {
+                        let _ = write!(out, "{w:?}:{},", ptype_canon(t));
+                    }
+                    let r = f.result.as_ref().map_or("unknown".to_string(), ptype_canon);
+                    let _ = write!(out, ")=>{r}");
+                }
                 kids.push(*pattern);
                 kids.extend(default);
             }

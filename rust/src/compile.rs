@@ -14,7 +14,7 @@ use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library;
 use crate::source::Range;
-use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
+use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType, TypeLine};
 use crate::syntax::Expr;
 use std::collections::{HashMap, HashSet};
 
@@ -51,6 +51,20 @@ pub enum Res {
     /// F4: an `As` node's program type, resolved (3.5); `None` when a static
     /// rule of 6.1 refused it.
     As(Option<Box<Ty>>),
+    /// A reference of a `const`-bound lambda to its own name, in its body or
+    /// defaults: a `Call` or an `Ident` lambda argument. It is
+    /// `recursion-needs-types` (`05-types.md` 22.5), and no use (13.9).
+    SelfRef(NodeId),
+}
+
+/// F16 7.3: a type name in a program type, or the name of a type line, with
+/// the type it stands for there and the span of the name in its type line
+/// (`None` for a type of the environment).
+#[derive(Clone, Debug)]
+pub struct TypeRef {
+    pub span: Range,
+    pub ty: Ty,
+    pub declaration: Option<Range>,
 }
 
 /// A compiled program. It does not change, and is safe to share between
@@ -167,6 +181,12 @@ pub struct Resolution {
     pub measure: Vec<u16>,
     pub slots: usize,
     pub diags: Vec<Diagnostic>,
+    /// F16: each annotation's program type, by the start of its span:
+    /// resolved, or `None` when a static rule refused it (3.3 item 2).
+    pub annots: HashMap<u32, Option<Ty>>,
+    /// F16 7.3: the type names that resolved, and the names of the type
+    /// lines that declare.
+    pub type_refs: Vec<TypeRef>,
 }
 
 /// Resolve every name of a program, and apply the static rules.
@@ -185,13 +205,41 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         diags: Vec::new(),
         slots: 0,
         lambda_levels: Vec::new(),
+        type_lines: HashMap::new(),
+        type_line_names: HashSet::new(),
+        walking: Vec::new(),
+        self_refs: HashMap::new(),
+        annots: HashMap::new(),
+        type_refs: Vec::new(),
     };
     let root = parsed.ast.root;
-    if let NodeKind::Program { consts, result } = parsed.ast.kind(root) {
-        for &c in consts {
-            r.const_line(c);
+    if let NodeKind::Program {
+        consts,
+        result,
+        types,
+    } = parsed.ast.kind(root)
+    {
+        // F16 3.1 item 1: the type lines and the `const` lines in the order
+        // of the text, then the result.
+        let mut lines: Vec<(u32, Result<NodeId, &TypeLine>)> = consts
+            .iter()
+            .map(|&c| (parsed.ast.span(c).start, Ok(c)))
+            .chain(types.iter().map(|t| (t.span.start, Err(t))))
+            .collect();
+        lines.sort_by_key(|(s, _)| *s);
+        for (_, l) in lines {
+            match l {
+                Ok(c) => r.const_line(c),
+                Err(t) => r.type_line(t),
+            }
         }
         r.walk(*result);
+    }
+    // 22.5: once for each lambda, on its reference with the least start.
+    let mut refs: Vec<(Range, String)> = std::mem::take(&mut r.self_refs).into_values().collect();
+    refs.sort_by_key(|(s, _)| s.start);
+    for (span, name) in refs {
+        r.diag(code::STATIC[11], span, "default", &[("name", name)]);
     }
     let mut d = std::mem::take(&mut r.diags);
     sort_diagnostics(&mut d);
@@ -200,6 +248,8 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         measure: r.measure,
         slots: r.slots as usize,
         diags: d,
+        annots: r.annots,
+        type_refs: r.type_refs,
     }
 }
 
@@ -223,6 +273,18 @@ struct Resolver<'a> {
     diags: Vec<Diagnostic>,
     slots: u32,
     lambda_levels: Vec<u16>,
+    /// F16 3.1: the type lines that declared, by name: the type and the span
+    /// of the name.
+    type_lines: HashMap<String, (Ty, Range)>,
+    /// The names of every type line so far, for `duplicate-name`.
+    type_line_names: HashSet<String>,
+    /// The `const`-bound lambdas whose text the walk is in (22.5).
+    walking: Vec<NodeId>,
+    /// For each lambda with a reference to its own name: the first one, and
+    /// the name.
+    self_refs: HashMap<u32, (Range, String)>,
+    annots: HashMap<u32, Option<Ty>>,
+    type_refs: Vec<TypeRef>,
 }
 
 /// The counts of a callee (22.3): required, at most, and for each argument
@@ -295,11 +357,16 @@ impl Resolver<'_> {
     /// in one `PType`; then depth and size, one `check-limit` for both.
     fn program_type(&mut self, pt: &PType) -> Option<Ty> {
         let mut undefined = Vec::new();
-        names_of(pt, &mut |n, span| {
-            if self.env.data().names.lookup(n).is_none() {
-                undefined.push(span);
-            }
+        let mut found = Vec::new();
+        names_of(pt, &mut |n, span| match self.type_lookup(n) {
+            None => undefined.push(span),
+            Some((ty, declaration)) => found.push(TypeRef {
+                span,
+                ty,
+                declaration,
+            }),
         });
+        self.type_refs.extend(found);
         if !undefined.is_empty() {
             for s in undefined {
                 let name = self.text(s);
@@ -377,7 +444,7 @@ impl Resolver<'_> {
                 };
                 Ty::rec(crate::check::ty::Rec::new(fs, rest))
             }
-            PPrim::Name(n, _) => self.env.data().names.lookup(n).unwrap_or_default(),
+            PPrim::Name(n, _) => self.type_lookup(n).map(|x| x.0).unwrap_or_default(),
             PPrim::Paren(inner) => self.resolve_paren(inner, bad),
         }
     }
@@ -386,6 +453,61 @@ impl Resolver<'_> {
     /// the records of the `PType` around it only through its Join.
     fn resolve_paren(&mut self, inner: &PType, bad: &mut bool) -> Ty {
         self.resolve_ptype(inner, bad)
+    }
+
+    /// A type name in scope (F16 3.1 item 2): a named or opaque type of the
+    /// environment, or a type line before this place, with the span of its
+    /// name.
+    fn type_lookup(&self, n: &str) -> Option<(Ty, Option<Range>)> {
+        if let Some(t) = self.env.data().names.lookup(n) {
+            return Some((t, None));
+        }
+        self.type_lines.get(n).map(|(t, s)| (t.clone(), Some(*s)))
+    }
+
+    /// Resolve an annotation, and keep what it resolved to (F16 3.3).
+    fn annotation(&mut self, pt: &PType) {
+        let r = self.program_type(pt);
+        self.annots.insert(pt.span.start, r);
+    }
+
+    /// A type line (F16 3.1 items 2 to 6).
+    fn type_line(&mut self, t: &TypeLine) {
+        let p = [("name", t.name.clone())];
+        let env_ty = self.env.data().names.lookup(&t.name);
+        if env_ty.is_some() {
+            self.diag("name-clash", t.name_span, "default", &p);
+        } else if !self.type_line_names.insert(t.name.clone()) {
+            self.diag(code::STATIC[5], t.name_span, "default", &p);
+        }
+        let ty = self.program_type(&t.ty);
+        match (env_ty, ty) {
+            (Some(e), _) => self.type_refs.push(TypeRef {
+                span: t.name_span,
+                ty: e,
+                declaration: None,
+            }),
+            (None, Some(ty)) => {
+                self.type_refs.push(TypeRef {
+                    span: t.name_span,
+                    ty: ty.clone(),
+                    declaration: Some(t.name_span),
+                });
+                self.type_lines.insert(t.name.clone(), (ty, t.name_span));
+            }
+            (None, None) => {}
+        }
+    }
+
+    /// A reference of a lambda to its own name (22.5): the first is kept.
+    fn self_ref(&mut self, l: NodeId, span: Range, name: &str) {
+        let e = self
+            .self_refs
+            .entry(l.0)
+            .or_insert_with(|| (span, name.to_string()));
+        if span.start < e.0.start {
+            *e = (span, name.to_string());
+        }
     }
 
     fn lookup(&self, name: &str) -> Option<Bind> {
@@ -442,16 +564,23 @@ impl Resolver<'_> {
     }
 
     fn const_line(&mut self, id: NodeId) {
-        let NodeKind::Const { pattern, value } = self.kind(id).clone() else {
+        let NodeKind::Const { pattern, value, ty } = self.kind(id).clone() else {
             return;
         };
+        if let Some(t) = &ty {
+            self.annotation(t);
+        }
         if let (NodeKind::Lambda { .. }, NodeKind::NamePat { name: Some(n) }) =
             (self.kind(value), self.kind(pattern))
         {
+            // 22.7: the name is bound first, then the lambda is walked with
+            // the name in scope (`01-language.md` 5 rule 6).
             let n = n.clone();
-            self.walk(value);
             let span = self.span(pattern);
             self.bind(&n, span, Some(Bind::Lambda(value)));
+            self.walking.push(value);
+            self.walk(value);
+            self.walking.pop();
             return;
         }
         self.walk(value);
@@ -508,7 +637,7 @@ impl Resolver<'_> {
     fn walk(&mut self, mut id: NodeId) {
         loop {
             match self.kind(id).clone() {
-                NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+                NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
                     self.scopes.push(HashMap::new());
                     self.scope_body(&consts, result);
                     self.scopes.pop();
@@ -594,16 +723,40 @@ impl Resolver<'_> {
                     self.call(id, None, &name.name, name.span, &args, span);
                     return;
                 }
-                NodeKind::Lambda { params, body } => {
+                NodeKind::Lambda {
+                    params,
+                    body,
+                    result,
+                } => {
                     self.lambda_levels.push(self.p.ast.node(id).level);
                     self.scopes.push(HashMap::new());
                     for p in params {
-                        if let NodeKind::Param { pattern, default } = self.kind(p).clone() {
+                        if let NodeKind::Param {
+                            pattern,
+                            default,
+                            ty,
+                            fn_,
+                        } = self.kind(p).clone()
+                        {
+                            if let Some(t) = &ty {
+                                self.annotation(t);
+                            }
+                            if let Some(f) = &fn_ {
+                                for (_, _, t) in &f.params {
+                                    self.program_type(t);
+                                }
+                                if let Some(r) = &f.result {
+                                    self.program_type(r);
+                                }
+                            }
                             if let Some(d) = default {
                                 self.walk(d);
                             }
                             self.pattern(pattern);
                         }
+                    }
+                    if let Some(r) = &result {
+                        self.annotation(r);
                     }
                     self.walk(body);
                     self.scopes.pop();
@@ -775,8 +928,13 @@ impl Resolver<'_> {
     /// Walk the arguments of a call (22.5, last paragraph).
     fn args(&mut self, args: &[NodeId]) {
         for &a in args {
-            match self.kind(a) {
-                NodeKind::Ident { .. } => match self.lambda_arg(a) {
+            match self.kind(a).clone() {
+                NodeKind::Ident { name } => match self.lambda_arg(a) {
+                    Some(l) if self.walking.contains(&l) => {
+                        let span = self.span(a);
+                        self.self_ref(l, span, &name);
+                        self.res[a.index()] = Res::SelfRef(l);
+                    }
                     Some(l) => self.res[a.index()] = Res::LambdaRef(l),
                     None => self.walk(a),
                 },
@@ -901,6 +1059,11 @@ impl Resolver<'_> {
         }
         self.res[id.index()] = match callee {
             Callee::Unknown => Res::None,
+            // 22.5: a call of the lambda inside its own text.
+            Callee::Lambda(l) if self.walking.contains(&l) => {
+                self.self_ref(l, name_span, name);
+                Res::SelfRef(l)
+            }
             Callee::Lambda(l) => Res::CallLambda(l),
             Callee::Lib(i) => Res::CallLib(i as u32),
             Callee::Host(i) => Res::CallHost(i as u32),

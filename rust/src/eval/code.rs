@@ -38,11 +38,11 @@ where
 fn children(kind: &NodeKind, out: &mut Vec<NodeId>) {
     out.clear();
     match kind {
-        NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
             out.extend(consts.iter().copied());
             out.push(*result);
         }
-        NodeKind::Const { pattern, value } => out.extend([*pattern, *value]),
+        NodeKind::Const { pattern, value, .. } => out.extend([*pattern, *value]),
         NodeKind::Template { parts } => out.extend(parts.iter().filter_map(|p| match p {
             TemplatePart::Expr(e) => Some(*e),
             TemplatePart::Text(_) => None,
@@ -69,11 +69,13 @@ fn children(kind: &NodeKind, out: &mut Vec<NodeId>) {
             out.extend(args.iter().copied());
         }
         NodeKind::OptChain { x } => out.push(*x),
-        NodeKind::Lambda { params, body } => {
+        NodeKind::Lambda { params, body, .. } => {
             out.extend(params.iter().copied());
             out.push(*body);
         }
-        NodeKind::Param { pattern, default } => {
+        NodeKind::Param {
+            pattern, default, ..
+        } => {
             out.push(*pattern);
             out.extend(default.iter().copied());
         }
@@ -398,7 +400,7 @@ fn node(
                 Ok(v)
             })
         }
-        NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
             let lines: Box<[Line]> = consts
                 .iter()
                 .map(|&c| match ast.kind(c) {
@@ -407,7 +409,7 @@ fn node(
                     {
                         Line::Lambda
                     }
-                    NodeKind::Const { pattern, value }
+                    NodeKind::Const { pattern, value, .. }
                         if matches!(ast.kind(*pattern), NodeKind::NamePat { .. }) =>
                     {
                         Line::Name {
@@ -726,6 +728,7 @@ pub(crate) fn params(ast: &Ast, res: &[Res]) -> Vec<Option<Box<[Option<u32>]>>> 
                 let NodeKind::Param {
                     pattern,
                     default: None,
+                    ..
                 } = ast.kind(*p)
                 else {
                     return None;

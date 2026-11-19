@@ -573,7 +573,7 @@ impl<'h> Run<'h> {
             // in this frame is in the function it calls.
             let node = &ast.nodes[id.index()];
             let next = match &node.kind {
-                NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+                NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
                     self.const_lines(consts, *result)
                 }
                 NodeKind::Template { parts } => return self.template(node.span, parts),
@@ -678,7 +678,7 @@ impl<'h> Run<'h> {
     }
 
     fn const_line(&mut self, c: NodeId) -> R<'h, ()> {
-        let NodeKind::Const { pattern, value } = self.ast.kind(c) else {
+        let NodeKind::Const { pattern, value, .. } = self.ast.kind(c) else {
             return Err(self.internal(self.ast.span(c)));
         };
         if let NodeKind::Lambda { .. } = self.ast.kind(*value) {
@@ -2474,7 +2474,10 @@ impl<'h> Run<'h> {
             }
         } else {
             for (i, &p) in params.iter().enumerate() {
-                let NodeKind::Param { pattern, default } = ast.kind(p) else {
+                let NodeKind::Param {
+                    pattern, default, ..
+                } = ast.kind(p)
+                else {
                     continue;
                 };
                 let a = args.get_mut(i).map(|a| std::mem::replace(a, Value::Null));
@@ -3065,7 +3068,7 @@ impl Program {
                 NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
                     // The value bound by a `const` is the pattern's operand.
                     for c in &ast.nodes {
-                        if let NodeKind::Const { pattern, value } = &c.kind {
+                        if let NodeKind::Const { pattern, value, .. } = &c.kind {
                             if pattern.index() == i {
                                 kids.push(*value);
                             }
@@ -3115,7 +3118,7 @@ impl Program {
                 spans.push(k);
                 spans.push(n.span);
                 for c in &ast.nodes {
-                    if let NodeKind::Const { pattern, value } = &c.kind {
+                    if let NodeKind::Const { pattern, value, .. } = &c.kind {
                         if pattern.index() == i {
                             spans.push(ast.span(*value));
                         }

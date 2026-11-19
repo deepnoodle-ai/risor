@@ -94,6 +94,54 @@ fn the_laws_hold_over_the_suite() {
     );
 }
 
+/// F16 7.1 with F12 2.12: no comment of an annotation is lost, and the
+/// trailing comments of an annotated parameter's last token follow its
+/// comma (item 5).
+#[test]
+fn comments_in_annotations() {
+    for (src, want) in [
+        (
+            "const g = (f: (a: int /* a */, b: string) => bool, n) => n;\n0",
+            "const g = (f: (a: int, /* a */ b: string) => bool, n) => n;\n0\n",
+        ),
+        (
+            "const f = (x: int, // first\n y: string) => y;\nf(1, \"a\")",
+            "const f = (\n  x: int, // first\n  y: string,\n) => y;\nf(1, \"a\")\n",
+        ),
+        (
+            "const f = (x: int /* c */, y) => x;\nf(1, 2)",
+            "const f = (x: int, /* c */ y) => x;\nf(1, 2)\n",
+        ),
+        (
+            "const f = (x: /* t */ int) => x;\n1",
+            "const f = (x: /* t */ int) => x;\n1\n",
+        ),
+    ] {
+        assert_eq!(format(src).unwrap(), want, "{src:?}");
+    }
+}
+
+/// F16: the trees the laws compare hold the annotations and the type lines.
+#[test]
+fn canon_holds_annotations() {
+    let c = |s: &str| {
+        let p = crate::parse(s).unwrap();
+        canon(&p.ast, p.ast.root, p.source.chars())
+    };
+    assert_ne!(c("const x: int = 1; x"), c("const x = 1; x"));
+    assert_ne!(c("const f = (x: int) => x; 1"), c("const f = (x) => x; 1"));
+    assert_ne!(c("const f = (x): int => x; 1"), c("const f = (x) => x; 1"));
+    assert_ne!(
+        c("const g = (f: () => int) => 1; 1"),
+        c("const g = (f: () => unknown) => 1; 1")
+    );
+    assert_ne!(
+        c("type Aa = int; const b = 1; b"),
+        c("const b = 1; type Aa = int; b")
+    );
+    assert_ne!(c("type Aa = int; 1"), c("1"));
+}
+
 /// Long chains that open no level are formatted without deep recursion.
 #[test]
 fn long_chains() {

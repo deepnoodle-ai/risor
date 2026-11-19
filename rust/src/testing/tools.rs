@@ -249,7 +249,8 @@ fn check_hover(w: &Json) -> Result<(), String> {
         return Ok(());
     }
     let o = w.as_obj().ok_or("hover is neither null nor an object")?;
-    const KINDS: [&str; 8] = [
+    // F16 7.3: the kind `type`.
+    const KINDS: [&str; 9] = [
         "name",
         "lambda",
         "variable",
@@ -258,6 +259,7 @@ fn check_hover(w: &Json) -> Result<(), String> {
         "field",
         "method",
         "constant",
+        "type",
     ];
     for (k, v) in o {
         let ok = match k.as_str() {

@@ -266,6 +266,7 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f12-x.json", true),
         ("until-f14-x.json", true),
         ("until-f13-math.json", true),
+        ("until-f16-scope.json", true),
         ("until-f17-complete.json", true),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
@@ -273,7 +274,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(crate::PACKAGES.len(), 15);
+    assert_eq!(crate::PACKAGES.len(), 16);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -479,6 +480,43 @@ fn facts_package() {
     let total = run(&suite_dir().join("facts"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F16, slice D1: `suite/entry-points/`, after `suite/facts/` and
+/// before F17 (`f16-entry-points.md` 8). Its files named `tools-` are run as
+/// `suite/tools/` is, since this build offers F12 (8 item 2).
+#[test]
+fn entry_points_package() {
+    let total = run(&suite_dir().join("entry-points"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+    assert!(total.pass > 0, "no case ran");
+}
+
+/// Package F16: the cases of `suite/messages-entry-points.json`, each run
+/// once, checked (`f16-entry-points.md` 8 item 3).
+#[test]
+fn catalog_entry_points_cases() {
+    let mut total = Counts::default();
+    let mut failed = Vec::new();
+    for (entry, cases) in crate::messages::catalog().entry_point_cases.clone() {
+        let cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
+        for c in &cases {
+            let v = crate::testing::run_case_in(c, true);
+            if let Verdict::Fail(diffs) = &v {
+                failed.push(c.name.clone());
+                println!("  fail: {entry}: {}", c.name);
+                for d in diffs {
+                    println!("    {}: expected {}, found {}", d.name, d.expected, d.found);
+                }
+            }
+            total.add(&v);
+        }
+    }
+    println!("suite/messages-entry-points.json, checked: {total}");
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert!(failed.is_empty(), "cases failed: {failed:?}");
+    assert_eq!(total.pass, 2);
 }
 
 /// Package F17: the record of `suite/library-recursion.json`, run as those
