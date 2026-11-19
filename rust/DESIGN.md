@@ -684,8 +684,8 @@ A plain text error has no cause: its text is already the message.
   R with the `Var` replaced by A0, or fits it only by any; the new solution
   joins A0 with what `bind(R, B)` gathers for the `Var` (F17 5.6). For
   `reduce`, whose R is the `Var`, this is the rule as before.
-- **The runner**: `PACKAGES` holds 17 before 12, so
-  `suite/tools/until-f17-complete.json` is not run; `recursion_package` runs
+- **The runner**: `PACKAGES` holds 17 before 12, so a file named
+  `until-f17-` is not run; `recursion_package` runs
   `suite/recursion/`, its `tools-` files among them, and
   `library_recursion_cases` the record's cases.
 

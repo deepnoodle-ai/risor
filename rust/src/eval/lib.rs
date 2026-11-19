@@ -1269,9 +1269,11 @@ impl<'h> Run<'h> {
                         }
                         continue;
                     }
+                    // The 2 steps come first: a host list is not asked
+                    // for a child the run cannot pay for (5.2 item 5).
+                    self.charge(2)?;
                     let e = list.elem(*pos);
                     *pos += 1;
-                    self.charge(2)?;
                     self.read(e, span)?
                 }
             };
