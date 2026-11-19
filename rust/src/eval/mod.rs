@@ -11,7 +11,7 @@ pub(crate) mod code;
 mod groups;
 pub mod lib;
 
-use crate::compile::{Program, Res};
+use crate::compile::{Frame, Place, Program, Res};
 use crate::diag::{Diagnostic, Phase};
 use crate::env::Limits;
 use crate::host::{Data, Vars};
@@ -243,7 +243,8 @@ impl Program {
     pub(crate) fn outcome_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
         let limits = self.env.data().limits;
         let nvars = self.vars_read;
-        let n = self.slots + nvars;
+        let root = self.frames[self.parsed.ast.root.index()];
+        let n = nvars + root.size as usize;
         // A program with no slots and no variables takes no buffers.
         let slots = if n > 0 {
             SLOTS.with(|c| c.take())
@@ -254,9 +255,14 @@ impl Program {
             p: self,
             ast: &self.parsed.ast,
             vars,
-            // The slots, then the variables as they are read.
+            // The variables as they are read, then the program's frame;
+            // each call pushes its own frame after them (F17 11.5).
             slots,
-            var_base: self.slots,
+            display: {
+                let mut d = vec![0; self.max_depth + 1];
+                d[0] = nvars;
+                d
+            },
             vars_read: Bits::new(nvars),
             vars_missing: Bits::new(nvars),
             m: Meter {
@@ -304,6 +310,7 @@ impl Program {
 /// closure.
 pub(crate) struct Callback<'h> {
     l: NodeId,
+    frame: Frame,
     #[allow(clippy::type_complexity)]
     fast: Option<(&'h [Option<u32>], NodeId, Option<&'h code::Code>)>,
 }
@@ -346,9 +353,15 @@ pub(crate) struct Run<'h> {
     p: &'h Program,
     ast: &'h Ast,
     vars: &'h dyn Vars,
+    /// The variables the program reads, then the frames of the calls in
+    /// progress, the program's first (F17 11.5).
     slots: Vec<Value<'h>>,
-    /// Where the variables' values start in `slots`.
-    var_base: usize,
+    /// For each depth of frame, where the frame on the chain of the code
+    /// now running starts in `slots`. A call of a lambda sets the entry of
+    /// its depth, and gives it back when it ends: the entries below it are
+    /// those of the code in which the lambda was written, since a lambda
+    /// runs only where it is in scope and never outlives that code.
+    display: Vec<usize>,
     /// The variables asked of the host, and those it did not have: a run
     /// asks for each name at most once (`03-host.md` 3.4.1).
     vars_read: Bits,
@@ -697,7 +710,7 @@ impl<'h> Run<'h> {
         if !self.vars_read.test(v) {
             self.fetch_var(v, id);
         }
-        match &self.slots[self.var_base + v] {
+        match &self.slots[v] {
             _ if self.vars_missing.test(v) => Err(self.missing_var(id)),
             Value::BadNum => Err(self.host_number(Some(self.ast.span(id)))),
             x => Ok(x.dup()),
@@ -711,7 +724,7 @@ impl<'h> Run<'h> {
             return;
         };
         match self.vars.get(name) {
-            Some(got) => value::put(&mut self.slots[self.var_base + v], from_view(got)),
+            Some(got) => value::put(&mut self.slots[v], from_view(got)),
             None => self.vars_missing.set(v),
         }
     }
@@ -734,7 +747,7 @@ impl<'h> Run<'h> {
     fn ident(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let span = self.ast.span(id);
         match self.res(id) {
-            Res::Slot(s) => Ok(self.slots[*s as usize].dup()),
+            Res::Slot(s) => Ok(self.slots[self.slot(*s)].dup()),
             Res::Var(v) => self.var(self.p.var_index[*v as usize] as usize, id),
             _ => Err(self.internal(span)),
         }
@@ -2280,7 +2293,11 @@ impl<'h> Run<'h> {
             )),
             _ => None,
         };
-        Callback { l, fast }
+        Callback {
+            l,
+            frame: p.frames[l.index()],
+            fast,
+        }
     }
 
     /// A library entry's call of a callback with two arguments, as
@@ -2304,10 +2321,13 @@ impl<'h> Run<'h> {
         let Some((slots, body, code)) = cb.fast else {
             return self.invoke_for(entry, index, cb.l, &mut [a, b], measure, span);
         };
-        if let Err(f) = self.enter2(slots, a, b, measure, span) {
-            return Err(traced(f, span, entry, index));
-        }
-        match self.body(body, code, measure) {
+        let saved = match self.enter2(cb.frame, slots, a, b, measure, span) {
+            Ok(s) => s,
+            Err(f) => return Err(traced(f, span, entry, index)),
+        };
+        let r = self.body(body, code, measure);
+        self.pop_frame(cb.frame, saved);
+        match r {
             Ok(v) => Ok(v),
             Err(f) => Err(traced(f, span, entry, index)),
         }
@@ -2329,10 +2349,13 @@ impl<'h> Run<'h> {
             let mut args = args;
             return self.invoke_for(entry, index, cb.l, &mut args, measure, span);
         };
-        if let Err(f) = self.enter3(slots, args, measure, span) {
-            return Err(traced(f, span, entry, index));
-        }
-        match self.body(body, code, measure) {
+        let saved = match self.enter3(cb.frame, slots, args, measure, span) {
+            Ok(s) => s,
+            Err(f) => return Err(traced(f, span, entry, index)),
+        };
+        let r = self.body(body, code, measure);
+        self.pop_frame(cb.frame, saved);
+        match r {
             Ok(v) => Ok(v),
             Err(f) => Err(traced(f, span, entry, index)),
         }
@@ -2361,20 +2384,23 @@ impl<'h> Run<'h> {
     #[cfg_attr(not(debug_assertions), inline(always))]
     fn enter2(
         &mut self,
+        frame: Frame,
         slots: &[Option<u32>],
         a: Value<'h>,
         b: Value<'h>,
         measure: u32,
         span: Range,
-    ) -> R<'h, ()> {
+    ) -> R<'h, usize> {
         if let Err(f) = self.enter(measure, span) {
             value::release(a);
             value::release(b);
             return Err(f);
         }
-        self.bind(slots, 0, a);
-        self.bind(slots, 1, b);
-        Ok(())
+        let saved = self.push_frame(frame);
+        let base = self.display[frame.depth as usize];
+        self.bind(base, slots, 0, a);
+        self.bind(base, slots, 1, b);
+        Ok(saved)
     }
 
     /// `enter2` for three arguments.
@@ -2382,21 +2408,24 @@ impl<'h> Run<'h> {
     #[cfg_attr(not(debug_assertions), inline(always))]
     fn enter3(
         &mut self,
+        frame: Frame,
         slots: &[Option<u32>],
         [a, b, c]: [Value<'h>; 3],
         measure: u32,
         span: Range,
-    ) -> R<'h, ()> {
+    ) -> R<'h, usize> {
         if let Err(f) = self.enter(measure, span) {
             value::release(a);
             value::release(b);
             value::release(c);
             return Err(f);
         }
-        self.bind(slots, 0, a);
-        self.bind(slots, 1, b);
-        self.bind(slots, 2, c);
-        Ok(())
+        let saved = self.push_frame(frame);
+        let base = self.display[frame.depth as usize];
+        self.bind(base, slots, 0, a);
+        self.bind(base, slots, 1, b);
+        self.bind(base, slots, 2, c);
+        Ok(saved)
     }
 
     /// Argument `i` into its parameter's slot. A lambda declares at most as
@@ -2404,10 +2433,53 @@ impl<'h> Run<'h> {
     /// released.
     #[cfg_attr(debug_assertions, inline)]
     #[cfg_attr(not(debug_assertions), inline(always))]
-    fn bind(&mut self, slots: &[Option<u32>], i: usize, v: Value<'h>) {
+    fn bind(&mut self, base: usize, slots: &[Option<u32>], i: usize, v: Value<'h>) {
         match slots.get(i) {
-            Some(Some(s)) => value::put(&mut self.slots[*s as usize], v),
+            Some(Some(s)) => value::put(&mut self.slots[base + *s as usize], v),
             _ => value::release(v),
+        }
+    }
+
+    /// Where slot `s` is in `slots`: in the frame of its depth on the chain
+    /// of the code now running (F17 11.5).
+    #[inline(always)]
+    pub(crate) fn slot(&self, s: u32) -> usize {
+        self.at(self.p.place[s as usize])
+    }
+
+    #[inline(always)]
+    pub(crate) fn at(&self, p: Place) -> usize {
+        self.display[p.depth as usize] + p.index as usize
+    }
+
+    /// A new frame for a call of a lambda, its slots null (F17 11.5 item
+    /// 1): the entry of its depth in `display` is set to it, and the entry
+    /// it replaces is kept for `pop_frame`. A lambda that binds no name has
+    /// no frame: nothing reads one.
+    #[inline(always)]
+    fn push_frame(&mut self, f: Frame) -> usize {
+        if f.size == 0 {
+            return 0;
+        }
+        let base = self.slots.len();
+        self.slots
+            .resize_with(base + f.size as usize, || Value::Null);
+        std::mem::replace(&mut self.display[f.depth as usize], base)
+    }
+
+    /// The end of a call: its frame is dropped, and the entry of its depth
+    /// set back. A failure ends it too, so the names of the calls it leaves
+    /// keep their values (F17 11.5 item 3).
+    #[inline(always)]
+    fn pop_frame(&mut self, f: Frame, saved: usize) {
+        if f.size == 0 {
+            return;
+        }
+        let base = std::mem::replace(&mut self.display[f.depth as usize], saved);
+        while self.slots.len() > base {
+            if let Some(v) = self.slots.pop() {
+                value::release(v);
+            }
         }
     }
 
@@ -2447,9 +2519,17 @@ impl<'h> Run<'h> {
         let NodeKind::Lambda { body, .. } = &self.ast.nodes[l.index()].kind else {
             return Err(self.internal(span));
         };
-        self.bind_params(l, args)?;
-        let code = self.p.code.get(body.index()).and_then(|c| c.as_ref());
-        self.body(*body, code, measure)
+        let frame = self.p.frames[l.index()];
+        let saved = self.push_frame(frame);
+        let r = match self.bind_params(l, args) {
+            Ok(()) => {
+                let code = self.p.code.get(body.index()).and_then(|c| c.as_ref());
+                self.body(*body, code, measure)
+            }
+            Err(f) => Err(f),
+        };
+        self.pop_frame(frame, saved);
+        r
     }
 
     /// The arguments of a call into the parameters of lambda `l`.
@@ -2462,13 +2542,14 @@ impl<'h> Run<'h> {
         };
         if let Some(Some(slots)) = p.params.get(l.index()) {
             // Each parameter a name with no default: the argument, or null.
+            let base = self.display[p.frames[l.index()].depth as usize];
             for (i, s) in slots.iter().enumerate() {
                 let v = match args.get_mut(i) {
                     Some(a) => std::mem::replace(a, Value::Null),
                     None => Value::Null,
                 };
                 match s {
-                    Some(s) => value::put(&mut self.slots[*s as usize], v),
+                    Some(s) => value::put(&mut self.slots[base + *s as usize], v),
                     None => value::release(v),
                 }
             }
@@ -2500,7 +2581,10 @@ impl<'h> Run<'h> {
         match &ast.nodes[pat.index()].kind {
             NodeKind::NamePat { .. } => {
                 match self.res(pat) {
-                    Res::Bind(s) => value::put(&mut self.slots[*s as usize], v),
+                    Res::Bind(s) => {
+                        let i = self.slot(*s);
+                        value::put(&mut self.slots[i], v)
+                    }
                     _ => value::release(v),
                 }
                 Ok(())
@@ -2541,7 +2625,10 @@ impl<'h> Run<'h> {
                         },
                     };
                     match slots.get(i) {
-                        Some(Some(s)) => value::put(&mut self.slots[*s as usize], val),
+                        Some(Some(s)) => {
+                            let i = self.slot(*s);
+                            value::put(&mut self.slots[i], val)
+                        }
                         _ => value::release(val),
                     }
                 }
@@ -2557,7 +2644,8 @@ impl<'h> Run<'h> {
                     self.alloc(1 + 2 * left.len() as u64)?;
                     let _ = r;
                     if let Some(slot) = rest_slot {
-                        self.slots[slot as usize] = Value::Map(Rc::new(MapVal(left)));
+                        let i = self.slot(slot);
+                        self.slots[i] = Value::Map(Rc::new(MapVal(left)));
                     }
                 }
                 Ok(())
@@ -2608,7 +2696,8 @@ impl<'h> Run<'h> {
                         rest: Some(slot), ..
                     } = self.res(pat)
                     {
-                        self.slots[*slot as usize] = Value::list(left);
+                        let i = self.slot(*slot);
+                        self.slots[i] = Value::list(left);
                     }
                 }
                 Ok(())
@@ -2683,7 +2772,7 @@ impl<'h> Run<'h> {
             Err(f) if messages::caught(f.code) => {
                 self.m.depth = depth;
                 if let Res::Catch(Some(slot)) = self.res(id) {
-                    let slot = *slot as usize;
+                    let slot = self.slot(*slot);
                     let msg = f.message();
                     if f.text.is_some() {
                         self.alloc(9)?;

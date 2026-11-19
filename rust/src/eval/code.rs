@@ -14,7 +14,7 @@
 //! as before, and the closures it reaches below are bounded by that depth.
 
 use super::{Arg, Run, R};
-use crate::compile::Res;
+use crate::compile::{Place, Res};
 use crate::source::Range;
 use crate::syntax::ast::{Ast, BinaryOp, NodeId, NodeKind, TemplatePart};
 use crate::value::{release, Str, Value};
@@ -145,6 +145,7 @@ enum Step {
 pub(crate) fn build(
     ast: &Ast,
     res: &[Res],
+    place: &[Place],
     var_index: &[u32],
     coalesced: &[bool],
 ) -> Vec<Option<Code>> {
@@ -187,7 +188,7 @@ pub(crate) fn build(
     for i in 0..n {
         let id = NodeId(i as u32);
         let c = if depth[i] <= MAX_DEPTH && !inner[i] {
-            node(ast, res, var_index, coalesced, id, &code)
+            node(ast, res, place, var_index, coalesced, id, &code)
         } else {
             None
         };
@@ -207,6 +208,7 @@ fn child(code: &[Option<Code>], c: NodeId) -> Code {
 fn node(
     ast: &Ast,
     res: &[Res],
+    place: &[Place],
     var_index: &[u32],
     coalesced: &[bool],
     id: NodeId,
@@ -229,8 +231,8 @@ fn node(
         }),
         NodeKind::Ident { .. } => match res[id.index()] {
             Res::Slot(s) => {
-                let s = s as usize;
-                mk(move |r| Ok(r.slots[s].dup()))
+                let p = place[s as usize];
+                mk(move |r| Ok(r.slots[r.at(p)].dup()))
             }
             Res::Var(v) => {
                 let v = var_index[v as usize] as usize;
@@ -313,7 +315,7 @@ fn node(
                         Ok(Value::Bool(found == (op == BinaryOp::In)))
                     })
                 }
-                op => operator(ast, res, code, op, x_id, y_id, span),
+                op => operator(ast, res, place, code, op, x_id, y_id, span),
             }
         }
         NodeKind::Cond {
@@ -415,7 +417,7 @@ fn node(
                         Line::Name {
                             value: child(code, *value),
                             slot: match res[pattern.index()] {
-                                Res::Bind(s) => Some(s as usize),
+                                Res::Bind(s) => Some(place[s as usize]),
                                 _ => None,
                             },
                         }
@@ -432,7 +434,10 @@ fn node(
                         Line::Name { value, slot } => {
                             let v = value(r)?;
                             match slot {
-                                Some(s) => crate::value::put(&mut r.slots[*s], v),
+                                Some(p) => {
+                                    let i = r.at(*p);
+                                    crate::value::put(&mut r.slots[i], v)
+                                }
                                 None => crate::value::release(v),
                             }
                         }
@@ -535,14 +540,14 @@ fn node(
 /// in place, a slot, or another closure.
 enum Operand {
     Num(f64),
-    Slot(usize),
+    Slot(Place),
     Code(Code),
 }
 
-fn operand(ast: &Ast, res: &[Res], code: &[Option<Code>], n: NodeId) -> Operand {
+fn operand(ast: &Ast, res: &[Res], place: &[Place], code: &[Option<Code>], n: NodeId) -> Operand {
     match (ast.kind(n), &res[n.index()]) {
         (NodeKind::Number { value }, _) => Operand::Num(*value),
-        (NodeKind::Ident { .. }, Res::Slot(s)) => Operand::Slot(*s as usize),
+        (NodeKind::Ident { .. }, Res::Slot(s)) => Operand::Slot(place[*s as usize]),
         _ => Operand::Code(child(code, n)),
     }
 }
@@ -550,9 +555,11 @@ fn operand(ast: &Ast, res: &[Res], code: &[Option<Code>], n: NodeId) -> Operand 
 /// An operator that is not `&&`, `||` or `??`: a closure for each operator
 /// and each form of its operands, with the case of two numbers in place.
 /// Every other case goes to `Run::operate`, as before.
+#[allow(clippy::too_many_arguments)]
 fn operator(
     ast: &Ast,
     res: &[Res],
+    place: &[Place],
     code: &[Option<Code>],
     op: BinaryOp,
     x: NodeId,
@@ -560,7 +567,10 @@ fn operator(
     span: Range,
 ) -> Code {
     use crate::number;
-    let (a, b) = (operand(ast, res, code, x), operand(ast, res, code, y));
+    let (a, b) = (
+        operand(ast, res, place, code, x),
+        operand(ast, res, place, code, y),
+    );
     // `==` and `!=` against a string written in place.
     if let (BinaryOp::Eq | BinaryOp::Ne, NodeKind::String { value, .. }) = (op, ast.kind(y)) {
         let lit: Box<str> = value.as_str().into();
@@ -642,12 +652,14 @@ where
         };
     }
     match (a, b) {
-        (Operand::Slot(s), Operand::Num(c)) => body!(r, r.slots[s].dup(), Value::Num(c)),
-        (Operand::Slot(s), Operand::Slot(t)) => body!(r, r.slots[s].dup(), r.slots[t].dup()),
-        (Operand::Slot(s), Operand::Code(y)) => body!(r, r.slots[s].dup(), y(r)?),
+        (Operand::Slot(s), Operand::Num(c)) => body!(r, r.slots[r.at(s)].dup(), Value::Num(c)),
+        (Operand::Slot(s), Operand::Slot(t)) => {
+            body!(r, r.slots[r.at(s)].dup(), r.slots[r.at(t)].dup())
+        }
+        (Operand::Slot(s), Operand::Code(y)) => body!(r, r.slots[r.at(s)].dup(), y(r)?),
         (Operand::Code(x), Operand::Num(c)) => body!(r, x(r)?, Value::Num(c)),
-        (Operand::Code(x), Operand::Slot(t)) => body!(r, x(r)?, r.slots[t].dup()),
-        (Operand::Num(c), Operand::Slot(t)) => body!(r, Value::Num(c), r.slots[t].dup()),
+        (Operand::Code(x), Operand::Slot(t)) => body!(r, x(r)?, r.slots[r.at(t)].dup()),
+        (Operand::Num(c), Operand::Slot(t)) => body!(r, Value::Num(c), r.slots[r.at(t)].dup()),
         (Operand::Num(c), Operand::Code(y)) => body!(r, Value::Num(c), y(r)?),
         (a, b) => {
             let x = into_code(a);
@@ -660,7 +672,7 @@ where
 fn into_code(a: Operand) -> Code {
     match a {
         Operand::Num(c) => mk(move |_| Ok(Value::Num(c))),
-        Operand::Slot(s) => mk(move |r| Ok(r.slots[s].dup())),
+        Operand::Slot(s) => mk(move |r| Ok(r.slots[r.at(s)].dup())),
         Operand::Code(c) => c,
     }
 }
@@ -708,15 +720,15 @@ enum Line {
     /// `const f = (...) => ...`.
     Lambda,
     /// `const name = value`, and the slot it binds (`None` for `_`).
-    Name { value: Code, slot: Option<usize> },
+    Name { value: Code, slot: Option<Place> },
     /// Another pattern, by the walk.
     Node(NodeId),
 }
 
 /// For each lambda whose parameters are all names with no default: the
-/// slot each binds (`None` for `_`), indexed by node. A call binds them
-/// without the walk of patterns.
-pub(crate) fn params(ast: &Ast, res: &[Res]) -> Vec<Option<Box<[Option<u32>]>>> {
+/// index in the lambda's frame of the slot each binds (`None` for `_`),
+/// indexed by node. A call binds them without the walk of patterns.
+pub(crate) fn params(ast: &Ast, res: &[Res], place: &[Place]) -> Vec<Option<Box<[Option<u32>]>>> {
     ast.nodes
         .iter()
         .map(|n| {
@@ -737,7 +749,7 @@ pub(crate) fn params(ast: &Ast, res: &[Res]) -> Vec<Option<Box<[Option<u32>]>>> 
                     return None;
                 };
                 out.push(match res[pattern.index()] {
-                    Res::Bind(s) => Some(s),
+                    Res::Bind(s) => Some(place[s as usize].index),
                     _ => None,
                 });
             }
