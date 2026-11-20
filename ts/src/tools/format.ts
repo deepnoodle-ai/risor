@@ -13,8 +13,8 @@ import type { Span } from "../syntax/source.ts";
 import type { Token } from "../syntax/token.ts";
 import { parseTemplateText } from "../syntax/template.ts";
 import { lexPart } from "../syntax/lexer.ts";
-import { AFTER, BLANK, H, L, S, SP, brokenGroup, choice, forced, group, ib, indent, layout } from "./doc.ts";
-import type { Doc } from "./doc.ts";
+import { AFTER, BLANK, H, L, S, SP, brokenGroup, choice, forced, group, ib, indent, layout, mapDoc } from "./doc.ts";
+import type { Doc, Part } from "./doc.ts";
 
 /** The outcome of the formatter (f12 2.1). */
 export type FormatResult = { ok: true; text: string } | { ok: false; diagnostics: Diagnostic[] };
@@ -47,7 +47,8 @@ export function formatTemplate(text: string): FormatResult {
     const closeStart = raw.endsWith("}}") ? seg.span.end - 2 : seg.span.end - 1;
     const f = new Formatter(src, toks, seg.span.start + 3, closeStart);
     const body = layout(f.build((b) => b.expr(seg.expr)), Infinity);
-    const trimmed = body.replace(/\s+$/, "").replace(/^\s+/, "");
+    // `trim` takes off what `\s` matches: white space and line ends.
+    const trimmed = body.trim();
     if (!trimmed.includes("\n") && !f.hasLineComment) out += "${{ " + trimmed + " }}";
     else out += raw;
   }
@@ -56,7 +57,11 @@ export function formatTemplate(text: string): FormatResult {
 
 /** The text ends with exactly one U+000A (f12 2.1 item 5). */
 function finish(s: string): string {
-  return s.replace(/[ \n]+$/, "") + "\n";
+  // By a loop from the end: a search for `[ \n]+$` tries each space of each indent, which
+  // costs the square of the deepest indent for every line.
+  let e = s.length;
+  while (e > 0 && (s.charCodeAt(e - 1) === 0x20 || s.charCodeAt(e - 1) === 0x0a)) e--;
+  return s.slice(0, e) + "\n";
 }
 
 /** A comment of the source. */
@@ -85,6 +90,13 @@ function lineEnds(s: string): number {
       if (s[i + 1] === "\n") i++;
     }
   }
+  return n;
+}
+
+/** The count of code points of a text. */
+function codePoints(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; n++) i += s.codePointAt(i)! > 0xffff ? 2 : 1;
   return n;
 }
 
@@ -130,7 +142,10 @@ class Formatter {
         }
       }
     });
-    // The gaps between tokens: white space and comments.
+    // The gaps between tokens: white space and comments. A gap is read once,
+    // from its start: a gap of many comments costs its length, not the square of it.
+    const blank = /[\s\uFEFF]*/uy;
+    const lineComment = /\/\/[^\r\n]*/y;
     let prevEnd = from;
     let prevTokEnd = -1;
     for (let k = 0; k <= toks.length; k++) {
@@ -138,34 +153,42 @@ class Formatter {
       let pos = prevEnd;
       let nl = 0;
       let lastComment: Comment | null = null;
+      const gap = pos < gapEnd ? src.slice(pos, gapEnd) : "";
+      /** The place of *pos* in *gap*, which is counted in UTF-16 units. */
+      let at = 0;
+      /** The line ends from the token before the gap to *pos*. */
+      let since = 0;
       while (pos < gapEnd) {
-        const rest = src.slice(pos, gapEnd);
-        const ws = /^[\s﻿]*/u.exec(rest)![0];
+        blank.lastIndex = at;
+        const ws = blank.exec(gap)![0];
         const wsN = lineEnds(ws);
         nl += wsN;
+        since += wsN;
         if (lastComment !== null) lastComment.nlAfter += wsN;
-        pos += [...ws].length;
+        pos += codePoints(ws);
+        at += ws.length;
         if (pos >= gapEnd) break;
-        const body = src.slice(pos, gapEnd);
         let text: string;
         let line: boolean;
-        if (body.startsWith("//")) {
-          const m = /^\/\/[^\r\n]*/.exec(body)![0];
-          text = m;
+        if (gap.startsWith("//", at)) {
+          lineComment.lastIndex = at;
+          text = lineComment.exec(gap)![0];
           line = true;
           this.hasLineComment = true;
         } else {
-          const e = body.indexOf("*/");
-          text = body.slice(0, e + 2);
+          const e = gap.indexOf("*/", at);
+          text = e < 0 ? gap.slice(at, at + 1) : gap.slice(at, e + 2);
           line = false;
         }
-        const len = [...text].length;
-        const trailing = prevTokEnd >= 0 && lineEnds(src.slice(prevTokEnd, pos)) === 0;
+        const len = codePoints(text);
+        const trailing = prevTokEnd >= 0 && since === 0;
         const c: Comment = { start: pos, end: pos + len, text, line, nlBefore: nl, nlAfter: 0, trailing };
         this.comments.push(c);
         lastComment = c;
         nl = 0;
+        since += lineEnds(text);
         pos += len;
+        at += text.length;
       }
       if (k < toks.length) {
         this.nlBefore[k] = nl;
@@ -188,22 +211,32 @@ class Formatter {
 
   private attach(): void {
     const kept = [...this.kept].sort((a, b) => a - b);
+    // The tokens are in the order of the text, so the kept token before a comment
+    // and the one after it are found by halving.
+    /** The count of kept tokens for which *before* holds: it holds for a first run of them. */
+    const count = (before: (t: Token) => boolean): number => {
+      let lo = 0;
+      let hi = kept.length;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (before(this.toks[kept[m]])) lo = m + 1;
+        else hi = m;
+      }
+      return lo;
+    };
     for (const c of this.comments) {
       let trailingTo = -1;
       if (c.trailing) {
-        for (let j = kept.length - 1; j >= 0; j--) {
-          if (this.toks[kept[j]].end <= c.start) {
-            trailingTo = kept[j];
-            break;
-          }
-        }
+        const n = count((t) => t.end <= c.start);
+        if (n > 0) trailingTo = kept[n - 1];
       }
       if (trailingTo >= 0) {
         if (!this.trail.has(trailingTo)) this.trail.set(trailingTo, []);
         this.trail.get(trailingTo)!.push(c);
         continue;
       }
-      const next = kept.find((j) => this.toks[j].start >= c.end);
+      const n = count((t) => t.start < c.end);
+      const next = n < kept.length ? kept[n] : undefined;
       if (next === undefined) this.endComments.push(c);
       else {
         if (!this.lead.has(next)) this.lead.set(next, []);
@@ -372,38 +405,23 @@ class Formatter {
 
   /** Replace the markers by the comments' documents. */
   private expand(d: Doc): Doc {
-    if (typeof d === "string") return d;
-    if (Array.isArray(d)) return d.map((x) => this.expand(x));
-    const m = d as unknown as Marker | Doc;
-    if (typeof m === "object" && m !== null && "k" in m) {
-      switch ((m as Marker).k) {
+    return mapDoc(d, (p) => {
+      const m = p as unknown as Marker;
+      switch (m.k) {
         case "lead": {
-          const i = (m as { i: number }).i;
-          const cs = this.lead.get(i);
-          return cs === undefined ? "" : this.leadDoc(cs, i);
+          const cs = this.lead.get(m.i);
+          return cs === undefined ? "" : this.leadDoc(cs, m.i);
         }
         case "trail": {
-          const i = (m as { i: number }).i;
-          const cs = this.trail.get(i);
-          return cs === undefined ? "" : this.trailDoc(cs, i);
+          const cs = this.trail.get(m.i);
+          return cs === undefined ? "" : this.trailDoc(cs, m.i);
         }
         case "end":
           return this.endComments.length === 0 ? "" : this.leadDoc(this.endComments, null);
+        default:
+          return undefined;
       }
-    }
-    const p = d as Exclude<Doc, string | Doc[]>;
-    switch (p.k) {
-      case "indent":
-        return { k: "indent", d: this.expand(p.d) };
-      case "group":
-        return { k: "group", d: this.expand(p.d), broken: p.broken };
-      case "ib":
-        return { k: "ib", a: this.expand(p.a), b: this.expand(p.b) };
-      case "choice":
-        return { k: "choice", alts: p.alts.map((a) => this.expand(a)), must: p.must };
-      default:
-        return p;
-    }
+    });
   }
 
   // ---- finding tokens --------------------------------------------------------
@@ -453,23 +471,25 @@ class Formatter {
   /** The largest token index in a document. */
   private lastTokenIn(d: Doc): number {
     let best = -1;
-    const walk = (x: Doc) => {
-      if (typeof x === "string") return;
+    // The walk keeps its own stack: a document is as deep as a flat program is long.
+    const todo: Doc[] = [d];
+    while (todo.length > 0) {
+      const x = todo.pop()!;
+      if (typeof x === "string") continue;
       if (Array.isArray(x)) {
-        for (const y of x) walk(y);
-        return;
+        for (const y of x) todo.push(y);
+        continue;
       }
       const m = x as unknown as { k: string; i?: number; d?: Doc; a?: Doc; b?: Doc; alts?: Doc[] };
       if (m.k === "trail" || m.k === "lead") {
         if (m.i! > best) best = m.i!;
-        return;
+        continue;
       }
-      if (m.d !== undefined) walk(m.d);
-      if (m.a !== undefined) walk(m.a);
-      if (m.b !== undefined) walk(m.b);
-      if (m.alts !== undefined) for (const y of m.alts) walk(y);
-    };
-    walk(d);
+      if (m.d !== undefined) todo.push(m.d);
+      if (m.a !== undefined) todo.push(m.a);
+      if (m.b !== undefined) todo.push(m.b);
+      if (m.alts !== undefined) for (const y of m.alts) todo.push(y);
+    }
     return best;
   }
 
@@ -478,29 +498,14 @@ class Formatter {
     const last = this.lastTokenIn(d);
     if (last < 0) return { d, trail: "" };
     let found = false;
-    const strip = (x: Doc): Doc => {
-      if (typeof x === "string") return x;
-      if (Array.isArray(x)) return x.map(strip);
-      const m = x as unknown as { k: string; i?: number };
+    const out = mapDoc(d, (p: Part) => {
+      const m = p as unknown as { k: string; i?: number };
       if (m.k === "trail" && m.i === last) {
         found = true;
         return "";
       }
-      const p = x as Exclude<Doc, string | Doc[]>;
-      switch (p.k) {
-        case "indent":
-          return { k: "indent", d: strip(p.d) };
-        case "group":
-          return { k: "group", d: strip(p.d), broken: p.broken };
-        case "ib":
-          return { k: "ib", a: strip(p.a), b: strip(p.b) };
-        case "choice":
-          return { k: "choice", alts: p.alts.map(strip), must: p.must };
-        default:
-          return p;
-      }
-    };
-    const out = strip(d);
+      return undefined;
+    });
     return { d: out, trail: found ? this.trailMark(last) : "" };
   }
 
@@ -640,15 +645,9 @@ class Formatter {
         return [this.tok(op), space ? " " : "", this.paren(x, need)];
       }
       case "Binary":
-        return this.binary(e, opts.unindented === true);
-      case "As": {
-        const p = 6;
-        const x = e.x;
-        const lx = this.level(x);
-        const need = lx < p || (x.kind === "Binary" && x.op === "??") || (x.kind === "Unary" && x.op === "!");
-        const kw = this.find(e.form, this.outer(x).end);
-        return [this.paren(x, need), SP, this.tok(kw), SP, this.typeDoc(e.typeSpan)];
-      }
+        return e.op === "**" ? this.power(e) : this.operators(e, opts.unindented === true);
+      case "As":
+        return this.operators(e, false);
       case "Cond":
         return e.form === "?:" ? this.ternary(e) : this.ifExpr(e);
       case "Try":
@@ -714,43 +713,59 @@ class Formatter {
     return { d: [key, this.tok(colon), this.assigned(en.value)], first };
   }
 
-  /** A run of one level (f12 2.8 item 3). */
-  private binary(e: A.Binary, unindented: boolean): Doc {
-    const p = binLevel(e.op);
-    const operands: Doc[] = [];
-    const ops: Doc[] = [];
+  /** `x ** y` (f12 2.8 item 3): its left operand is a primary, so it is no part of a left spine. */
+  private power(e: A.Binary): Doc {
+    const need = this.level(e.x) < 11;
+    const needR = this.level(e.y) < 9;
+    const opI = this.find("**", this.outer(e.x).end);
+    return group([this.paren(e.x, need), SP, this.tok(opI), indent([L, this.paren(e.y, needR)])]);
+  }
+
+  /**
+   * A binary operator other than `**`, `as` or `is`, with all that its left
+   * operand holds (f12 2.8 item 3, f04 8).
+   *
+   * The left operand of each opens no level (01 13.1, f04 2.8), so the left
+   * spine is as long as the program, and it is built by a loop: the innermost
+   * left operand first, then each operator outward. The operators of one level
+   * that stand next to one another on the spine, with no parentheses between
+   * them, are one run: g(‹x1› sp o1 i(L ‹x2› sp o2 L ‹x3› ... L ‹xn›)).
+   */
+  private operators(e: A.Binary | A.As, unindented: boolean): Doc {
+    const spine: (A.Binary | A.As)[] = [];
     let x: A.Expr = e;
-    const chainNodes: A.Binary[] = [];
-    while (x.kind === "Binary" && binLevel(x.op) === p && x.op !== "**") {
-      chainNodes.push(x);
-      const left: A.Expr = x.x;
-      if (left.kind === "Binary" && binLevel(left.op) === p && left.op !== "**" && !this.needLeft(left, x)) {
-        x = left;
+    while (x.kind === "As" || (x.kind === "Binary" && x.op !== "**")) {
+      spine.push(x);
+      x = x.x;
+    }
+    // The document of the left operand of spine[i], without its parentheses.
+    let d: Doc = this.expr(x);
+    let i = spine.length - 1;
+    while (i >= 0) {
+      const n = spine[i];
+      if (n.kind === "As") {
+        const left = n.x;
+        const need = this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!");
+        const kw = this.find(n.form, this.outer(left).end);
+        d = [need ? ["(", d, ")"] : d, SP, this.tok(kw), SP, this.typeDoc(n.typeSpan)];
+        i--;
         continue;
       }
-      break;
+      // A run of one level: from *n* outward, while the next operator is of the level and takes this one bare.
+      const p = binLevel(n.op);
+      const head: Doc = [this.needLeft(n.x, n) ? ["(", d, ")"] : d, SP, this.opTok(n)];
+      const tail: Doc[] = [L, this.paren(n.y, this.needRight(n.y, n))];
+      let j = i - 1;
+      for (; j >= 0; j--) {
+        const m = spine[j];
+        if (m.kind !== "Binary" || binLevel(m.op) !== p || this.needLeft(spine[j + 1], m)) break;
+        tail.push(SP, this.opTok(m), L, this.paren(m.y, this.needRight(m.y, m)));
+      }
+      // The run of the whole expression is the one that `unindented` is about.
+      d = group([head, unindented && j < 0 ? tail : indent(tail)]);
+      i = j;
     }
-    if (e.op === "**") {
-      const need = this.level(e.x) < 11;
-      const needR = this.level(e.y) < 9;
-      const opI = this.find("**", this.outer(e.x).end);
-      return group([this.paren(e.x, need), SP, this.tok(opI), indent([L, this.paren(e.y, needR)])]);
-    }
-    chainNodes.reverse();
-    const firstNode = chainNodes[0];
-    operands.push(this.paren(firstNode.x, this.needLeft(firstNode.x, firstNode)));
-    for (const n of chainNodes) {
-      ops.push(this.opTok(n));
-      operands.push(this.paren(n.y, this.needRight(n.y, n)));
-    }
-    // g(‹x1› sp o1 i(L ‹x2› sp o2 L ‹x3› ... L ‹xn›))
-    const tail: Doc[] = [];
-    for (let k = 1; k < operands.length; k++) {
-      tail.push(L, operands[k]);
-      if (k < ops.length) tail.push(SP, ops[k]);
-    }
-    const head: Doc = [operands[0], SP, ops[0]];
-    return group([head, unindented ? tail : indent(tail)]);
+    return d;
   }
 
   private opTok(n: A.Binary): Doc {
@@ -788,10 +803,26 @@ class Formatter {
     return need;
   }
 
+  /**
+   * `test ? then : else` (f12 2.8). The `else` branch opens no level (01 13.1),
+   * so a run of them is built by a loop: the last `else` first, then each
+   * conditional outward.
+   */
   private ternary(e: A.Cond): Doc {
-    const q = this.find("?", this.outer(e.test).end);
-    const c = this.find(":", this.outer(e.then).end);
-    return group([this.paren(e.test, this.level(e.test) === 1), indent([L, this.tok(q), SP, this.expr(e.then), L, this.tok(c), SP, this.expr(e.else)])]);
+    const conds: A.Cond[] = [];
+    let x: A.Expr = e;
+    while (x.kind === "Cond" && x.form === "?:") {
+      conds.push(x);
+      x = x.else;
+    }
+    let d: Doc = this.expr(x);
+    for (let i = conds.length - 1; i >= 0; i--) {
+      const n = conds[i];
+      const q = this.find("?", this.outer(n.test).end);
+      const c = this.find(":", this.outer(n.then).end);
+      d = group([this.paren(n.test, this.level(n.test) === 1), indent([L, this.tok(q), SP, this.expr(n.then), L, this.tok(c), SP, d])]);
+    }
+    return d;
   }
 
   private ifExpr(e: A.Cond): Doc {
@@ -1093,7 +1124,7 @@ class Formatter {
     if (nodes.length === 0) return x.kind === "Call" ? this.call(x) : this.expr(x);
     const primary: Doc = x.kind === "Call" ? this.call(x) : this.paren(x, this.receiverNeedsParens(x));
     const steps: { kind: "plain" | "call"; d: Doc; firstTok: number }[] = [];
-    for (const n of nodes) steps.push(...this.stepsOf(n));
+    for (const n of nodes) for (const st of this.stepsOf(n)) steps.push(st);
     const links: Doc[][] = [];
     const recvPart: Doc[] = [primary];
     const linkFirst: number[] = [];
@@ -1133,7 +1164,7 @@ class Formatter {
       case "Each": {
         const out: { kind: "plain" | "call"; d: Doc; firstTok: number }[] = [];
         const star = (from: number) => {
-          let lb = this.firstTokFrom(from);
+          let lb = this.firstFrom(from);
           while (!(this.toks[lb].text === "[" || this.toks[lb].text === "?.[") || this.toks[lb + 1]?.text !== "*") lb++;
           const rb = this.match.get(lb)!;
           return { lb, rb };
@@ -1167,12 +1198,6 @@ class Formatter {
       default:
         return [];
     }
-  }
-
-  private firstTokFrom(offset: number): number {
-    let i = 0;
-    while (i < this.toks.length && this.toks[i].start < offset) i++;
-    return i;
   }
 
   private call(e: A.Call): Doc {
@@ -1270,18 +1295,39 @@ function binLevel(op: A.BinaryOp): number {
 const IGNORED = new Set(["span", "outer", "parens", "nameSpan", "keySpan", "typeSpan", "typeSpans", "starSpan", "recvSpan", "level", "maxLevel", "resultSpan", "spans"]);
 
 /** Two trees are equal, spans aside (f12 2.2 item 1). */
-export function treeEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a === "number" && typeof b === "number") return a === b || (Number.isNaN(a) && Number.isNaN(b));
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a)) {
-    const bb = b as unknown[];
-    return a.length === bb.length && a.every((x, i) => treeEqual(x, bb[i]));
+export function treeEqual(a0: unknown, b0: unknown): boolean {
+  // The pairs still to compare. A tree is as deep as a flat program is long (01 13.1), so the walk keeps its own stack.
+  const as: unknown[] = [a0];
+  const bs: unknown[] = [b0];
+  while (as.length > 0) {
+    const a = as.pop();
+    const b = bs.pop();
+    if (a === b) continue;
+    if (typeof a === "number" && typeof b === "number") {
+      if (Number.isNaN(a) && Number.isNaN(b)) continue;
+      return false;
+    }
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    if (Array.isArray(a)) {
+      const bb = b as unknown[];
+      if (a.length !== bb.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        as.push(a[i]);
+        bs.push(bb[i]);
+      }
+      continue;
+    }
+    if (a instanceof Map || b instanceof Map) continue;
+    const ra = a as Record<string, unknown>;
+    const rb = b as Record<string, unknown>;
+    const ka = Object.keys(ra).filter((k) => !IGNORED.has(k) && ra[k] !== undefined);
+    const kb = Object.keys(rb).filter((k) => !IGNORED.has(k) && rb[k] !== undefined);
+    if (ka.length !== kb.length) return false;
+    for (const k of ka) {
+      as.push(ra[k]);
+      bs.push(rb[k]);
+    }
   }
-  if (a instanceof Map || b instanceof Map) return true;
-  const ka = Object.keys(a).filter((k) => !IGNORED.has(k) && (a as Record<string, unknown>)[k] !== undefined);
-  const kb = Object.keys(b).filter((k) => !IGNORED.has(k) && (b as Record<string, unknown>)[k] !== undefined);
-  if (ka.length !== kb.length) return false;
-  return ka.every((k) => treeEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  return true;
 }

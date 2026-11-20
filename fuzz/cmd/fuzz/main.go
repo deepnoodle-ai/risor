@@ -60,6 +60,7 @@ func run() int {
 		mangled    = flag.Int("mangled", 2, "weight of the mangled mode")
 		limitShare = flag.Int("limits", 25, "percent of cases with a small limit; -1 for none")
 		noCheck    = flag.Int("nocheck", 20, "percent of cases with \"check\": false")
+		flatShare  = flag.Int("flat", 2, "percent of cases whose result is wrapped in a long flat chain; -1 for none")
 		timeout    = flag.Duration("timeout", 60*time.Second, "timeout of one command on one file")
 		out        = flag.String("out", "findings", "directory for findings")
 		root       = flag.String("root", "", "repository root (found from the working directory)")
@@ -107,7 +108,7 @@ func run() int {
 		seed: *seed, cases: *cases, rounds: *rounds, timeout: *timeout,
 		out: *out, shrink: !*noShrink, maxPerKind: *maxPerKind, lib: lib,
 		verbose: *verbose, libNames: map[string]bool{}, useKnown: *useKnown,
-		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, NoF3: *noF3, NoF4: *noF4, NoF6: *noF6, NoF7: *noF7, NoF17: *noF17, NoF16: *noF16, NoE1: *noE1, NoE2: *noE2, Exclude: map[string]bool{}},
+		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, FlatShare: *flatShare, NoF3: *noF3, NoF4: *noF4, NoF6: *noF6, NoF7: *noF7, NoF17: *noF17, NoF16: *noF16, NoE1: *noE1, NoE2: *noE2, Exclude: map[string]bool{}},
 	}
 	for _, e := range lib.Entries {
 		cfg.libNames[e.Name] = true

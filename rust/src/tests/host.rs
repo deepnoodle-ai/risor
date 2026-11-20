@@ -573,7 +573,7 @@ fn nested(depth: usize) -> Data {
 
 /// The stack `DESIGN.md` (Stack) states that a run needs at the depth limit
 /// `depth`, in this build.
-fn stated_stack(depth: u32) -> usize {
+pub(super) fn stated_stack(depth: u32) -> usize {
     let mib = match (cfg!(debug_assertions), depth) {
         (false, 200) => 1,
         (false, 400) | (true, 200) => 2,

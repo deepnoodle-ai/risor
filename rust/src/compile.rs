@@ -6,8 +6,10 @@
 //! for the whole run), computes the depth measure of each call (8.4), and
 //! reports the static diagnostics.
 //!
-//! What opens no level is walked by a loop, so the walk's recursion is
-//! bounded by the source nesting.
+//! What opens no level is walked by a loop: the left operands of operators,
+//! the value of an `as` or `is`, the steps of a chain with its projections,
+//! the `else` of a conditional. So the walk's recursion is bounded by the
+//! source nesting.
 
 use crate::check::ty::{Ty, TypeNames};
 use crate::diag::{code, Diagnostic, Error, Phase};
@@ -754,12 +756,27 @@ impl Resolver<'_> {
                 }
                 NodeKind::Spread { value } => id = value,
                 NodeKind::Unary { x, .. } => id = x,
-                NodeKind::Binary { .. } => {
+                // The left operands of operators and the values of `as` and
+                // `is` are one spine, which opens no level (13.1, F4 2.8):
+                // a loop goes down it. A type is resolved on the way down,
+                // a right operand on the way up.
+                NodeKind::Binary { .. } | NodeKind::As { .. } => {
                     let mut rights = Vec::new();
                     let mut n = id;
-                    while let NodeKind::Binary { x, y, .. } = self.kind(n) {
-                        rights.push(*y);
-                        n = *x;
+                    loop {
+                        match self.kind(n) {
+                            NodeKind::Binary { x, y, .. } => {
+                                rights.push(*y);
+                                n = *x;
+                            }
+                            NodeKind::As { x, ty, .. } => {
+                                let (x, ty) = (*x, ty.clone());
+                                let r = self.program_type(&ty);
+                                self.res[n.index()] = Res::As(r.map(Box::new));
+                                n = x;
+                            }
+                            _ => break,
+                        }
                     }
                     self.walk(n);
                     for y in rights.into_iter().rev() {
@@ -779,25 +796,15 @@ impl Resolver<'_> {
                     self.chain(id);
                     return;
                 }
-                // F7 5.7: `x`, then each read in order, the index of each
-                // `Index`, and a later `Each` with its reads.
-                NodeKind::Each { x, reads, .. } => {
-                    if let Some(x) = x {
-                        self.walk(x);
-                    }
-                    for r in reads {
-                        match self.kind(r).clone() {
-                            NodeKind::Index { index, .. } => self.walk(index),
-                            NodeKind::Each { .. } => self.walk(r),
-                            _ => {}
-                        }
-                    }
+                // A projection on a subject is a step of its chain (F7 2.5),
+                // so a loop walks it with the other steps.
+                NodeKind::Each { x: Some(_), .. } => {
+                    self.chain(id);
                     return;
                 }
-                NodeKind::As { x, ty, .. } => {
-                    let r = self.program_type(&ty);
-                    self.res[id.index()] = Res::As(r.map(Box::new));
-                    id = x;
+                NodeKind::Each { reads, .. } => {
+                    self.reads(&reads);
+                    return;
                 }
                 NodeKind::Call { name, args, .. } => {
                     let span = self.span(id);
@@ -911,7 +918,9 @@ impl Resolver<'_> {
         let mut n = top;
         loop {
             match self.kind(n) {
-                NodeKind::Member { x, .. } | NodeKind::Index { x, .. } => {
+                NodeKind::Member { x, .. }
+                | NodeKind::Index { x, .. }
+                | NodeKind::Each { x: Some(x), .. } => {
                     steps.push(n);
                     n = *x;
                 }
@@ -942,16 +951,7 @@ impl Resolver<'_> {
                     if let Some(v) = self.env.constant(&ns, &name) {
                         self.res[first.index()] = Res::Constant(v);
                         steps.pop();
-                        for s in steps.into_iter().rev() {
-                            match self.kind(s).clone() {
-                                NodeKind::Index { index, .. } => self.walk(index),
-                                NodeKind::MethodCall { args, .. } => {
-                                    self.set_measure(s);
-                                    self.args(&args);
-                                }
-                                _ => {}
-                            }
-                        }
+                        self.steps(steps);
                         return;
                     }
                 }
@@ -977,6 +977,13 @@ impl Resolver<'_> {
             }
             _ => self.walk(n),
         }
+        self.steps(steps);
+    }
+
+    /// What the steps of a chain hold, from the step next to the primary
+    /// outward: the index of an `Index`, the arguments of a method call, the
+    /// reads of a projection.
+    fn steps(&mut self, steps: Vec<NodeId>) {
         for s in steps.into_iter().rev() {
             match self.kind(s).clone() {
                 NodeKind::Index { index, .. } => self.walk(index),
@@ -984,6 +991,22 @@ impl Resolver<'_> {
                     self.set_measure(s);
                     self.args(&args);
                 }
+                NodeKind::Each { reads, .. } => self.reads(&reads),
+                _ => {}
+            }
+        }
+    }
+
+    /// F7 5.7: each read of a projection in order: the index of an `Index`,
+    /// and a later `Each` with its reads.
+    fn reads(&mut self, reads: &[NodeId]) {
+        for &r in reads {
+            match self.kind(r) {
+                NodeKind::Index { index, .. } => {
+                    let index = *index;
+                    self.walk(index);
+                }
+                NodeKind::Each { .. } => self.walk(r),
                 _ => {}
             }
         }

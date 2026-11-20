@@ -542,27 +542,15 @@ class Walker {
         case "Unary":
           e = e.x;
           continue;
+        case "Binary":
         case "As":
-          // f04 6.1: the subject as any operand, then the program type.
-          this.expr(e.x);
-          this.programType(e);
-          return;
         case "Each":
-          // f07 5.7: `x`, then each read in order, an index's expression, and a later `Each`.
-          this.each(e);
+        case "OptChain":
+        case "Member":
+        case "Index":
+        case "MethodCall":
+          this.spine(e);
           return;
-        case "Binary": {
-          const spine: A.Binary[] = [];
-          let x: A.Expr = e;
-          while (x.kind === "Binary") {
-            spine.push(x);
-            if (x.op === "??") this.coalesce(x);
-            x = x.x;
-          }
-          this.expr(x);
-          for (let i = spine.length - 1; i >= 0; i--) this.expr(spine[i].y);
-          return;
-        }
         case "Cond": {
           // An `else` chain is walked by a loop.
           let c: A.Cond = e;
@@ -598,22 +586,103 @@ class Walker {
         case "Match":
           this.match(e);
           return;
-        case "OptChain":
-        case "Member":
-        case "Index":
-        case "MethodCall":
         case "Call":
-          this.chain(e);
+          this.call(e, null, e.name, e.nameSpan, e.args);
           return;
       }
     }
   }
 
-  private each(e: A.Each): void {
-    if (e.x !== null) this.expr(e.x);
+  /**
+   * A spine: an expression whose first operand opens no level (01 13.1, f04
+   * 2.8, f07 2.5): the left operand of a binary operator, of `as` or of `is`,
+   * the receiver of a step, of a method call or of a projection. The spine is
+   * walked by a loop, from its innermost such operand outward, so its length
+   * costs no stack: that operand, then what each node holds beside its
+   * operand, in the order of the text.
+   */
+  private spine(e: A.Expr): void {
+    // The nodes whose first operand is being walked, outermost first.
+    const nodes: A.Expr[] = [];
+    let x: A.Expr = e;
+    descend: for (;;) {
+      switch (x.kind) {
+        case "Binary":
+          // A walk reaches the top of a `??` chain before any other of its nodes.
+          if (x.op === "??") this.coalesce(x);
+          nodes.push(x);
+          x = x.x;
+          continue;
+        case "As":
+        case "Index":
+          nodes.push(x);
+          x = x.x;
+          continue;
+        case "OptChain":
+          // An OptChain holds its chain and nothing else.
+          x = x.x;
+          continue;
+        case "Each":
+          nodes.push(x);
+          // A later star has no receiver: its reads are all it holds (f07 2.3).
+          if (x.x === null) break descend;
+          x = x.x;
+          continue;
+        case "Member": {
+          const value = this.constantOf(x);
+          if (value !== undefined) {
+            // f06 2.4 item 2: the read of a constant is a primary; its receiver is not walked.
+            this.res.constants.set(x, value);
+            break descend;
+          }
+          x = x.x;
+          continue;
+        }
+        case "MethodCall":
+          if (!x.optional && x.x.kind === "Ident" && this.env.namespaces.has(x.x.name)) {
+            // A call of a namespace is a primary: its receiver is the namespace, which is no value.
+            const ns = x.x;
+            this.call(x, ns.name, x.name, { start: ns.span.start, end: x.nameSpan.end }, x.args);
+            break descend;
+          }
+          nodes.push(x);
+          x = x.x;
+          continue;
+        default:
+          // The innermost operand: a primary, or an expression that opens a level.
+          this.expr(x);
+          break descend;
+      }
+    }
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      switch (n.kind) {
+        case "Binary":
+          this.expr(n.y);
+          break;
+        case "As":
+          // f04 6.1: the subject as any operand, then the program type.
+          this.programType(n);
+          break;
+        case "Index":
+          this.expr(n.index);
+          break;
+        case "MethodCall":
+          this.walkArgs(n.args);
+          break;
+        case "Each":
+          // f07 5.7: `x`, then each read in order, an index's expression, and a later `Each`.
+          this.reads(n);
+          break;
+      }
+    }
+  }
+
+  /** The reads of a projection: an index's expression, and the reads of a later star (f07 5.7). */
+  private reads(e: A.Each): void {
     for (const r of e.reads) {
       if (r.kind === "Index") this.expr(r.index);
-      else if (r.kind === "Each") this.each(r);
+      else if (r.kind === "Each") this.reads(r);
     }
   }
 
@@ -632,50 +701,6 @@ class Walker {
   private constantOf(m: A.Member): number | undefined {
     if (m.optional || m.x.kind !== "Ident" || !this.env.namespaces.has(m.x.name) || this.lookup(m.x.name) !== undefined) return undefined;
     return this.env.constants?.get(`${m.x.name}.${m.name}`);
-  }
-
-  /** A chain, walked from its primary. */
-  private chain(e: A.Expr): void {
-    const steps: A.Expr[] = [];
-    // Only the outermost node of a chain is an OptChain: an inner one is a
-    // chain of its own, written in parentheses (01 7.4 rule 5).
-    let x: A.Expr = e.kind === "OptChain" ? e.x : e;
-    for (;;) {
-      if (x.kind === "Member" && this.constantOf(x) !== undefined) {
-        // f06 2.4 item 2: the read of a constant is a primary; its receiver is not walked.
-        this.res.constants.set(x, this.constantOf(x)!);
-        break;
-      }
-      if (x.kind === "Member" || x.kind === "Index") {
-        steps.push(x);
-        x = x.x;
-      } else if (x.kind === "MethodCall") {
-        if (!x.optional && x.x.kind === "Ident" && this.env.namespaces.has(x.x.name)) {
-          steps.push(x);
-          x = x.x;
-          break;
-        }
-        steps.push(x);
-        x = x.x;
-      } else break;
-    }
-    // x is the primary, unless the innermost step is a namespace call.
-    const innermost = steps[steps.length - 1];
-    const nsCall = innermost !== undefined && innermost.kind === "MethodCall" && !innermost.optional && innermost.x === x && x.kind === "Ident" && this.env.namespaces.has(x.name);
-    if (!nsCall && !(x.kind === "Member" && this.res.constants.has(x))) {
-      if (x.kind === "Call") this.call(x, null, x.name, x.nameSpan, x.args);
-      else this.expr(x);
-    }
-    for (let i = steps.length - 1; i >= 0; i--) {
-      const s = steps[i];
-      if (s.kind === "Index") this.expr(s.index);
-      else if (s.kind === "MethodCall") {
-        if (i === steps.length - 1 && nsCall) {
-          const ns = s.x as A.Ident;
-          this.call(s, ns.name, s.name, { start: ns.span.start, end: s.nameSpan.end }, s.args);
-        } else this.walkArgs(s.args);
-      }
-    }
   }
 
   private map(m: A.MapLit): void {
@@ -703,18 +728,19 @@ class Walker {
    */
   private match(m: A.Match): void {
     this.expr(m.subject);
-    const lits: A.Literal[] = [];
+    // The literals of the arms before with no guard, and those of the arm itself. They are
+    // kept as sets, so a `match` of many arms costs its length and not the square of it.
+    const lits = new Literals();
     let defaultSeen = false;
     for (const arm of m.arms) {
       if (defaultSeen) this.diag("unreachable-arm", arm.span);
-      const own: A.Literal[] = [];
+      const own = new Literals();
       for (const l of arm.literals) {
-        if (lits.some((p) => litEqual(p, l)) || own.some((p) => litEqual(p, l))) this.diag("duplicate-case", l.span, "default", { text: true });
-        own.push(l);
+        if (lits.has(l) || own.has(l)) this.diag("duplicate-case", l.span, "default", { text: true });
+        own.add(l);
       }
       if (arm.guard === null) {
-        // One at a time: a spread of a very wide arm would overflow the stack.
-        for (const l of own) lits.push(l);
+        for (const l of arm.literals) lits.add(l);
         if (arm.isDefault) defaultSeen = true;
       } else this.expr(arm.guard);
       this.expr(arm.result);
@@ -722,15 +748,42 @@ class Walker {
   }
 }
 
-function litEqual(a: A.Literal, b: A.Literal): boolean {
-  if (a.kind !== b.kind) return false;
-  switch (a.kind) {
-    case "Null":
-      return true;
-    case "Bool":
-    case "Number":
-    case "String":
-      return a.value === (b as typeof a).value;
+/** A set of literals. Two literals are the same when they are of one kind and their values are `===`. */
+class Literals {
+  private isNull = false;
+  // A Set holds 0 and -0 as one value, as `===` does, and no literal is NaN.
+  private readonly bools = new Set<boolean>();
+  private readonly numbers = new Set<number>();
+  private readonly strings = new Set<string>();
+
+  has(l: A.Literal): boolean {
+    switch (l.kind) {
+      case "Null":
+        return this.isNull;
+      case "Bool":
+        return this.bools.has(l.value);
+      case "Number":
+        return this.numbers.has(l.value);
+      case "String":
+        return this.strings.has(l.value);
+    }
+  }
+
+  add(l: A.Literal): void {
+    switch (l.kind) {
+      case "Null":
+        this.isNull = true;
+        break;
+      case "Bool":
+        this.bools.add(l.value);
+        break;
+      case "Number":
+        this.numbers.add(l.value);
+        break;
+      case "String":
+        this.strings.add(l.value);
+        break;
+    }
   }
 }
 

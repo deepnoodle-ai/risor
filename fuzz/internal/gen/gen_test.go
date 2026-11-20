@@ -3,7 +3,10 @@ package gen
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/deepnoodle-ai/risor/fuzz/internal/ast"
 )
 
 func loadLib(t *testing.T) *Library {
@@ -118,5 +121,34 @@ func TestNumberJSON(t *testing.T) {
 		if got := formatNumber(v); got != want {
 			t.Errorf("%v: got %s, want %s", v, got, want)
 		}
+	}
+}
+
+// A flat chain has 1,000 links or more, and prints as text with no level of
+// nesting deeper than its lambda's argument list.
+func TestFlatChain(t *testing.T) {
+	lib := loadLib(t)
+	seen := 0
+	for i := 0; i < 40; i++ {
+		c := Generate(lib, Options{Typed: 1, FlatShare: 100, LimitShare: -1}, 7, 0, i)
+		if c.Returns != "" {
+			continue
+		}
+		seen++
+		src := c.Source
+		if c.Prog != nil {
+			src = ast.Print(c.Prog)
+		}
+		links := strings.Count(src, " as any") + strings.Count(src, ".map(")
+		if links < flatMin {
+			t.Fatalf("case %d: %d links, want %d or more", i, links, flatMin)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no case had a flat chain")
+	}
+	c := Generate(lib, Options{Typed: 1, FlatShare: -1}, 7, 0, 0)
+	if n := strings.Count(ast.Print(c.Prog), ".map("); n >= flatMin {
+		t.Fatalf("a flat chain with FlatShare -1: %d calls of map", n)
 	}
 }
