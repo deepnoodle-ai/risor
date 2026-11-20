@@ -10,8 +10,10 @@ dropped `iterate` and settled passing functions to user-defined functions
 or recommendations. Built so far, in all three implementations: `match`
 guards and `walk` (step E0), and typed self-recursion on per-call frames
 (step E1), in `spec/packages/f17-recursion.md`. Recursive named types (step
-E2) and function parameters (step E3) are not built; their spec text is in
-sections 4 and 7 in a form ready to move into the package chapter.
+E2) are built in Go, in section 12 of that chapter (R262 to R279);
+TypeScript and Rust are next. Function parameters (step E3) are not built;
+their spec text is in section 7 in a form ready to move into the package
+chapter.
 
 **Evidence.** **(R)** read in the specification or a sibling document at the
 place cited. **(ran)** run with the Go CLI built from `main` at `aeaaf1f`
@@ -223,6 +225,17 @@ the deeper of its types, so 64 bounds it", which no longer holds for a type
 with no finite depth. With the set of pairs, each computation visits at most
 the product of the two types' sizes in distinct pairs (I). The fixed bound
 and the fixed order make the cut-off the same in every implementation (R5).
+
+**As built** (step E2, F17 12.5 and 12.6). Two rows above read
+differently in the chapter, and both are for the owner. The bound counts the
+pairs a computation enters, not the pairs in progress at once (R268): a
+count of pairs in progress bounds nothing, since two families of twelve types
+take 4,095 entries to fit with twelve pairs in progress at most. And a
+reference has depth 0 (R272): the measure above depends on the path to a
+name, so it cannot be kept with a type as `05-types.md` 20.7 requires, and
+with names that refer to one another it takes exponential work. Each
+definition is tested where it is declared. The chapter also adds an error
+this plan does not have: a reference beside a type of its own kind (R265).
 
 `any` from a Join of two recursive types that neither fit nor unify in one
 step is sound, since `any` is the top type. It is rarely met (I): a

@@ -481,9 +481,9 @@ others' text:
 | --- | --- |
 | Library entries | 1 (F17: `walk`, in the default group). The totals of section 3, 78 and 59, become 79 and 60 |
 | Run codes and run templates | None: 19 codes, 64 templates |
-| Check codes | `recursion-needs-types` (Core: 27 become 28) and `bad-export` (F16). The catalog's 29 become 31 |
-| Static codes (`05-types.md` 16.1, 22.1) | The same two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation) |
-| Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`): 71 become 81. Up to 3 more in F17 if `18` 7.2 is taken |
+| Check codes | `recursion-needs-types` (Core: 27 become 28), `bad-export` (F16) and `circular-type` (F17, step E2, R264). The catalog's 29 become 32 |
+| Static codes (`05-types.md` 16.1, 22.1) | The first two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation). `circular-type` is a static code of its package, as `name-clash` is of F16, and is not in Core's count |
+| Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`), 3 in F17 for step E2 (`circular-type` `direct` and `union`, `check-limit` `pairs`, in `suite/messages-recursion.json`): 71 become 84. Up to 3 more in F17 if `18` 7.2 is taken |
 | Parse codes | 2 (F19: `async-await`, `statement-sequence`), with 4 templates: 58 become 60, and 97 templates 101. `type-annotation`, `type-declaration` and `export-statement` narrow and change their text, by my reading with no change of count (`17` 3.1) |
 | Declare codes | 2 (F16: `no-result`, `no-input-record`), beside the 9 of Core |
 | Reserved namespaces | 1 (`regexp`) |
