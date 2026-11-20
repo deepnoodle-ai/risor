@@ -415,21 +415,6 @@ impl<'a> Tree<'a> {
         Some(format!("({}) => {result}", params.join(", ")))
     }
 
-    /// The printed function type of the function parameter that binds slot
-    /// `s`, if a function parameter binds it.
-    fn fn_slot_text(&self, s: u32) -> Option<String> {
-        self.probe
-            .res
-            .iter()
-            .enumerate()
-            .find_map(|(i, r)| match r {
-                Res::Bind(b) if *b == s => self
-                    .fn_param_of(NodeId(i as u32))
-                    .and_then(|p| self.fn_type_text(p)),
-                _ => None,
-            })
-    }
-
     /// The span of the name of a function parameter's `Param`.
     fn param_name_span(&self, p: NodeId) -> Option<Range> {
         match self.kind(p) {
@@ -525,6 +510,9 @@ impl<'a> Tree<'a> {
         for w in path.windows(2) {
             let (a, c) = (w[0], w[1]);
             let mut names: Vec<(String, Option<u32>, bool)> = Vec::new();
+            // F17 13.7 item 2: each function parameter, by its place in
+            // `names`, with its printed function type.
+            let mut fn_types: Vec<(usize, String)> = Vec::new();
             match self.kind(a) {
                 NodeKind::Program { consts, .. } | NodeKind::Block { consts, .. } => {
                     for &k in consts {
@@ -562,6 +550,9 @@ impl<'a> Tree<'a> {
                         }
                         if let NodeKind::Param { pattern, .. } = self.kind(p) {
                             for (n, s, _) in self.pattern_names(*pattern) {
+                                if let Some(t) = self.fn_type_text(p) {
+                                    fn_types.push((names.len(), t));
+                                }
                                 names.push((n, s, false));
                             }
                         }
@@ -606,10 +597,14 @@ impl<'a> Tree<'a> {
             }
             let cands = names
                 .into_iter()
-                .map(|(n, s, lambda)| {
+                .enumerate()
+                .map(|(i, (n, s, lambda))| {
                     // F17 13.7 item 2: a function parameter is a candidate
                     // of kind `lambda`, its detail its printed function type.
-                    let fn_type = s.and_then(|s| self.fn_slot_text(s));
+                    let fn_type = fn_types
+                        .iter()
+                        .find(|(j, _)| *j == i)
+                        .map(|(_, t)| t.clone());
                     Candidate {
                         insert: n.clone(),
                         label: n,

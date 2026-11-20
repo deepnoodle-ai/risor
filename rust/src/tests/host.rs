@@ -805,6 +805,34 @@ fn deepest_programs(depth: u32) {
         assert_eq!(run(&at(d - 1)), Ok(want.into()), "{src}");
         assert_eq!(run(&at(d)), Err("depth-exceeded".into()), "{src}");
     }
+    // F17 13.4: calls through function parameters, with the nesting limit
+    // in the lambda called last. In the first, `r` passes its own function
+    // parameter on: N + 1 calls of `r` add 1 each, and `f(0)`, the middle
+    // operand of `? :`, adds 2. In the second, each call of `r` wraps the
+    // lambda it was given in a new one, so the last call of `f` runs a
+    // chain of N closures, each calling the one before at nesting 0: the
+    // count is 2N + 3 (`N` stands in `[...]`, so the first call adds 2).
+    let last = in_maps("x");
+    for (src, at_limit) in [
+        (
+            "const r = (f: (x: int) => int, n: int): int => \
+             n <= 0 ? f(0) : r(f, n - 1); r(x => LAST, N)",
+            d - 3,
+        ),
+        (
+            "const r = (f: (x: int) => int, n: int): int => \
+             n <= 0 ? f(0) : r(y => f(y), n - 1); [r(x => LAST, N)][0]",
+            (d - 4) / 2,
+        ),
+    ] {
+        let at = |n: usize| src.replace("LAST", &last).replace('N', &n.to_string());
+        assert_eq!(run(&at(at_limit)), Ok("0".into()), "{src}");
+        assert_eq!(
+            run(&at(at_limit + 1)),
+            Err("depth-exceeded".into()),
+            "{src}"
+        );
+    }
 }
 
 /// F17 11.5: each call reads the names of the calls on its own chain. A
