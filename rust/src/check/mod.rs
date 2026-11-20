@@ -1469,8 +1469,9 @@ impl<'a> Checker<'a> {
     /// lambda to its own name that is not typed (`05-types.md` 13.9), are
     /// not checked.
     fn lambda_at_fn(&mut self, a: NodeId, f: &'a crate::syntax::ast::PFn, call: NodeId) {
+        // Only the listed types that the argument's parameters receive are
+        // found: a function type may list many more.
         let n = f.params.len();
-        let qs: Vec<Ty> = (0..n).map(|i| self.listed(f, i)).collect();
         let name = self.call_name(call);
         let want = self.fn_result(f);
         // A function parameter given on: fitted, with no body to check.
@@ -1479,7 +1480,8 @@ impl<'a> Checker<'a> {
                 return;
             }
             for (i, (_, _, pt)) in g.params.iter().enumerate() {
-                self.fit_listed(&qs[i], pt);
+                let q = self.listed(f, i);
+                self.fit_listed(&q, pt);
             }
             if let FnResult::Type(Some(r)) = want {
                 let b = self.result_ty(g);
@@ -1509,6 +1511,7 @@ impl<'a> Checker<'a> {
         if params.len() > n {
             return;
         }
+        let qs: Vec<Ty> = (0..params.len()).map(|i| self.listed(f, i)).collect();
         let b = self.check_lambda(l, named, a, &qs);
         match want {
             // 13.7: a predicate's body is a tested position.
