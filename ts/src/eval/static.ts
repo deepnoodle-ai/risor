@@ -444,10 +444,11 @@ class Walker {
   }
 
   /**
-   * An `Ident`. `asLambdaArg`: it is a lambda argument; `higher`: rule 8 of
-   * f17 13.2 reported it, so no other rule tests it (13.2 item 1).
+   * An `Ident`. `asLambdaArg`: it is a lambda argument. A reference of a
+   * lambda to its own name is tested also where rule 8 of f17 13.2 reports
+   * the argument: that rule is the lambda's, not the argument's (13.2 item 1).
    */
-  private ident(id: A.Ident, asLambdaArg: boolean, higher = false): void {
+  private ident(id: A.Ident, asLambdaArg: boolean): void {
     const b = this.lookup(id.name);
     if (b !== undefined) {
       if (b.k === "value") this.res.refs.set(id, { k: "slot", slot: b.slot });
@@ -460,7 +461,7 @@ class Walker {
         this.res.refs.set(id, { k: "lambda", id: b.id });
         if (asLambdaArg) {
           this.res.lambdaArgs.add(id);
-          if (!higher) this.selfRef(b.id, id, id.span);
+          this.selfRef(b.id, id, id.span);
         } else this.diag("not-a-value", id.span, "lambda", { name: id.name });
       }
       return;
@@ -499,12 +500,12 @@ class Walker {
     });
   }
 
-  private walkArgs(args: A.Arg[], higher: readonly boolean[]): void {
-    args.forEach((a, i) => {
+  private walkArgs(args: A.Arg[]): void {
+    for (const a of args) {
       if (a.kind === "Lambda") this.lambda(a);
-      else if (a.kind === "Ident" && this.isLambdaArg(a)) this.ident(a, true, higher[i]);
+      else if (a.kind === "Ident" && this.isLambdaArg(a)) this.ident(a, true);
       else this.expr(a);
-    });
+    }
   }
 
   /** The count of parameters of a lambda argument; a function parameter's is its listed count (f17 13.1). */
@@ -608,7 +609,7 @@ class Walker {
         });
       }
     }
-    this.walkArgs(args, higher);
+    this.walkArgs(args);
   }
 
   /**
@@ -788,7 +789,8 @@ class Walker {
           break;
         case "MethodCall":
           // f17 13.2 rule 8 holds at a method too; the type rules and the shape test decide the rest.
-          this.walkArgs(n.args, this.higherOrderArgs(n.args, n.name));
+          this.higherOrderArgs(n.args, n.name);
+          this.walkArgs(n.args);
           break;
         case "Each":
           // f07 5.7: `x`, then each read in order, an index's expression, and a later `Each`.
