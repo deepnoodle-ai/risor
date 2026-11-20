@@ -580,7 +580,7 @@ and R259 were made when the pull request of slice D1 was reviewed. R260 and
 R261 close the two questions that tracks B and D1 left for the owner; they
 were made on 2026-11-19, when the plan's status was brought up to date. The
 owner was shown both questions that day and answered that the work proceeds
-as intended. R262 to R279 are kept for step E2. R280 to R292 record step E3 as
+as intended. R262 to R279 are kept for step E2. R280 to R297 record step E3 as
 written and built in the three implementations, and R293 to R297 the changes
 that the review of its implementation asked for.
 
