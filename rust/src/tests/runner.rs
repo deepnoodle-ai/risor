@@ -213,6 +213,26 @@ fn the_check_field() {
     assert!(verdicts(r#"{"check": false, "cases": [{"name": "a", "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-key"}]}}]}"#).is_ok());
 }
 
+/// `f09-testing.md` 4.3: in update mode a skipped case keeps `skip` and is
+/// not written, also a format, completion or hover case with no `expect`.
+/// Such a case with no `skip` differs in `outcome`.
+#[test]
+fn update_keeps_a_skipped_tool_case() {
+    let text = r#"[
+  {"name": "a", "format": "1+2", "skip": "not now"},
+  {"name": "b", "complete": "le‸", "skip": "not now"},
+  {"name": "c", "hover": "len‸([1])", "skip": "not now"},
+  {"name": "d", "format": "1+2"}
+]"#;
+    let cases = crate::testing::load_doc_lax(&json::parse(text).unwrap(), Path::new(".")).unwrap();
+    let (results, new) = crate::testing::update::update_text(text, &cases);
+    for (name, v) in &results[..3] {
+        assert_eq!(v, &Verdict::Skip("not now".into()), "{name}");
+    }
+    assert!(matches!(&results[3].1, Verdict::Fail(d) if d[0].name == "outcome"));
+    assert_eq!(new, None);
+}
+
 /// The static codes by the directory of a case file (`03-host.md` 3.10.13):
 /// `untagged-union` and `check-limit` in `suite/conversion/`, `suite/unions/`
 /// and `suite/entry-points/` (F4 6.1 item 4, F5 11.2 item 3), and
