@@ -288,8 +288,9 @@ type rctx struct {
 	n                     int
 	fit, joins, eq, disjt []pairT
 	// fitFail and eqFail are the pairs that have failed in this
-	// computation: met again, each fails at once (12.4).
-	fitFail, eqFail []pairT
+	// computation: met again, each fails at once (12.5 item 2). disjFail
+	// are the pairs shown disjoint (12.5 item 5).
+	fitFail, eqFail, disjFail []pairT
 }
 
 type pairT struct{ a, b *Type }
