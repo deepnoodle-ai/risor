@@ -2660,8 +2660,9 @@ impl<'a> Checker<'a> {
             (NodeKind::Lambda { .. }, _) => Some((a, false)),
             (_, Res::LambdaRef(l)) => Some((*l, true)),
             // 13.9: a reference of a lambda to its own name is a lambda
-            // argument that is not checked.
-            (_, Res::SelfRef(l)) => Some((*l, true)),
+            // argument that is not checked. Only the bare name is one (13.2):
+            // a call of the name is a plain argument.
+            (NodeKind::Ident { .. }, Res::SelfRef(l)) => Some((*l, true)),
             _ => None,
         }
     }
