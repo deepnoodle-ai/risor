@@ -1097,10 +1097,12 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
         if let Expect::Result(want) = &case.expect {
             let got = r.ty.clone().unwrap_or_default();
             if let Some(t) = &want.ty {
-                let wt = crate::types::text::parse_type(t)
-                    .ok()
-                    .and_then(|x| crate::check::ty::from_text(&x, &env.data().names, None).ok());
-                if wt.as_ref() != Some(&got) {
+                // F17 12.6 item 5: by structure, with each name that is no
+                // opaque type of the case compared by its spelling.
+                let wt = crate::types::text::parse_type(t).ok().and_then(|x| {
+                    crate::check::ty::from_text(&x, &Atoms(&env.data().opaque), None).ok()
+                });
+                if wt.as_ref() != Some(&atoms(&got)) {
                     diffs.push(Difference {
                         name: "type",
                         expected: json_text(t),
@@ -2691,4 +2693,31 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             }),
         },
     }
+}
+
+/// The names of a case's `type` (F17 12.6 item 5): an opaque type of the
+/// case, or an atom compared by its spelling.
+struct Atoms<'a>(&'a [String]);
+
+impl crate::check::ty::TypeNames for Atoms<'_> {
+    fn lookup(&self, name: &str) -> Option<crate::check::ty::Ty> {
+        use crate::check::ty::{Ref, Ty};
+        if self.0.iter().any(|o| o == name) {
+            return Some(Ty::opaque(name));
+        }
+        Some(Ty {
+            refs: [Ref::atom(name)].into(),
+            ..Ty::default()
+        })
+    }
+}
+
+/// A type with each reference, at any depth, an atom of its name.
+fn atoms(t: &crate::check::ty::Ty) -> crate::check::ty::Ty {
+    use crate::check::ty::{map_refs, Memo, Ref};
+    map_refs(
+        t,
+        &mut |r: &Ref| Some(Ref::atom(r.name())),
+        &mut Memo::default(),
+    )
 }

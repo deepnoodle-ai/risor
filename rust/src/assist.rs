@@ -590,7 +590,7 @@ impl<'a> Tree<'a> {
                         None
                     } else {
                         e.as_ref()
-                            .and_then(|t| t.list.as_ref().map(|x| x.as_ref().clone()))
+                            .and_then(|t| t.view().list.as_ref().map(|x| x.as_ref().clone()))
                     }
                 }
                 NodeKind::Map { .. } => match self.kind(c) {
@@ -602,6 +602,7 @@ impl<'a> Tree<'a> {
                         match (k, &e) {
                             (Some(k), Some(t)) => {
                                 let mut acc: Option<Ty> = None;
+                                let t = t.view().into_owned();
                                 for r in t.variants() {
                                     let ft = match r.fields.get(&k) {
                                         Some(f) => Some(f.ty.clone()),
@@ -705,7 +706,8 @@ fn cand(label: &str, kind: &'static str, detail: Option<String>) -> Candidate {
 }
 
 fn members(env: &Env, r: &Ty) -> Vec<Candidate> {
-    let r = r.nonnull();
+    // F17 12.5: the members of a recursive type are its unfolding's.
+    let r = r.nonnull().view().into_owned();
     if r.any || r.is_never() {
         return Vec::new();
     }
@@ -1017,8 +1019,9 @@ fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
 }
 
 /// The types context (F12 3.10), with the names of the type lines that end
-/// before the hole (F16 7.2 item 1). The line that holds the hole is not one
-/// of them, though the repair's `;` ends it there (R243).
+/// before the hole (F16 7.2 item 1). F17 12.8 item 3: in a type line's type,
+/// every type line of the repaired program, the line's own name included;
+/// the repaired program ends at the hole.
 fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
     let mut v = type_words(env);
     let hole = ast.nodes.iter().find_map(|n| hole_span(&n.kind));
@@ -1026,11 +1029,14 @@ fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
         return v;
     };
     if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
+        let in_line = types.iter().any(|t| type_hole_span(&t.ty).is_some());
         for t in types {
-            if t.span.end <= hole.start
-                && type_hole_span(&t.ty).is_none()
-                && !v.iter().any(|c| c.label == t.name)
-            {
+            let listed = if in_line {
+                t.span.start <= hole.start
+            } else {
+                t.span.end <= hole.start && type_hole_span(&t.ty).is_none()
+            };
+            if listed && !v.iter().any(|c| c.label == t.name) {
                 v.push(cand(&t.name, "type", None));
             }
         }
@@ -1283,9 +1289,15 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
     };
     // F16 7.3: a type name, or the name of a type line.
     if let Some(r) = tree.probe.type_refs.iter().rev().find(|r| r.span == w) {
+        // F17 12.8 item 2: a recursive type shows its unfolding.
+        let shown = if r.ty.is_one_ref() {
+            r.ty.view().into_owned()
+        } else {
+            r.ty.clone()
+        };
         return Some(RawHover {
             declaration: r.declaration,
-            ..rec("type", Some(print(&r.ty)))
+            ..rec("type", Some(print(&shown)))
         });
     }
     for (i, n) in tree.ast.nodes.iter().enumerate() {
