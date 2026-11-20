@@ -432,7 +432,8 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
    templates. `messages-check.json` has one entry for each of the 30 check codes
    (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
    and a template in a file of its own (`spec/packages/f16-entry-points.md`
-   9.1).
+   9.1), and package F17 three templates of existing codes in another
+   (`spec/packages/f17-recursion.md` 13.5): 76 check templates in all.
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -742,6 +743,11 @@ is the type the checker gives at that place, as named.
 |  | `host` | `{name} may return an error, and this environment rejects host sites` | A site of class host. name is the function's or the method's name |
 | `never-conforms` | `default` | `no value of type {found} conforms to {expected}` |  |
 | `untagged-union` | `default` | `two record types in one union need a field that tells them apart` |  |
+
+Packages F16 and F17 add templates in catalog files of their own:
+`name-clash` `default` (`spec/packages/f16-entry-points.md` 9.1), and
+`call-of-parameter` `fn-hint`, `arg-mismatch` `parameter-at-fn` and
+`lambda-to-lambda` `higher-order` (`spec/packages/f17-recursion.md` 13.5).
 
 The parameters of each code, with their kinds:
 

@@ -1,24 +1,29 @@
 # F17. Recursion, function parameters and guards
 
 This chapter is normative. It specifies follow-on package F17 as far as step
-E1 of its plan (`experiments/v3/design/18-recursion.md`, and
+E3 of its plan (`experiments/v3/design/18-recursion.md`, and
 `experiments/v3/design/14-implementation-plan.md` 5.3, track E). Step E0: a
 guard on an arm of `match`, and the library function `walk` (sections 2 to
 10). Step E1: typed self-recursion, a `const`-bound lambda whose parameters
-and result carry types and that calls itself (section 11). It adds one
-optional field of the node `Arm`, one library entry, the file
-`suite/library-recursion.json` and the directory `suite/recursion/`. It adds
-no node kind, no value, no type, no run code, no check code, no `parse` code,
-no reserved word, no message template and no case field. It changes the text
-of one template of Core, that of `recursion-needs-types` (9).
+and result carry types and that calls itself (section 11). Step E3: function
+parameters, a parameter with a function type that its lambda may call and
+give on (section 13). It adds one optional field of the node `Arm`, one
+library entry, the files `suite/library-recursion.json` and
+`suite/messages-recursion.json`, three message templates and the directory
+`suite/recursion/`. It adds no node kind, no value, no type, no run code, no
+check code, no `parse` code, no reserved word and no case field. It changes
+the text of one template of Core, that of `recursion-needs-types` (9), and
+retires one of F16, `fn-value` (13.5).
 
-Steps E2 and E3 of the plan are not in this chapter yet: recursive named
-types and function parameters. Each adds to this chapter when it lands.
+Step E2 of the plan is not in this chapter yet: recursive named types. It
+adds section 12 when it lands.
 
 The package only adds. In Core a guard is a `parse` error, `walk` is a name
 that no function has, and a reference of a lambda to its own name is the
-static error `recursion-needs-types`. Section 10 lists the earlier cases whose
-outcome changes.
+static error `recursion-needs-types`. With F16 alone a parameter with a
+function type is a value: a call of it is `call-of-parameter`, and a lambda
+given at it is `lambda-to-lambda`. Sections 10 and 13.9 list the earlier
+cases whose outcome changes.
 
 Other chapters: `01-language.md` (grammar, nodes, spans, levels, `match`),
 `02-evaluation.md` (order, steps, units, the depth count), `03-host.md`
@@ -43,6 +48,7 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
 | Depth of a node | 0 for the root. For any other node, 1 more than the depth of the node whose callback gave it |
 | Pre-order | The order of a walk: a node, then the nodes under its first child, then those under its second, and so on |
 | Typed lambda, self-reference, self-call | Section 11.1 |
+| Function parameter, function binding, higher-order lambda, bound lambda | Section 13.1 |
 
 ### 1.2 What this package changes in earlier rules
 
@@ -72,17 +78,23 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
 | `03-host.md` 3.9.1 | Three deepest cases of self-recursion in the stack test (11.6) |
 | F12 3.13 | A hover on a self-call of a typed lambda gives the result type (11.7) |
 | `suite/messages-check.json`, `recursion-needs-types` | Its text names the fix (9) |
+| `01-language.md` 7.2 tests 3 to 5, 7.3 item 2, 8.1 rule 3, 8.2 rules 1, 2 and 4 and 14.4; `05-types.md` 13.2, 13.9, 22.4, 22.5 and 22.9; F16 3.1 items 9 and 11, 3.2 item 2 | A parameter with a function type is a function binding: it may be called and given on, and it is not a value (13.2) |
+| `05-types.md` 13.2, 13.5 step 3 and 13.9; F16 3.3 and 3.4 | How a call of a function parameter, a lambda given at one and one given on are checked (13.3) |
+| `02-evaluation.md` 8.4 item 10, 10.2, 11.1, 11.2 and 11.3 | A call of a function parameter, a lambda argument of a call by name, each call's own names (13.4) |
+| F8 3.1 item 2, 3.5; F16 9.1 | Three templates in this package's catalog file; F16's `fn-value` retires (13.5) |
+| F2 3.2; F12 3.6, 3.12 and 3.13 | Analysis, completion and hover of a function parameter (13.6, 13.7) |
 
-No other rule changes. A program with no guard, no call of `walk` and no
-self-reference of a typed lambda has the type, sites, diagnostics, value and
-usage it has without this package, but for the text of the message of
-`recursion-needs-types` (9).
+No other rule changes. A program with no guard, no call of `walk`, no
+self-reference of a typed lambda and no parameter with a function type has the
+type, sites, diagnostics, value and usage it has without this package, but for
+the text of the message of `recursion-needs-types` (9).
 
 ### 1.3 Version
 
-1. The guard, `walk` and self-recursion are part of version `3.0`. The record
-   of `walk` has `since` `3.0`. This package adds no version number and no
-   version marker.
+1. The guard, `walk`, self-recursion and function parameters are part of
+   version `3.0`. The record of `walk` and the entries of
+   `suite/messages-recursion.json` have `since` `3.0`. This package adds no
+   version number and no version marker.
 2. With this package an implementation offers 79 library entries: the 53 of
    Core, the 8 of F6, the 6 of F7, the 11 of F13, and `walk`. 60 of them are
    in the group `core`: Core's 53, F7's 6 and `walk`.
@@ -99,11 +111,12 @@ usage it has without this package, but for the text of the message of
    it, and the cases of this package may use their forms and their case
    fields: the tagged unions of F5, the trace of F8, the host facts of F14.
 2. **F17 is offered whole, and keeps one place.** As this chapter states it,
-   F17 holds steps E0 and E1, and an implementation that offers it offers
-   both. A later step extends this chapter, and every implementation offers
-   it in the change that adds it (`15-build-rulings.md` R261). Step E0 needs
-   no part of F16. Step E1 needs the annotations of F16's slice D1: a lambda
-   is typed only by them (11.1).
+   F17 holds steps E0, E1 and E3, and an implementation that offers it offers
+   all three. A later step extends this chapter, and every implementation
+   offers it in the change that adds it (`15-build-rulings.md` R261). Step E0
+   needs no part of F16. Steps E1 and E3 need the annotations of F16's slice
+   D1: a lambda is typed only by them (11.1), and a function type is one
+   (13.1).
 3. **F12 was offered before this chapter was written,** and F17 stands before
    it in the order. So the cases of F17's forms in the formatter and in assist
    stand in this package's directory, in files whose names begin `tools-` (8),
@@ -528,6 +541,7 @@ guard is a place of the last row of its table.
 | `suite/recursion/e1-analysis.json` | Analysis of a typed recursive lambda (F2) |
 | `suite/recursion/tools-e1-format.json` | The formatter on a typed recursive lambda (F12) |
 | `suite/recursion/tools-e1-assist.json` | Hover and completion at a self-reference (11.7, F12) |
+| `suite/recursion/e3-*.json`, `tools-e3-*.json`, `suite/messages-recursion.json` | Function parameters (13.8) |
 
 1. A runner of an implementation that offers F17 loads
    `suite/library-recursion.json` and runs its cases as it runs those of
@@ -542,12 +556,18 @@ guard is a place of the last row of its table.
    `suite/recursion/`, and does not load `suite/library-recursion.json`.
 4. This package adds no case field. Its cases use those of `03-host.md` 3.10,
    and of F2, F5, F8, F12 and F14.
+5. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
+   `suite/recursion/` and in `suite/messages-recursion.json` the static codes
+   are Core's twelve and `arg-mismatch`, which step E3 makes static at one
+   place (13.2 item 5). So a case there that expects `arg-mismatch` from a type
+   rule stands in a file whose name ends `-check.json`.
 
 ## 9. Messages
 
-This package adds no template. It changes the text of one: the template
+Steps E0 and E1 add no template. They change the text of one: the template
 `default` of `recursion-needs-types` in `suite/messages-check.json` (F8 3.1)
-names the fix that step E1 makes possible.
+names the fix that step E1 makes possible. Step E3 adds three templates in this
+package's catalog file, and retires one of F16 (13.5).
 
 | Code | Template | Text before | Text with this package |
 | --- | --- | --- | --- |
@@ -589,6 +609,8 @@ Its failures use Core's templates:
    `suite/core-check/check-recursion.json` and `suite/analysis/scope.json`
    has a parameter or a result with no type, so its code, span and type stand.
    Those cases expect no message.
+4. **Step E3** changes eight earlier cases and retires one catalog case
+   (13.9).
 
 ## 11. Self-recursion (step E1)
 
@@ -616,10 +638,11 @@ the stack test (11.6) and one message (9).
    typed, and the program has one diagnostic, `undefined-name` on `Nope`.
 2. A default is no type. `(n = 3): int => e` is not typed; `(n: int = 3): int
    => e` is.
-3. A parameter with a function type is typed. Until step E3 it keeps Core's
-   static rules (F16 3.1 item 9), so a self-call cannot give a lambda at it
-   (`lambda-to-lambda`), and a checked program cannot give it a value
-   (`arg-mismatch`, 11.3).
+3. A parameter with a function type is typed. It is a function parameter
+   (13.1): a self-call gives a lambda at it, and a value there is
+   `arg-mismatch` (13.2 rule 3). A lambda that calls itself may pass a lambda
+   written in its body to its own name: `const r = (f: (x: int) => int, n:
+   int): int => n == 0 ? f(0) : r(y => f(y) + n, n - 1); r(x => x, 3)` gives 6.
 
 ### 11.2 The static rule
 
@@ -632,7 +655,8 @@ the stack test (11.6) and one message (9).
 | Text in the body of a typed lambda `f` | Static rule |
 | --- | --- |
 | A self-call with fewer arguments than `f` requires, or more than it has parameters: `f(1, 2)` for one parameter | `arity` on the `Call` |
-| A lambda argument of a self-call: `f(x => 1)`, or `f(f)` | `lambda-to-lambda` on the argument |
+| A lambda argument of a self-call at a parameter with no function type: `f(x => 1)` | `lambda-to-lambda` on the argument |
+| Its own name given to a self-call, when `f` has a function parameter: `f(f)` | `lambda-to-lambda`, template `higher-order` (13.2 rule 8) |
 | Its name at a parameter of a function that takes no function: `len(f)` | `not-a-value` on the name |
 | Its name at an `Fn` of a function with fewer parameters than `f` has: `walk(a, f)`, with three parameters | `arity` on the name |
 | Its name read as a value: `[f]` | `not-a-value` on the name. A read is no self-reference |
@@ -809,4 +833,353 @@ f(0, 4)                           // 10
 
 // recursion-needs-types: the result has no type.
 const g = (n: int) => n <= 0 ? 0 : g(n - 1);
+```
+
+## 12. Recursive types (step E2)
+
+Step E2 of the plan (`18` 4) adds this section when it lands.
+
+## 13. Function parameters (step E3)
+
+Step E3 of the plan (`18` 7 and 8; D57, settled by the owner on 2026-11-19): a
+parameter whose annotation is a function type may be called in its lambda's body
+and given on as a lambda argument, and a call of the lambda gives a lambda at
+it. Functions stay first-order. A function parameter takes no function, a lambda
+that has one is never passed, and a function is still not a value: it is not
+stored, returned, compared or given to a host function (R3 and S3 of `00`).
+
+```js
+const sumBy = (xs: Order[], f: (o: Order) => float): float => xs.map(f).sum();
+const apply = (f: (x: int) => int, x: int): int => f(x) + x;
+{total: sumBy(orders, o => o.qty * o.price), n: apply(n => n * 2, 3)}
+```
+
+The syntax is F16's (2.1): `Param = ... | Name ":" PFn`. The step adds no
+syntax, node, value, type, run code, check code or case field. It adds the
+static rules of 13.2, one of which makes `arg-mismatch` a static code of this
+package; the checker's rules of 13.3; the evaluation of 13.4; and three message
+templates in a catalog file of its own, `suite/messages-recursion.json` (13.5).
+It retires the template `fn-value` of F16 (13.5).
+
+### 13.1 Terms
+
+| Term | Meaning |
+| --- | --- |
+| Function parameter | A `Param` whose field `fn` is set (F16 2.3): a name, `:` and a function type. By F16 2.1 its pattern is a name, and it has no default |
+| Function type | The `fn` of a function parameter: its listed parameters, each a word and a program type, and its result, a program type or `unknown` |
+| Listed count | The number of parameters a function type lists |
+| Function binding | The binding that a function parameter makes in its lambda's scope. It is neither a value binding nor a `const`-bound lambda |
+| Lambda argument | As `05-types.md` 22.4 says, and also an `Ident` argument whose innermost binding is a function binding. The count of parameters of such an argument is the listed count of its function type |
+| Higher-order lambda | A `Lambda` that has a function parameter |
+| Bound lambda | In a call of a lambda, the lambda that a function parameter holds: the lambda argument given at it, or, for a function parameter given on, the lambda that one holds |
+| Printed function type | `(`, each listed parameter as its word, `: ` and its type printed by `05-types.md` 3.9, separated by `, `, then `) => ` and the result printed, or `unknown`. A type with a static diagnostic prints as `never` |
+
+1. A function binding is bound as a parameter is (`05-types.md` 22.7): in the
+   lambda's scope, left to right, with `duplicate-name` and `shadows-namespace`
+   as for any name. A binding of the same name in an inner scope hides it, as
+   any binding hides an outer one (`01-language.md` 5).
+2. Whether a parameter is a function parameter is read from the text alone, by
+   every compile (`15-build-rulings.md` R208). A function type with a static
+   diagnostic, such as `(x: Nope) => int`, still makes a function parameter: the
+   static rules read only its listed count. The checker reads each type with a
+   diagnostic as `never` (13.3).
+3. A function binding is not a value binding. So the Core rules that test a
+   value binding do not apply to it: a call of it is no `call-of-parameter`, and
+   its name as an argument is a lambda argument, not a value.
+
+### 13.2 The static rules
+
+These rules apply in every compile, with or without the type rules, in phase
+`check` (`05-types.md` 22). They replace, for a function binding, the rows of
+`05-types.md` 22.4 for an `Ident` and of 22.5 for a `Call`, `01-language.md` 8.2
+rules 2 and 4, and F16 3.1 item 9. Rules 1 to 10 are those of `18` 7.1.
+
+| # | Rule | Code | Template | Span |
+| --- | --- | --- | --- | --- |
+| 1 | A `Call` whose name's innermost binding is a function binding calls it. A `Call` whose name's innermost binding is a value binding is `call-of-parameter`, as in Core | `call-of-parameter` | `fn-hint` when that binding is a parameter written as a name with no default, with a program type or with no annotation; else `default` | The name |
+| 2 | In a `Call` of a `const`-bound lambda with a right count, a lambda argument at a function parameter is allowed. A lambda argument at any other parameter is `lambda-to-lambda`, as in Core; a function parameter's name is one | `lambda-to-lambda` | `default` | The argument |
+| 3 | In a `Call` of a `const`-bound lambda with a right count, an argument at a function parameter that is not a lambda argument is an error | `arg-mismatch` | `parameter-at-fn` when the argument is an `Ident` whose innermost binding is a parameter written as a name with no default; else `function`, with `param` the parameter's name and `name` the callee | The argument |
+| 4 | An `Ident` whose innermost binding is a function binding, and that is not a lambda argument, is not a value: `[f]`, `{f}`, `f == g`, `f ?? g`, `` `${f}` ``, `const k = f;`, `type(f)`, `f.x`, `f ? 1 : 2`, `[...f]`, `match f { ... }`, and `f` as the body of a lambda, so a function is never returned | `not-a-value` | `function` | The identifier |
+| 5 | A function parameter is a name with no default. F16 2.1 gives this, and other text is a `parse` error (F16 2.5) | | | |
+| 6 | A function is never given to the host (S3): a lambda argument in a `Call` of a host function, or of a library function at a parameter that is not an `Fn`, is `not-a-value` by `05-types.md` 22.5, and a function parameter's name is one. At a `MethodCall` the type rules (13.3) and the shape test (13.4) decide | `not-a-value` | `argument` | The argument |
+| 7 | A `Call` of a function binding has exactly the listed count of arguments. A lambda argument in it is `not-a-value`: each listed parameter takes a value | `arity`; `not-a-value` | `arity` as in 22.5, `name` the parameter's name; `argument`, `param` the listed word | The `Call`; the argument |
+| 8 | A lambda argument that is a higher-order lambda, written there or named, is `lambda-to-lambda` in every `Call` and every `MethodCall`, whatever the callee: a `const`-bound lambda, a function of the library or of the host, a function that does not exist, a method | `lambda-to-lambda` | `higher-order`, `name` the callee as written | The argument |
+| 9 | A lambda argument at a function parameter has no more parameters than the listed count. At an `Fn` of a library function in a `Call`, 22.5 tests the count as before, and a function parameter given there counts its listed count | `arity` | `parameters`, `most` the listed count, or the `Fn`'s count | The argument |
+| 10 | At run time the shape test counts a function parameter given to a method by its listed count, and takes it as a lambda (13.4) | `wrong-kind` | | The `MethodCall` |
+
+1. **Rule 8 decides its argument alone.** An argument that rule 8 reports is
+   tested by no other rule of this section or of 22.5. Rule 8 is tested at every
+   call, also after `arity` on the whole call and at an unknown callee:
+   `nope(apply)`, with `apply` a higher-order lambda, is `undefined-function`
+   and `lambda-to-lambda`. A higher-order lambda may be written only as the
+   value of a `const` line, and its name may only be called.
+2. **The other tests of an argument.** In a `Call` with a right count, each
+   argument that rule 8 does not report is tested by its callee, left to right.
+   A `const`-bound lambda: at a function parameter, rule 3, then rule 9; at
+   another parameter, rule 2. A function binding: rule 7. A host function or a
+   library function: 22.5, with a function parameter's name as a lambda
+   argument. A wrong count (`arity` on the whole `Call`) turns these tests off,
+   as in Core.
+3. **A function parameter's name as a lambda argument** is walked as Core walks
+   an `Ident` that is a lambda argument (22.5, last paragraph): it is no read,
+   and rule 4 does not report it.
+4. **Hints.** `fn-hint` and `parameter-at-fn` name the fix for the form that a
+   function parameter takes: a parameter written as a name, with no default. A
+   `const` name, a name that a pattern binds, a parameter with a default and the
+   name of `catch` keep `default` and `function`.
+5. **`arg-mismatch` is static at one place.** Rule 3 is the only static rule
+   with that code. Core makes a plain argument at an `Fn` a type rule
+   (`05-types.md` 13.2), because the parameter there is a library's. A function
+   parameter is read from the text, as the count of a call by name is, so the
+   test is static (`18` 10, 18-15). Everywhere else `arg-mismatch` stays a type
+   rule; at the `Fn` of a library entry its template may be `parameter-at-fn`
+   (13.3).
+6. **What the rules guarantee.** In a run compiled without the type rules, a
+   value is never called, a function parameter is never called with another
+   count than its function type lists, a function never reaches a parameter that
+   takes a value of a `const`-bound lambda or of a function known by name, and a
+   lambda bound to a function parameter never has more parameters than the
+   arguments it is called with. At a method, the shape test of 13.4 gives
+   `wrong-kind` (inference from the rules; the differential fuzzer is the test,
+   `18` 13).
+
+| Text | Static diagnostics |
+| --- | --- |
+| `const apply = (f: (x: int) => int, x: int): int => f(x) + x; apply(n => n * 2, 3)` | None. The value is 9 |
+| `const twice = (f, x) => f(f(x)); 1` | `call-of-parameter`, `fn-hint`, on each `f` (rule 1) |
+| `const each = (xs, g) => xs.map(g); 1` | None. Checked, `arg-mismatch` `parameter-at-fn` on `g` at each use (13.3); run without the type rules, `wrong-kind` (13.4) |
+| `const g = (f: (x: int) => int) => [f]; 1` | `not-a-value` on `f` (rule 4) |
+| `apply(5, 1)` | `arg-mismatch`, `function`, on `5` (rule 3) |
+| `const g = (f: (a: int, b: int) => int): int => f(1); 1` | `arity` on `f(1)` (rule 7) |
+| `xs.map(apply)` | `lambda-to-lambda`, `higher-order`, on `apply` (rule 8) |
+| `apply((a, b) => a, 1)` | `arity` on the lambda (rule 9) |
+
+### 13.3 The checker
+
+These are type rules. They add to `05-types.md` 13 and to F16 3.3 and 3.4. A
+function type is a claim: the checker proves it, and a run never tests it
+(13.4). **Every fit against a function type is F16 3.3's:** a fit that uses
+`any` does not hold, and a type with a static diagnostic is fitted by nothing
+(F16 3.3 item 2).
+
+| Matter | Rule |
+| --- | --- |
+| A function parameter | Bound to its function type. It is never read as a value (13.2 rule 4) |
+| A call `f(a1, ..., an)` of a function parameter, with the listed count | Each plain argument is synthesized where the call stands and fitted to the listed type at its position by F16 3.3: through its form, with `arg-mismatch` or `maybe-null` at each place of failure, templates `argument`, `missing` and `extra`. The call's type is the result: `any` for `unknown`, and `never` for a result with a static diagnostic. The call records no site of its own |
+| The same with another count | `arity` (13.2 rule 7). The call has the type `never`, and each plain argument is synthesized |
+| A `Lambda` written at a function parameter p in a `Call` of a `const`-bound lambda; or there, the name of a `const`-bound lambda that is not checked once | Checked against p's function type as `05-types.md` 13.5 step 3 checks a lambda against a library `Fn`, with no `Var` to solve. Each parameter of the lambda is bound to the listed type at its position by 12.2 and 12.4, `never` for a type with a static diagnostic. An annotated parameter is bound to its annotation, and the listed type must surely fit it (`arg-mismatch` `argument` on the annotation, F16 3.4). The body is synthesized in the scope, and under the facts, where the lambda is written. Its type B is the body's type, or the lambda's result annotation, to which the body is fitted by F16 3.3. When p's result is `unknown`, the body is a tested position (13.7) and nothing is fitted. Otherwise B must surely fit p's result R, else `arg-mismatch`, template `body`, on the body |
+| The name there of a `const`-bound lambda | Its check is a use (13.9), and counts against the limits of 20.2 and 20.3 |
+| The name there of a lambda checked once (F16 3.4) | Its body is not checked again. Each listed type must surely fit the lambda's annotation at its position, else `arg-mismatch` `argument` on the annotation. Unless R is `unknown`, its result type must surely fit R, else `arg-mismatch` `body` on its body |
+| A function parameter g given on at a function parameter p | Fitted, with no body to check. Each type that p lists must surely fit the type that g lists at the same position, else `arg-mismatch` `argument` on g's listed type. Unless p's result is `unknown`, g's result must surely fit it, else `arg-mismatch` `body` on the argument; a result `unknown` is `any` there, which surely fits only `any` |
+| A lambda argument that a static rule reports (13.2 rules 2, 8, 9) | Not checked. The parameter it would bind has the type `never` (`05-types.md` 13.2) |
+| A function parameter given to a library function or method | `05-types.md` 13.5 step 3, with the function type in place of the lambda. A listed count above n is `arity` on the argument: static in a `Call` (13.2 rule 9), a type rule in a `MethodCall`, template `parameters`. Each Q, its `Var`s replaced by their solutions, must surely fit the listed type at its position, else `arg-mismatch` `argument` on the listed type. A `Var` still unbound in a Q at a position that the function type lists is `cannot-infer` on the argument. B is the function type's result: `any` for `unknown`, `never` for a result with a static diagnostic. Then step 3 goes on as for a lambda: the seed rule (3a), bind(R, B), and the fit of B to R with `arg-mismatch` `body` on the argument. That fit is step 3's, so a fit that uses `any` holds there and records a `dynamic` site on the argument, as F16 3.4 says of a lambda's result annotation. With R `unknown` nothing more is done |
+| `filter` and `find` (`05-types.md` 13.8) | A function parameter narrows nothing: there is no body whose facts to read |
+| A function parameter given to a method on an `any` receiver (13.3) | Each value passed is `any`, which surely fits only `any`: a listed type that is not `any` is `arg-mismatch` `argument` on that type. The call has the type `any` |
+| A plain argument at an `Fn` of a library function or method | `arg-mismatch` on the argument, as in Core (13.2). The template is `parameter-at-fn` when the argument is an `Ident` whose innermost binding is a parameter written as a name with no default, and `function` otherwise |
+| A lambda with a function parameter whose every parameter is annotated | Checked once (F16 3.4): a function parameter is annotated. It is bound to its function type, not to `never` |
+| A lambda with a function parameter and a parameter with no annotation | Checked at each use (`05-types.md` 13.9), with each function parameter bound to its function type |
+| A lambda with no use | The row "No use" of 13.9 and of F16 3.4, with each function parameter bound to its function type. A call of a function parameter in its body is fitted as above, so an argument of type `any`, from a parameter bound to `any`, is `arg-mismatch`, as an argument at an annotated parameter in a call by name there is |
+| Sites | A lambda written at a function parameter is checked where it stands, once for each call that holds it, and its body's sites are recorded there. A `const`-bound lambda named there records its sites as at any use |
+
+1. **Why every fit is strict.** No run tests a function type (13.4). A fit that
+   used `any` and recorded a `dynamic` site would leave a call of the function
+   parameter with the result type while its value may be anything, and a later
+   failure would be at no site, as F16 3.3 item 3 says of an annotation. The one
+   exception is the fit of step 3 at a library entry, where the entry, not the
+   function type, takes the result, and the site is at the argument.
+2. **A consequence.** `18` 7.6 writes `sumBy` over `any` data as `const sumBy =
+   (xs: any[], f: (x: any) => float): float => xs.map(f).sum();` and calls it
+   with `o => o.qty * o.price`. The body's type is `any` (`05-types.md` 8.3),
+   which does not surely fit `float`, so the call is `arg-mismatch` on the body.
+   The author writes `(o.qty * o.price) as float` (F4), or gives the function
+   type the result `any`. `suite/recursion/e3-check.json` holds the three.
+3. **`unknown`.** A function type whose result is `unknown` is for a predicate:
+   given on to `filter`, `find` or another function type with `unknown`, it
+   means what it means there (13.7). A call of it has the type `any` (`18` 7.3,
+   recommendation taken).
+
+### 13.4 Evaluation
+
+A call of a function parameter is a call by name of its bound lambda
+(`02-evaluation.md` 11.2). A lambda argument at a function parameter is
+evaluated where it stands, in the call that holds the argument.
+
+| Matter | Rule |
+| --- | --- |
+| A lambda argument in a `Call` of a `const`-bound lambda | A `Lambda` written there charges 1 step where it stands, as a lambda argument of a library call does (`02-evaluation.md` 11.3 item 1). The name of a `const`-bound lambda charges nothing (5.6 item 3), and so does the name of a function parameter given on. None allocates a unit |
+| A call `f(a1, ..., an)` of a function parameter | As 11.2: the arguments left to right; 1 step; the depth test; then the bound lambda's parameters are bound left to right and its body is evaluated. Its value is the value of the call |
+| More arguments than the bound lambda has parameters | The extra arguments are dropped, at no charge, as a library's are (`01-language.md` 8.3 item 2; `02-evaluation.md` 5.6 item 4). A null argument takes the parameter's default |
+| Depth | A call of a function parameter adds 1 plus its nesting depth within the body that makes it (`02-evaluation.md` 8.4 items 1 and 2), and is tested after its step and before the parameters are bound (8.4 item 7). The bound lambda's body runs at that count, wherever the lambda was written |
+| A function parameter given to a library entry | The entry calls the bound lambda by 5.6 and 8.4 item 3: the library call's measure, and the two steps of each element |
+| A failure | Its trace (F8 4) has an entry for the call of a function parameter: `span` the `Call`, `name` the parameter's name, `index` null. `catch` ends the calls the failure passed through, bound lambdas among them, as `02-evaluation.md` 12.1 says |
+
+1. **The shape test** (`01-language.md` 7.2) takes a function parameter's name
+   as a lambda: at a callback parameter it passes test 3, and at another
+   parameter it fails test 4. Test 5 counts its listed count, not the count of
+   its bound lambda. So in a run without the type rules `[1].map(f)`, with `f` a
+   function parameter that lists three parameters, is `wrong-kind`, and
+   `"ab".repeat(f)` is `wrong-kind`.
+2. **Each call's own names.** The rules of 11.5 hold for every program with a
+   function parameter, as for one with a self-reference. A bound lambda reads
+   its outer names from the call in which it was evaluated, whichever call of
+   whichever lambda calls it. That call is in progress whenever it runs: the
+   lambda was given to a call made within it, and no function outlives the call
+   that received it.
+3. In `const apply = (f: (x: int) => int, x: int): int => f(x) + x; apply(y =>
+   apply(z => z, y + 10), 1)`, the inner call of `apply` binds `x` to 11 while
+   the outer call, with `x` 1, waits for `f`. Each call has its own `x`, so the
+   program gives 23, with 10 steps, no unit and a depth count of 4 at the call
+   of `z => z`. With one place for `x` the outer call would read 11 when `f`
+   returns, and give 33 (`18` 8).
+4. **The facts of `02-evaluation.md` 11.1.** A program with a function parameter
+   keeps the first two facts, but for the callee of a call of a function
+   parameter, which is its bound lambda. The third and fourth do not hold, as
+   the example shows. The fifth does not hold as a graph of lambdas: `apply`
+   calls the lambda bound to `f`, and that lambda calls `apply`. Every run of a
+   program with no self-reference still ends, because no lambda can be given to
+   itself (`18` 7.5; inference, which the differential fuzzer tests). One fixed
+   place for each name (10.2) is an optimization only for a program with no
+   self-reference and no function parameter.
+5. **The depth bound** of `02-evaluation.md` 8.4 item 10 is not claimed for a
+   program with a function parameter: a call of one runs a lambda that the
+   checker checked where it was written, not at the call.
+
+### 13.5 Messages
+
+The catalog file `suite/messages-recursion.json` has the format of `03-host.md`
+3.8.2. Its three entries add templates to codes that `suite/messages-check.json`
+has, as F8 3.1 item 8 says of a package's file: the same code and phase, params
+of kinds that code already has, new template names.
+
+| Code | Template | Text | Chosen when |
+| --- | --- | --- | --- |
+| `call-of-parameter` | `fn-hint` | `{name} is a parameter; to call it, give it a function type, as {name}: (x: int) => int` | 13.2 rule 1: the binding is a parameter written as a name with no default |
+| `arg-mismatch` | `parameter-at-fn` | `{name} is a value; to pass it as a function, give it a function type` | 13.2 rule 3, and the row of 13.3 for a plain argument at a library's `Fn`: the argument is an `Ident` whose binding is a parameter written as a name with no default |
+| `lambda-to-lambda` | `higher-order` | `a function that takes a function cannot be passed to {name}` | 13.2 rule 8. `name` is the callee as written: the function, the method or the lambda the argument is given to |
+
+1. Each has one parameter, `name`, of kind `word`: the name as written (F8 3.2
+   item 3).
+2. `18` 7.2 proposed `{name} takes a function, so it cannot be passed as one`
+   for the third, with `name` the lambda passed. A higher-order lambda written
+   in place has no name, so the template names the callee (`15-build-rulings.md`
+   R281).
+3. **`fn-value` retires.** F16's file had the template `fn-value` of
+   `arg-mismatch` for a value that the library passes to a function parameter of
+   a lambda argument. With rule 8 no higher-order lambda is passed, so no build
+   that offers F17 can choose it, and no build offers slice D1 without F17
+   (1.4). It is removed from `suite/messages-entry-points.json` with its case,
+   by a change to F16's own chapter (F16 9.1; `15-build-rulings.md` R288).
+4. Every other diagnostic of this step uses a template that exists:
+   `call-of-parameter` `default`; `arg-mismatch` `function`, `argument`,
+   `missing`, `extra` and `body`; `lambda-to-lambda` `default`; `not-a-value`
+   `function` and `argument`; `arity` `parameters` and the count templates;
+   `maybe-null`; `cannot-infer`; `always-truthy` and `always-falsy`;
+   `result-mismatch`. Its run failures use Core's: `wrong-kind` and its
+   templates of the shape test, `depth-exceeded`, `steps-exceeded`.
+5. **Counts.** This step adds no check code. With F4, F5, F8, F16 and F17 the
+   check codes are the 31 of F16 9.1 item 2, and their templates are 76: the 72
+   of `suite/messages-check.json`, the 1 of `suite/messages-entry-points.json`
+   and the 3 of this file.
+
+### 13.6 Analysis
+
+F2's analysis reads the amended scope (F2 3.2):
+
+1. A function parameter is bound in its lambda's body. A call of it is no call
+   of the environment, and its name given as a lambda argument is no read.
+2. A function parameter hides a function of the environment of its name only in
+   its lambda's body: in `const apply = (f: (x: int) => int): int => f(1);
+   [f(2), apply(y => y)]` the call `f(2)` is a call of the environment, and
+   `f(1)` is not.
+3. A call in the body of a lambda written at a function parameter has `lambda`
+   `true`, as a call in any lambda has.
+
+### 13.7 Tools
+
+1. **The formatter** has no rule of its own for this step. A function type is
+   written by F16 7.1, and a lambda argument of a call by name as any argument
+   (F12 2.8).
+2. **Completion.** A function parameter is a candidate in the names context (F12
+   3.6 item 1), in its lambda's body, with the kind `lambda` and its printed
+   function type as its detail (13.1). F12 3.12's row for `lambda` gives that
+   detail for a function parameter, and null for a `const`-bound lambda.
+3. **Hover.** These rows add to the table of F12 3.13 item 3:
+
+| The word is | `kind` | `type` | `signature` | `doc` | `declaration` |
+| --- | --- | --- | --- | --- | --- |
+| The name of a function parameter, where it is declared | `lambda` | null | The printed function type | null | Its own span |
+| The name of a `Call` of a function parameter | `lambda` | The printed type of the `Call` (13.3): the result, `any` for `unknown` | The printed function type | null | The span of the parameter's name |
+| Any other `Ident` whose binding is a function parameter: a lambda argument, or a place that needs a value | `lambda` | null | The printed function type | null | The span of the parameter's name |
+
+4. A parameter of a lambda written at a function parameter is a parameter like
+   any other: its hover gives the type it is bound to, the listed type (13.3).
+5. **Token classes.** The web packages' token classes do not change: a function
+   parameter's name is a name, and the words of a function type are those of
+   F16.
+
+### 13.8 The cases
+
+| Path | Holds |
+| --- | --- |
+| `suite/recursion/e3-static.json` | Each static rule of 13.2, with its templates, and the rules of Core beside a function parameter |
+| `suite/recursion/e3-run.json` | Values, steps, units, depth and its limit, traces, `catch`, each call's own names (the `apply` example of 13.4 item 3), runs without the type rules and the shape test |
+| `suite/recursion/e3-check.json` | The checker of 13.3: types, sites, fits, each lambda argument, the library entries, `any` |
+| `suite/recursion/e3-earlier.json` | The eight texts of 13.9, with this step's outcome |
+| `suite/recursion/e3-analysis.json` | Analysis of 13.6 (F2) |
+| `suite/recursion/tools-e3-format.json` | The formatter on function parameters (F12) |
+| `suite/recursion/tools-e3-assist.json` | Hover and completion of 13.7 (F12) |
+| `suite/messages-recursion.json` | The entries of 13.5 and a case for each template |
+
+1. A runner runs these as section 8 says. It loads
+   `suite/messages-recursion.json` and runs its cases checked.
+2. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
+   `suite/recursion/` and in `suite/messages-recursion.json` the static codes
+   are Core's twelve and `arg-mismatch` (13.2 item 5). A case there that expects
+   `arg-mismatch` from a type rule stands in a file whose name ends
+   `-check.json`.
+3. Step E3 lands in every implementation in one change (`15-build-rulings.md`
+   R261). Until an implementation offers it, its runner fails the files `e3-`
+   and `tools-e3-`, the cases of `suite/messages-recursion.json`, and the cases
+   of 13.9, as with step E1 (R251).
+
+### 13.9 Earlier cases
+
+The step changes the outcome of eight earlier cases and retires one catalog
+case. Each moved, with no file named `until-`, as for step E1 (R251): the step
+lands in every implementation in one change.
+
+1. **`suite/entry-points/d1-check.json`:** "arg-mismatch: fn-value, the library
+   passes a value to an Fn parameter" and "an Fn parameter is bound to never in
+   the body".
+2. **`suite/entry-points/d1-run.json`:** "an Fn parameter read as a value runs
+   in a compile without the type rules", "an Fn parameter called in the body is
+   call-of-parameter" and "a lambda given at an Fn parameter is
+   lambda-to-lambda".
+3. **`suite/recursion/e1-check.json`:** "a parameter with a function type takes
+   no value".
+4. **`suite/recursion/e1-static.json`:** "lambda-to-lambda: a lambda given to a
+   call of its own name" and "lambda-to-lambda: its own name given to a call of
+   its own name".
+5. `suite/recursion/e3-earlier.json` holds the same eight texts with this step's
+   outcome, each named by its old file and what it now shows.
+6. **`suite/messages-entry-points.json`:** the entry of `arg-mismatch` with the
+   template `fn-value` and its case "arg-mismatch: fn-value" are removed (13.5
+   item 3).
+7. No other earlier case changes. Every other text of the suite with a function
+   type on a parameter neither calls it nor gives a value or a lambda at it.
+
+### 13.10 Examples
+
+```js
+// A helper that takes a function, and a function given on.
+const apply = (f: (x: int) => int, x: int): int => f(x);
+const twice = (g: (x: int) => int, x: int): int => apply(g, apply(g, x));
+twice(n => n + 1, 5)                       // 7
+
+// A function type whose result is unknown, given on to filter.
+const keep = (ys: int[], p: (x: int) => unknown): int[] => ys.filter(p);
+keep([1, 2, 3, 4], x => x % 2 == 0)        // [2, 4]
+
+// call-of-parameter, fn-hint: f has no function type.
+const each = (xs, f) => f(xs);
 ```

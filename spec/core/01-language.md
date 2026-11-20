@@ -880,7 +880,10 @@ prepare them when compiling but does not report them then. Resolving a method
 when compiling is an optimization: an implementation guards it with a test of
 the receiver's kind, and it is never observable. So `x.slice(1)`, with `x`
 declared `string` and supplied as the list `[1, 2, 3]`, gives `[2, 3]`.
-`04-library.md` and `02-evaluation.md` have the same tests.
+`04-library.md` and `02-evaluation.md` have the same tests. With package F17,
+the name of a parameter with a function type is a lambda for tests 3 and 4,
+and test 5 counts the parameters its function type lists
+(`spec/packages/f17-recursion.md` 13.4).
 
 4. `x?.m(...)` with a null receiver makes the chain null (7.4). Otherwise it is
    `x.m(...)`.
@@ -899,7 +902,9 @@ declared `string` and supplied as the list `[1, 2, 3]`, gives `[2, 3]`.
    - If nothing in the program binds `f`, the call is of the environment's
      function `f`: the library's (`04-library.md`) or the host's
      (`03-host.md`).
-   - Any other binding of `f` is an error of the static rules (8.2, 14.4).
+   - Any other binding of `f` is an error of the static rules (8.2, 14.4),
+     but for a parameter with a function type, which package F17 lets a body
+     call (`spec/packages/f17-recursion.md` 13.2).
 3. Arguments are positional and are evaluated left to right. There are no spread
    arguments and no named arguments.
 
@@ -945,7 +950,9 @@ fails when `input.event` is a map with no key `pull_request`.
    which means what the lambda written there would mean. Inside the lambda's
    own body and defaults the name refers to the lambda itself (5 rule 6), and
    either use there is an error (14.4), unless the lambda is typed as package
-   F17 says (`spec/packages/f17-recursion.md` 11.2).
+   F17 says (`spec/packages/f17-recursion.md` 11.2). With F17 the name may also
+   be passed at a parameter with a function type of a `const`-bound lambda
+   (`spec/packages/f17-recursion.md` 13.2).
 4. A function is not a value. A lambda, and the name of a `const`-bound lambda,
    cannot be stored in a list or a map, compared, used as a default, or be the
    value of a `const` line other than as rule 2 says, of a block, of a branch,
@@ -970,6 +977,12 @@ fails when `input.event` is a map with no key `pull_request`.
 5. These rules are static rules (14.4). They are decided from the text and the
    bindings alone, with no type, wherever the text stands: `const twice = (f, x)
    => f(f(x));` is an error even when `twice` is never called.
+6. **Package F17** changes rules 1, 2 and 4 for a parameter with a function
+   type, `(f: (x: int) => int)`: the body may call it and give it on, and a
+   call of its lambda gives a lambda at it. It is still not a value, a lambda
+   that has one is never passed, and no function reaches the host
+   (`spec/packages/f17-recursion.md` 13.2). The rows of the table below are
+   Core's.
 
 | Written | Allowed |
 | --- | --- |
@@ -1410,6 +1423,10 @@ skipped after one. The message of a `check` diagnostic is not specified in Core.
 | A `match` does not list a literal twice | 9.3 | `duplicate-case` |
 | No arm of a `match` follows `_` | 9.3 | `unreachable-arm` |
 | A `const`-bound lambda does not refer to its own name: no call of it and no lambda argument naming it stands in its body or its defaults. Package F17 lifts this rule for a lambda whose every parameter and result carry a type (`spec/packages/f17-recursion.md` 11.2) | 5, 8.1 | `recursion-needs-types` |
+
+Package F17 changes these rules for a parameter with a function type, and
+adds `arg-mismatch` for a value given at one in a call by name
+(`spec/packages/f17-recursion.md` 13.2).
 
 At a method call none of these is a static rule: the count of arguments, a
 lambda where the method takes a value, a value where it takes a function, and a

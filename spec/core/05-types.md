@@ -969,6 +969,11 @@ A plain argument at an `Fn` parameter is `arg-mismatch` on the argument, a type
 rule in a `Call` and in a `MethodCall` alike. It is synthesized and binds
 nothing.
 
+Package F17 adds parameters with a function type to `const`-bound lambdas. A
+lambda argument there is checked against the function type, the name of such a
+parameter is a lambda argument, and a plain argument there is `arg-mismatch` by
+a static rule (`spec/packages/f17-recursion.md` 13.2, 13.3).
+
 At run time, at every `MethodCall`, the run selects the method by the receiver's
 kind and makes the shape test of `04-library.md` 2.2 before any argument is
 evaluated: the method's name, the count of arguments, a lambda at each callback
@@ -1085,7 +1090,10 @@ arguments are synthesized, and nothing is checked at a lambda argument there.
 Such a reference counts against no limit of 20. With package F17, a reference
 of a lambda whose every parameter and result carry a type is a use of a lambda
 checked once: a call there has the result type, and its arguments are fitted
-to the parameters (`spec/packages/f17-recursion.md` 11.3).
+to the parameters (`spec/packages/f17-recursion.md` 11.3). With F17 the name
+given at a parameter with a function type of a call by name is a use too, and
+a lambda argument there is checked, not `lambda-to-lambda`
+(`spec/packages/f17-recursion.md` 13.3).
 
 | Use | Rule |
 | --- | --- |
@@ -1240,7 +1248,10 @@ Twelve codes are **static codes**: `undefined-name`, `undefined-function`,
 its rules decide when and where.
 Two of them, `arity` and `not-a-value`, are also reported by the type rules at
 the arguments of a `MethodCall` (13.2, 13.5). The other 16 codes are reported by
-the type rules only.
+the type rules only. Package F17 adds a static rule with the code
+`arg-mismatch`, for a value given at a parameter with a function type in a call
+by name; the code stays a type rule everywhere else
+(`spec/packages/f17-recursion.md` 13.2).
 
 | Code | Reported when | Span | Class | Type afterwards |
 | --- | --- | --- | --- | --- |
@@ -1970,6 +1981,7 @@ the names of the environment (22.2). They need no type.
 | Phase | `check` |
 | Static diagnostic | A diagnostic that this section gives. Its code is one of the twelve static codes: `undefined-name`, `undefined-function`, `not-a-value`, `call-of-parameter`, `lambda-to-lambda`, `duplicate-name`, `shadows-namespace`, `duplicate-key`, `arity`, `duplicate-case`, `unreachable-arm`, `recursion-needs-types`. |
 | Not static | `arity` and `not-a-value` that the type rules give at the arguments of a `MethodCall` (13.2, 13.5). The method of a `MethodCall` is known only from the receiver's kind, so its count of arguments and the place of its lambda arguments are type rules. |
+| Packages | F4, F16 and F17 add static rules. F17's rules for a parameter with a function type use `arg-mismatch` at one place, and change the rows of 22.4 and 22.5 for the binding such a parameter makes (`spec/packages/f17-recursion.md` 13.2). |
 | Message | Not specified in Core. The code and the span are. |
 
 ### 22.2 What the rules read from the environment
@@ -2035,6 +2047,10 @@ An `Ident` is resolved to the innermost binding of its name (5.1):
 A **lambda argument** is an argument of a `Call` or a `MethodCall` that is a
 `Lambda` node, or an `Ident` whose innermost binding is a `const`-bound lambda.
 An `Ident` that is a lambda argument gets no diagnostic from the table above.
+With package F17 a parameter with a function type makes a binding that is
+neither a value binding nor a `const`-bound lambda: its name as an argument is
+a lambda argument, and read as a value it is `not-a-value`
+(`spec/packages/f17-recursion.md` 13.1, 13.2).
 
 ### 22.5 Calls
 
@@ -2081,6 +2097,13 @@ is not one: it is `not-a-value` (22.4).
 
 So `const f = n => f(n - 1); f(3)` is `recursion-needs-types` on the second
 `f`, and `const f = xs => xs.map(f); 1` on the `f` given to `map`.
+
+**Parameters with a function type.** Package F17 adds a callee, a parameter
+with a function type, called with exactly the count of parameters its function
+type lists; a lambda argument at such a parameter of a `const`-bound lambda;
+`arg-mismatch` for a value there; and `lambda-to-lambda` for a lambda that has
+such a parameter, wherever it is given (`spec/packages/f17-recursion.md`
+13.2).
 
 ### 22.6 Method calls
 
@@ -2143,6 +2166,7 @@ The literals of an arm after `_` are compared too.
 | `duplicate-case` | The later literal |
 | `unreachable-arm` | The arm |
 | `recursion-needs-types` | The name of the `Call`; for a lambda argument, the `Ident` |
+| `arg-mismatch`, with F17 | The argument (`spec/packages/f17-recursion.md` 13.2 rule 3) |
 
 ### 22.10 Order
 
@@ -2236,4 +2260,4 @@ Its chapter is the home of its rules.
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
 | F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |
 | F16, entry points, slice D1 | Type lines and their static rules, with `name-clash`. Annotations: what a `const` line's, a parameter's and a result's annotation claim, the fits that test them, which `const`-bound lambdas are checked once where they are written, and the values the library passes to an annotated parameter | `spec/packages/f16-entry-points.md` 3 and 5 |
-| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable. A lambda whose every parameter and result carry a type may refer to its own name: such a reference is not `recursion-needs-types` (22.5), and a call of it has the result type (13.9) | `spec/packages/f17-recursion.md` 4, 5.6, 11.2 and 11.3 |
+| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable. A lambda whose every parameter and result carry a type may refer to its own name: such a reference is not `recursion-needs-types` (22.5), and a call of it has the result type (13.9). A parameter with a function type: its static rules, among them `arg-mismatch` at one place, and how a call of it, a lambda given at it and one given on are checked | `spec/packages/f17-recursion.md` 4, 5.6, 11.2, 11.3, 13.2 and 13.3 |

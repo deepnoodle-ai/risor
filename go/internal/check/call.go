@@ -313,7 +313,7 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 				// An annotated parameter is given any, which fits it only
 				// by a fit that used any (F16 3.4).
 				for _, p := range l.Params {
-					c.passed(p, types.Any, m.Name)
+					c.passed(p, types.Any)
 				}
 				// A const-bound lambda named here is a use: every
 				// parameter any, sites kept, its body checked in the scope
@@ -559,7 +559,7 @@ func (c *checker) userFnArg(p *syntax.Param, a syntax.Node, fs facts, name strin
 	}
 	for i, lp := range l.Params {
 		if qs[i] != nil {
-			c.passed(lp, qs[i], name)
+			c.passed(lp, qs[i])
 		}
 	}
 	var b *types.Type
@@ -587,12 +587,11 @@ func (c *checker) userFnArg(p *syntax.Param, a syntax.Node, fs facts, name strin
 
 // passed checks a value of type q that the library, or a method on an any
 // receiver, passes to a parameter of a lambda argument (F16 3.4). It must
-// fit the parameter's annotation without a fit that used any; a parameter
-// with an Fn takes no value.
-func (c *checker) passed(p *syntax.Param, q *types.Type, name string) {
+// fit the parameter's annotation without a fit that used any. A lambda with
+// a parameter with a function type is never passed (f17-recursion.md 13.2
+// rule 8), so no value reaches such a parameter here.
+func (c *checker) passed(p *syntax.Param, q *types.Type) {
 	switch {
-	case p.Fn != nil:
-		c.m("fn-value", word("name", name), ty("found", q)).diag("arg-mismatch", p.Fn.Span)
 	case p.Type != nil:
 		want, ok := c.res.AnnTypes[p.Type]
 		if !ok {
@@ -910,7 +909,7 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 		// Each value passed to an annotated parameter must fit it (F16
 		// 3.4).
 		for i, p := range l.Params {
-			c.passed(p, qs[i], c.callName(name))
+			c.passed(p, qs[i])
 		}
 		if once != nil {
 			return once.result

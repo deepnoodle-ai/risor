@@ -86,7 +86,7 @@ func RunSuiteCatalog(path, key string) ([]Result, error) {
 	}
 	// Every case of messages-check.json, messages-entry-points.json and
 	// messages-recursion.json runs checked only; in the second, F16's codes
-	// are static (F16 9), and in the third F17's (F17 9).
+	// are static (F16 9), and in the third F17's (F17 13.8).
 	b := filepath.Base(path)
 	CheckedOnly = b == "messages-check.json" || b == "messages-entry-points.json" || b == "messages-recursion.json"
 	if b == "messages-entry-points.json" {
