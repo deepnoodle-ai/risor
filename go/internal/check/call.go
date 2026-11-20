@@ -217,14 +217,74 @@ func (c *checker) lambdaArg(a syntax.Node) (*syntax.Lambda, bool) {
 	return nil, false
 }
 
+// fnArg gives the binding of an argument that names a parameter with a
+// function type, or nil (f17-recursion.md 13.1).
+func (c *checker) fnArg(a syntax.Node) *static.Binding {
+	if id, ok := a.(*syntax.Ident); ok {
+		if b := c.res.Idents[id]; b != nil && b.Kind == static.FnParam {
+			return b
+		}
+	}
+	return nil
+}
+
+// fnOf gives the types of the function type of a parameter: the type of
+// each of its parameters and its result. A type with a static diagnostic
+// is nil: it is fitted by nothing (F16 3.3 item 2). unknown is true when
+// the result is unknown.
+func (c *checker) fnOf(p *syntax.Param) (ps []*types.Type, r *types.Type, unknown bool) {
+	for _, q := range p.Fn.Params {
+		ps = append(ps, c.res.AnnTypes[q.Type])
+	}
+	if p.Fn.Result == nil {
+		return ps, nil, true
+	}
+	return ps, c.res.AnnTypes[p.Fn.Result], false
+}
+
+// orNever is t, or never for a type with a static diagnostic.
+func orNever(t *types.Type) *types.Type {
+	if t == nil {
+		return types.Never
+	}
+	return t
+}
+
 // synthPlain synthesizes the plain arguments of a call that is not checked
 // further.
 func (c *checker) synthPlain(args []syntax.Node, fs facts) {
 	for _, a := range args {
-		if l, _ := c.lambdaArg(a); l == nil {
+		if l, _ := c.lambdaArg(a); l == nil && c.fnArg(a) == nil {
 			c.synth(a, fs)
 		}
 	}
+}
+
+// fnParamPassed fits the values a function passes to a parameter with a
+// function type that is given as a lambda argument: each must surely fit
+// the type its function type gives that parameter, at that type (F16 3.3;
+// f17-recursion.md 13.3). qs are the types passed, as many as it lists.
+func (c *checker) fnParamPassed(b *static.Binding, qs []*types.Type) {
+	gp, _, _ := c.fnOf(b.Param)
+	for i, g := range gp {
+		if g == nil || i >= len(qs) || qs[i] == nil {
+			continue
+		}
+		if !fitsK(qs[i], g, formAnnotArg) {
+			c.m("argument", ty("expected", g), ty("found", qs[i])).diag("arg-mismatch", b.Param.Fn.Params[i].Type.Span)
+		}
+	}
+}
+
+// fnParamResult is the result type of a parameter with a function type,
+// as a function it is passed to sees it: any for unknown, never for a type
+// with a static diagnostic.
+func (c *checker) fnParamResult(b *static.Binding) *types.Type {
+	_, r, unknown := c.fnOf(b.Param)
+	if unknown {
+		return types.Any
+	}
+	return orNever(r)
 }
 
 // method resolves and checks a method call (13.3).
@@ -233,7 +293,20 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 	case recv.IsAny():
 		rejected := c.dyn(recvSpan)
 		for _, a := range m.Args {
+			if b := c.fnArg(a); b != nil {
+				// Every value passed is any (f17-recursion.md 13.3).
+				gp, _, _ := c.fnOf(b.Param)
+				qs := make([]*types.Type, len(gp))
+				for i := range qs {
+					qs[i] = types.Any
+				}
+				c.fnParamPassed(b, qs)
+				continue
+			}
 			if l, named := c.lambdaArg(a); l != nil {
+				if static.HigherOrder(l) {
+					continue // lambda-to-lambda, a static rule (F17 13.2 rule 8)
+				}
 				if named && c.res.SelfRefs[a] && !l.Typed() {
 					continue // a reference to its own name is no use (13.9)
 				}
@@ -316,6 +389,8 @@ func (c *checker) call(n syntax.Node, args []syntax.Node, fs facts) *types.Type 
 	switch callee.Kind {
 	case static.Lambda:
 		return c.callLambda(n, callee.Lambda, args, fs)
+	case static.Param:
+		return c.callFnParam(callee.Binding, args, fs)
 	case static.Host:
 		return c.callSig(n, c.env.Hosts[callee.Host.FullName()], nil, nil, nil, args, fs, false)
 	case static.Lib:
@@ -361,13 +436,22 @@ func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node
 	}
 	ts := make([]*types.Type, len(args))
 	for i, a := range args {
-		if lam, _ := c.lambdaArg(a); lam != nil {
+		p := l.Params[i]
+		if lam, _ := c.lambdaArg(a); lam != nil || c.fnArg(a) != nil {
 			ts[i] = types.Never
+			// A lambda argument at a parameter with a function type is
+			// checked against it (f17-recursion.md 13.3). Elsewhere it is
+			// lambda-to-lambda, a static rule, and not checked.
+			if p.Fn != nil && !static.HigherOrder(lam) {
+				c.userFnArg(p, a, fs, c.callName(n))
+			}
 			continue
 		}
 		ts[i] = c.synth(a, fs)
-		// An argument at an annotated parameter must fit it (F16 3.4).
-		c.fitParam(l.Params[i], a, ts[i], c.callName(n))
+		// An argument at an annotated parameter must fit it (F16 3.4). A
+		// value at a parameter with a function type is arg-mismatch, a
+		// static rule (f17-recursion.md 13.2 rule 3).
+		c.fitParam(p, a, ts[i], c.callName(n))
 	}
 	info := c.lambdas[l]
 	if info != nil && info.once {
@@ -388,15 +472,11 @@ func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node
 // fitParam fits an argument of a call by name to its parameter's
 // annotation (F16 3.4): through its form, and a fit that used any does not
 // hold. With a default, null is accepted too. A plain argument at a
-// parameter with an Fn is arg-mismatch, as at a library Fn (13.2).
+// parameter with an Fn is arg-mismatch by the static rules
+// (f17-recursion.md 13.2 rule 3), so it is not fitted here.
 func (c *checker) fitParam(p *syntax.Param, a syntax.Node, t *types.Type, name string) {
 	switch {
 	case p.Fn != nil:
-		pn := ""
-		if np, ok := p.Pattern.(*syntax.NamePat); ok {
-			pn = np.Name
-		}
-		c.m("function", word("param", pn), word("name", name)).diag("arg-mismatch", a.Span())
 	case p.Type != nil:
 		want, ok := c.res.AnnTypes[p.Type]
 		if !ok {
@@ -406,6 +486,102 @@ func (c *checker) fitParam(p *syntax.Param, a syntax.Node, t *types.Type, name s
 			want = types.WithNull(want)
 		}
 		c.fitForm(a, t, want, formAnnotArg)
+	}
+}
+
+// callFnParam is a call of a parameter with a function type
+// (f17-recursion.md 13.3): each plain argument must surely fit the type
+// its function type gives that parameter, through its form (F16 3.3). The
+// call's type is the function type's result, any for unknown. The count,
+// and a lambda argument, are static rules.
+func (c *checker) callFnParam(b *static.Binding, args []syntax.Node, fs facts) *types.Type {
+	ps, r, unknown := c.fnOf(b.Param)
+	if len(args) != len(ps) {
+		c.synthPlain(args, fs)
+		return types.Never
+	}
+	for i, a := range args {
+		if l, _ := c.lambdaArg(a); l != nil || c.fnArg(a) != nil {
+			continue // lambda-to-lambda, a static rule
+		}
+		t := c.synth(a, fs)
+		if ps[i] != nil {
+			c.fitForm(a, t, ps[i], formAnnotArg)
+		}
+	}
+	if unknown {
+		return types.Any
+	}
+	return orNever(r)
+}
+
+// userFnArg checks a lambda argument at a parameter p with a function type
+// of a const-bound lambda (f17-recursion.md 13.3). A lambda written there,
+// or a const-bound lambda named there that is not checked once, is checked
+// against the function type as 13.5 step 3 checks a lambda against a
+// library Fn, with no Var to solve. A lambda checked once, or a parameter
+// with a function type passed on, is fitted. Every fit is F16 3.3's: a fit
+// that uses any does not hold.
+func (c *checker) userFnArg(p *syntax.Param, a syntax.Node, fs facts, name string) {
+	qs, r, unknown := c.fnOf(p)
+	if b := c.fnArg(a); b != nil {
+		gp, _, _ := c.fnOf(b.Param)
+		if len(gp) > len(qs) {
+			return // arity, a static rule
+		}
+		c.fnParamPassed(b, qs)
+		if !unknown && r != nil {
+			if s := c.fnParamResult(b); !fitsK(s, r, formAnnot) {
+				c.m("body", word("name", name), ty("found", s), ty("expected", r)).diag("arg-mismatch", a.Span())
+			}
+		}
+		return
+	}
+	l, named := c.lambdaArg(a)
+	if l == nil || len(l.Params) > len(qs) {
+		return // arity, a static rule
+	}
+	if named && c.res.SelfRefs[a] && !l.Typed() {
+		return // a reference to its own name is no use (13.9)
+	}
+	lf, base, depth := fs, c.base, c.lamDepth
+	var once *lamInfo
+	if named {
+		if info := c.lambdas[l]; info != nil && info.once {
+			once = info // checked once, where it was written (F16 3.4)
+		} else {
+			bb, ok := c.use(a, l)
+			if !ok {
+				return
+			}
+			lf, base, depth = info.facts, bb, l.Depth()
+		}
+	}
+	for i, lp := range l.Params {
+		if qs[i] != nil {
+			c.passed(lp, qs[i], name)
+		}
+	}
+	var b *types.Type
+	if once != nil {
+		b = once.result
+	} else {
+		bound := make([]*types.Type, len(qs))
+		for i, q := range qs {
+			bound[i] = orNever(q)
+		}
+		sb, sd := c.base, c.lamDepth
+		c.base, c.lamDepth = base, depth
+		c.bindArgs(l, bound, nil, lf)
+		b = c.resultOf(l, c.synth(l.Body, lf), formAnnot)
+		c.base, c.lamDepth = sb, sd
+	}
+	if unknown {
+		c.tested(l.Body, b) // a predicate (13.7)
+		return
+	}
+	if r != nil && !fitsK(b, r, formAnnot) {
+		c.m("body", word("name", name), ty("found", b), ty("expected", r)).diag("arg-mismatch", l.Body.Span())
 	}
 }
 
@@ -567,11 +743,17 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 		lam   *syntax.Lambda
 		named bool
 		fn    *types.Fn
+		fnp   *static.Binding // a parameter with a function type, passed on
 	}
 	var lams []lamArg
 	for i, a := range args {
 		p := sig.ParamAt(i)
-		if l, named := c.lambdaArg(a); l != nil {
+		l, named := c.lambdaArg(a)
+		fnp := c.fnArg(a)
+		if l != nil || fnp != nil {
+			if static.HigherOrder(l) {
+				continue // lambda-to-lambda, a static rule (F17 13.2 rule 8)
+			}
 			if p.Fn == nil {
 				if isMethod {
 					c.m("argument", word("name", c.callName(n)), word("param", p.Name)).diag("not-a-value", a.Span())
@@ -581,11 +763,16 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 			if named && c.res.SelfRefs[a] && !l.Typed() {
 				continue // a reference to its own name is no use (13.9)
 			}
-			lams = append(lams, lamArg{a, l, named, p.Fn})
+			lams = append(lams, lamArg{a, l, named, p.Fn, fnp})
 			continue
 		}
 		t := c.synth(a, fs)
 		if p.Fn != nil {
+			if id, ok := a.(*syntax.Ident); ok && c.res.Idents[id].HintParam() {
+				// A parameter with no function type (f17-recursion.md 13.5).
+				c.m("parameter-at-fn", word("name", id.Name)).diag("arg-mismatch", a.Span())
+				continue
+			}
 			c.m("function", word("param", p.Name), word("name", c.callName(n))).diag("arg-mismatch", a.Span())
 			continue
 		}
@@ -621,6 +808,13 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 	var narrowed *types.Type
 	for _, la := range lams {
 		c.curCall = n
+		if la.fnp != nil {
+			c.checkFnParam(la.node, la.fnp, la.fn, sol, isMethod)
+			if solOver() {
+				return types.Never
+			}
+			continue
+		}
 		n := c.checkLambda(la.node, la.lam, la.named, la.fn, sol, fs, isMethod, entry != nil && entry.Narrows != "")
 		if n != nil {
 			narrowed = n
@@ -740,6 +934,54 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 		c.tested(l.Body, b)
 		return narrowed
 	}
+	c.fnResult(fn, sol, qs, check, b, l.Body.Span(), name, dl, sl)
+	return narrowed
+}
+
+// checkFnParam checks a parameter with a function type given as a lambda
+// argument of a library entry (f17-recursion.md 13.3): 13.5 step 3, with
+// its function type as the lambda's annotated type. Each value the entry
+// passes must surely fit its parameter's type; its result stands for the
+// body's type, and the fit of the body is at the argument.
+func (c *checker) checkFnParam(at syntax.Node, b *static.Binding, fn *types.Fn, sol map[string]*types.Type, isMethod bool) {
+	name := c.curCall
+	gp, _, _ := c.fnOf(b.Param)
+	if len(gp) > len(fn.Params) {
+		if isMethod {
+			c.m("parameters", word("name", c.callName(name)), num("most", len(fn.Params))).diag("arity", at.Span())
+		}
+		return
+	}
+	qs := make([]*types.Type, len(fn.Params))
+	for i, q := range fn.Params {
+		vs := map[string]bool{}
+		types.VarsIn(q, vs)
+		for v := range vs {
+			if _, ok := sol[v]; !ok && i < len(gp) {
+				c.m("", word("name", c.callName(name))).diag("cannot-infer", at.Span())
+				return
+			}
+		}
+		qs[i] = types.Subst(q, sol)
+	}
+	check := func() *types.Type {
+		c.fnParamPassed(b, qs)
+		return c.fnParamResult(b)
+	}
+	dl, sl := len(c.diags), len(c.sites)
+	r := check()
+	if fn.Result == nil {
+		return // a predicate: its result is no tested position
+	}
+	c.fnResult(fn, sol, qs, check, r, at.Span(), name, dl, sl)
+}
+
+// fnResult is the end of 13.5 step 3 for a lambda argument whose body, or
+// result, has type b: the seed rule of 3a, then bind(R, B) and the fit of
+// B to R at body. check checks the lambda again under qs. dl and sl are the
+// diagnostics and sites before the first check.
+func (c *checker) fnResult(fn *types.Fn, sol map[string]*types.Type, qs []*types.Type, check func() *types.Type,
+	b *types.Type, body syntax.Span, name syntax.Node, dl, sl int) {
 	r := fn.Result
 	rv := map[string]bool{}
 	types.VarsIn(r, rv)
@@ -774,15 +1016,14 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 					qs[i] = types.Subst(q, sol)
 				}
 				b = check()
-				c.mustFitM(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
-				return narrowed
+				c.mustFitM(body, b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
+				return
 			}
 		}
 	}
 	bind(r, b, sol)
 	// The body is always fitted (13.5 step 3).
-	c.mustFitM(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
-	return narrowed
+	c.mustFitM(body, b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
 }
 
 // narrowed is the narrowed type N of 13.8, or nil when the first parameter

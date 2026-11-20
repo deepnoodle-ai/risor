@@ -48,9 +48,11 @@ func init() {
 	// Package F7's catalog file adds templates to entries of Core's
 	// (f07-queries.md 11): the same code, params of the same kinds, new
 	// template names. Package F16's file does the same, and adds the entry
-	// of a code no other file has (f16-entry-points.md 9).
+	// of a code no other file has (f16-entry-points.md 9). Package F17's
+	// adds templates only (f17-recursion.md 9).
 	addTemplates(sourceQueriesJSON, false)
 	addTemplates(sourceEntryPointsJSON, true)
+	addTemplates(sourceRecursionJSON, false)
 }
 
 // addTemplates merges a catalog file whose entries add templates to the

@@ -21,9 +21,17 @@ type argCode struct {
 	lam     *fn
 	inPlace bool
 	nparams int
+	// fnParam marks the name of a parameter with a function type given as
+	// a lambda argument: x reads the *fn it holds, and nparams is the count
+	// its function type lists (f17-recursion.md 13.2 rule 10).
+	fnParam bool
+	// closure marks a lambda argument at a parameter with a function type
+	// of a const-bound lambda: its value is a closure over the frame where
+	// it stands (f17-recursion.md 13.4).
+	closure bool
 }
 
-func (a *argCode) isLambda() bool { return a.lam != nil }
+func (a *argCode) isLambda() bool { return a.lam != nil || a.fnParam }
 
 func (c *compiler) arg(n syntax.Node) argCode {
 	switch n := n.(type) {
@@ -32,6 +40,10 @@ func (c *compiler) arg(n syntax.Node) argCode {
 	case *syntax.Ident:
 		if b := c.res.Idents[n]; b != nil && b.Kind == static.ConstLambda {
 			return argCode{lam: &fn{lambdaCode: c.lambdas[b.Lambda], hops: c.upTo(b.Lambda)}, nparams: len(b.Lambda.Params)}
+		}
+		if b := c.res.Idents[n]; b != nil && b.Kind == static.FnParam {
+			p := c.place(b.Slot)
+			return argCode{x: func(r *run) any { return r.get(p) }, fnParam: true, nparams: len(b.Param.Fn.Params)}
 		}
 	}
 	return argCode{x: c.expr(n)}
@@ -59,6 +71,9 @@ func (r *run) argValue(a *argCode) any {
 	if a.lam != nil {
 		if a.inPlace {
 			r.step(1)
+		}
+		if a.closure {
+			return &fn{lambdaCode: a.lam.lambdaCode, abs: true, up: r.frameAt(a.lam.hops)}
 		}
 		return a.lam
 	}
@@ -513,6 +528,13 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 	sp := n.Span()
 	switch callee.Kind {
 	case static.Lambda:
+		// A lambda argument at a parameter with a function type is a
+		// closure (f17-recursion.md 13.4).
+		for i, p := range callee.Lambda.Params {
+			if i < len(args) && p.Fn != nil && args[i].lam != nil {
+				args[i].closure = true
+			}
+		}
 		// The lambda is known before its body is compiled, so a call of a
 		// lambda's own name finds it (F17 6).
 		lam := c.lambdas[callee.Lambda]
@@ -530,6 +552,25 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 			lc.lam, lc.name, lc.span, lc.depth0 = true, name, sp, r.depth
 			r.enterCall(m)
 			v := lam.invoke(r, r.frameAt(hops), vals)
+			r.depth -= m
+			r.lcTop--
+			r.popArgs(base)
+			return v
+		}
+	case static.Param:
+		// A call of a parameter with a function type: a call by name of the
+		// lambda it holds (f17-recursion.md 13.4).
+		pl := c.place(callee.Binding.Slot)
+		m := c.measure(n)
+		name := callee.Binding.Name
+		return func(r *run) any {
+			vals, base := r.pushArgs(args)
+			r.step(1)
+			lc := r.pushCall()
+			lc.lam, lc.name, lc.span, lc.depth0 = true, name, sp, r.depth
+			r.enterCall(m)
+			f := r.get(pl).(*fn)
+			v := f.invoke(r, r.frameOf(f), vals)
 			r.depth -= m
 			r.lcTop--
 			r.popArgs(base)

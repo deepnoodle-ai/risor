@@ -36,42 +36,5 @@
         }
       }
     ]
-  },
-  {
-    "code": "arg-mismatch",
-    "phase": "check",
-    "since": "3.0",
-    "params": {
-      "name": "word",
-      "found": "type"
-    },
-    "templates": {
-      "fn-value": "{name} passes {found} to a parameter that takes a function"
-    },
-    "when": {
-      "fn-value": "A lambda argument of a library function, or of a method on any, whose parameter has an Fn annotation. name is the function; found is the type of the value passed there"
-    },
-    "cases": [
-      {
-        "name": "arg-mismatch: fn-value",
-        "env": "{xs: int[]}",
-        "source": "xs.map((f: (n: int) => int) => 1)",
-        "expect": {
-          "phase": "check",
-          "diagnostics": [
-            {
-              "code": "arg-mismatch",
-              "span": [
-                1,
-                12,
-                1,
-                27
-              ],
-              "message": "map passes int to a parameter that takes a function"
-            }
-          ]
-        }
-      }
-    ]
   }
 ]
