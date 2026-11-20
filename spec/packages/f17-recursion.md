@@ -558,7 +558,7 @@ guard is a place of the last row of its table.
 | `suite/recursion/e2-static.json` | Recursive type lines: what resolves, `circular-type`, failures in a component, `name-clash` and `duplicate-name` (12.2, 12.3) |
 | `suite/recursion/e2-check.json` | The checker with recursive types: messages, fits, joins, narrowing, depth, the bound of 4,096 and the order of visits (12.5, 12.6) |
 | `suite/recursion/e2-run.json` | Runs over recursive data: the uses of `18` 4, `as` and `is`, the depth limit, conform cases (12.7) |
-| `suite/recursion/e2-declare.json` | Recursive named types of an environment, schemas with a `$ref` cycle, `name-clash`, the description (12.4) |
+| `suite/recursion/e2-declare.json` | Recursive named types of an environment, schemas with a `$ref` cycle and the order of their mapping, `name-clash`, the description (12.4) |
 | `suite/recursion/e2-analysis.json` | Analysis of a program with a recursive type line (F2) |
 | `suite/recursion/tools-e2-format.json` | The formatter on recursive type lines (F12) |
 | `suite/recursion/tools-e2-assist.json` | Hover and completion with recursive types (12.8, F12) |
@@ -914,8 +914,8 @@ adds no syntax, node, value, run code, `parse` code or case field.
 | Definition | The type a recursive item stands for, one level deep (12.2 item 4) |
 | Unfolding | A type with each reference among its alternatives replaced by the alternatives of its definition |
 
-The kinds of a reference are the kinds of its definition. A reference whose
-definition is known is **complete**.
+The kinds of a reference are the kinds of its definition, its opaque names
+among them. A reference whose definition is known is **complete**.
 
 ### 12.2 Resolving a list
 
@@ -946,6 +946,11 @@ definition is known is **complete**.
 
    So a definition holds no reference at its top: `type Ping = Pong | null;
    type Pong = {next: Ping}` gives Ping the definition `{next: Ping} | null`.
+   This holds too of a reference that reaches the top of a recursive item's
+   text through the type of an item that is not recursive: it is replaced by
+   its definition, whose alternatives join the others as in item 5. So `type
+   Tree = {k: Tree[]}; type Maybe = Tree | null; type Xs = Xs[] | Maybe` gives
+   Xs the definition `Xs[] | {k: Tree[]} | null`.
 5. **The rest of the text** is resolved as F4 3.5 resolves it, or F4 6.1 for
    a program type: parentheses are removed, the alternatives of one kind are
    joined (12.4), and two or more records must form a tagged union (F5 3.1).
@@ -959,7 +964,7 @@ definition is known is **complete**.
    A reference of the component being resolved is never complete there: its
    definition is set when every item of the component is resolved. A Join
    that meets such a reference keeps it beside the other side's alternatives
-   (12.4 item 3).
+   (12.5 item 4, step 3).
 6. **A reference beside a type of its kind.** When the definitions of a
    component are set, a reference that shares a kind other than null with
    another alternative of a type where it stands, at any depth of a
@@ -981,7 +986,9 @@ definition is known is **complete**.
    another component, is not resolved: the rest of its lines' texts give no
    diagnostic. A name of a failed line of another component is
    `undefined-name` there (F16 3.1 item 5). A line that fails because another
-   line of its component failed has no diagnostic of its own.
+   line of its component failed has no diagnostic of its own. Items 2 and 3
+   both report in one component: `type Aa = {b: Bb, x: Nope}; type Bb = Bb |
+   Aa` has `undefined-name` on Nope and `circular-type` on Bb.
 8. **What a line declares.** A recursive line declares its reference; another
    line declares its type. A failed line declares nothing (F16 3.1 item 5).
 
@@ -1022,32 +1029,59 @@ its component failed is `bad-type` too.
 **A JSON Schema** (F1 3.7) reverses `15-build-rulings.md` R112:
 
 1. **A cycle.** A target of `$ref` met again while it is being mapped is a
-   recursive type, when an array's items, an object's `properties`,
-   `additionalProperties` or `patternProperties` stand between. Otherwise the
-   schema is `bad-type`.
+   recursive type, when an array's items (`items`, `prefixItems` or
+   `additionalItems`), an object's `properties`, `additionalProperties` or
+   `patternProperties` stand between. Otherwise the schema is `bad-type`.
+   A target is a place of the root, which its pointer names once
+   percent-decoded and with `~1` and `~0` read (F1 3.7 items 2 and 3). A place
+   that holds a `$ref` is a target of its own, not the place it names. A
+   place is being mapped from when the mapping meets it, through a `$ref` or
+   as a part of the schema that holds it, the root included, until its type
+   is known. Each place is mapped once, and its type stands wherever the
+   mapping meets it: with `#/$defs/tree` holding `{"properties": {"kids":
+   {"type": "array", "items": {"$ref": "#/$defs/tree/properties/kids"}}}}`, the
+   place `kids` is met again inside itself, and `tree` is `{kids: Kids}`.
 2. **Its name** is the last token of the target's pointer, with its first
    letter upper-cased when it is an ASCII lower-case letter: `#/$defs/node`
-   gives `Node`. A target that is the root takes the name of the named type it
-   declares (F4 3.1 item 4), else the name of the variable it declares with
-   its first letter upper-cased (F1 2.1), else `Root`. A name that is not a
-   type name by F4 3.2 is `bad-type`, as `#/$defs/n` (the type variable `N`)
-   and `#/$defs/tree-node` are. Two recursive types of one schema with one name
-   are `bad-type`.
+   gives `Node`. Two pointers name one target only when they decode to the
+   same tokens, so a target has one name. A target that is the root takes the
+   name of the named type it declares (F4 3.1 item 4), else the name of the
+   variable it declares with its first letter upper-cased (F1 2.1), else
+   `Root`. A name that is not a type name by F4 3.2 is `bad-type`, as
+   `#/$defs/n` (the type variable `N`) and `#/$defs/tree-node` are. Two
+   recursive types of one schema with one name are `bad-type`.
 3. **Only a target met again is named.** In a schema where `dir` holds
    `file`, `file` holds `dir`, and the root is `dir`, the mapping meets `dir`
    again inside `file`, so `Dir` is the one recursive type, and the type of
-   `file` is written out inside it.
+   `file` is written out inside it. The mapping meets the schemas inside a
+   schema in this order, so the text of the schema decides which target is
+   met again:
+
+| Schema | Order |
+| --- | --- |
+| Its parts | The order of F1 3.1 step 4 |
+| The kind part | The names of `type` in the order written |
+| An array | `prefixItems`, then `items`, then `additionalItems`; the schemas of an array in their order |
+| An object | `additionalProperties`, then the values of `patternProperties`, then those of `properties`, each in code point order of its key |
+| `allOf`, `anyOf`, `oneOf` | The branches in their order |
+
 4. **While a schema is mapped, no definition of its own is known.** Pick and
    Meet (F1 3.6), and a tag test of F5 8, that would look into such a reference
    are `bad-type`. In `anyOf` and `oneOf` the reference stands beside the
    other branches, as in type text (12.2 item 5). So `{"anyOf": [{"$ref":
    "#/$defs/node"}, {"type": "null"}]}` gives `Node | null`, and `allOf` with
    it and an object is `bad-type`. `allOf` with one schema that is not `true`
-   gives that schema's type without looking into it.
+   gives that schema's type without looking into it. Pick's step 2 reads the
+   kinds of each type, so it looks into each reference among them; step 3
+   looks into one only as far as its Fits does. So `allOf` of `Node[]` and
+   `Node[]` gives `Node[]` (12.5 item 3 step 2), and of `string` and `Node[]`
+   gives `string`, since the kinds differ.
 5. **When the mapping ends**, each definition is set: the target's type, with
-   each reference at its top replaced by that reference's definition. Then
-   12.2 item 6 is applied, and each definition's depth and size are tested
-   (12.6). A failure is `bad-type`.
+   each reference at its top replaced by that reference's definition. The
+   replacement joins nothing: a definition that then has two alternatives of
+   one kind other than null is `bad-type`, as a reference beside a type of
+   its kind is (12.2 item 6, R265). Then 12.2 item 6 is applied, and each
+   definition's depth and size are tested (12.6). A failure is `bad-type`.
 
 **Go's `TypeOf`** (F1 6.2, a binding rule of Go):
 
@@ -1067,15 +1101,20 @@ its component failed is `bad-type` too.
 named types, its variables' types and its signatures, at any depth.
 
 1. Two of them with one name that are not one type (Equal, 12.5) are
-   `name-clash`. Two with one name and one structure are one type.
+   `name-clash`. Two with one name and one structure are one type. An Equal
+   that passes the bound of 12.5 item 7 here counts as not equal, so the two
+   are `name-clash`, not `bad-type`.
 2. One with the name of a named type of the environment is `name-clash`,
-   unless the named type is that recursive type.
+   unless the named type is that recursive type. A name is `name-clash`
+   once, by item 1 or by this item, however many types bear it.
 3. **The description** (F4 8) lists, in `types`, each named type and each
    recursive type by its name. A recursive type is printed by its
    unfolding, in which its own name stands for itself: `"Tree": "{kids:
-   Tree[]}"`. F4 8 items 1 to 3 change: the text of a type may hold the
-   names of recursive types, and an environment built from a description
-   declares the entries of `types` as one list, so they may name one another.
+   Tree[]}"`. A named type that is not a recursive type prints as any type
+   does, so an alias of one prints its name: `"Alias": "Tree"`. F4 8 items 1
+   to 3 change: the text of a type may hold the names of recursive types, and
+   an environment built from a description declares the entries of `types` as
+   one list, so they may name one another.
 
 ### 12.5 The checker's computations
 
@@ -1119,13 +1158,20 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 
    A Join of more than two types, when one of them has a reference, folds
    them from the left in the order the rule gives them, and each Join of the
-   fold is one computation.
+   fold is one computation. The order of A and B is that of the rule that
+   joins: `c ? a : b` is Join(A, B) (`05-types.md` 11.1), so of two names with
+   one structure it has b's. In Core's Join of step 1, two map alternatives
+   that are unions are the same by structure (F5 4.1) when they are Equal
+   (item 5), references followed; the Join is then A's union.
 5. **Equal(A, B)** and **disjoint(A, B)** follow item 3: the same reference
    on both sides, or two types identical as written, are equal at once; a
    pair in progress is equal, and is not disjoint; a pair that has failed in
    the computation is not equal; else the pair is entered and the unfoldings
    are compared by the rule of F5 2.5 or F4 6.2, whose parts are compared by
-   this rule.
+   this rule. For disjoint a pair has failed when it is shown disjoint, the
+   outcome opposite to that of a pair in progress: met again in the
+   computation, it is disjoint at once. A pair not shown disjoint is not kept,
+   as a pair that fits is not.
 6. **The order is normative.** A computation visits pairs depth first, in this
    order, so that the pair that passes the bound (item 7) is the same in every
    implementation.
@@ -1136,7 +1182,8 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 | Fits, two records | T's fields in code point order of their keys. For each, the field's mark is tested before its type; a field of T that S lacks tests S's rest against it. Then S's fields that T lacks, in key order, against T's rest. Then S's rest against T's rest. It stops at the first that fails |
 | Fits, two maps of F5 | Each variant of S, in the order of its printing, against T's variants in that order |
 | Join | The list's elements, then the map alternatives: the keys of both records in code point order, then the rests |
-| Equal, disjoint | The alternatives in the order of printing; two records' keys in code point order, each field's mark before its type, then the rests |
+| Equal | The alternatives in the order of printing; two records' keys in code point order, each field's mark before its type, then the rests |
+| Disjoint | The alternatives in the order of printing: bool, number, string, list, map, the opaque names, null; it stops at the first kind whose two alternatives share a value. Two maps of F5: each variant of A, in the order of printing, against each of B's. Two records: the keys of both, each once, in code point order; a key required in either compares its type in A with its type in B (F4 6.2), and the test stops at the first key whose types are disjoint |
 
 7. **The bound.** A computation enters at most **4,096** pairs. The pair that
    would be the 4,097th ends it. Then:
@@ -1145,7 +1192,7 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 | --- | --- |
 | A rule of the checker | `check-limit`, template `pairs`, on the innermost node whose check is in progress. A fit that a `const` line makes after its value is checked is on the value; the fit of the program's result to the expected result is on the result. **The check ends**: its diagnostics are this one alone. The diagnostics of the static rules stand |
 | A program type, a type line among them | `check-limit`, template `pairs`, on the program type, as F4 6.1 reports `check-limit` |
-| An environment, a schema, `TypeOf` | `bad-type` |
+| An environment, a schema, `TypeOf` | `bad-type`. The Equal of two recursive types of one name (12.4) is the exception: it counts as not equal, so `name-clash` |
 | A host's call of the type API (Fits, Join, Equal of a binding) | A binding rule: Go gives `false`, or an invalid type for Join |
 
    The count is of pairs entered, not of pairs in progress at once. A count of
@@ -1158,7 +1205,7 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 
 | Rule | With a reference R |
 | --- | --- |
-| Truthy (`05-types.md` 10.3) | R stays when its definition has no `null`, no `""` literal, no `never[]` and no record that can be empty. Otherwise the rule is applied to R's unfolding |
+| Truthy (`05-types.md` 4.4) | R stays when its definition has no `null`, no `""` literal, no `never[]` and no record that can be empty: one with no required field, to which the empty map conforms. Otherwise the rule is applied to R's unfolding |
 | Falsy | Applied to R's unfolding |
 | nonnull | R is unfolded when its definition has `null`; otherwise it stays |
 | without(X, T) (F4 6.2) | Each reference of X that shares a kind with T, `null` included, is unfolded. The others stay |
@@ -1173,11 +1220,16 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 2. **Size.** A reference has size 1 (`05-types.md` 20.7).
 3. **Printing.** A reference prints by its name (`05-types.md` 3.9). Among a
    type's alternatives the references come after the opaque names, in code
-   point order of their names, and before `null`: `Tree | null`, `(Tree |
-   int)[]`. A recursive type thus prints the same at every depth, and a
+   point order of their names, and before `null`: `Tree | null`, `(int |
+   Tree)[]`. A recursive type thus prints the same at every depth, and a
    message never writes it out: `expected string, found Node[]`.
 4. A `no-field` or `maybe-absent` on a receiver whose type is a reference, or a
    reference and `null`, prints the reference: `Node has no field "kidz"`.
+   The template `extra` of `result-mismatch` and `arg-mismatch` prints as
+   `expected` the record that does not allow the key; a record of a
+   reference's definition prints as the reference, whatever stands beside
+   it: `const n: Node | null = {kids: [], x: 1}` gives `Node does not allow
+   key "x"`.
 5. **A case's `type`** (`03-host.md` 3.10.6) is compared by structure, with
    each `Name` that is not an opaque type of the case compared by its
    spelling, as an atom. So a case writes `Node[]` for a list of a recursive
@@ -1205,8 +1257,11 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 1. **The formatter** has no rule of its own for this step.
 2. **Hover** on a type name (F16 7.3) gives, for a recursive type, its
    unfolding: `type Tree = {kids: Tree[]}` gives `{kids: Tree[]}` at either
-   `Tree`. In a type line's type a name is resolved by 12.2 item 1, so it may
-   name a later line.
+   `Tree`. A name that is not a recursive type gives its type as printed, so
+   an alias of one gives its name: `type Alias = Tree` gives `Tree`, and `type
+   Maybe = Tree | null` gives `Tree | null`. The same holds of a named type
+   of the environment. In a type line's type a name is resolved by 12.2 item
+   1, so it may name a later line.
 3. **Completion** in a type line's type lists every type line of the repaired
    program (F12 3.3), the line's own name included. The repaired program
    ends at the hole, so a later line is not listed. In an annotation it lists

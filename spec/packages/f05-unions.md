@@ -263,6 +263,10 @@ alternative is a union.
    that Join is commutative, associative and idempotent.
 3. So the Join of a union with one of its own variants is flat(U) joined with
    that variant, which is flat(U).
+4. With package F17, two unions may be the same by structure and print
+   apart, through recursive types of two names. They are compared by Equal,
+   references followed, and the Join is A's union
+   (`spec/packages/f17-recursion.md` 12.5 item 4).
 
 | A | B | Join |
 | --- | --- | --- |
