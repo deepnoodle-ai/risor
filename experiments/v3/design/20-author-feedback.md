@@ -5,7 +5,9 @@ Status: plan, D56 in `00-overview.md`. The owner settled its direction on
 2026-11-19: the brief rendering (20-8) and layouts for `time.format` (20-10)
 are dropped (section 6). Decisions are numbered `20-1` to `20-11`. Each is
 marked **settled** where the owner chose it, and **recommended** where this
-plan chose a detail the owner has not seen. No code was written. Counts
+plan chose a detail the owner has not seen. 20-1, 20-2 and 20-9 are built in
+all three implementations, in track B (`15` R212, R215 to R217, R260). Nothing
+of package F19 is built. Counts
 marked *ran* were taken from the suite files at `main` `aeaaf1f` with a short
 script.
 

@@ -1504,8 +1504,9 @@ above. A package's chapter is the home of its rules: this table only points.
    offers. The packages are offered in a fixed order, each only with all
    before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16
    slice D1, F17, F12. So a package's cases may use what an earlier package
-   adds. F16 holds only slice D1 of its plan, and F17 only steps E0 and E1;
-   how their later slices and steps are offered is open
+   adds. F16 holds only slice D1 of its plan, and F17 only steps E0 and E1.
+   A later slice of F16 takes a place of its own after F17, in the order the
+   slices are built, and a later step of F17 extends F17 in its place
    (`spec/packages/f16-entry-points.md` 1.4,
    `spec/packages/f17-recursion.md` 1.4). F11 is a binding's typed layer: a
    faster path for the binding's own typed data, which changes no result. It

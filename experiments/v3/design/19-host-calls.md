@@ -70,7 +70,7 @@ host that must stop a run at once uses the pattern of 7.1 item 7.
 | 1. Is the pattern host-owned state, a run per event, actions as data? | The owner said yes on the issue. The spec has no example | 19-15 writes it down |
 | 2. May an opaque method change its host object? May a host keep an opaque value across runs? | Read literally, no. `03-host.md` 3.5.1 item 4 makes the receiver an argument, and 3.5.4 row 1 says to treat the arguments as read-only and not keep them | Yes (19-11) |
 | 3. Can several opaque types satisfy one parameter type? | Half. The opaque part of a type is a set of names (`05-types.md` 2.3), so `Button \| Label` is a parameter type. But a method call on it is `kind`: 9.1 step 4 needs one kind, and each opaque type is a kind of its own | Designed in 19-12, not built in this round |
-| 4. Is S4 still planned? | Ruled (overview S4, `05-host-api.md` B.4) and not built. `go/env.go` has only `Function{Name, Type, Impl}`, with the signature written by hand | Yes, Go only (19-13) |
+| 4. Is S4 still planned? | Ruled (overview S4, `05-host-api.md` B.4) and not built when #641 was written: `go/env.go` had only `Function{Name, Type, Impl}`, with the signature written by hand | Yes, Go only (19-13). Built since, in track C: `risor.Func` and `risor.Methods[T]` (PR #646) |
 | 5. Integers above 2^53? | Strings, by `03-host.md` 3.4.4 and D3. Stated only in passing | Stated plainly (19-14) |
 
 ## 3. Determinism (19-1)
