@@ -1363,7 +1363,7 @@ impl<'a> Checker<'a> {
     /// 3.3: a value Q the library passes to an annotated parameter must
     /// surely fit the annotation. No lambda with a function parameter is
     /// passed (F17 13.2 rule 8).
-    fn fit_passed(&mut self, p: NodeId, q: &Ty, _fname: &str) {
+    fn fit_passed(&mut self, p: NodeId, q: &Ty) {
         if let NodeKind::Param { ty: Some(pt), .. } = self.kind(p) {
             self.fit_listed(q, pt);
         }
@@ -1509,7 +1509,7 @@ impl<'a> Checker<'a> {
         if params.len() > n {
             return;
         }
-        let b = self.check_lambda(l, named, a, &qs, &name);
+        let b = self.check_lambda(l, named, a, &qs);
         match want {
             // 13.7: a predicate's body is a tested position.
             FnResult::Unknown => self.tested(*body, &b),
@@ -1530,9 +1530,9 @@ impl<'a> Checker<'a> {
 
     /// Step 3's check of what stands at an `Fn`: a lambda's body, or a
     /// function parameter's listed types (13.3). Returns B.
-    fn check_cb(&mut self, cb: Cb, at: NodeId, qs: &[Ty], fname: &str) -> Ty {
+    fn check_cb(&mut self, cb: Cb, at: NodeId, qs: &[Ty]) -> Ty {
         match cb {
-            Cb::Lambda(l, named) => self.check_lambda(l, named, at, qs, fname),
+            Cb::Lambda(l, named) => self.check_lambda(l, named, at, qs),
             Cb::Fn(p) => self.check_fn(p, qs),
         }
     }
@@ -2514,7 +2514,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     NodeKind::MethodCall { args, name, .. } => {
-                        self.any_args(args, &name.name);
+                        self.any_args(args);
                         // 13.3: the call may fail as a library
                         // method marked `!` (not a removed one, `03-host.md` 3.3.1) or an
                         // opaque type's method marked `!` would.
@@ -2895,7 +2895,7 @@ impl<'a> Checker<'a> {
 
     /// The arguments of a method call on `any` (13.3): plain arguments are
     /// synthesized, and each lambda is checked with `any` parameters.
-    fn any_args(&mut self, args: &'a [NodeId], fname: &str) {
+    fn any_args(&mut self, args: &'a [NodeId]) {
         for &a in args {
             // F17 13.3: each value passed to a function parameter is `any`,
             // which surely fits only `any`.
@@ -2917,7 +2917,7 @@ impl<'a> Checker<'a> {
                         NodeKind::Lambda { params, .. } => params.len(),
                         _ => 0,
                     };
-                    self.check_lambda(l, named, a, &vec![Ty::any(); n], fname);
+                    self.check_lambda(l, named, a, &vec![Ty::any(); n]);
                 }
             }
         }
@@ -3131,7 +3131,7 @@ impl<'a> Checker<'a> {
                 .collect();
             let (dn, sn) = (self.diags.len(), self.sites.len());
             let before = sol.clone();
-            let b = self.check_cb(cb, a, &qs, &name);
+            let b = self.check_cb(cb, a, &qs);
             // The body; for a function parameter, the argument (F17 13.3).
             let body = match cb {
                 Cb::Lambda(l, _) => match self.kind(l) {
@@ -3190,7 +3190,7 @@ impl<'a> Checker<'a> {
                             .iter()
                             .map(|(_, q)| substitute(q, self.opaque(), &sol))
                             .collect();
-                        let b2 = self.check_cb(cb, a, &qs, &name);
+                        let b2 = self.check_cb(cb, a, &qs);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b2, &rt) {
                             None => {
@@ -3369,8 +3369,7 @@ impl<'a> Checker<'a> {
 
     /// Check a lambda against parameter types (13.5 step 3), written in place
     /// or named. Returns the body's type.
-    /// `fname` names the function or method that passes the values.
-    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty], fname: &str) -> Ty {
+    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty]) -> Ty {
         let NodeKind::Lambda {
             params,
             body,
@@ -3384,7 +3383,7 @@ impl<'a> Checker<'a> {
         if named && self.checked_once(l) {
             for (i, &p) in params.iter().enumerate() {
                 let q = qs.get(i).cloned().unwrap_or_default();
-                self.fit_passed(p, &q, fname);
+                self.fit_passed(p, &q);
             }
             return self.once_result.get(&l.0).cloned().unwrap_or_default();
         }
@@ -3405,7 +3404,7 @@ impl<'a> Checker<'a> {
                 let t = if let Some(x) = self.param_annot(p) {
                     // F16 3.4: the value passed must surely fit the
                     // annotation, and the parameter is bound to it.
-                    self.fit_passed(p, &a, fname);
+                    self.fit_passed(p, &a);
                     self.fit_default(p);
                     x
                 } else {

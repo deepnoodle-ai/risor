@@ -2040,7 +2040,7 @@ impl<'h> Run<'h> {
                 closure: None,
             }))
         } else if let Res::FnRef(s, _) = self.res(a) {
-            Ok(Arg::Lam(self.bound(*s)))
+            self.bound(*s, self.ast.span(a)).map(Arg::Lam)
         } else {
             self.eval(a).map(Arg::Val)
         }
@@ -2049,14 +2049,17 @@ impl<'h> Run<'h> {
     /// F17 13.4: the lambda bound to the function parameter of slot `s`, in
     /// the call now running, with its closure.
     #[inline(never)]
-    fn bound(&self, s: u32) -> Fun {
+    fn bound(&self, s: u32, span: Range) -> R<'h, Fun> {
         let c = match &self.slots[self.slot(s)] {
-            Value::Num(i) => *i as u32,
-            _ => 0,
+            Value::Num(i) => *i as usize,
+            _ => usize::MAX,
         };
-        Fun {
-            l: self.closures[c as usize].0,
-            closure: Some(c),
+        match self.closures.get(c) {
+            Some((l, _)) => Ok(Fun {
+                l: *l,
+                closure: Some(c as u32),
+            }),
+            None => Err(self.internal(span)),
         }
     }
 
@@ -2380,7 +2383,7 @@ impl<'h> Run<'h> {
         }
         self.charge(1)?;
         let measure = self.p.measure[id.index()] as u32;
-        let f = self.bound(s);
+        let f = self.bound(s, span)?;
         match self.invoke_fun(f, &mut vals, measure, span) {
             Ok(v) => Ok(v),
             Err(f) => Err(self.call_traced(f, id, span)),
