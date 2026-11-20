@@ -344,8 +344,8 @@ less; `filter` and `reduce`, 4 to 17% less (measured before F17 step E1).
 | Run the worst form at depth limit 400 | 724 KiB | 1,940 KiB |
 | Self-recursion (F17 11.6) at depth limit 200: by name, through `map`, through `flatMap` | 180, 244, 260 KiB | 372, 676, 756 KiB |
 | The same at depth limit 400 | 372, 500, 532 KiB | 756, 1,364, 1,524 KiB |
-| Function parameters (F17 13.4) at depth limit 200, the nesting limit in the lambda called last: a recursion that gives its parameter on; a chain of closures | 276, 276 KiB | 804, 756 KiB |
-| The same at depth limit 400 | 468, 468 KiB | 1,348, 1,268 KiB |
+| Function parameters (F17 13.4 item 6) at depth limit 200: a recursion through a call of a function parameter; a chain of lambdas given on | 180, 180 KiB | 500, 500 KiB |
+| The same at depth limit 400 | 356, 356 KiB | 1,012, 1,012 KiB |
 
 Frames for each call (F17 11.5) raised the worst form from 387 and 691 KiB
 optimized, 1,043 and 1,859 KiB unoptimized, by 4% to 5%: a call by name
@@ -409,11 +409,11 @@ one node past it; data nested to the limit, and one level past; and walks
 inside walks, each link calling the one before from its walk's callback, to
 the limit and one link past; and the three forms of self-recursion of F17
 11.6, a typed lambda that calls itself by name, through `map` and through
-`flatMap`, each call adding 1, to the limit and one call past; and two forms
-of F17 13.4, a recursion that gives its function parameter on and one that
-wraps it in a new lambda at each call, so the last call runs a chain of
-closures, each with the nesting limit in the lambda called last, to the
-limit and one call past. It runs each
+`flatMap`, each call adding 1, to the limit and one call past; and the two
+forms of F17 13.4 item 6 (`03-host.md` 3.9.1), a recursion through a call of
+a function parameter at every level and a chain of lambdas given at function
+parameters, each with N the largest within the limit and one more. It runs
+each
 limit on a thread of two thirds of the stated figure, so the figure has a
 margin of 1.5. CI runs it unoptimized and optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
 and overflows on 12/16 (aarch64 and x86_64 macOS).
@@ -818,9 +818,15 @@ A plain text error has no cause: its text is already the message.
   is tested first at every `Call` and `MethodCall`, whatever the callee and
   whatever its count (`higher_order_args`); the arguments it reports are
   skipped by the tests of the callee. The resolver keeps the slots of the
-  parameters written as a name with no default and no function type
-  (`plain_params`), which choose the hints `fn-hint` and
-  `parameter-at-fn`; the checker reads them for the hint at a library `Fn`.
+  hint parameters (`plain_params`): those of a `const`-bound lambda, the one
+  that `const_line` has on `walking`, written as a name with no default and
+  no function type. They choose the hints `call-of-parameter` `fn-hint` and
+  `arg-mismatch` `parameter-at-fn`; the checker reads them for the hint at a
+  library `Fn`. At rule 2 the callee's parameter decides: a name with no
+  default gives `lambda-to-lambda` `fn-hint`, named by the parameter, and a
+  pattern, `_` or a default gives `default`, named by the callee. The name of
+  a higher-order `const`-bound lambda read as a value is `not-a-value`
+  `higher-order`.
   The listed types and the result are resolved as annotations, so the
   checker reads each, `None` with a diagnostic.
 - **The checker** (`check/mod.rs`). A function parameter's slot is
@@ -851,8 +857,8 @@ A plain text error has no cause: its text is already the message.
   kind `lambda` and the printed function type, and for a call the type of
   the call. The formatter and the analysis need nothing new.
 - **Messages and the runner**: `suite/messages-recursion.json` adds its
-  three templates to their codes, as F16's file does; F16's `fn-value` is
-  gone. In `suite/recursion/` the static codes are Core's twelve and
+  five templates to four codes, as F16's file does: 31 check codes and 78
+  templates in all. F16's `fn-value` is gone. In `suite/recursion/` the static codes are Core's twelve and
   `arg-mismatch` (`Statics::Recursion`).
 
 ## Package F16, slice D1: annotations and type lines

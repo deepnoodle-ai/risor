@@ -869,6 +869,9 @@ impl Resolver<'_> {
                     body,
                     result,
                 } => {
+                    // F17 13.1: only a `const`-bound lambda has hint
+                    // parameters. `const_line` pushes the lambda it binds.
+                    let const_bound = self.walking.last() == Some(&id);
                     self.lambda_levels.push(self.p.ast.node(id).level);
                     self.scopes.push(HashMap::new());
                     // F17 11.5: each call of the lambda has its own frame,
@@ -901,8 +904,9 @@ impl Resolver<'_> {
                             self.pattern(pattern);
                             // F17 13.1 item 1: a function parameter makes a
                             // function binding, bound as a parameter is.
-                            // 13.2 item 4: a parameter written as a name
-                            // with no default and no function type.
+                            // 13.2 item 4: a hint parameter is one of a
+                            // `const`-bound lambda, written as a name with
+                            // no default and no function type.
                             if let (NodeKind::NamePat { name: Some(n) }, Res::Bind(s)) =
                                 (self.kind(pattern).clone(), &self.res[pattern.index()])
                             {
@@ -911,7 +915,7 @@ impl Resolver<'_> {
                                     if let Some(scope) = self.scopes.last_mut() {
                                         scope.insert(n, Bind::Fn(s, p));
                                     }
-                                } else if default.is_none() {
+                                } else if default.is_none() && const_bound {
                                     self.plain_params.insert(s);
                                 }
                             }
@@ -963,10 +967,16 @@ impl Resolver<'_> {
             Some(Bind::Var(v)) => self.res[id.index()] = Res::Var(v),
             Some(Bind::Lambda(l)) => {
                 self.res[id.index()] = Res::NotValue(l);
+                // F17 13.5: a higher-order lambda can only be called.
+                let template = if is_higher_order(&self.p.ast, l) {
+                    "higher-order"
+                } else {
+                    "lambda"
+                };
                 self.diag(
                     code::STATIC[2],
                     span,
-                    "lambda",
+                    template,
                     &[("name", name.to_string())],
                 );
             }
@@ -1326,11 +1336,27 @@ impl Resolver<'_> {
                                     self.diag("arg-mismatch", span, "function", &p);
                                 }
                             }
-                            // Rule 2.
-                            (None, Some(_)) => {
-                                let p = [("name", full.clone())];
-                                self.diag(code::STATIC[4], span, "default", &p)
-                            }
+                            // Rule 2: `fn-hint`, naming the parameter, when
+                            // it is written as a name with no default; a
+                            // pattern, `_` or a default takes a value.
+                            (None, Some(_)) => match self.kind(param) {
+                                NodeKind::Param {
+                                    pattern,
+                                    default: None,
+                                    ..
+                                } if matches!(
+                                    self.kind(*pattern),
+                                    NodeKind::NamePat { name: Some(_) }
+                                ) =>
+                                {
+                                    let p = [("name", self.param_name(param))];
+                                    self.diag(code::STATIC[4], span, "fn-hint", &p)
+                                }
+                                _ => {
+                                    let p = [("name", full.clone())];
+                                    self.diag(code::STATIC[4], span, "default", &p)
+                                }
+                            },
                             (None, None) => {}
                         }
                         continue;

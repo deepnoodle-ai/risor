@@ -308,10 +308,10 @@ mod tests {
 
     /// F8 3.1, F16 9.1 and F17 13.5: `messages-check.json` has 30 codes and
     /// 72 templates, `messages-parse.json` 58 codes and 97 templates; F16's
-    /// file adds the code `name-clash`, and F17's three templates of
-    /// existing codes: 31 check codes and 76 templates.
+    /// file adds the code `name-clash`, and F17's five templates of four
+    /// existing codes: 31 check codes and 78 templates.
     #[test]
-    fn the_check_catalog_has_31_codes_and_76_templates() {
+    fn the_check_catalog_has_31_codes_and_78_templates() {
         let count = |text: &str| {
             let d = json::parse(text).expect("valid JSON");
             let es = d.as_arr().unwrap_or_default().to_vec();
@@ -328,14 +328,22 @@ mod tests {
         assert_eq!(count(CHECK_SOURCE), (30, 72));
         assert_eq!(count(PARSE_SOURCE), (58, 97));
         assert_eq!(count(ENTRY_POINTS_SOURCE), (1, 1));
-        assert_eq!(count(RECURSION_SOURCE), (3, 3));
+        assert_eq!(count(RECURSION_SOURCE), (4, 5));
         let c = catalog();
         let check: Vec<_> = c.entries.iter().filter(|e| e.phase == "check").collect();
         assert_eq!(check.len(), 31);
-        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 76);
+        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 78);
         assert_eq!(
             build("call-of-parameter", "fn-hint", &[("name", "f".into())]),
             "f is a parameter; to call it, give it a function type, as f: (x: int) => int"
+        );
+        assert_eq!(
+            build("lambda-to-lambda", "fn-hint", &[("name", "v".into())]),
+            "v is a parameter; to pass a function to it, give it a function type, as v: (x: int) => int"
+        );
+        assert_eq!(
+            build("lambda-to-lambda", "default", &[("name", "ap".into())]),
+            "a function cannot be passed to ap at a parameter that takes a value"
         );
         assert!(entry("recursion-needs-types").is_some());
     }
