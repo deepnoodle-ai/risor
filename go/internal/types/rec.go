@@ -42,6 +42,14 @@ func Ref(n *Named) *Type { return &Type{refs: []*Named{n}} }
 // Refs are the references among t's alternatives, in the order printed.
 func (t *Type) Refs() []*Named { return t.refs }
 
+// RefOnly is the reference t is, when t is one reference and nothing else.
+func (t *Type) RefOnly() (*Named, bool) {
+	if len(t.refs) != 1 || t.any || !t.plain().IsNever() {
+		return nil, false
+	}
+	return t.refs[0], true
+}
+
 // HasRefs reports whether t has a reference among its alternatives.
 func (t *Type) HasRefs() bool { return len(t.refs) > 0 }
 

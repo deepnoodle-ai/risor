@@ -1469,7 +1469,8 @@ func (a *assist) typeNameHover(pt *syntax.PType, in *syntax.TypeLine, word synta
 // nothing declares has no hover, nor has a line whose type the repair
 // supplied (F16 7.3). In the type of a type line, in, a name is that of the
 // last line of the name at or before in, else the first after it (F17
-// 12.2). A recursive type's record has its unfolding (F17 12.6).
+// 12.2). A recursive type has its unfolding, an alias of one its name
+// (F17 12.8 item 2).
 func (a *assist) typeHover(name string, own, in *syntax.TypeLine, at int, sp Span) *Hover {
 	h := &Hover{Kind: "type", Span: sp}
 	line := own
@@ -1516,17 +1517,28 @@ func (a *assist) typeHover(name string, own, in *syntax.TypeLine, at int, sp Spa
 		if !ok {
 			return nil
 		}
-		h.Type = printed(types.Unfold(t))
+		h.Type = printed(declared(name, t))
 		d := a.span(line.NameSpan.Start, line.NameSpan.End)
 		h.Declaration = &d
 	case env != nil && env.Named[name] != nil:
-		h.Type = printed(types.Unfold(env.Named[name]))
+		h.Type = printed(declared(name, env.Named[name]))
 	case env != nil && env.Opaque[name]:
 		h.Type = printed(types.Opaque(name))
 	default:
 		return nil
 	}
 	return h
+}
+
+// declared is the type a hover gives for the type name: for a recursive
+// type, the reference of its own name, its unfolding; for any other, its
+// type as printed, so an alias of a recursive type, type Alias = Tree,
+// gives Tree (F17 12.8 item 2).
+func declared(name string, t *types.Type) *types.Type {
+	if n, ok := t.RefOnly(); ok && n.Name == name {
+		return types.Unfold(t)
+	}
+	return t
 }
 
 // methodSig is the signature and the doc of the method a receiver's type
