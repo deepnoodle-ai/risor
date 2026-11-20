@@ -1055,7 +1055,8 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 
 | Matter | Rule |
 | --- | --- |
-| When | The lambda argument's first parameter is a name x. With a pattern there, with `_`, or with no parameter, nothing is narrowed. |
+| When | The lambda argument's first parameter is a name x with no default. With a pattern there, with `_`, with a default, or with no parameter, nothing is narrowed. |
+| A default | A default takes the place of a null element (12.4), so the body tests the default and not the element. `xs.filter((x = 1) => x != null)` keeps a null element, and its type is that of `xs`. |
 | The narrowed type N | The type that an `Ident` x has under the true facts of the body, with x bound to the element type. It is the element type when no fact is about x. |
 | Which facts reach x | {x}, and by the prefix rule (10.4) {p} for a longer path p that starts with x. |
 | Which do not | A fact about a field changes the type of no field of a record type: `orders.filter(o => o.note != null)` is still a list of orders whose `note` may be null. |
@@ -1065,7 +1066,8 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 | Depth | The result is a call result, where the depth limit applies (20.4). |
 | A `Block` body | A `Block` gives no facts (10.5), so nothing is narrowed. |
 
-`xs.filter(x => x != null)` with `xs: (int | null)[]` is `int[]`.
+`xs.filter(x => x != null)` with `xs: (int | null)[]` is `int[]`, and
+`xs.filter((x = 1) => x != null)` is `(int | null)[]`.
 `items.filter(t => t.owner)` keeps the element type: the fact is about
 `t.owner`, and `t` was never null.
 

@@ -227,6 +227,14 @@ fn update_case(case: &Case) -> (Verdict, Option<Json>) {
     if case.runner.is_some() || case.render.is_some() {
         return (v, None);
     }
+    // A terminal verdict stands, and nothing is written: a skipped case
+    // keeps its `skip` (4.3).
+    if matches!(
+        v,
+        Verdict::Skip(_) | Verdict::Fixture(..) | Verdict::Invalid(_)
+    ) {
+        return (v, None);
+    }
     // A format, completion or hover case with no `expect` loads only for the
     // outcome command; 4.4 makes no `expect` of its kind, so it is not
     // written, and it differs in `outcome` (4.3 item 1).
@@ -241,7 +249,6 @@ fn update_case(case: &Case) -> (Verdict, Option<Json>) {
         );
     }
     match &v {
-        Verdict::Skip(_) | Verdict::Fixture(..) | Verdict::Invalid(_) => return (v, None),
         Verdict::Pass if case.expect_raw.is_some() => return (v, None),
         Verdict::Fail(ds) if ds.iter().any(|d| d.name == "functions") => return (v, None),
         _ => {}

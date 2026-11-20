@@ -50,6 +50,12 @@
   {"name": "const f = (a, b) => b; f(1, \"x\")", "source": "const f = (a, b) => b; f(1, \"x\")", "expect": {"type": "\"x\"", "sites": []}},
   {"name": "const f = x => if (x) { \"y\" } else { \"n\" }; f(ni)", "source": "const f = x => if (x) { \"y\" } else { \"n\" }; f(ni)", "expect": {"type": "\"n\" | \"y\"", "sites": []}},
   {"name": "const f = x => x; f(blob)", "source": "const f = x => x; f(blob)", "expect": {"type": "any", "sites": []}},
-  {"name": "xs.map(x => x.nope)", "source": "xs.map(x => x.nope)", "expect": {"phase": "check", "diagnostics": [{"code": "kind", "span": [1, 13, 1, 14]}]}}
+  {"name": "xs.map(x => x.nope)", "source": "xs.map(x => x.nope)", "expect": {"phase": "check", "diagnostics": [{"code": "kind", "span": [1, 13, 1, 14]}]}},
+  {"name": "an any receiver with dynamic rejected: the lambda argument is still checked", "source": "blob.map(x => 1 + \"a\")", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "unchecked", "span": [1, 1, 1, 5]}, {"code": "kind", "span": [1, 15, 1, 22]}]}},
+  {"name": "an any receiver with dynamic rejected: the parameter is any in the body", "source": "blob.map(x => x + \"a\")", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "unchecked", "span": [1, 1, 1, 5]}, {"code": "unchecked", "span": [1, 15, 1, 16]}]}},
+  {"name": "an any receiver with dynamic rejected: a const-bound lambda given by name is checked", "source": "const k = x => x + \"a\"; blob.map(k)", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "unchecked", "span": [1, 16, 1, 17]}, {"code": "unchecked", "span": [1, 25, 1, 29]}]}},
+  {"name": "an any receiver with dynamic rejected: lambda and plain arguments are both checked", "source": "blob.map(x => x.y, 1 + \"a\")", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "unchecked", "span": [1, 1, 1, 5]}, {"code": "unchecked", "span": [1, 15, 1, 16]}, {"code": "kind", "span": [1, 20, 1, 27]}]}},
+  {"name": "an unused lambda: a dropped site in a default leaves its node's type, with dynamic rejected", "source": "const f = (x = match blob.n { true => 1 }, y) => x; 0", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "non-exhaustive", "span": [1, 16, 1, 42]}]}},
+  {"name": "an unused lambda: a dropped site in the body leaves its node's type, with dynamic rejected", "source": "const f = y => match blob.n { true => 1 }; 0", "reject": ["constant-condition", "dynamic"], "expect": {"phase": "check", "diagnostics": [{"code": "non-exhaustive", "span": [1, 16, 1, 42]}]}}
  ]
 }

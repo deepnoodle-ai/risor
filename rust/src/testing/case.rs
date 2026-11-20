@@ -106,13 +106,42 @@ pub enum TypeDecl {
     Schema(String, Json, SchemaOptions),
 }
 
-/// The static codes of a case (`05-types.md` 22.1): in `suite/conversion/`,
-/// `suite/unions/` and `suite/entry-points/` also `untagged-union` and
-/// `check-limit` (F4 6.1 item 4), and `name-clash`, which only a type line
-/// of F16 can give (`f16-entry-points.md` 3.1 item 11).
-pub fn is_static(code: &str, conversion: bool) -> bool {
+/// Which codes are static for a case, by the directory of its file
+/// (`03-host.md` 3.10.13).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Statics {
+    /// Core's twelve (`05-types.md` 22.1).
+    #[default]
+    Core,
+    /// `suite/conversion/` and `suite/unions/`: also `untagged-union` and
+    /// `check-limit` (F4 6.1 item 4, F5 11.2 item 3).
+    ProgramTypes,
+    /// `suite/entry-points/`: those of `ProgramTypes`, and `name-clash`
+    /// (`f16-entry-points.md` 3.1 item 11).
+    EntryPoints,
+}
+
+impl Statics {
+    /// The static codes of the cases of a file in `dir`.
+    pub fn of_dir(dir: &Path) -> Statics {
+        match dir.file_name().and_then(|d| d.to_str()) {
+            Some("conversion" | "unions") => Statics::ProgramTypes,
+            Some("entry-points") => Statics::EntryPoints,
+            _ => Statics::Core,
+        }
+    }
+}
+
+/// Whether `code` is a static code for a case (`03-host.md` 3.10.13).
+pub fn is_static(code: &str, statics: Statics) -> bool {
     code::STATIC.contains(&code)
-        || (conversion && matches!(code, "untagged-union" | "check-limit" | "name-clash"))
+        || match statics {
+            Statics::Core => false,
+            Statics::ProgramTypes => matches!(code, "untagged-union" | "check-limit"),
+            Statics::EntryPoints => {
+                matches!(code, "untagged-union" | "check-limit" | "name-clash")
+            }
+        }
 }
 
 impl ExpectResult {
@@ -226,8 +255,8 @@ pub struct Case {
     pub expect_raw: Option<Json>,
     /// The base environment of the file it was loaded from (F9 7.4).
     pub base: Option<Base>,
-    /// The case is of `suite/conversion/`, where two more codes are static.
-    pub conversion: bool,
+    /// The static codes of the case, by the directory of its file.
+    pub statics: Statics,
     pub opaque: Vec<String>,
     /// `Type.method` and its stub (3.10.4 item 2).
     pub methods: Vec<(String, Stub)>,
@@ -483,9 +512,7 @@ pub fn load_file_lax(path: &Path) -> V<Vec<Case>> {
 fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
     // F4 6.1 item 4, F5 11.2 item 3 and F16 3.1 item 11: more static
     // codes there.
-    let conversion = dir
-        .file_name()
-        .is_some_and(|d| d == "conversion" || d == "unions" || d == "entry-points");
+    let statics = Statics::of_dir(dir);
     let (header, cases): (&[(String, Json)], &[Json]) = match doc {
         Json::Arr(a) => (&[], a),
         Json::Obj(m) => {
@@ -522,7 +549,7 @@ fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
             check_field(k, v).map_err(|e| format!("case {i}: {e}"))?;
         }
         let mut case = merge(header, obj, dir, lax).map_err(|e| format!("case {i}: {e}"))?;
-        case.conversion = conversion;
+        case.statics = statics;
         if out.iter().any(|o: &Case| o.name == case.name) {
             return Err(format!("the name {:?} is used twice", case.name));
         }
@@ -732,13 +759,9 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
             Expect::Failure(f) => {
                 f.phase == Phase::Check
-                    && f.diagnostics.iter().any(|d| {
-                        !is_static(
-                            &d.code,
-                            dir.file_name()
-                                .is_some_and(|n| n == "conversion" || n == "entry-points"),
-                        )
-                    })
+                    && f.diagnostics
+                        .iter()
+                        .any(|d| !is_static(&d.code, Statics::of_dir(dir)))
             }
         };
         if bad {
@@ -871,7 +894,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         runner: None,
         tool: None,
         expect_raw: own("expect").cloned(),
-        conversion: false,
+        statics: Statics::Core,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
         schemas,
@@ -1641,7 +1664,7 @@ fn render_case(
             source,
             expect,
         }),
-        conversion: false,
+        statics: Statics::Core,
         opaque,
         methods: Vec::new(),
         functions: Vec::new(),
@@ -2090,7 +2113,7 @@ fn runner_case(
         runner: Some(rc),
         tool: None,
         expect_raw: Some(e.clone()),
-        conversion: false,
+        statics: Statics::Core,
         opaque: Vec::new(),
         methods: Vec::new(),
         functions: Vec::new(),

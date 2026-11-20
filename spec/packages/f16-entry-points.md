@@ -323,7 +323,9 @@ of failure, and the message prints the type found: `expected int, found any`.
 1. **Narrowing.** For `filter` and `find` (`05-types.md` 13.8), the narrowed
    type N is computed from Q, the element type, under the body's true facts,
    and not from the annotation. So with `ms` of type `(int | null)[]`,
-   `ms.filter((m: int | null) => m != null)` has type `int[]`.
+   `ms.filter((m: int | null) => m != null)` has type `int[]`. A parameter
+   with a default narrows nothing, annotated or not (13.8):
+   `ms.filter((m: int | null = 1) => m != null)` has type `(int | null)[]`.
 2. A predicate's body is a tested position as before (`05-types.md` 10.1).
 3. A lambda with no parameter and no annotation is not checked once: it keeps
    13.9, so a lambda that is never used keeps dropping its sites. The plan
@@ -461,7 +463,9 @@ This row adds to the table of F12 3.13 item 3:
    annotation.
 5. A type line whose type the repair supplied, whole or in part (F12 3.13
    item 2), declares nothing: in `type ‸Foo`, in `type ‸Foo = ` and in
-   `type ‸Foo = {a: ` nothing declares `Foo`, and there is no hover.
+   `type ‸Foo = {a: ` nothing declares `Foo`, and there is no hover. With a
+   type `Foo` in the environment, each of the three is `name-clash` too, and
+   the hover gives the environment's type (item 2).
 
 ## 8. The cases
 

@@ -1133,7 +1133,10 @@ impl<'a> Checker<'a> {
                 // parameter `any`. Its sites are dropped. F16 3.4: an
                 // annotated parameter is bound to its annotation, and its
                 // default and the result annotation are fitted by Fits.
+                // The sites of the defaults are dropped too, so a dropped
+                // site there leaves its node's type (18.3).
                 let n = self.sites.len();
+                self.dropping += 1;
                 for &p in params {
                     if let NodeKind::Param {
                         pattern, default, ..
@@ -1159,7 +1162,6 @@ impl<'a> Checker<'a> {
                         self.bind_pattern(*pattern, t, s);
                     }
                 }
-                self.dropping += 1;
                 self.synth(*body);
                 if let Some(r) = result.as_deref().and_then(|r| self.annot(r)) {
                     self.fit_form(*body, &r, Fit::Result);
@@ -2666,8 +2668,9 @@ impl<'a> Checker<'a> {
             (NodeKind::Lambda { .. }, _) => Some((a, false)),
             (_, Res::LambdaRef(l)) => Some((*l, true)),
             // 13.9: a reference of a lambda to its own name is a lambda
-            // argument that is not checked.
-            (_, Res::SelfRef(l)) => Some((*l, true)),
+            // argument that is not checked. Only the bare name is one (13.2):
+            // a call of the name is a plain argument.
+            (NodeKind::Ident { .. }, Res::SelfRef(l)) => Some((*l, true)),
             _ => None,
         }
     }
@@ -3018,7 +3021,14 @@ impl<'a> Checker<'a> {
         let Some(&p) = params.first() else {
             return elem;
         };
-        let NodeKind::Param { pattern, .. } = self.kind(p) else {
+        // A default takes the place of a null element (12.4), so the body
+        // tests the default: nothing is narrowed.
+        let NodeKind::Param {
+            pattern,
+            default: None,
+            ..
+        } = self.kind(p)
+        else {
             return elem;
         };
         let Res::Bind(slot) = self.res[pattern.index()] else {
@@ -3508,8 +3518,9 @@ impl<'a> Checker<'a> {
         keys.dedup();
         let mut failed: Vec<usize> = Vec::new();
         let mut used_any: Vec<usize> = Vec::new();
-        // F16 3.3: a spread whose fit used `any`, with the first key's types.
-        let mut strict_failed: Vec<(usize, Ty, Ty)> = Vec::new();
+        // F16 3.3: a spread whose fit used `any`, with the first key's types,
+        // by entry index.
+        let mut strict_failed: Vec<Option<(Ty, Ty)>> = vec![None; ents.len()];
         let mut written: Vec<usize> = Vec::new();
         let mut surely: Vec<String> = Vec::new();
         let all: Vec<Option<&str>> = keys
@@ -3539,8 +3550,8 @@ impl<'a> Checker<'a> {
                     Ent::Spread { .. } => match fits(ty, &want) {
                         None => failed.push(i),
                         Some(true) if self.strict => {
-                            if !strict_failed.iter().any(|(j, _, _)| *j == i) {
-                                strict_failed.push((i, ty.clone(), want.clone()));
+                            if strict_failed[i].is_none() {
+                                strict_failed[i] = Some((ty.clone(), want.clone()));
                             }
                         }
                         Some(true) => used_any.push(i),
@@ -3581,8 +3592,10 @@ impl<'a> Checker<'a> {
                 self.report(vs, &vt, t, mode, Why::Fit);
             }
         }
-        for (i, ty, want) in strict_failed {
-            if failed.contains(&i) {
+        for (i, s) in strict_failed.into_iter().enumerate() {
+            // A definite failure takes priority for the same operand.
+            let Some((ty, want)) = s else { continue };
+            if failed.binary_search(&i).is_ok() {
                 continue;
             }
             if let Ent::Spread { operand, .. } = &ents[i] {

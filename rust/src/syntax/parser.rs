@@ -1995,7 +1995,8 @@ impl<'a> Parser<'a> {
                     Some(word) if w.code.is_none() => word,
                     _ => return Err(self.unexpected(w)),
                 };
-                self.bump();
+                // 14.3: `r`, white space and a string is `string-prefix`.
+                self.bump_word()?;
                 self.expect(P::Colon)?;
                 let t = self.ptype()?;
                 params.push((word.to_string(), w.span, t));

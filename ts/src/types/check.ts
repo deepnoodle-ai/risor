@@ -1515,15 +1515,15 @@ class Checker {
 
   private methodCall(s: A.MethodCall, cur: Type, recvSpan: Span, f: Facts): Type {
     if (isAny(cur)) {
-      if (this.site("dynamic", recvSpan, s.span)) {
-        this.plainArgs(s.args, f);
-        return NEVER;
-      }
+      // 13.3: the arguments are checked also when the `dynamic` site is rejected;
+      // the rejected set changes only which findings are diagnostics (17).
+      const rejected = this.site("dynamic", recvSpan, s.span);
       for (const a of s.args) {
         const la = this.lambdaArg(a);
         if (la === null) this.synth(a as A.Expr, f);
         else if (!la.self) this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level, s.name);
       }
+      if (rejected) return NEVER;
       // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3).
       this.siteName = s.name;
       if ([...this.env.libraryMethods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("value", s.span);
@@ -1703,7 +1703,8 @@ class Checker {
 
   private narrowedType(la: LambdaArg, elem: Type): Type {
     const p0 = la.lambda.params[0];
-    if (p0 === undefined || p0.pattern.kind !== "NamePat" || p0.pattern.name === null) return elem;
+    // 13.8 "When": a name with no default; a default takes the place of a null element.
+    if (p0 === undefined || p0.pattern.kind !== "NamePat" || p0.pattern.name === null || p0.default !== null) return elem;
     const slot = this.res.slots.get(p0.pattern);
     if (slot === undefined) return elem;
     const root = `s${slot}`;

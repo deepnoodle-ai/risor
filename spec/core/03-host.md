@@ -1507,12 +1507,10 @@ above. A package's chapter is the home of its rules: this table only points.
    adds. F16 holds only slice D1 of its plan, and F17 only steps E0 and E1;
    how their later slices and steps are offered is open
    (`spec/packages/f16-entry-points.md` 1.4,
-   `spec/packages/f17-recursion.md` 1.4). The place of slice D1 before F17
-   is a recommendation that the owner has not confirmed. F11 is a binding's
-   typed layer: a faster path for the binding's own typed data, which changes
-   no result. It has no chapter, no row above and no cases. A binding that
-   reads its host's data in place has nothing to add, and offers F11 when it
-   offers F10.
+   `spec/packages/f17-recursion.md` 1.4). F11 is a binding's typed layer: a
+   faster path for the binding's own typed data, which changes no result. It
+   has no chapter, no row above and no cases. A binding that reads its host's
+   data in place has nothing to add, and offers F11 when it offers F10.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).
 4. **Files named `until-fNN-`.** A case whose outcome package `NN` changes

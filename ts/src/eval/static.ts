@@ -270,14 +270,21 @@ class Walker {
     if (clash) return;
     // A line that stands replaces an earlier line of its name (f16 3.1 item 4, R240); one whose type has a
     // diagnostic declares nothing, nor one whose type the repair supplied (f16 7.3 item 5).
-    const named = new Map(this.typeNames.named);
-    if (t === null || l.supplied === true) named.delete(l.name);
+    // The map is changed in place: every annotation is resolved, eagerly, when the walk reaches it, so it
+    // sees the type lines before it and no later one. The environment's own map is copied once, not changed.
+    if (this.lineNamed === null) {
+      this.lineNamed = new Map(this.typeNames.named);
+      this.typeNames = { opaque: this.typeNames.opaque, named: this.lineNamed };
+    }
+    if (t === null || l.supplied === true) this.lineNamed.delete(l.name);
     else {
-      named.set(l.name, t);
+      this.lineNamed.set(l.name, t);
       this.res.typeLines.set(l, t);
     }
-    this.typeNames = { opaque: this.typeNames.opaque, named };
   }
+
+  /** The named types in scope once a type line is walked: the environment's and the type lines' (f16 3.1 item 7). */
+  private lineNamed: Map<string, Type> | null = null;
 
   /** Package F16: resolve an annotation's program type in the type names in scope (f16 3.1 item 7). */
   private annotation(a: A.TypeAnn): Type | null {

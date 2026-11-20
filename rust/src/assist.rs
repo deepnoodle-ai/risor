@@ -5,7 +5,7 @@
 //! (3.3). The repaired program is checked for the types of its nodes and of
 //! the names in scope at the hole; its diagnostics are not kept.
 
-use crate::check::ty::{from_text, join, print, Strs, Ty};
+use crate::check::ty::{from_text, join, print, Strs, Ty, TypeNames};
 use crate::check::{check_probe, Probe, Want};
 use crate::compile::Res;
 use crate::describe::print_sig;
@@ -1248,12 +1248,15 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
             // F16 7.3 item 5 (R243): a type line whose type the repair
             // supplied, whole or in part, declares nothing, so its name has
             // no hover. The cut is at the end of the word, so when the word
-            // is the line's name the repair wrote all of its type.
+            // is the line's name the repair wrote all of its type. A line
+            // whose name is a type of the environment is `name-clash`, and
+            // the hover gives the environment's type (items 2 and 5).
             if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
-                if types
-                    .iter()
-                    .any(|t| t.name_span == wspan && t.ty.span.start as usize >= cut)
-                {
+                if types.iter().any(|t| {
+                    t.name_span == wspan
+                        && t.ty.span.start as usize >= cut
+                        && env.data().names.lookup(&t.name).is_none()
+                }) {
                     return None;
                 }
             }
