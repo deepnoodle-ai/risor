@@ -15,7 +15,7 @@ import type { LineSpan, Position, Span } from "../syntax/source.ts";
 import { HOLE } from "../syntax/token.ts";
 import type { Token } from "../syntax/token.ts";
 import { FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS, METHODS } from "../library/registry.ts";
-import { fromNode, isAny, isNever, join, joinAll, nonnull, opaque, printType } from "../types/type.ts";
+import { fromNode, isAny, isNever, join, joinAll, nonnull, opaque, PairLimit, printType, printUnfolded, soleRef, unfold } from "../types/type.ts";
 import type { TypeNode } from "../types/typetext.ts";
 import type { Alts, Rec, Type } from "../types/type.ts";
 import type { Resolution } from "../eval/static.ts";
@@ -388,8 +388,11 @@ function scopesAt(root: A.Program, target: object): Bound[][] | null {
 
 // ---- types -----------------------------------------------------------------------
 
+/** The alternatives of a type's unfolding (f17 12.1): a recursive type is read through its definition. */
 function alts(t: Type): Alts | null {
-  return isAny(t) ? null : t;
+  if (isAny(t)) return null;
+  const u = unfold(t);
+  return isAny(u) ? null : u;
 }
 
 /** The record alternatives of a type: the variants of a union, or its record. */
@@ -557,7 +560,7 @@ class Context {
   private locate(hole: Token): { node: A.Node; parents: A.Node[]; where: string } | null {
     let out: { node: A.Node; parents: A.Node[]; where: string } | null = null;
     // f16 7.2 item 1: a hole in the type of a type line, or of an annotation, is in the types context.
-    for (const l of this.prog.types) if (typeHasHole(l.type.type)) return { node: this.prog, parents: [], where: "type" };
+    for (const l of this.prog.types) if (typeHasHole(l.type.type)) return { node: this.prog, parents: [], where: "typeline" };
     walk(this.prog, (n, ps) => {
       if (out !== null) return false;
       const at = (s: Span) => s.start === hole.start && s.end === hole.end;
@@ -590,6 +593,16 @@ class Context {
   }
 
   candidates(hole: Token, isString: boolean): Candidate[] {
+    try {
+      return this.candidates0(hole, isString);
+    } catch (e) {
+      // A comparison of recursive types past the bound of f17 12.5 item 7: no candidate.
+      if (e instanceof PairLimit) return [];
+      throw e;
+    }
+  }
+
+  private candidates0(hole: Token, isString: boolean): Candidate[] {
     const loc = this.locate(hole);
     if (loc === null) return [];
     switch (loc.where) {
@@ -604,7 +617,9 @@ class Context {
       case "member":
         return this.members(loc.node as A.Member);
       case "type":
-        return this.types(hole);
+        return this.types(hole, false);
+      case "typeline":
+        return this.types(hole, true);
       case "string":
         return this.strings(loc.node as A.StringLit, loc.parents, isString);
     }
@@ -650,9 +665,9 @@ class Context {
     }
     const t0 = this.typeOf(recv);
     if (t0 === undefined) return [];
-    const t = nonnull(t0);
-    if (isAny(t) || isNever(t)) return [];
-    const a = t as Alts;
+    const t = alts(nonnull(t0));
+    if (t === null || isNever(t)) return [];
+    const a = t;
     const out: Candidate[] = [];
     const keys = keysOf(records(t));
     for (const k of [...keys.keys()].filter(isWord).sort(compareText)) out.push({ label: k, kind: "field", detail: printType(keys.get(k)!), insert: k });
@@ -670,10 +685,11 @@ class Context {
     return out;
   }
 
-  private types(hole: Token): Candidate[] {
+  private types(hole: Token, inLine: boolean): Candidate[] {
     const e = this.env.environment;
-    // f16 7.2 item 1: with the names of the type lines that end before the hole.
-    const lines = this.prog.types.filter((l) => l.span.end <= hole.start).map((l) => l.name);
+    // f16 7.2 item 1: with the names of the type lines that end before the hole. In a type
+    // line's type, every line of the repaired program, its own included (f17 12.8 item 3).
+    const lines = this.prog.types.filter((l) => (inLine ? l.span.start <= hole.start : l.span.end <= hole.start)).map((l) => l.name);
     const words = ["any", "bool", "float", "int", "map", "never", "null", "string", ...e.named.keys(), ...e.opaque, ...lines];
     return [...new Set(words)].sort(compareText).map((w) => ({ label: w, kind: "type", detail: null, insert: w }));
   }
@@ -925,21 +941,43 @@ export function hover(env: Env, text: string, pos: Position, returns?: string): 
 function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: Source): HoverResult | null {
   const e = env.environment;
   const same = (s: Span) => s.start === word.start && s.end === word.end;
-  const rec = (type: Type, decl: Span | null): HoverResult => ({ kind: "type", span: src.lineSpan(word), type: printType(type), signature: null, doc: null, declaration: decl === null ? null : src.lineSpan(decl) });
+  // f17 12.8 item 2: a recursive type is printed by its unfolding.
+  const rec = (type: Type, decl: Span | null, name: string): HoverResult => ({
+    kind: "type",
+    span: src.lineSpan(word),
+    type: soleRef(type)?.name === name ? printUnfolded(type) : printType(type),
+    signature: null,
+    doc: null,
+    declaration: decl === null ? null : src.lineSpan(decl),
+  });
   const fromEnv = (name: string): HoverResult | null => {
     const n = e.named.get(name);
-    if (n !== undefined) return rec(n, null);
-    if (e.opaque.has(name)) return rec(opaque(name), null);
+    if (n !== undefined) return rec(n, null, name);
+    if (e.opaque.has(name)) return rec(opaque(name), null, name);
     return null;
   };
   // f16 7.3 items 1 and 2: the name of a type line stands for what the line declares.
   for (const l of prog.types) {
     if (!same(l.nameSpan)) continue;
     const t = res.typeLines.get(l);
-    return t !== undefined ? rec(t, l.nameSpan) : fromEnv(l.name);
+    return t !== undefined ? rec(t, l.nameSpan, l.name) : fromEnv(l.name);
   }
-  // A type name in a program type: of a type line, an annotation, or `as` and `is`.
-  const maps: ReadonlyMap<TypeNode, Span>[] = prog.types.map((l) => l.type.spans);
+  // f17 12.8 item 2: a name in the type of type line i is resolved by 12.2 item 1: the last
+  // line of the name at or before i, else the first after it.
+  for (let i = 0; i < prog.types.length; i++) {
+    for (const [node, span] of prog.types[i].type.spans) {
+      if (node.t !== "name" || !same(span)) continue;
+      const name = node.name;
+      if (e.named.has(name) || e.opaque.has(name)) return fromEnv(name);
+      let line: A.TypeLine | null = null;
+      for (let j = 0; j <= i; j++) if (prog.types[j].name === name) line = prog.types[j];
+      if (line === null) for (let j = i + 1; j < prog.types.length && line === null; j++) if (prog.types[j].name === name) line = prog.types[j];
+      const t = line === null ? undefined : res.typeLines.get(line);
+      return line !== null && t !== undefined ? rec(t, line.nameSpan, name) : null;
+    }
+  }
+  // A type name in an annotation, or in `as` and `is`.
+  const maps: ReadonlyMap<TypeNode, Span>[] = [];
   walk(prog, (n) => {
     if (n.kind === "As") maps.push(n.typeSpans);
     for (const a of annotationsOf(n)) maps.push(a.spans);
@@ -952,7 +990,7 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
       let last: A.TypeLine | null = null;
       for (const l of prog.types) if (l.name === name && l.span.end <= word.start) last = l;
       const t = last === null ? undefined : res.typeLines.get(last);
-      if (last !== null && t !== undefined) return rec(t, last.nameSpan);
+      if (last !== null && t !== undefined) return rec(t, last.nameSpan, name);
       return fromEnv(name);
     }
   }
@@ -1048,8 +1086,8 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         const rt = chk.types.get(n.x);
         let signature: string | null = null;
         let doc: string | null = null;
-        if (rt !== undefined && !isAny(rt)) {
-          const a = nonnull(rt) as Alts;
+        const a = rt === undefined ? null : alts(nonnull(rt));
+        if (a !== null) {
           const kinds: ("string" | "list" | "map")[] = [];
           if (a.str !== undefined) kinds.push("string");
           if (a.list !== undefined) kinds.push("list");

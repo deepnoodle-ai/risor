@@ -296,16 +296,17 @@ function recHasRef(r: Rec): boolean {
  * the references it reaches, each once. An explicit stack: a chain of many
  * references costs no native stack. Stops when `visit` gives true.
  */
-export function someReachable(t: Type, visit: (x: Type) => boolean): boolean {
+export function someReachable(t: Type | readonly Type[], visit: (x: Type) => boolean): boolean {
   const seen = new Set<object>();
-  const stack: Type[] = [t];
+  const stack: Type[] = [];
   const push = (x: Type) => {
     if (!seen.has(x)) {
       seen.add(x);
       stack.push(x);
     }
   };
-  seen.add(t);
+  if (Array.isArray(t)) for (let i = t.length - 1; i >= 0; i--) push(t[i]);
+  else push(t as Type);
   while (stack.length > 0) {
     const x = stack.pop()!;
     if (visit(x)) return true;
@@ -327,8 +328,8 @@ export function someReachable(t: Type, visit: (x: Type) => boolean): boolean {
   return false;
 }
 
-/** The references a type reaches, at any depth, through definitions too. */
-export function refsReached(t: Type): Ref[] {
+/** The references a type, or each of several, reaches, at any depth, through definitions too. Each once. */
+export function refsReached(t: Type | readonly Type[]): Ref[] {
   const out: Ref[] = [];
   const seen = new Set<Ref>();
   someReachable(t, (x) => {

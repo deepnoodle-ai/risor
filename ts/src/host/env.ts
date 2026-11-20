@@ -462,14 +462,8 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
 
   // f17 12.4: the recursive types the declarations reach. Two of one name are one type, or name-clash.
   {
-    const reached: Ref[] = [];
-    const seen = new Set<Ref>();
-    for (const t of [...env.named.values(), ...env.variableTypes.values()]) {
-      for (const r of refsReached(t)) if (!seen.has(r)) {
-        seen.add(r);
-        reached.push(r);
-      }
-    }
+    // One walk from every root: each type is visited once, however many roots reach it.
+    const reached = refsReached([...env.named.values(), ...env.variableTypes.values()]);
     const same = (a: Ref, b: Ref): boolean => {
       if (a === b) return true;
       try {
