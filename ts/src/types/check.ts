@@ -1699,7 +1699,8 @@ class Checker {
 
   private narrowedType(la: LambdaArg, elem: Type): Type {
     const p0 = la.lambda.params[0];
-    if (p0 === undefined || p0.pattern.kind !== "NamePat" || p0.pattern.name === null) return elem;
+    // 13.8 "When": a name with no default; a default takes the place of a null element.
+    if (p0 === undefined || p0.pattern.kind !== "NamePat" || p0.pattern.name === null || p0.default !== null) return elem;
     const slot = this.res.slots.get(p0.pattern);
     if (slot === undefined) return elem;
     const root = `s${slot}`;
