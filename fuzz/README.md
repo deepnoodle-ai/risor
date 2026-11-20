@@ -191,7 +191,7 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
 Every implementation offers F1 to F8, and some offer more. The generator writes
-only forms that every implementation offers, the guards and `walk` of F17 and the annotations of F16
+only forms that every implementation offers, the guards, `walk` and typed recursive lambdas of F17 and the annotations of F16
 among them, so no difference is filtered: `cmd/fuzz/known.go` is where a form of a
 package that not every implementation offers would be counted apart. With F8 a parse or check diagnostic carries a message, and a run
 diagnostic a trace; each is compared among the implementations that write it

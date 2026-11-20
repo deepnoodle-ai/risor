@@ -725,7 +725,7 @@ without a self-reference. A self-reference breaks three of them:
 | A lambda runs only while every body around it is in progress | Holds |
 | No lambda is entered while an earlier call of it is in progress | Does not hold: a self-call enters its lambda while the call that made it is in progress |
 | A program with `k` lambdas has at most `k` calls in progress | Does not hold: the depth limit bounds the calls in progress |
-| The calls form a graph with no cycle | Does not hold: a self-reference is a cycle of one lambda. It is the only kind of cycle: a lambda names only itself and lambdas bound before it (`01-language.md` 5) |
+| The calls form a graph with no cycle | Does not hold: a self-reference makes a cycle. The cycle is of one lambda, or of that lambda and lambdas written inside it, as the lambda given to `map` in the first example below. Every cycle passes through a self-reference: a lambda names only itself, lambdas bound before it and the lambdas around it (`01-language.md` 5), so two `const`-bound lambdas of one scope never call each other |
 
 The rules of the reference evaluation that take their place:
 
