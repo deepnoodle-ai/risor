@@ -29,8 +29,8 @@ type recShape struct {
 }
 
 func word(k string, x ast.Expr) ast.Entry { return ast.Entry{Kind: ast.EntryWord, Key: k, X: x} }
-func smap(es ...ast.Entry) *ast.Map    { return &ast.Map{Entries: es} }
-func sstr(s string) ast.Expr           { return &ast.Str{Val: s, Quote: '"'} }
+func smap(es ...ast.Entry) *ast.Map       { return &ast.Map{Entries: es} }
+func sstr(s string) ast.Expr              { return &ast.Str{Val: s, Quote: '"'} }
 func smem(x ast.Expr, f string) ast.Expr {
 	return &ast.Member{X: x, Name: f}
 }

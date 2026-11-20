@@ -48,10 +48,10 @@ type mapper struct {
 	// named holds the reference of each target met while it was being
 	// mapped, names the target of each name, order the targets in the
 	// order named, and defs the type each one mapped to.
-	named map[string]*types.Named
+	named    map[string]*types.Named
 	refNames map[string]string
-	order []string
-	defs  map[string]*types.Type
+	order    []string
+	defs     map[string]*types.Type
 }
 
 func (m *mapper) fail(format string, args ...any) {

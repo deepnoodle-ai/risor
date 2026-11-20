@@ -124,10 +124,10 @@ func TestTypeOfRows(t *testing.T) {
 	assert.Equal(t, typeOf[struct{}](t), "{}")
 
 	for name, f := range map[string]func() (risor.Type, error){
-		"chan":        func() (risor.Type, error) { return risor.TypeOf[chan int]() },
-		"func":        func() (risor.Type, error) { return risor.TypeOf[func()]() },
-		"int key":     func() (risor.Type, error) { return risor.TypeOf[map[int]string]() },
-		"complex":     func() (risor.Type, error) { return risor.TypeOf[complex128]() },
+		"chan":       func() (risor.Type, error) { return risor.TypeOf[chan int]() },
+		"func":       func() (risor.Type, error) { return risor.TypeOf[func()]() },
+		"int key":    func() (risor.Type, error) { return risor.TypeOf[map[int]string]() },
+		"complex":    func() (risor.Type, error) { return risor.TypeOf[complex128]() },
 		"too deep":   func() (risor.Type, error) { return risor.TypeOf[deep]() },
 		"inner chan": func() (risor.Type, error) { return risor.TypeOf[struct{ C chan int }]() },
 		// F17 12.4: a cycle with no struct field, element or map value.
