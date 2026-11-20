@@ -9,11 +9,12 @@ dropped `iterate` and settled passing functions to user-defined functions
 18-11 and 18-13 are settled as stated; section 10 marks the others as rulings
 or recommendations. Built so far, in all three implementations: `match`
 guards and `walk` (step E0), and typed self-recursion on per-call frames
-(step E1), in `spec/packages/f17-recursion.md`. Function parameters (step E3)
-are in that chapter's section 13 and built in Go; TypeScript and Rust follow
-before the step merges. The recommendations 18-15 and 18-16, and those of 7.2
-and 7.3, were taken, with one change: the template of rule 8 names the callee,
-not the lambda (`15-build-rulings.md` R280 to R291). Recursive named types
+(step E1), in `spec/packages/f17-recursion.md`, and function parameters (step
+E3), in that chapter's section 13. The recommendations 18-15 and 18-16, and
+those of 7.2 and 7.3, were taken, with changes: the template of rule 8 names
+the callee, not the lambda; the hints of 7.2 are given only at a parameter of
+a `const`-bound lambda; and two more templates make the messages true with
+step E3 (`15-build-rulings.md` R280 to R297). Recursive named types
 (step E2) are not built; their spec text is in section 4 in a form ready to
 move into the package chapter.
 
