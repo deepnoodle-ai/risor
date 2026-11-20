@@ -436,6 +436,35 @@ fn line_ends(ch: &[char], a: usize, b: usize) -> u32 {
     n
 }
 
+/// For each offset of a text, and its end, the line ends before it, as
+/// `line_ends` counts them from the start: a `\n` after a `\r` is part of
+/// that line end.
+fn line_ends_before(ch: &[char]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(ch.len() + 1);
+    let mut n = 0;
+    out.push(n);
+    for (i, &c) in ch.iter().enumerate() {
+        match c {
+            '\n' if i > 0 && ch[i - 1] == '\r' => {}
+            '\n' | '\r' => n += 1,
+            _ => {}
+        }
+        out.push(n);
+    }
+    out
+}
+
+/// `line_ends(ch, a, b)` in constant time, from `line_ends_before(ch)`. A
+/// `\n` at `a` after a `\r` before `a` is a line end of its own there.
+fn line_ends_at(ch: &[char], before: &[u32], a: usize, b: usize) -> u32 {
+    let b = b.min(ch.len());
+    if a >= b {
+        return 0;
+    }
+    let split = ch[a] == '\n' && a > 0 && ch[a - 1] == '\r';
+    before[b] - before[a] + u32::from(split)
+}
+
 /// The text of a span with each line end written U+000A.
 fn norm(ch: &[char], span: Range) -> String {
     let mut s = String::new();
@@ -502,7 +531,16 @@ struct B<'a> {
 }
 
 impl<'a> B<'a> {
-    fn new(ch: &'a [char], ast: &'a Ast, raw: &'a [Token], comments: &[Range]) -> B<'a> {
+    /// `before` is `line_ends_before(ch)`: a template's parts share it, so
+    /// the blank space around each part's first and last items is not read
+    /// again for each part.
+    fn new(
+        ch: &'a [char],
+        before: &[u32],
+        ast: &'a Ast,
+        raw: &'a [Token],
+        comments: &[Range],
+    ) -> B<'a> {
         // Merge each template and text block with its interpolations.
         let mut t: Vec<FTok> = Vec::new();
         let mut i = 0;
@@ -558,10 +596,12 @@ impl<'a> B<'a> {
                 _ => {}
             }
         }
-        // Comments, less those inside a merged literal.
+        // Comments, less those inside a merged literal. The tokens are in
+        // order and do not overlap, so only the last that starts before a
+        // comment can hold it.
         let inside = |s: &Range| {
-            t.iter()
-                .any(|x| x.span.start < s.start && s.end <= x.span.end)
+            let p = t.partition_point(|x| x.span.start < s.start);
+            p > 0 && s.end <= t[p - 1].span.end
         };
         let cs: Vec<Range> = comments.iter().copied().filter(|c| !inside(c)).collect();
         // Items in order, for the blank space before and after each.
@@ -588,11 +628,11 @@ impl<'a> B<'a> {
             .collect();
         let mut prev_end = 0usize;
         for (idx, &(s, e, is_c, k)) in items.iter().enumerate() {
-            let nl = line_ends(ch, prev_end, s as usize);
+            let nl = line_ends_at(ch, before, prev_end, s as usize);
             if is_c {
                 cm[k].before = nl;
                 let next = items.get(idx + 1).map(|x| x.0 as usize).unwrap_or(ch.len());
-                cm[k].after = line_ends(ch, e as usize, next);
+                cm[k].after = line_ends_at(ch, before, e as usize, next);
             } else {
                 nl_before[k] = nl;
             }
@@ -2397,13 +2437,14 @@ fn op_level(op: BinaryOp) -> u8 {
 /// Build the document twice (the module's comment says why) and lay it out.
 fn run(
     ch: &[char],
+    before: &[u32],
     ast: &Ast,
     root: NodeId,
     raw: &[Token],
     comments: &[Range],
     width: Option<i64>,
 ) -> String {
-    let mut b = B::new(ch, ast, raw, comments);
+    let mut b = B::new(ch, before, ast, raw, comments);
     b.node(root, true);
     b.attach();
     let d = b.node(root, true);
@@ -2421,6 +2462,7 @@ pub fn format(text: &str) -> Result<String, Error> {
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
     let mut s = run(
         src.chars(),
+        &line_ends_before(src.chars()),
         &parsed.ast,
         parsed.ast.root,
         &toks,
@@ -2436,6 +2478,7 @@ pub fn format_template(text: &str) -> Result<String, Error> {
     let t = parse_template(text)?;
     let src: &Source = t.source();
     let ch = src.chars();
+    let before = line_ends_before(ch);
     let mut out = String::new();
     let mut pi = 0;
     for seg in t.segs() {
@@ -2459,7 +2502,7 @@ pub fn format_template(text: &str) -> Result<String, Error> {
                     out.push_str(&as_is);
                     continue;
                 }
-                let s = run(ch, &p.ast, p.ast.root, &toks, &cms, None);
+                let s = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None);
                 if s.contains('\n') {
                     out.push_str(&as_is);
                 } else {

@@ -200,21 +200,11 @@ impl Template {
     /// 6). `None` past the last part; [`Template::segments`] counts them.
     pub fn part(&self, i: usize) -> Option<Expr> {
         let e = *self.parts.get(i)?;
-        let mut ast = self.ast.clone();
-        let span = ast.span(e);
-        let root = ast.push(
-            NodeKind::Program {
-                consts: Vec::new(),
-                result: e,
-                types: Vec::new(),
-            },
-            span,
-            0,
-        );
-        ast.root = root;
+        // Only the part's nodes: a program for each part of a long template
+        // costs the size of the template once.
         Some(Expr {
             source: self.source.clone(),
-            ast,
+            ast: self.ast.program_of(e),
         })
     }
 

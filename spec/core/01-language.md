@@ -1272,8 +1272,9 @@ Nothing else opens a level. In particular these do not:
    lines each parse, and each runs within the limits of `02-evaluation.md`.
    This binds every part of an implementation that reads a program: the
    parser, the static rules, the checker, the evaluator, analysis, the
-   formatter, completion and hover. None of them fails, or ends the host's
-   process, because of the length of such a form.
+   formatter, completion and hover. None of them overflows its stack because
+   of the length of such a form. The rule is about the stack. It does not
+   state the time or the memory that a part may use.
 
 | Text | Levels open at `x` |
 | --- | --- |
