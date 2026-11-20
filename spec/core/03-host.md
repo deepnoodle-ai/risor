@@ -1003,7 +1003,7 @@ does not.
 
 | Field of a result | Compared with | How |
 | --- | --- | --- |
-| `type` | The type the check gives | Both are parsed as type text and compared by structure (`05-types.md`) |
+| `type` | The type the check gives | Both are parsed as type text and compared by structure (`05-types.md`). With package F17, a `Name` that is not an opaque type of the case is compared by its spelling, as an atom (`spec/packages/f17-recursion.md` 12.6) |
 | `sites` | The sites the check gives, each an object with `class` and `span` | The whole list, in order |
 | `value` | The value of the run | With the language's `==` (`01-language.md`) |
 | `truthy` | The truthiness test (3.2.4) applied to the value | Equal, `true` or `false` |

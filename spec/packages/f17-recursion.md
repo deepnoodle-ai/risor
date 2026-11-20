@@ -1,32 +1,39 @@
 # F17. Recursion, function parameters and guards
 
 This chapter is normative. It specifies follow-on package F17 as far as step
-E1 of its plan (`experiments/v3/design/18-recursion.md`, and
+E2 of its plan (`experiments/v3/design/18-recursion.md`, and
 `experiments/v3/design/14-implementation-plan.md` 5.3, track E). Step E0: a
 guard on an arm of `match`, and the library function `walk` (sections 2 to
 10). Step E1: typed self-recursion, a `const`-bound lambda whose parameters
-and result carry types and that calls itself (section 11). It adds one
-optional field of the node `Arm`, one library entry, the file
-`suite/library-recursion.json` and the directory `suite/recursion/`. It adds
-no node kind, no value, no type, no run code, no check code, no `parse` code,
-no reserved word, no message template and no case field. It changes the text
-of one template of Core, that of `recursion-needs-types` (9).
+and result carry types and that calls itself (section 11). Step E2: recursive
+named types, in type lines, in an environment, from a JSON Schema and from
+Go's `TypeOf` (section 12). It adds one optional field of the node `Arm`, one
+library entry, the files `suite/library-recursion.json` and
+`suite/messages-recursion.json`, and the directory `suite/recursion/`. Step E2
+adds a kind of type alternative, the reference (12.1), one check code,
+`circular-type`, and one template of `check-limit` (9). The package adds no
+node kind, no value, no run code, no `parse` code, no reserved word and no
+case field. It changes the text of one template of Core, that of
+`recursion-needs-types` (9).
 
-Steps E2 and E3 of the plan are not in this chapter yet: recursive named
-types and function parameters. Each adds to this chapter when it lands.
+Step E3 of the plan is not in this chapter yet: function parameters. It adds
+to this chapter when it lands.
 
 The package only adds. In Core a guard is a `parse` error, `walk` is a name
 that no function has, and a reference of a lambda to its own name is the
-static error `recursion-needs-types`. Section 10 lists the earlier cases whose
-outcome changes.
+static error `recursion-needs-types`. Before step E2 a named type or a type
+line that names itself or a later one is an error. Section 10 lists the
+earlier cases whose outcome changes.
 
 Other chapters: `01-language.md` (grammar, nodes, spans, levels, `match`),
 `02-evaluation.md` (order, steps, units, the depth count), `03-host.md`
 (diagnostics, case files, the order of packages), `04-library.md` (the record
 format, how an entry is specified, the cost rules), `05-types.md` (`match`,
-tested positions, facts, calls, the static rules), F2
-(`spec/packages/f02-templates-analysis.md`), F5 (`spec/packages/f05-unions.md`),
-F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
+tested positions, facts, calls, the static rules, Fits, Join, printing,
+limits), F1 (`spec/packages/f01-host-types.md`), F2
+(`spec/packages/f02-templates-analysis.md`), F4
+(`spec/packages/f04-conversion.md`), F5 (`spec/packages/f05-unions.md`), F8
+(`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
 (`spec/packages/f14-host-facts.md`) and F16
 (`spec/packages/f16-entry-points.md`).
 
@@ -43,6 +50,7 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
 | Depth of a node | 0 for the root. For any other node, 1 more than the depth of the node whose callback gave it |
 | Pre-order | The order of a walk: a node, then the nodes under its first child, then those under its second, and so on |
 | Typed lambda, self-reference, self-call | Section 11.1 |
+| List, use, guarded place, recursive item, reference, definition, unfolding | Section 12.1 |
 
 ### 1.2 What this package changes in earlier rules
 
@@ -72,17 +80,34 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
 | `03-host.md` 3.9.1 | Three deepest cases of self-recursion in the stack test (11.6) |
 | F12 3.13 | A hover on a self-call of a typed lambda gives the result type (11.7) |
 | `suite/messages-check.json`, `recursion-needs-types` | Its text names the fix (9) |
+| F4 3.1 items 1 to 3, F16 3.1 items 6 and 7 | A named type and a type line may name themselves and later ones; a list is resolved together (12.2, 12.3) |
+| F4 3.2 and its item 1 | The errors of a list: a cycle with no guard, and a reference beside a type of its kind (12.2 items 3 and 6), one `bad-type` for each named type they fail |
+| F1 3.7, `15-build-rulings.md` R112 | A `$ref` cycle through an array, a property or a map is a recursive type (12.4) |
+| F1 6.2 | `TypeOf` of a Go struct that contains itself gives a recursive type (12.4) |
+| `05-types.md` 2.5 and 20.7 | A reference has depth 0 and size 1 (12.6) |
+| `05-types.md` 3.9 | A reference prints by its name (12.6) |
+| `05-types.md` 4.1, 4.2, F4 6.2, F5 2.5 | Fits, Equal, Join and disjoint follow references, coinductively, in a fixed order, with a bound of 4,096 pairs (12.5) |
+| `05-types.md` 20.6 | The depth of a type no longer bounds those computations; the bound does (12.5 item 7) |
+| `05-types.md` 10.3, F4 6.2 | Truthy, Falsy, nonnull and without with a reference (12.5 item 8) |
+| F4 4.4 items 2 and 5, F4 5.4 item 4, F4 7.1 item 2 | A walk follows the data; the conformance function stops past the default depth limit (12.7) |
+| F4 8 | The description lists recursive types, and its types may name one another (12.4) |
+| F5 2.2 item 4 | A reference is an alternative of a type, and its kinds are its definition's (12.1) |
+| `03-host.md` 3.10.6 | A name in a case's `type` that is no opaque type is an atom (12.6 item 5) |
+| F16 7.2, 7.3 | Completion and hover in a type line (12.8) |
 
-No other rule changes. A program with no guard, no call of `walk` and no
-self-reference of a typed lambda has the type, sites, diagnostics, value and
-usage it has without this package, but for the text of the message of
-`recursion-needs-types` (9).
+No other rule changes. A program with no guard, no call of `walk`, no
+self-reference of a typed lambda and no type line that names itself or a later
+one has the type, sites, diagnostics, value and usage it has without this
+package, but for the text of the message of `recursion-needs-types` (9). An
+environment none of whose types refers to itself is declared as it is without
+this package.
 
 ### 1.3 Version
 
-1. The guard, `walk` and self-recursion are part of version `3.0`. The record
-   of `walk` has `since` `3.0`. This package adds no version number and no
-   version marker.
+1. The guard, `walk`, self-recursion and recursive types are part of version
+   `3.0`. The record of `walk` and the entries of
+   `suite/messages-recursion.json` have `since` `3.0`. This package adds no
+   version number and no version marker.
 2. With this package an implementation offers 79 library entries: the 53 of
    Core, the 8 of F6, the 6 of F7, the 11 of F13, and `walk`. 60 of them are
    in the group `core`: Core's 53, F7's 6 and `walk`.
@@ -99,11 +124,12 @@ usage it has without this package, but for the text of the message of
    it, and the cases of this package may use their forms and their case
    fields: the tagged unions of F5, the trace of F8, the host facts of F14.
 2. **F17 is offered whole, and keeps one place.** As this chapter states it,
-   F17 holds steps E0 and E1, and an implementation that offers it offers
-   both. A later step extends this chapter, and every implementation offers
+   F17 holds steps E0, E1 and E2, and an implementation that offers it offers
+   all three. A later step extends this chapter, and every implementation offers
    it in the change that adds it (`15-build-rulings.md` R261). Step E0 needs
    no part of F16. Step E1 needs the annotations of F16's slice D1: a lambda
-   is typed only by them (11.1).
+   is typed only by them (11.1). Step E2 needs F16's type lines, F4's named
+   types and F1's schemas (12).
 3. **F12 was offered before this chapter was written,** and F17 stands before
    it in the order. So the cases of F17's forms in the formatter and in assist
    stand in this package's directory, in files whose names begin `tools-` (8),
@@ -528,6 +554,14 @@ guard is a place of the last row of its table.
 | `suite/recursion/e1-analysis.json` | Analysis of a typed recursive lambda (F2) |
 | `suite/recursion/tools-e1-format.json` | The formatter on a typed recursive lambda (F12) |
 | `suite/recursion/tools-e1-assist.json` | Hover and completion at a self-reference (11.7, F12) |
+| `suite/messages-recursion.json` | The entries of `circular-type` and of the template `pairs` of `check-limit`, with their cases (9) |
+| `suite/recursion/e2-static.json` | Recursive type lines: what resolves, `circular-type`, failures in a component, `name-clash` and `duplicate-name` (12.2, 12.3) |
+| `suite/recursion/e2-check.json` | The checker with recursive types: messages, fits, joins, narrowing, depth, the bound of 4,096 and the order of visits (12.5, 12.6) |
+| `suite/recursion/e2-run.json` | Runs over recursive data: the uses of `18` 4, `as` and `is`, the depth limit, conform cases (12.7) |
+| `suite/recursion/e2-declare.json` | Recursive named types of an environment, schemas with a `$ref` cycle, `name-clash`, the description (12.4) |
+| `suite/recursion/e2-analysis.json` | Analysis of a program with a recursive type line (F2) |
+| `suite/recursion/tools-e2-format.json` | The formatter on recursive type lines (F12) |
+| `suite/recursion/tools-e2-assist.json` | Hover and completion with recursive types (12.8, F12) |
 
 1. A runner of an implementation that offers F17 loads
    `suite/library-recursion.json` and runs its cases as it runs those of
@@ -541,11 +575,20 @@ guard is a place of the last row of its table.
 3. A runner of an implementation that does not offer F17 does not run
    `suite/recursion/`, and does not load `suite/library-recursion.json`.
 4. This package adds no case field. Its cases use those of `03-host.md` 3.10,
-   and of F2, F5, F8, F12 and F14.
+   and of F1, F2, F4, F5, F8, F12 and F14.
+5. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
+   `suite/recursion/` and in `suite/messages-recursion.json` the static codes
+   are those of F16 3.1 item 11 and `circular-type` (12.3 item 3). A runner
+   runs every case of `suite/messages-recursion.json` checked, as it runs
+   `suite/messages-entry-points.json`.
+6. Go's `TypeOf` (12.4) and the conformance function's depth (12.7 item 3)
+   have no case: a case holds no Go type, and the conformance function's
+   failure is not a conform result. Each implementation tests them in its own
+   tests.
 
 ## 9. Messages
 
-This package adds no template. It changes the text of one: the template
+Steps E0 and E1 add no template. Step E1 changes the text of one: the template
 `default` of `recursion-needs-types` in `suite/messages-check.json` (F8 3.1)
 names the fix that step E1 makes possible.
 
@@ -557,7 +600,21 @@ The template is Core's, so the text changes in Core's catalog file, and a
 build without this package prints it too. No build offers Core and slice D1
 without F17 (1.4), so no build names a fix it refuses.
 
-Its failures use Core's templates:
+Step E2 adds the file `suite/messages-recursion.json`. It adds the entry of
+one code, and one template to an entry of `suite/messages-check.json`, as
+`suite/messages-entry-points.json` does (F16 9.1): the same code, params of
+the same kinds, a new template name.
+
+| Code | Phase | Template | Text | Parameters |
+| --- | --- | --- | --- | --- |
+| `circular-type` | `check` | `direct` | `{name} refers to itself outside any list, map or record` | `name` (word): the line's name (12.2 item 3) |
+| `circular-type` | `check` | `union` | `{name} shares a kind with another type of its union; give the union a type line of its own` | `name` (word): the reference (12.2 item 6) |
+| `check-limit` | `check` | `pairs` | `comparing the types here takes more than 4096 pairs of types` | none (12.5 item 7) |
+
+With step E2 the catalog has 32 check codes: F8's 30, F16's `name-clash` and
+`circular-type`.
+
+The failures of steps E0 and E1 use Core's templates:
 
 | Failure | Code | Template | Parameters |
 | --- | --- | --- | --- |
@@ -589,6 +646,23 @@ Its failures use Core's templates:
    `suite/core-check/check-recursion.json` and `suite/analysis/scope.json`
    has a parameter or a result with no type, so its code, span and type stand.
    Those cases expect no message.
+4. **Step E2** changes these earlier cases. Each changed in place, with no
+   file named `until-`: step E2 lands in every implementation in one change
+   (1.4 item 2). Each new name cites 12.
+
+| File | Case before | With step E2 |
+| --- | --- | --- |
+| `suite/entry-points/d1-run.json` | `undefined-name: a type line names a later type line` | A type line names a later one: the value 1 |
+| `suite/entry-points/d1-run.json` | `undefined-name: a type line cannot name itself` | `type Tree = {kids: Tree[]}` resolves: the value 1 |
+| `suite/conversion/conversion-named.json` | `a named type cannot name itself`, `a named type cannot name a later one` | Each declares: the value 1 |
+| `suite/conversion/conversion-schema-types.json` | `a schema with a cycle of $ref` | Its target `n` now named `node`: it declares. A new case keeps `n`, which is `bad-type` since `N` is no type name (12.4) |
+| `suite/host-types/schema-refs.json` | `$ref: a definition that names itself` | The type `Node` |
+| `suite/host-types/schema-refs.json` | `$ref: a cycle through anyOf with null` | Its target `t` now named `tree`: the type `Tree` |
+| `suite/host-types/schema-refs.json` | `$ref to the root is a cycle` | Still `bad-type`: the root of the variable `v` is named `V`, a type variable. The name says so |
+| `suite/entry-points/tools-d1-assist.json` | `the type lines before the hole are candidates`, `a type line's own name is not a candidate in its type`, `a type line's own name is no candidate in its own type` | In a type line's type, its own name is a candidate too (12.8) |
+
+   `$ref: a cycle through allOf` stands: a cycle with no guard is still
+   `bad-type`.
 
 ## 11. Self-recursion (step E1)
 
@@ -809,4 +883,355 @@ f(0, 4)                           // 10
 
 // recursion-needs-types: the result has no type.
 const g = (n: int) => n <= 0 ? 0 : g(n - 1);
+```
+
+## 12. Recursive named types (step E2)
+
+Step E2 of the plan (`18` 4): a named type may refer to itself, and to the
+other named types of its list, so a program can give a tree a type. A type
+that refers to itself is a **recursive type**. It comes from four places: the
+type lines of a program (F16 2.3), the named types of an environment (F4 3), a
+JSON Schema whose `$ref` meets itself (F1 3.7), and, in Go alone, `TypeOf` of a
+struct that contains itself (F1 6.2).
+
+Types stay structural (F4 3.1 item 1): two recursive types with the same
+structure are one type, whatever their names. A recursive type prints by its
+name. The step adds one check code, `circular-type`, one template of
+`check-limit`, and the catalog file `suite/messages-recursion.json` (9). It
+adds no syntax, node, value, run code, `parse` code or case field.
+
+### 12.1 Terms
+
+| Term | Meaning |
+| --- | --- |
+| List | Named types that are resolved together: the type lines of one program; the named types that one environment declares itself; the targets of `$ref` of one schema; the Go types that one `TypeOf` meets. Its members are **items** |
+| Use | A `Name` in the type text of an item that names an item of the same list |
+| Guarded place | A place inside a list's element, a record field's type, a record's rest, or the value of `map<T>`, at any depth |
+| Top place | A place that is not guarded. A place inside parentheses alone, or beside `\|`, is a top place |
+| Recursive item | An item on a cycle of uses. A use of itself is a cycle |
+| Component | The items that reach one another through uses. An item that is not recursive is a component alone |
+| Reference | The type of a recursive item where a name stands for it. A reference is an alternative of a type, as an opaque name is. Two references are the same when they are of one declaration, whatever their names |
+| Definition | The type a recursive item stands for, one level deep (12.2 item 4) |
+| Unfolding | A type with each reference among its alternatives replaced by the alternatives of its definition |
+
+The kinds of a reference are the kinds of its definition. A reference whose
+definition is known is **complete**.
+
+### 12.2 Resolving a list
+
+1. **Uses.** In a program, a `Name` in the type of the type line at index i
+   names the line of that name in force there: the last line of the name at or
+   before i, else the first after it. A line that is `name-clash` (F16 3.1 item
+   3) names nothing, and its name stays the environment's type. In an
+   environment, a `Name` names the environment's own named type of that name.
+   Any other `Name` names a type outside the list, as F4 3.5 and F16 3.1 item 2
+   say.
+2. **The undefined.** A `Name` that names nothing is `undefined-name` with the
+   template `type` in a program, and `bad-type` in an environment.
+3. **A cycle with no guard.** An item on a cycle of uses that all stand at top
+   places is an error: `circular-type`, template `direct`, on the line's name in
+   a program; `bad-type` in an environment. Each item on such a cycle has it. So
+   `type Loop = Loop | null` is `circular-type`, and so are both lines of `type
+   Ping = Pong | null; type Pong = Ping`.
+4. **What a name stands for.** The components are resolved one at a time, each
+   after every component it names; any such order gives the same types. In the
+   text of item i, a name of item j stands for:
+
+| Item j | Where the name stands | It stands for |
+| --- | --- | --- |
+| Not recursive | Anywhere | j's type |
+| Recursive | A guarded place | j's reference |
+| Recursive | A top place of an item i that is recursive | j's definition. When j is of i's component, j is resolved first; item 3 makes that end |
+| Recursive | A top place of an item i that is not recursive | j's reference |
+
+   So a definition holds no reference at its top: `type Ping = Pong | null;
+   type Pong = {next: Ping}` gives Ping the definition `{next: Ping} | null`.
+5. **The rest of the text** is resolved as F4 3.5 resolves it, or F4 6.1 for
+   a program type: parentheses are removed, the alternatives of one kind are
+   joined (12.4), and two or more records must form a tagged union (F5 3.1).
+   A reference among the alternatives is read so:
+
+| Reference | How it stands |
+| --- | --- |
+| Complete, and sharing a kind other than null with another alternative | It counts as its definition: its alternatives join the others, and its records join F5's union |
+| Any other | Beside the other alternatives, as it is. Null beside it stays as written: `Json \| null` holds `null` even when Json's definition has it |
+
+   A reference of the component being resolved is never complete there: its
+   definition is set when every item of the component is resolved. A Join
+   that meets such a reference keeps it beside the other side's alternatives
+   (12.4 item 3).
+6. **A reference beside a type of its kind.** When the definitions of a
+   component are set, a reference that shares a kind other than null with
+   another alternative of a type where it stands, at any depth of a
+   definition of the component, is an error: `circular-type`, template
+   `union`, on the line's name, with the reference as `name`; `bad-type` in an
+   environment. So `type Node = {next: Node | {end: bool}}` is
+   `circular-type`: Node is a record, and so is `{end: bool}`. The fix is a
+   line of its own for the union: `type Next = Node | {k: "end"}; type Node =
+   {k: "node", next: Next}` checks, since Node stands at a top place of Next
+   and counts as its definition there. Each line reports the first such
+   reference of its definition, in a walk that takes a type before its parts:
+   the references among its alternatives in the order printed (12.6), then the
+   list's element, then each record, by the order of F5's variants, with its
+   fields in key order and then its rest. A reference is not followed.
+7. **Failure.** A line fails when its text has a diagnostic, when item 3 or
+   item 6 reports it, when it names a failed line of another component, or
+   when another line of its component fails. A component in which a line has
+   an undefined name or a cycle with no guard, or names a failed line of
+   another component, is not resolved: the rest of its lines' texts give no
+   diagnostic. A name of a failed line of another component is
+   `undefined-name` there (F16 3.1 item 5). A line that fails because another
+   line of its component failed has no diagnostic of its own.
+8. **What a line declares.** A recursive line declares its reference; another
+   line declares its type. A failed line declares nothing (F16 3.1 item 5).
+
+| Text | Outcome |
+| --- | --- |
+| `type Tree = {name: string, kids: Tree[]}` | Tree is recursive. Its definition is `{kids: Tree[], name: string}` |
+| `type Dir = {files: File[], dirs: Dir[]}; type File = {name: string, parent: Dir \| null}` | One component of two recursive lines |
+| `type Json = null \| bool \| float \| string \| Json[] \| map<Json>` | Recursive. Each use of Json is guarded |
+| `type Outer = Inner \| null; type Inner = {n: int}` | Neither is recursive. A line may name a later line |
+| `type Rows = Rows[] \| int[][]` | `circular-type`, `union`: the Join of the two lists puts Rows, a list, beside `int[]` |
+| `type Ping = {p: Pong, x: Nope}; type Pong = {q: Ping}` | `undefined-name` on Nope. Pong fails with no diagnostic |
+
+### 12.3 Type lines
+
+1. **F16 3.1 items 6 and 7 change.** A type line's type may name itself and
+   any type line of the program, by 12.2 item 1. An annotation's type still
+   names only the type lines before the `const` line or the result that holds
+   it (F16 3.1 item 7). So in `const x: Tree | null = null; type Tree =
+   {kids: Tree[]}; x`, `Tree` is `undefined-name`.
+2. The type lines are resolved before the walk of F16 3.1 item 1, and each
+   line's diagnostics are reported where the walk meets it. The static rules
+   resolve them, so a compile without the type rules reports
+   `circular-type` too.
+3. **`circular-type` is a static code** (`05-types.md` 22), as `name-clash`
+   is (F16 3.1 item 11). Its phase is `check`.
+4. A line that is `name-clash` or `duplicate-name` is resolved as any line.
+   `name-clash` makes it name nothing (12.2 item 1); of two lines with one
+   name, each `Name` in a line's type names the last at or before it.
+
+### 12.4 Environments, schemas and Go types
+
+**An environment's named types** (F4 3.1) form one list (12.2). F4 3.1 items 2
+and 3 change: a named type may name itself and any named type of the
+environment, wherever it stands in the list. Each error of 12.2 is `bad-type`,
+one for each named type it fails. A named type that fails because another of
+its component failed is `bad-type` too.
+
+**A JSON Schema** (F1 3.7) reverses `15-build-rulings.md` R112:
+
+1. **A cycle.** A target of `$ref` met again while it is being mapped is a
+   recursive type, when an array's items, an object's `properties`,
+   `additionalProperties` or `patternProperties` stand between. Otherwise the
+   schema is `bad-type`.
+2. **Its name** is the last token of the target's pointer, with its first
+   letter upper-cased when it is an ASCII lower-case letter: `#/$defs/node`
+   gives `Node`. A target that is the root takes the name of the named type it
+   declares (F4 3.1 item 4), else the name of the variable it declares with
+   its first letter upper-cased (F1 2.1), else `Root`. A name that is not a
+   type name by F4 3.2 is `bad-type`, as `#/$defs/n` (the type variable `N`)
+   and `#/$defs/tree-node` are. Two recursive types of one schema with one name
+   are `bad-type`.
+3. **Only a target met again is named.** In a schema where `dir` holds
+   `file`, `file` holds `dir`, and the root is `dir`, the mapping meets `dir`
+   again inside `file`, so `Dir` is the one recursive type, and the type of
+   `file` is written out inside it.
+4. **While a schema is mapped, no definition of its own is known.** Pick and
+   Meet (F1 3.6), and a tag test of F5 8, that would look into such a reference
+   are `bad-type`. In `anyOf` and `oneOf` the reference stands beside the
+   other branches, as in type text (12.2 item 5). So `{"anyOf": [{"$ref":
+   "#/$defs/node"}, {"type": "null"}]}` gives `Node | null`, and `allOf` with
+   it and an object is `bad-type`. `allOf` with one schema that is not `true`
+   gives that schema's type without looking into it.
+5. **When the mapping ends**, each definition is set: the target's type, with
+   each reference at its top replaced by that reference's definition. Then
+   12.2 item 6 is applied, and each definition's depth and size are tested
+   (12.6). A failure is `bad-type`.
+
+**Go's `TypeOf`** (F1 6.2, a binding rule of Go):
+
+1. A Go type with a name that `TypeOf` meets again while it derives it is a
+   recursive type, when a struct field, a slice's or array's element, or a
+   map's value stands between. A pointer is no guard: `type P *P` is
+   `bad-type`.
+2. Its name is the Go type's name with its first letter upper-cased. A name
+   that is not a type name, and two Go types of one `TypeOf` with one name,
+   are `bad-type`.
+3. The definitions are set as for a schema (item 5 above).
+4. A function's signature that `Func` derives cannot hold a recursive type:
+   it is `bad-type`, and the host writes the signature in `Type`, naming a
+   type declared by `NamedTypeOf`.
+
+**The environment's recursive types** are those its declarations reach: its
+named types, its variables' types and its signatures, at any depth.
+
+1. Two of them with one name that are not one type (Equal, 12.5) are
+   `name-clash`. Two with one name and one structure are one type.
+2. One with the name of a named type of the environment is `name-clash`,
+   unless the named type is that recursive type.
+3. **The description** (F4 8) lists, in `types`, each named type and each
+   recursive type by its name. A recursive type is printed by its
+   unfolding, in which its own name stands for itself: `"Tree": "{kids:
+   Tree[]}"`. F4 8 items 1 to 3 change: the text of a type may hold the
+   names of recursive types, and an environment built from a description
+   declares the entries of `types` as one list, so they may name one another.
+
+### 12.5 The checker's computations
+
+A rule of `05-types.md` that reads a type's alternatives, its kinds, its
+record, its element or its variants reads its unfolding. Merge, the reads of
+9.2, `kind`, the narrowing of 10.4 and F5's tag tests are such rules. Fits,
+Equal, Join and disjoint (F4 6.2) follow references by the rules below.
+
+1. **One computation.** A call of Fits, Equal, Join or disjoint by a rule of
+   the checker is one computation. A Fits that a Join makes, as in item 4, is
+   part of the Join's computation.
+2. **Pairs.** A computation keeps the pairs it is in progress on, and the
+   pairs that have failed in it. Two types are **identical as written** when
+   they have the same alternatives, the same references and identical parts,
+   with nothing unfolded. A pair is found among those kept when both of its
+   types are identical as written to both of a kept pair's.
+3. **Fits(S, T)**, step by step. Core's rule (`05-types.md` 4.2, with F5 4.2)
+   decides when neither type has a reference.
+
+| Step | Rule |
+| --- | --- |
+| 1 | S is `never`, or T is `any`: it holds. S is `any`: it holds, with `any` used |
+| 2 | Drop from S each reference that T also has: each fits at once. If S is then `never`, it holds |
+| 3 | The pair (S, T) is in progress: it holds |
+| 4 | The pair has failed in this computation: it fails |
+| 5 | The pair is **entered**: it counts 1 against the bound (item 7) and is in progress until step 6 ends |
+| 6 | The unfoldings of S and T are fitted by Core's rule, whose parts are fitted by this rule. If that fails, the pair has failed |
+
+4. **Join(A, B)**:
+
+| Step | Rule |
+| --- | --- |
+| 1 | Either is `any`: `any`. Either is `never`: the other. Neither has a reference: Core's Join (`05-types.md` 4.1, with F5 4.1), whose parts are joined by this rule |
+| 2 | A is `null` alone: B with `null` added. B is `null` alone: A with `null` added. `null` is added as written |
+| 3 | A or B has a reference that is not complete: A's alternatives and B's, joined by kind as Core's Join joins them, with every reference of both kept beside, unfolded nowhere (12.2 item 5) |
+| 4 | A and B are identical as written: A |
+| 5 | The unfolding of A or of B is `any`: `any` |
+| 6 | A surely fits B: B. Else B surely fits A: A. A surely fits B when Fits(A, B) holds, in this computation, with no `any` used |
+| 7 | The pair (A, B) is in progress: `any` |
+| 8 | The pair is entered, as in item 3 step 5. Each reference of A that shares a kind other than null with B, and that B does not have, is unfolded, and so is each such reference of B. The two are joined by Core's rule. The references not unfolded stand beside the result |
+
+   A Join of more than two types, when one of them has a reference, folds
+   them from the left in the order the rule gives them, and each Join of the
+   fold is one computation.
+5. **Equal(A, B)** and **disjoint(A, B)** follow item 3: the same reference
+   on both sides, or two types identical as written, are equal at once; a
+   pair in progress is equal, and is not disjoint; a pair that has failed in
+   the computation is not equal; else the pair is entered and the unfoldings
+   are compared by the rule of F5 2.5 or F4 6.2, whose parts are compared by
+   this rule.
+6. **The order is normative.** A computation visits pairs depth first, in this
+   order, so that the pair that passes the bound (item 7) is the same in every
+   implementation.
+
+| Computation | Order |
+| --- | --- |
+| Fits, the alternatives of S | bool, number, string, list, map, the opaque names in code point order, null. It stops at the first alternative that does not fit |
+| Fits, two records | T's fields in code point order of their keys. For each, the field's mark is tested before its type; a field of T that S lacks tests S's rest against it. Then S's fields that T lacks, in key order, against T's rest. Then S's rest against T's rest. It stops at the first that fails |
+| Fits, two maps of F5 | Each variant of S, in the order of its printing, against T's variants in that order |
+| Join | The list's elements, then the map alternatives: the keys of both records in code point order, then the rests |
+| Equal, disjoint | The alternatives in the order of printing; two records' keys in code point order, each field's mark before its type, then the rests |
+
+7. **The bound.** A computation enters at most **4,096** pairs. The pair that
+   would be the 4,097th ends it. Then:
+
+| Where | Outcome |
+| --- | --- |
+| A rule of the checker | `check-limit`, template `pairs`, on the innermost node whose check is in progress. A fit that a `const` line makes after its value is checked is on the value; the fit of the program's result to the expected result is on the result. **The check ends**: its diagnostics are this one alone. The diagnostics of the static rules stand |
+| A program type, a type line among them | `check-limit`, template `pairs`, on the program type, as F4 6.1 reports `check-limit` |
+| An environment, a schema, `TypeOf` | `bad-type` |
+| A host's call of the type API (Fits, Join, Equal of a binding) | A binding rule: Go gives `false`, or an invalid type for Join |
+
+   The count is of pairs entered, not of pairs in progress at once. A count of
+   the pairs in progress would leave a computation that enters the same pairs
+   again and again unbounded: two families of twelve types, each holding the
+   next twice, take 4,095 entries to fit and never more than twelve pairs in
+   progress. With the count, a computation's work and the depth of its native
+   recursion are bounded by the bound times the work of one pair.
+8. **Truthy, Falsy, nonnull and without.**
+
+| Rule | With a reference R |
+| --- | --- |
+| Truthy (`05-types.md` 10.3) | R stays when its definition has no `null`, no `""` literal, no `never[]` and no record that can be empty. Otherwise the rule is applied to R's unfolding |
+| Falsy | Applied to R's unfolding |
+| nonnull | R is unfolded when its definition has `null`; otherwise it stays |
+| without(X, T) (F4 6.2) | Each reference of X that shares a kind with T, `null` included, is unfolded. The others stay |
+
+### 12.6 Depth, size and printing
+
+1. **Depth.** A reference has depth 0 (`05-types.md` 2.5). Each definition is
+   tested where it is declared: a type line's type by F4 6.1 (`check-limit`),
+   an environment's named type, a schema and `TypeOf` by `bad-type`. So
+   `type Tree = {kids: Tree[]}` has depth 2, and `Tree[]` written 63 times
+   deep in an annotation has depth 63.
+2. **Size.** A reference has size 1 (`05-types.md` 20.7).
+3. **Printing.** A reference prints by its name (`05-types.md` 3.9). Among a
+   type's alternatives the references come after the opaque names, in code
+   point order of their names, and before `null`: `Tree | null`, `(Tree |
+   int)[]`. A recursive type thus prints the same at every depth, and a
+   message never writes it out: `expected string, found Node[]`.
+4. A `no-field` or `maybe-absent` on a receiver whose type is a reference, or a
+   reference and `null`, prints the reference: `Node has no field "kidz"`.
+5. **A case's `type`** (`03-host.md` 3.10.6) is compared by structure, with
+   each `Name` that is not an opaque type of the case compared by its
+   spelling, as an atom. So a case writes `Node[]` for a list of a recursive
+   type named Node.
+
+### 12.7 Evaluation and conformance
+
+1. **`as` and `is`.** The walk of F4 4.2 tests a value against the unfolding
+   of a type with references. It follows the data: each list or map it enters
+   counts against the depth limit (F4 5.4), so it ends at the data's depth or
+   at `depth-exceeded`. F4 5.4 item 4 changes: with a recursive type, the
+   walk enters as many levels as the data has.
+2. **The failure.** F4 4.4 item 2 changes: `expected` prints a recursive type
+   by its name. Item 5 changes: the path has at most as many steps as the
+   depth limit.
+3. **The conformance function** (F4 7.1) counts the levels it enters, as a
+   walk of F4 5.4 does, and fails past the default depth limit, 200, as the
+   JSON text of `03-host.md` 3.2 does: phase `run`, code `depth-exceeded`,
+   class `limit`, no path and no span. Item 2 of F4 7.1 changes: its depth is
+   bounded by the type, or by 200. `ConformAll` (F8) ends with that diagnostic.
+4. Nothing else changes in a run. A reference is a type; no value holds one.
+
+### 12.8 Tools
+
+1. **The formatter** has no rule of its own for this step.
+2. **Hover** on a type name (F16 7.3) gives, for a recursive type, its
+   unfolding: `type Tree = {kids: Tree[]}` gives `{kids: Tree[]}` at either
+   `Tree`. In a type line's type a name is resolved by 12.2 item 1, so it may
+   name a later line.
+3. **Completion** in a type line's type lists every type line of the repaired
+   program (F12 3.3), the line's own name included. The repaired program
+   ends at the hole, so a later line is not listed. In an annotation it lists
+   the lines before it, as F16 7.2 says.
+4. **Token classes** do not change: a type name is a name.
+5. **Analysis** (F2) does not change. A type line is no read.
+
+### 12.9 Examples
+
+```js
+// Use 1: a tree, and a typed lambda that walks it.
+type Node = {name: string, size: int, children: Node[]};
+const total = (n: Node): int => n.size + n.children.map(total).sum();
+total(tree)                       // tree: Node, from the host
+
+// Use 2: a wrong field is found, and the message names the type.
+const f = (n: Node): int => len(n.childs);   // no-field: Node has no field "childs"
+
+// Use 3: a cycle with no list, field or map.
+type Loop = Loop | null;          // circular-type
+
+// Use 5: two types that refer to each other.
+type Dir = {name: string, files: File[], dirs: Dir[]};
+type File = {name: string, parent: Dir | null};
+
+// JSON.
+type Json = null | bool | float | string | Json[] | map<Json>;
 ```

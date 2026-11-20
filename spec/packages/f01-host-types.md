@@ -271,7 +271,9 @@ that S has.
 7. **A cycle is an error.** A `$ref` that names a schema whose mapping is in
    progress, the root included, is `bad-type`. A type cannot refer to itself
    (`05-types.md` 2). A schema named by two `$ref`s that are not nested is no
-   cycle.
+   cycle. Package F17 replaces this item: a cycle through an array's items, a
+   property or a map is a recursive type, named by the pointer's last token
+   (`spec/packages/f17-recursion.md` 12.4).
 8. A `$ref` that is not walked is not resolved. A recursive definition that
    nothing walks is no error.
 9. `$id` on the root is ignored. `$id` on a walked schema below the root is
@@ -412,7 +414,7 @@ is read (3.1 item 1).
 | `items`, `prefixItems` or `additionalItems` of the wrong form | 3.5 |
 | `allOf`, `anyOf` or `oneOf` that is not a non-empty array | 3.6 |
 | `$ref` that is not a string, not local, malformed, naming nothing, or naming what is not a schema | 3.7 |
-| A cycle of `$ref` | 3.7 |
+| A cycle of `$ref`; with F17, one with no array, property or map between, or whose name is no type name | 3.7; F17 12.4 |
 | `$id` below the root; `$dynamicRef`; `$recursiveRef` | 3.7 |
 | Records of `anyOf` or `oneOf` that have a tag, until F5 | 3.9 |
 | A schema deeper than 64, or a type deeper than 64 | 3.10 |
@@ -653,7 +655,7 @@ meets these.
 | Null | `\| null` exactly when the binding may present null for the value. |
 | Opaque | A host type the host registered as opaque gives that opaque type's name. It is never guessed. |
 | Unsupported | A host type that no rule of the binding covers is an error when the type is derived: the `declare` error `bad-type`, or an error of the host's own build where the binding derives at build time. |
-| Limits | A derived type deeper than 64 (`05-types.md` 2.5), or of size over 100,000 (`05-types.md` 20.7), is `bad-type`; each host type's derived type is tested, not only the outermost. A host type that contains itself, directly or through others, is `bad-type`: a type cannot refer to itself. |
+| Limits | A derived type deeper than 64 (`05-types.md` 2.5), or of size over 100,000 (`05-types.md` 20.7), is `bad-type`; each host type's derived type is tested, not only the outermost. A host type that contains itself, directly or through others, is `bad-type`: a type cannot refer to itself. With package F17, Go's `TypeOf` gives such a struct a recursive type (`spec/packages/f17-recursion.md` 12.4); the other bindings keep this rule. |
 | No union | No binding derives a tagged union in this package. |
 | Description | A derived type is described by its printed text (5.1), like any other. |
 

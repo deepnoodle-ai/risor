@@ -134,7 +134,10 @@ Let R1, ..., Rn be records, n at least 2.
    alternative.
 4. A union may stand wherever a type stands: as the type of a field, of a rest,
    of the elements of a list, inside another union's variant. There are no
-   recursive types (F4 3.1 item 3).
+   recursive types (F4 3.1 item 3). Package F17 adds them: a variant's field
+   may hold a reference to the union's own recursive type, and a reference is
+   an alternative of a type whose kinds are its definition's
+   (`spec/packages/f17-recursion.md` 12.1, 12.2).
 
 ### 2.3 flat
 

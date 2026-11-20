@@ -247,10 +247,14 @@ These rules apply in every compile, with or without the type rules, in phase
    each use instead.
 6. A type line names only the type lines before it: it cannot name itself or
    a later line. `type Tree = {kids: Tree[]}` is `undefined-name` at the
-   inner `Tree`. Recursive types are step E2 of F17.
+   inner `Tree`. Package F17, step E2, replaces this item: the type lines of a
+   program are resolved as one list, and a line may name itself and any line
+   (`spec/packages/f17-recursion.md` 12.2, 12.3).
 7. **An annotation's type** is resolved the same way, in the type lines before
    the `const` line or the result that holds it. So in `const f = (x: Late)
-   => x; type Late = int; f(1)`, `Late` is `undefined-name`.
+   => x; type Late = int; f(1)`, `Late` is `undefined-name`. This stays with
+   package F17: only a type line's own type may name a later line
+   (`spec/packages/f17-recursion.md` 12.3).
 8. A type name and a value name are in two scopes, and never clash:
    `type Order = {id: string}; const Order = 1; Order` reads the value.
 9. **An `Fn` parameter keeps Core's static rules** until step E3 of F17: it is
@@ -419,6 +423,9 @@ These rows add to F12 2.8.
    The candidates of 3.10 then include the names of the type lines that end
    before the hole. A type line's own name is not one in its own type, unless
    an earlier type line has that name: `type Pair = ‸` does not list `Pair`.
+   Package F17 changes this for a type line's type: every type line of the
+   repaired program is a candidate there, its own name included
+   (`spec/packages/f17-recursion.md` 12.8).
 2. A hole as a type line's name, or as a word of a `PFn`'s parameter, has no
    context.
 3. **The repair** (F12 3.3 item 7). At a place where an `Arg` or a `const`
@@ -455,6 +462,9 @@ This row adds to the table of F12 3.13 item 3:
 1. The type a name stands for at a word is that of the last type line before
    the word with that name, when that line declares it (3.1 item 5); else the
    environment's named type, printed, or its opaque type, printed as its name.
+   With package F17 a name in a type line's type stands for the line 12.2 item
+   1 gives, and a recursive type is printed by its unfolding
+   (`spec/packages/f17-recursion.md` 12.8).
 2. A type line whose name is `name-clash` declares nothing: a hover on its name
    gives the environment's type, with the declaration null.
 3. A name that nothing declares, and a type word such as `int`, has no hover

@@ -127,7 +127,8 @@ change no result for a slot that holds one record.
 | A type with no list and no record alternative, and `any` | 0 |
 | A type with a list or a record alternative | 1 more than the deepest of its element, field and rest types, taken over all its alternatives. |
 
-The limit is 64 (20).
+The limit is 64 (20). Package F17 adds a reference to a recursive type, whose
+depth is 0 (`spec/packages/f17-recursion.md` 12.6).
 
 ## 3. Type text
 
@@ -285,6 +286,10 @@ case's `type` use this text. The printed text reads back as the same type.
 | A list of elements that may be null | `(int \| null)[]` |
 | An open record | `{action: string, ...}` |
 | A record with an optional field and a nullable one | `{note?: string, owner: string \| null}` |
+
+Package F17 adds a reference to a recursive type, printed by its name after the
+opaque names and before `null`: `Tree | null` (`spec/packages/f17-recursion.md`
+12.6).
 
 ## 4. Operations on types
 
@@ -1287,7 +1292,9 @@ The catalog of 30 check codes has two that Core cannot report:
 | `never-conforms` | `x as T` where no value could pass | F4 |
 
 Package F16 adds one more, `name-clash`, in a catalog file of its own
-(`spec/packages/f16-entry-points.md` 9).
+(`spec/packages/f16-entry-points.md` 9). Package F17 adds `circular-type`, and
+the template `pairs` of `check-limit`, in a catalog file of its own
+(`spec/packages/f17-recursion.md` 9).
 
 These uses of Core codes also come only with a follow-on form, and are not in
 Core: `undefined-name` for a type name after `as` or `is`; `check-limit` for a
@@ -1605,7 +1612,10 @@ if` chain, the arms of a `match` and the `const` lines of a block. Along an
 `else` chain the checker carries the false facts of the tests so far and the
 Join of the branches so far. Recursion over types (Join, Fits, Merge, bind,
 printing, the type text parser and the conformance walk) goes no deeper than the
-deeper of its types, so 64 bounds it.
+deeper of its types, so 64 bounds it. With package F17 a recursive type has no
+finite depth: Fits, Equal, Join and disjoint then enter at most 4,096 pairs
+(`check-limit`), and the conformance walk follows the data to the depth limit
+(`spec/packages/f17-recursion.md` 12.5, 12.7).
 
 ### 20.7 Type size
 
@@ -1619,6 +1629,7 @@ expansion doubles at each line. Its size is bounded.
 | `T[]` | 1 plus the size of T |
 | A record | 1, plus the size of each field's type, plus the size of its rest. A rest of `never` counts 0. |
 | A type with several alternatives | The sum of the sizes of its alternatives |
+| A reference to a recursive type (package F17) | 1 (`spec/packages/f17-recursion.md` 12.6) |
 
 The size is that of the type written out by structure, with no sharing. A
 field's mark (required or optional) does not count. **The limit is 100,000.**
@@ -2236,4 +2247,4 @@ Its chapter is the home of its rules.
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
 | F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |
 | F16, entry points, slice D1 | Type lines and their static rules, with `name-clash`. Annotations: what a `const` line's, a parameter's and a result's annotation claim, the fits that test them, which `const`-bound lambdas are checked once where they are written, and the values the library passes to an annotated parameter | `spec/packages/f16-entry-points.md` 3 and 5 |
-| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable. A lambda whose every parameter and result carry a type may refer to its own name: such a reference is not `recursion-needs-types` (22.5), and a call of it has the result type (13.9) | `spec/packages/f17-recursion.md` 4, 5.6, 11.2 and 11.3 |
+| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable. A lambda whose every parameter and result carry a type may refer to its own name: such a reference is not `recursion-needs-types` (22.5), and a call of it has the result type (13.9). Recursive named types: references, their depth, size and printing, Fits, Equal, Join and disjoint over them with a bound of 4,096 pairs, `circular-type` | `spec/packages/f17-recursion.md` 4, 5.6, 11.2, 11.3 and 12 |

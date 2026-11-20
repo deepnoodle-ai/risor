@@ -432,7 +432,9 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
    templates. `messages-check.json` has one entry for each of the 30 check codes
    (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
    and a template in a file of its own (`spec/packages/f16-entry-points.md`
-   9.1).
+   9.1). Package F17 adds the code `circular-type`, with two templates, and
+   the template `pairs` of `check-limit`, in a file of its own
+   (`spec/packages/f17-recursion.md` 9).
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -727,6 +729,7 @@ is the type the checker gives at that place, as named.
 |  | `bodies` | `the program checks more than 1000 lambda bodies` | 05-types.md 20.3 |
 |  | `depth` | `the type here is more than 64 levels deep` | 05-types.md 20.4; a program type (F4 6.1) |
 |  | `size` | `the type here has more than 100000 parts` | 05-types.md 20.7; a program type (F4 6.1) |
+|  | `pairs` | `comparing the types here takes more than 4096 pairs of types` | Package F17, in `suite/messages-recursion.json` (`spec/packages/f17-recursion.md` 12.5) |
 | `duplicate-case` | `default` | `{text} is listed twice in this match` |  |
 | `unreachable-arm` | `default` | `this arm comes after _ and is never chosen` |  |
 | `recursion-needs-types` | `default` | `{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name` |  |
