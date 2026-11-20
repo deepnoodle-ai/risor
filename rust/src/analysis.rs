@@ -12,6 +12,7 @@ use crate::source::{Range, Span};
 use crate::syntax::ast::{EntryKey, NodeId, NodeKind, TemplatePart, UnaryOp};
 use crate::syntax::Expr;
 use crate::template::{Segment, Template, TemplateMode};
+use std::collections::HashMap;
 
 /// A step of a path (3.5). Package F7 adds a star step beside the key.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,6 +82,7 @@ pub(crate) fn analyze(p: &Expr) -> Analysis {
     let mut w = Walker {
         p,
         scopes: Vec::new(),
+        bound: HashMap::new(),
         refs: Vec::new(),
         calls: Vec::new(),
     };
@@ -145,21 +147,9 @@ fn call_site(program: &Expr, c: CallRef) -> CallSite {
             if matches!(program.ast.kind(a), NodeKind::Lambda { .. }) {
                 return None;
             }
-            let mut ast = program.ast.clone();
-            let span = ast.span(a);
-            let root = ast.push(
-                NodeKind::Program {
-                    consts: Vec::new(),
-                    result: a,
-                    types: Vec::new(),
-                },
-                span,
-                0,
-            );
-            ast.root = root;
             Some(Expr {
                 source: program.source.clone(),
-                ast,
+                ast: program.ast.program_of(a),
             })
         })
         .collect();
@@ -197,6 +187,9 @@ enum Task {
 struct Walker<'p> {
     p: &'p Expr,
     scopes: Vec<Vec<String>>,
+    /// For each name, how many of the scopes bind it, so that a name is
+    /// found free in constant time however many names a scope holds.
+    bound: HashMap<String, u32>,
     refs: Vec<Ref>,
     calls: Vec<CallRef>,
 }
@@ -211,7 +204,7 @@ impl<'p> Walker<'p> {
     }
 
     fn free(&self, name: &str) -> bool {
-        !self.scopes.iter().any(|s| s.iter().any(|n| n == name))
+        self.bound.get(name).is_none_or(|&c| c == 0)
     }
 
     fn run(&mut self) {
@@ -220,12 +213,17 @@ impl<'p> Walker<'p> {
             match t {
                 Task::Push => self.scopes.push(Vec::new()),
                 Task::Pop => {
-                    self.scopes.pop();
+                    for n in self.scopes.pop().unwrap_or_default() {
+                        if let Some(c) = self.bound.get_mut(&n) {
+                            *c -= 1;
+                        }
+                    }
                 }
                 Task::Bind(n) => {
                     if self.scopes.is_empty() {
                         self.scopes.push(Vec::new());
                     }
+                    *self.bound.entry(n.clone()).or_insert(0) += 1;
                     self.scopes.last_mut().expect("a scope").push(n);
                 }
                 Task::Pattern(pat, lam) => {
@@ -566,7 +564,10 @@ fn literal(p: &Expr, id: NodeId) -> Option<Json> {
             Json::Arr(out)
         }
         NodeKind::Map { entries } => {
-            let mut out: Vec<(String, Json)> = Vec::new();
+            // Each entry in order, with the place of each key, so that a
+            // key written again is found in constant time.
+            let mut out: Vec<Option<(String, Json)>> = Vec::new();
+            let mut at: HashMap<String, usize> = HashMap::new();
             for &e in entries {
                 let NodeKind::Entry {
                     key,
@@ -584,10 +585,12 @@ fn literal(p: &Expr, id: NodeId) -> Option<Json> {
                 };
                 let v = literal(p, *value)?;
                 // A key written twice takes its later value.
-                out.retain(|(o, _)| *o != k);
-                out.push((k, v));
+                if let Some(i) = at.insert(k.clone(), out.len()) {
+                    out[i] = None;
+                }
+                out.push(Some((k, v)));
             }
-            Json::Obj(out)
+            Json::Obj(out.into_iter().flatten().collect())
         }
         _ => return None,
     })
