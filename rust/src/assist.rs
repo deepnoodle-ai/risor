@@ -229,8 +229,10 @@ fn innermost(toks: &[Token]) -> Option<Tok> {
 }
 
 /// The repair (3.3): tokens inserted at the end until the program is
-/// complete.
+/// complete. *post* is the closers of the interpolations the cut left open,
+/// from `lex_before`, and nothing else.
 fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast> {
+    debug_assert!(post.iter().all(|t| matches!(t.tok, Tok::TmplTail(_))));
     let limit = pre.len();
     let mut ins: Vec<Token> = Vec::new();
     let build = |ins: &[Token]| -> Vec<Token> {
