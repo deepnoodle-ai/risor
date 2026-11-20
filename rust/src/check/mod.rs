@@ -4,8 +4,9 @@
 //! gives every binding a fixed slot. The type rules walk the tree with a type
 //! for each slot, the facts in force, and the sites and diagnostics found.
 //! What opens no level is walked by a loop (20.6): a left-associative chain
-//! of operators, the steps of a chain, the `else` of `? :` and of `if`, and
-//! `const` lines. Recursion follows the source nesting, and through the
+//! of operators, the value of an `as` or `is`, the steps of a chain with its
+//! projections, the `else` of `? :` and of `if`, and `const` lines.
+//! Recursion follows the source nesting, and through the
 //! uses of `const`-bound lambdas, which the limits of 20.2 and 20.3 bound.
 
 pub mod ty;
@@ -928,11 +929,15 @@ impl<'a> Checker<'a> {
         t
     }
 
-    fn synth(&mut self, id: NodeId) -> Ty {
-        // F12 3.12: the first check that reaches the probe.
+    /// F12 3.12: the first check that reaches the probe.
+    fn reach(&mut self, id: NodeId) {
         if self.probe == Some(id) && self.probe_slots.is_none() {
             self.probe_slots = Some(self.slots.clone());
         }
+    }
+
+    fn synth(&mut self, id: NodeId) -> Ty {
+        self.reach(id);
         let t = self.synth_inner(id);
         self.types[id.index()] = t.clone();
         t
@@ -999,7 +1004,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            NodeKind::Binary { .. } => self.binary(id),
+            NodeKind::Binary { .. } | NodeKind::As { .. } => self.spine(id),
             NodeKind::Cond { .. } => self.cond(id),
             // F6 10 item 2: a constant is a `float`.
             NodeKind::Member { .. } if matches!(self.res[id.index()], Res::Constant(_)) => {
@@ -1060,7 +1065,6 @@ impl<'a> Checker<'a> {
                 self.size_check(span, t)
             }
             NodeKind::Spread { value } => self.synth(*value),
-            NodeKind::As { form, x, .. } => self.as_node(id, *form, *x),
             _ => {
                 let _ = span;
                 Ty::never()
@@ -1068,10 +1072,9 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// F4 6.3: the node `As`.
-    fn as_node(&mut self, id: NodeId, form: crate::syntax::ast::AsForm, x: NodeId) -> Ty {
+    /// F4 6.3: the node `As`, given the type `s` of its value.
+    fn as_step(&mut self, id: NodeId, form: crate::syntax::ast::AsForm, s: Ty) -> Ty {
         use crate::syntax::ast::AsForm;
-        let s = self.synth(x);
         let span = self.span(id);
         let Res::As(Some(t)) = &self.res[id.index()] else {
             return if form == AsForm::As {
@@ -1548,12 +1551,31 @@ impl<'a> Checker<'a> {
 
     // ---- operators --------------------------------------------------------------
 
-    fn binary(&mut self, id: NodeId) -> Ty {
+    /// A spine: the left operands of operators and the values of `as` and
+    /// `is`. They open no level (13.1, F4 2.8), so a loop goes down the
+    /// spine and comes back up, and a long one costs no stack.
+    fn spine(&mut self, id: NodeId) -> Ty {
         let mut stack = Vec::new();
         let mut n = id;
-        while let NodeKind::Binary { x, .. } = self.kind(n) {
+        loop {
+            let (x, is_as) = match self.kind(n) {
+                NodeKind::Binary { x, .. } => (*x, false),
+                NodeKind::As { x, .. } => (*x, true),
+                _ => break,
+            };
             stack.push(n);
-            n = *x;
+            // F12 3.12: the probe is a node of the spine where the value of
+            // an `as` or `is` starts, or where an `as` or `is` is a left
+            // operand. Every other node is checked through `synth`.
+            let reached = match self.kind(x) {
+                NodeKind::As { .. } => true,
+                NodeKind::Binary { .. } => is_as,
+                _ => false,
+            };
+            if reached {
+                self.reach(x);
+            }
+            n = x;
         }
         let mut cur = self.synth(n);
         // F14 4.4: N of the left operand, carried along a chain of `??`.
@@ -1562,10 +1584,20 @@ impl<'a> Checker<'a> {
         // `||` so that a long chain costs no more than its length (20.6).
         let mut carried: Option<(Vec<Path>, Vec<Path>)> = None;
         while let Some(b) = stack.pop() {
-            let NodeKind::Binary { op, x, y } = self.kind(b) else {
-                continue;
+            let (op, x, y) = match self.kind(b) {
+                NodeKind::Binary { op, x, y } => (op, *x, *y),
+                NodeKind::As { form, .. } => {
+                    // What a run of `??`, `&&` or `||` carries ends at an
+                    // `as` or `is`: the operator above it reads the facts
+                    // of its left operand anew.
+                    cur = self.as_step(b, *form, cur);
+                    self.types[b.index()] = cur.clone();
+                    nleft.clear();
+                    carried = None;
+                    continue;
+                }
+                _ => continue,
             };
-            let (x, y) = (*x, *y);
             let left = carried.take();
             cur = match op {
                 BinaryOp::And | BinaryOp::Or => {
@@ -2281,9 +2313,10 @@ impl<'a> Checker<'a> {
                 },
                 _ => None,
             };
-            let next_path = match (&path, &key) {
-                (Some(p), Some((k, _))) => {
-                    let mut p = p.clone();
+            // The path grows in place: a copy at each step would make a
+            // long chain cost the square of its length.
+            let next_path = match (path.take(), &key) {
+                (Some(mut p), Some((k, _))) => {
                     p.keys.push(k.clone());
                     Some(p)
                 }

@@ -19,6 +19,9 @@ type Options struct {
 	LimitShare int
 	// NoCheckShare is the share of cases, in percent, with "check": false.
 	NoCheckShare int
+	// FlatShare is the share of cases, in percent, whose result is wrapped in
+	// a long flat chain (flat.go). Zero means 2. A negative value means none.
+	FlatShare int
 	// NoRemoved leaves out the case field removed.
 	NoRemoved bool
 	// NoF6 leaves out the opt-in groups of package F6; NoF7 the
@@ -146,6 +149,13 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 		// (f05-unions.md 6).
 		c.Returns = "Shape"
 		c.Prog.Result = g.unionLiteral(g.named["Shape"], 2)
+	}
+	flat := opts.FlatShare
+	if flat == 0 {
+		flat = 2
+	}
+	if c.Returns == "" && r.IntN(100) < flat {
+		c.Prog.Result = g.flatChain(c.Prog.Result)
 	}
 	if mode == Mangled {
 		c.Source = g.mangle(ast.Print(c.Prog))

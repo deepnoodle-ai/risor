@@ -1283,6 +1283,10 @@ Nothing else opens a level. In particular these do not:
    100,000 terms, a chain of 100,000 calls, a `? :` with 100,000 `else`
    branches, an `if` with 100,000 `else if` parts and a block of 100,000 `const`
    lines each parse, and each runs within the limits of `02-evaluation.md`.
+   This binds every part of an implementation that reads a program: the
+   parser, the static rules, the checker, the evaluator, analysis, the
+   formatter, completion and hover. None of them fails, or ends the host's
+   process, because of the length of such a form.
 
 | Text | Levels open at `x` |
 | --- | --- |

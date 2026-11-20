@@ -150,6 +150,14 @@ A share of cases gets a small step, unit or depth limit. At most one of the step
 limit and the unit limit is small in one case, so that a finding points at one
 count.
 
+About one case in fifty has its result wrapped in a long flat chain: 1,000 to
+20,000 links that open no level of nesting, so their length must cost an
+implementation no stack (`spec/core/01-language.md` 13.2 item 6). The links
+are calls of `map`, each on the chain before it or on a projection `[*]` of
+it, and then a run of `as any`; or `as any` alone. An implementation that
+overflows its stack on one gives no outcome, which is a finding. `-flat P`
+sets the share.
+
 ## Running it
 
 From this directory:
@@ -175,6 +183,7 @@ The status is 1 when there was any finding, else 0.
 | `-typed`, `-loose`, `-mangled` | The weight of each mode: 5, 3 and 2 by default |
 | `-limits P` | The percent of cases with a small limit, 25 by default; -1 for none |
 | `-nocheck P` | The percent of cases with `"check": false`, 20 by default; -1 for none |
+| `-flat P` | The percent of cases whose result is wrapped in a long flat chain, 2 by default; -1 for none |
 | `-sound` | The soundness mode (below). `-cases` is then programs a round |
 | `-nof3` | Leave out the string forms of package F3 |
 | `-nof4` | Leave out the forms of packages F4 and F5 |

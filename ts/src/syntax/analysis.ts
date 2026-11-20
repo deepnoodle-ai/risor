@@ -153,14 +153,14 @@ class Walker {
           e = e.x;
           continue;
         case "As":
-          // Package F4: the subject; the program type names no value.
-          e = e.x;
-          continue;
         case "Binary": {
+          // The left spine of binary operators, `as` and `is`, by a loop: the
+          // left operand of each opens no level (01 13.1, f04 2.8). Package F4:
+          // `as` and `is` give their subject only; the program type names no value.
           const spine: A.Binary[] = [];
           let x: A.Expr = e;
-          while (x.kind === "Binary") {
-            spine.push(x);
+          while (x.kind === "Binary" || x.kind === "As") {
+            if (x.kind === "Binary") spine.push(x);
             x = x.x;
           }
           this.expr(x);
@@ -216,10 +216,10 @@ class Walker {
     let x: A.Expr = e.kind === "OptChain" ? e.x : e;
     let cut = false;
     // A projection's steps in order: its star, then its reads, a later star with its own (f07 9.1).
-    const projection = (p: A.Each): Step[] => {
-      const out: Step[] = [{ kind: "Star", span: p.starSpan }];
+    const projection = (p: A.Each, out: Step[]): Step[] => {
+      out.push({ kind: "Star", span: p.starSpan });
       for (const r of p.reads) {
-        if (r.kind === "Each") out.push(...projection(r));
+        if (r.kind === "Each") projection(r, out);
         else out.push(r);
       }
       return out;
@@ -229,7 +229,8 @@ class Walker {
         steps.push(x);
         x = x.x;
       } else if (x.kind === "Each" && x.x !== null) {
-        steps.push(...projection(x).reverse());
+        const reads = projection(x, []);
+        for (let i = reads.length - 1; i >= 0; i--) steps.push(reads[i]);
         x = x.x;
       } else break;
       if (x.parens) {

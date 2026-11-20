@@ -516,11 +516,13 @@ class Parser {
       }
       const b = this.binary();
       if (this.isP(this.cur, "?")) {
+        // The place of the `?` is kept: a search for it in each conditional of a long run costs the square of the run.
+        const qAt = this.i;
         const q = this.advance();
         this.open(q);
         const then = this.expr();
         // f08 2.7 E21: a `?` directly followed by `[` is an optional index written without the dot.
-        const afterQ = this.toks[this.toks.indexOf(q) + 1];
+        const afterQ = this.toks[qAt + 1];
         if (!this.isP(this.cur, ":") && afterQ !== undefined && this.isP(afterQ, "[") && !afterQ.gap && afterQ.start === q.end) {
           this.earlier(this.cur, 21);
           this.fail("optional-index", q);
