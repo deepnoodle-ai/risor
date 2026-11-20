@@ -1082,7 +1082,10 @@ below. A reference of the lambda to its own name, in its body or in a default
 of its parameters (`01-language.md` 5 rule 6), is no use either: it is
 `recursion-needs-types` (22.5). A call there has type `never`, its plain
 arguments are synthesized, and nothing is checked at a lambda argument there.
-Such a reference counts against no limit of 20.
+Such a reference counts against no limit of 20. With package F17, a reference
+of a lambda whose every parameter and result carry a type is a use of a lambda
+checked once: a call there has the result type, and its arguments are fitted
+to the parameters (`spec/packages/f17-recursion.md` 11.3).
 
 | Use | Rule |
 | --- | --- |
@@ -1264,7 +1267,7 @@ the type rules only.
 | `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep (20.4); for a type over the size limit, the node of the table of 20.7: the expression, the call, or for a name bound by a pattern with a default, the value bound | | `never` |
 | `duplicate-case` | A `match` literal equal to an earlier one (22.8) | The later literal | | The literal is ignored. |
 | `unreachable-arm` | An arm after `_` (22.8) | The arm | | The arm is checked and joined. |
-| `recursion-needs-types` | A `const`-bound lambda refers to its own name in its body or its defaults (22.5) | Its first such reference: the name of the `Call`, or the `Ident` | | `never` for a `Call`. Plain arguments are synthesized; a lambda argument there is not checked. |
+| `recursion-needs-types` | A `const`-bound lambda refers to its own name in its body or its defaults (22.5); with F17, one whose parameters and result do not all carry a type (`spec/packages/f17-recursion.md` 11.2) | Its first such reference: the name of the `Call`, or the `Ident` | | `never` for a `Call`. Plain arguments are synthesized; a lambda argument there is not checked. |
 | `non-exhaustive` | A `match` without `_` that does not cover its subject (11.2) | The whole `Match` | | The Join of the arms |
 | `result-mismatch` | The result does not fit the expected type (15) | Each place of failure (15.1) | | Unchanged |
 | `unchecked` | A `dynamic` site, when the class `dynamic` is rejected | The site | `dynamic` | `never` for the node on which the site is recorded |
@@ -2074,7 +2077,7 @@ is not one: it is `not-a-value` (22.4).
 | --- | --- |
 | The diagnostic | `recursion-needs-types`, once for each L that has a reference, on the reference with the least start position: the name of the `Call`, or the `Ident` |
 | Other tests | Unchanged. A `Call` of L inside L is tested for its count and its lambda arguments by the tables above, and a lambda argument naming L inside L is tested as any lambda argument |
-| Typed or not | Every reference is this error, whatever L's parameters carry. Package F17, step E1, is to accept a reference of a lambda whose parameters and result are all annotated (`spec/packages/f16-entry-points.md` 3.1) |
+| Typed or not | In Core every reference is this error. Package F17 accepts a reference of a lambda whose every parameter and result carry a type: such a reference is not this error, and every other rule of this section tests it as above (`spec/packages/f17-recursion.md` 11.2) |
 
 So `const f = n => f(n - 1); f(3)` is `recursion-needs-types` on the second
 `f`, and `const f = xs => xs.map(f); 1` on the `f` given to `map`.
@@ -2233,4 +2236,4 @@ Its chapter is the home of its rules.
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
 | F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |
 | F16, entry points, slice D1 | Type lines and their static rules, with `name-clash`. Annotations: what a `const` line's, a parameter's and a result's annotation claim, the fits that test them, which `const`-bound lambdas are checked once where they are written, and the values the library passes to an annotated parameter | `spec/packages/f16-entry-points.md` 3 and 5 |
-| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable | `spec/packages/f17-recursion.md` 4 and 5.6 |
+| F17, recursion and guards | A guard of a `match` arm: a tested position, its facts, the coverage of a guarded arm, and `duplicate-case` and `unreachable-arm` beside it. The signature of `walk`, and the seed rule of 13.5 step 3a for a result that is not its type variable. A lambda whose every parameter and result carry a type may refer to its own name: such a reference is not `recursion-needs-types` (22.5), and a call of it has the result type (13.9) | `spec/packages/f17-recursion.md` 4, 5.6, 11.2 and 11.3 |

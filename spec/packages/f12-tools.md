@@ -669,7 +669,10 @@ The candidates of the names context are, in this order:
    pattern's name in the defaults to its right, the name of `catch` in its
    handler. A `const` name is not in scope in its own value, but for the name
    of a `const`-bound lambda, which is in scope in its body and defaults
-   (`01-language.md` 5 rule 6).
+   (`01-language.md` 5 rule 6). That name is a name of the scope that holds
+   its `const` line, and is listed there at its place in the order bound, not
+   in a scope of its own: in `const a = 1; const f = n => ‸` the order is
+   `n`, `a`, `f`.
 2. Each name once, at its innermost binding. `_` binds nothing.
 3. A const-bound lambda has the kind `lambda`; every other name bound in the
    program has the kind `name`.
@@ -819,6 +822,11 @@ When the hole is a string literal, the candidates are string values, kind
    description (F1 5.3) carries one, so their `doc` is null. A later minor
    version may add a field for it; a binding does not invent one.
 6. Any other word, a keyword or a type word among them, has no hover.
+7. **A call of a lambda by its own name** (F17) is the name of a `Call` of a
+   const-bound lambda. Its type is that of the `Call`: the result type for a
+   lambda whose every parameter and result carry a type
+   (`spec/packages/f17-recursion.md` 11.3), and `never` for any other
+   (`05-types.md` 13.9).
 
 ## 4. The command-line program
 

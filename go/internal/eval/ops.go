@@ -237,23 +237,23 @@ func (c *compiler) binaryGeneral(n *syntax.Binary) code {
 	if len(steps) == 1 && steps[0].logic == 0 {
 		fn, y, sp := steps[0].fn, steps[0].y, steps[0].span
 		// A name or a literal operand is read in place, without a call.
-		xs, xSlot := c.valueSlot(x)
-		ys, ySlot := c.valueSlot(spine[0].Y)
+		xs, xSlot := c.valuePlace(x)
+		ys, ySlot := c.valuePlace(spine[0].Y)
 		k := steps[0].k
 		switch {
 		case xSlot && k != nil:
-			return func(r *run) any { return fn(r, r.slots[xs], k, sp) }
+			return func(r *run) any { return fn(r, r.get(xs), k, sp) }
 		case xSlot && ySlot:
-			return func(r *run) any { return fn(r, r.slots[xs], r.slots[ys], sp) }
+			return func(r *run) any { return fn(r, r.get(xs), r.get(ys), sp) }
 		case xSlot:
 			return func(r *run) any {
-				a := r.slots[xs]
+				a := r.get(xs)
 				return fn(r, a, y(r), sp)
 			}
 		case k != nil:
 			return func(r *run) any { return fn(r, base(r), k, sp) }
 		case ySlot:
-			return func(r *run) any { return fn(r, base(r), r.slots[ys], sp) }
+			return func(r *run) any { return fn(r, base(r), r.get(ys), sp) }
 		}
 		return func(r *run) any {
 			a := base(r)

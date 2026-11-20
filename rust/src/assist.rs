@@ -468,6 +468,21 @@ impl<'a> Tree<'a> {
                 NodeKind::Program { consts, .. } | NodeKind::Block { consts, .. } => {
                     for &k in consts {
                         if k == c {
+                            // F16 7.2 item 5, F12 3.6 item 1 (R255): in its
+                            // body and defaults, the name of a `const`-bound
+                            // lambda is a name of this scope, after the names
+                            // bound before its line.
+                            if let NodeKind::Const { pattern, value, .. } = self.kind(k) {
+                                if let (
+                                    NodeKind::NamePat { name: Some(n) },
+                                    NodeKind::Lambda { .. },
+                                ) = (self.kind(*pattern), self.kind(*value))
+                                {
+                                    if path.contains(value) {
+                                        names.push((n.clone(), None, true));
+                                    }
+                                }
+                            }
                             break;
                         }
                         if let NodeKind::Const { pattern, value, .. } = self.kind(k) {
@@ -477,15 +492,6 @@ impl<'a> Tree<'a> {
                                 names.push((n, s, lambda));
                             }
                         }
-                    }
-                }
-                // F16 7.2 item 5: the name of a `const`-bound lambda is in
-                // scope in its body and defaults.
-                NodeKind::Const { pattern, value, .. }
-                    if *value == c && matches!(self.kind(c), NodeKind::Lambda { .. }) =>
-                {
-                    if let NodeKind::NamePat { name: Some(n) } = self.kind(*pattern) {
-                        names.push((n.clone(), None, true));
                     }
                 }
                 NodeKind::Lambda { params, body, .. } => {

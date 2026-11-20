@@ -7,8 +7,8 @@ package risor_test
 //
 // The programs are those of the spike written in v3. Two differ from the
 // spike's text: v3 has no coalesce function, so "coalesce" uses ??; and
-// "any" uses some. fib_22 is left out: a const-bound lambda cannot call
-// itself in v3 (01-language.md 5 rule 6).
+// "any" uses some. fib_22 is a typed lambda that calls itself
+// (spec/packages/f17-recursion.md 11).
 
 import (
 	"context"
@@ -38,6 +38,7 @@ var heavyCases = []benchCase{
 	{"nested_100x100", `rows.map(r => r.vals.filter(v => v > r.min).map(v => v * r.scale))`},
 	{"reduce_10k", `nums.reduce((a, x) => a + x * x, 0)`},
 	{"let_chain", "const a = gate.failed + gate.passed;\nconst b = a * 2;\nconst c = b - gate.failed;\nif (c > a) { c - a } else { a - c }"},
+	{"fib_22", "const fib = (n: int): int => n < 2 ? n : fib(n - 1) + fib(n - 2);\nfib(22)"},
 }
 
 // workflowData is the scope of experiments/v3/bench env(0).

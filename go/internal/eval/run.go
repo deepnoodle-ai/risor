@@ -1,9 +1,9 @@
 // Package eval compiles a checked syntax tree to Go closures and runs it, by
 // spec/core/02-evaluation.md. There is no bytecode and no virtual machine.
 //
-// Every name has one fixed slot for the whole run (02-evaluation.md 11.1), so
-// a run is a slice of slots and a set of counters. A failure is raised as a
-// Go panic of *failure and recovered by a try or by Run.
+// Each call of a lambda has its own frame of names (frames.go), so a run is
+// a stack of frames and a set of counters. A failure is raised as a Go
+// panic of *failure and recovered by a try or by Run.
 package eval
 
 import (
@@ -219,10 +219,16 @@ func (f *failure) class() string {
 
 // run is the state of one run.
 type run struct {
-	prog    *Program
-	ctx     context.Context
-	vars    Vars
-	slots   []any
+	prog *Program
+	ctx  context.Context
+	vars Vars
+	// vals holds the values of every frame, as a stack; frames holds where
+	// each frame starts and its link up. fp is the current frame, and base
+	// its first value (frames.go).
+	vals    []any
+	frames  []frameRec
+	fp      int
+	base    int
 	varVals []any
 	varSeen []bool
 

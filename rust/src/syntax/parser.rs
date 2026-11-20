@@ -2193,11 +2193,19 @@ impl<'a> Parser<'a> {
         Err(self.tag(e, Rule::Key))
     }
 
-    /// 14.2 rule 1: a reserved word followed by `=>`, where an argument or
-    /// the value of a `const` may stand, is a parameter.
+    /// A reserved word followed by `=>`, where an argument or the value of a
+    /// `const` may stand. Only a `Name` or `_` before `=>` begins a lambda
+    /// (3.2 rule 5), so the place holds an `Expr`. A word that begins one
+    /// (14.2 rule 2: `true`, `false`, `null` and `match` an operand, `if` and
+    /// `try` an `Expr`) is read as that, and fails later, at the `=>` or
+    /// where its form does. Any other is `reserved-word` at the word.
     fn reserved_param(&self) -> R<()> {
+        const BEGINS_EXPR: [&str; 6] = ["true", "false", "null", "match", "if", "try"];
         let t = self.peek();
-        if t.word().is_some_and(is_reserved) && self.peek_n(1).is_punct(P::Arrow) {
+        if t.word()
+            .is_some_and(|w| is_reserved(w) && !BEGINS_EXPR.contains(&w))
+            && self.peek_n(1).is_punct(P::Arrow)
+        {
             return Err(self.reserved(t, Rule::Name));
         }
         Ok(())
@@ -2373,7 +2381,8 @@ impl<'a> Parser<'a> {
             _ => {}
         }
         // 3.4 rule 4: after the last branch of an `if` or the handler of a
-        // `try`, an operator or a step.
+        // `try`, an operator or a step. F8 2.6 item 3 (R256): `not` is an
+        // operator only when `in` follows it.
         if ti == self.if_end {
             let step = matches!(
                 t.tok,
@@ -2400,7 +2409,8 @@ impl<'a> Parser<'a> {
                         | P::Question
                         | P::LParen
                 )
-            ) || matches!(t.word(), Some("in" | "not" | "as" | "is"));
+            ) || matches!(t.word(), Some("in" | "as" | "is"))
+                || (t.is_word("not") && next.is_some_and(|n| n.is_word("in")));
             if step {
                 return at("needs-parentheses", "after-branch");
             }
@@ -2428,7 +2438,13 @@ impl<'a> Parser<'a> {
         if t.is_punct(P::Comma) && enclosing.is_some_and(|o| self.mark[o] == MARK_IF_TEST) {
             return at("if-form", "call");
         }
+        // E6. F8 2.7 item 8 (R257): a word after `.` or `?.` is a field's
+        // name, never the word of a form.
+        let field = |j: usize| {
+            j >= 1 && (self.t[j - 1].is_punct(P::Dot) || self.t[j - 1].is_punct(P::QDot))
+        };
         if prev(1).is_some_and(|p| p.is_word("try"))
+            && !field(ti - 1)
             && !t.is_punct(P::LBrace)
             && !t.is_punct(P::LParen)
         {
@@ -2480,8 +2496,7 @@ impl<'a> Parser<'a> {
                 let named = o >= 1
                     && self.t[o].is_punct(P::LParen)
                     && self.t[o - 1].is_word("switch")
-                    && !(o >= 2
-                        && (self.t[o - 2].is_punct(P::Dot) || self.t[o - 2].is_punct(P::QDot)));
+                    && !field(o - 1);
                 if named {
                     return at_span("switch-statement", self.t[o - 1].span);
                 }

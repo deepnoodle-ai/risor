@@ -32,6 +32,9 @@ type Options struct {
 	NoF17 bool
 	// NoF16 leaves out the type lines and annotations of package F16.
 	NoF16 bool
+	// NoE1 leaves out the typed recursive lambdas of package F17, step E1.
+	// NoF16 leaves them out too: a lambda is typed by F16's annotations.
+	NoE1 bool
 	// Exclude names library entries not to call, by name.
 	Exclude map[string]bool
 }
@@ -79,6 +82,7 @@ type Gen struct {
 	sound   bool // the soundness mode: use the variables more, divide by them
 	f17     bool // the program has a form of package F17
 	f16     bool // the program has a form of package F16
+	e1      bool // the program has a typed recursive lambda (F17, step E1)
 	types   []ast.TypeLine
 
 	// Packages F4 and F5.
@@ -144,6 +148,7 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 	}
 	c.F17 = g.f17
 	c.F16 = g.f16
+	c.E1 = g.e1
 	c.NoCheck = r.IntN(100) < opts.NoCheckShare
 	share := opts.LimitShare
 	if share == 0 {
@@ -415,6 +420,11 @@ func (g *Gen) consts(n, d int) []*ast.Const {
 
 func (g *Gen) constLine(d int) *ast.Const {
 	r := g.r
+	if !g.opts.NoE1 && g.annotChance(14) {
+		if k := g.selfRecConst(d); k != nil {
+			return k
+		}
+	}
 	switch x := r.IntN(20); {
 	case x < 5:
 		return g.lambdaConst(d)

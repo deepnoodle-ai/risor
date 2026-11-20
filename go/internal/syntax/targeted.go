@@ -76,6 +76,16 @@ func operandEnd(t Token) bool {
 	return false
 }
 
+// operandEndAt reports whether the token at i ends an operand. A word after
+// a `.` or a `?.` is a field name, whatever the word: `a.if` is an operand.
+func (p *parser) operandEndAt(i int) bool {
+	t := p.toks[i]
+	if operandEnd(t) {
+		return true
+	}
+	return t.Kind == Word && i > 0 && (p.toks[i-1].Kind == Dot || p.toks[i-1].Kind == OptDot)
+}
+
 // target maps a parser's diagnostic by the rows of 2.4 to 2.8, in order.
 func (p *parser) target(e *Error) *Error {
 	e.keepCore()
@@ -279,7 +289,7 @@ func (p *parser) targetToken(e *Error) *Error {
 	case "F4.2.5":
 		return set("needs-parentheses", "not-test")
 	}
-	if e.Rule == "" && j > 0 && p.marked(j-1, mBranchEnd) && continuesOperand(t, next) { // 3.4 rule 4
+	if (e.Rule == "" || e.Rule == "cond") && j > 0 && p.marked(j-1, mBranchEnd) && continuesOperand(t, next) { // 3.4 rule 4
 		return set("needs-parentheses", "after-branch")
 	}
 	// 2.7: other text, in order.
@@ -296,7 +306,7 @@ func (p *parser) targetToken(e *Error) *Error {
 		return set("if-form", "call")
 	case e.Rule == "E6":
 		return set("try-form", "")
-	case t.Kind == Assign && j > 0 && operandEnd(prev) && e.Rule != "arm" && !p.marked(j-1, mAnnEnd) && (p.inExpr() || p.marked(j-1, mDefaultEnd)) && !p.entryKey(j-1):
+	case t.Kind == Assign && j > 0 && p.operandEndAt(j-1) && e.Rule != "arm" && !p.marked(j-1, mAnnEnd) && (p.inExpr() || p.marked(j-1, mDefaultEnd)) && !p.entryKey(j-1):
 		return set("assignment", "assign")
 	case e.Rule == "E8":
 		return set("slice-syntax", "")
@@ -387,7 +397,7 @@ func (p *parser) targetToken(e *Error) *Error {
 			return set("needs-parentheses", "after-type")
 		}
 	}
-	if t.Kind == Bang && j > 0 && operandEnd(prev) && next.isWord("is") {
+	if t.Kind == Bang && j > 0 && p.operandEndAt(j-1) && next.isWord("is") {
 		return set("negated-is", "")
 	}
 	return e

@@ -1,10 +1,10 @@
 //! Compile: name resolution and the static rules (`05-types.md` 22).
 //!
 //! One walk over the tree resolves every name and every call, gives every
-//! binding a fixed slot (`02-evaluation.md` 11.1: no lambda is entered while
-//! an earlier call of it is in progress, so each binding may have one fixed
-//! place for the whole run), computes the depth measure of each call (8.4),
-//! and reports the static diagnostics.
+//! binding a slot and the place a run keeps it in (a frame for each call,
+//! F17 11.5: a typed lambda may call itself, so a binding has no fixed place
+//! for the whole run), computes the depth measure of each call (8.4), and
+//! reports the static diagnostics.
 //!
 //! What opens no level is walked by a loop, so the walk's recursion is
 //! bounded by the source nesting.
@@ -79,7 +79,12 @@ pub struct Program {
     /// For each `Call` and `MethodCall`: 1 plus its nesting depth within the
     /// body that holds it (8.4).
     pub(crate) measure: Vec<u16>,
-    pub(crate) slots: usize,
+    /// Where a run keeps each slot (F17 11.5).
+    pub(crate) place: Vec<Place>,
+    /// The frame of each lambda, by node; the program's, at the root.
+    pub(crate) frames: Vec<Frame>,
+    /// The depth of the deepest frame.
+    pub(crate) max_depth: usize,
     /// For a program compiled with a check: its sites, which decide the
     /// class of a run failure (`05-types.md` 18.5).
     pub(crate) sites: Option<Vec<crate::check::Site>>,
@@ -158,8 +163,9 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         }
     }
     let coalesced = parsed.ast.coalesced_reads();
-    let code = crate::eval::code::build(&parsed.ast, &r.res, &var_index, &coalesced);
-    let params = crate::eval::code::params(&parsed.ast, &r.res);
+    let code = crate::eval::code::build(&parsed.ast, &r.res, &r.place, &var_index, &coalesced);
+    let params = crate::eval::code::params(&parsed.ast, &r.res, &r.place);
+    let max_depth = r.frames.iter().map(|f| f.depth as usize).max().unwrap_or(0);
     Ok(Program {
         env: env.clone(),
         code,
@@ -170,19 +176,43 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         parsed,
         res: r.res,
         measure: r.measure,
-        slots: r.slots,
+        place: r.place,
+        frames: r.frames,
+        max_depth,
         sites: None,
         ty: None,
     })
 }
 
+/// Where a run keeps a slot (F17 11.5): in the frame of depth `depth` on the
+/// chain of the code that reads it, at index `index`. The program's frame
+/// has depth 0, and a lambda's frame is one deeper than the frame of the
+/// code in which the lambda is written.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Place {
+    pub depth: u16,
+    pub index: u32,
+}
+
+/// A frame: its depth, and the number of slots it holds.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Frame {
+    pub depth: u16,
+    pub size: u32,
+}
+
 /// What resolution found: each node's resolution, each call's depth
-/// measure, the number of slots, and the static diagnostics in the order of
-/// 22.10.
+/// measure, where each slot is kept, and the static diagnostics in the order
+/// of 22.10.
 pub struct Resolution {
     pub res: Vec<Res>,
     pub measure: Vec<u16>,
-    pub slots: usize,
+    /// Where a run keeps each slot (F17 11.5): the frame's depth and the
+    /// slot's index in it.
+    pub place: Vec<Place>,
+    /// The frame of each node that is a lambda; for the root, the program's
+    /// frame.
+    pub frames: Vec<Frame>,
     pub diags: Vec<Diagnostic>,
     /// F16: each annotation's program type, by the start of its span:
     /// resolved, or `None` when a static rule refused it (3.3 item 2).
@@ -214,6 +244,9 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         self_refs: HashMap::new(),
         annots: HashMap::new(),
         type_refs: Vec::new(),
+        open: vec![0],
+        place: Vec::new(),
+        frames: vec![Frame::default(); n],
     };
     let root = parsed.ast.root;
     if let NodeKind::Program {
@@ -246,10 +279,17 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
     }
     let mut d = std::mem::take(&mut r.diags);
     sort_diagnostics(&mut d);
+    if let Some(f) = r.frames.get_mut(root.index()) {
+        *f = Frame {
+            depth: 0,
+            size: r.open[0],
+        };
+    }
     Resolution {
         res: r.res,
         measure: r.measure,
-        slots: r.slots as usize,
+        place: r.place,
+        frames: r.frames,
         diags: d,
         annots: r.annots,
         type_refs: r.type_refs,
@@ -288,6 +328,27 @@ struct Resolver<'a> {
     self_refs: HashMap<u32, (Range, String)>,
     annots: HashMap<u32, Option<Ty>>,
     type_refs: Vec<TypeRef>,
+    /// The frames the walk is in, the program's first: the slots each holds
+    /// so far (F17 11.5).
+    open: Vec<u32>,
+    place: Vec<Place>,
+    frames: Vec<Frame>,
+}
+
+/// F17 11.1: a lambda is typed when it has a result annotation and every
+/// parameter has an annotation, of a program type or a function type. It is
+/// read from the text alone.
+pub(crate) fn is_typed(ast: &crate::syntax::ast::Ast, l: NodeId) -> bool {
+    let NodeKind::Lambda { params, result, .. } = ast.kind(l) else {
+        return false;
+    };
+    result.is_some()
+        && params.iter().all(|p| {
+            matches!(
+                ast.kind(*p),
+                NodeKind::Param { ty: Some(_), .. } | NodeKind::Param { fn_: Some(_), .. }
+            )
+        })
 }
 
 /// The counts of a callee (22.3): required, at most, and for each argument
@@ -506,6 +567,13 @@ impl Resolver<'_> {
         }
     }
 
+    /// Whether a reference of lambda `l` stands in its own text and is
+    /// `recursion-needs-types` (22.5). F17 11.2: a self-reference of a typed
+    /// lambda is not; it is a reference as any other.
+    fn is_self_ref(&self, l: NodeId) -> bool {
+        self.walking.contains(&l) && !is_typed(&self.p.ast, l)
+    }
+
     /// A reference of a lambda to its own name (22.5): the first is kept.
     fn self_ref(&mut self, l: NodeId, span: Range, name: &str) {
         let e = self
@@ -563,6 +631,12 @@ impl Resolver<'_> {
             None => {
                 let s = self.slots;
                 self.slots += 1;
+                let depth = self.open.len() - 1;
+                self.place.push(Place {
+                    depth: depth as u16,
+                    index: self.open[depth],
+                });
+                self.open[depth] += 1;
                 (Bind::Slot(s), Some(s))
             }
         };
@@ -737,6 +811,9 @@ impl Resolver<'_> {
                 } => {
                     self.lambda_levels.push(self.p.ast.node(id).level);
                     self.scopes.push(HashMap::new());
+                    // F17 11.5: each call of the lambda has its own frame,
+                    // for its parameters and every name its body binds.
+                    self.open.push(0);
                     for p in params {
                         if let NodeKind::Param {
                             pattern,
@@ -766,6 +843,11 @@ impl Resolver<'_> {
                         self.annotation(r);
                     }
                     self.walk(body);
+                    let size = self.open.pop().unwrap_or(0);
+                    self.frames[id.index()] = Frame {
+                        depth: self.open.len() as u16,
+                        size,
+                    };
                     self.scopes.pop();
                     self.lambda_levels.pop();
                     return;
@@ -940,7 +1022,7 @@ impl Resolver<'_> {
         for &a in args {
             match self.kind(a).clone() {
                 NodeKind::Ident { name } => match self.lambda_arg(a) {
-                    Some(l) if self.walking.contains(&l) => {
+                    Some(l) if self.is_self_ref(l) => {
                         let span = self.span(a);
                         self.self_ref(l, span, &name);
                         self.res[a.index()] = Res::SelfRef(l);
@@ -1070,7 +1152,7 @@ impl Resolver<'_> {
         self.res[id.index()] = match callee {
             Callee::Unknown => Res::None,
             // 22.5: a call of the lambda inside its own text.
-            Callee::Lambda(l) if self.walking.contains(&l) => {
+            Callee::Lambda(l) if self.is_self_ref(l) => {
                 self.self_ref(l, name_span, name);
                 Res::SelfRef(l)
             }

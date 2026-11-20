@@ -93,6 +93,27 @@ export interface Resolution {
   annTypes: Map<A.TypeAnn, Type | null>;
   /** Package F16: the type lines that declare their names (f16 3.1 item 5), with the types they declare. */
   typeLines: Map<A.TypeLine, Type>;
+  /**
+   * Each call binds its own names (f17 11.5). Where each slot lives: the
+   * number of lambdas around the scope that binds it (0: the program, whose
+   * one frame is the run's slots), and for a slot in a lambda, its index in
+   * that lambda's frame (index 0 is the frame's link).
+   */
+  slotDepth: number[];
+  slotIndex: number[];
+  /** The size of each lambda's frame, its link included. */
+  frameSize: Map<A.Lambda, number>;
+  /** The number of lambdas around each lambda: the depth of the frame its link points to. */
+  lambdaDepth: Map<A.Lambda, number>;
+}
+
+/**
+ * f17 11.1: a typed lambda has a result annotation, and every parameter has an
+ * annotation, of a program type or of a function type. Read from the text
+ * alone, whatever the types resolve to.
+ */
+export function typedLambda(l: A.Lambda): boolean {
+  return l.result !== null && l.params.every((p) => p.type !== null || p.fn !== null);
 }
 
 type Binding = { k: "value"; slot: number } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts };
@@ -148,7 +169,13 @@ class Walker {
     recursive: new Set(),
     annTypes: new Map(),
     typeLines: new Map(),
+    slotDepth: [],
+    slotIndex: [],
+    frameSize: new Map(),
+    lambdaDepth: new Map(),
   };
+  /** The next free index of the frame of each lambda whose text the walk is in, innermost last (f17 11.5). */
+  private readonly frames: number[] = [];
   /** The const-bound lambdas whose text the walk is in, by id (05 22.5). */
   private readonly walking = new Set<number>();
   /** For each const-bound lambda, its reference to its own name with the least start (05 22.5). */
@@ -205,6 +232,10 @@ class Walker {
     if (scope.has(name)) this.diag("duplicate-name", span, "default", { name });
     if (b === undefined) {
       const slot = this.res.slotCount++;
+      // f17 11.5: a name of the program in the run's slots, a name in a lambda in that lambda's frame.
+      const depth = this.frames.length;
+      this.res.slotDepth[slot] = depth;
+      this.res.slotIndex[slot] = depth === 0 ? slot : this.frames[depth - 1]++;
       scope.set(name, { k: "value", slot });
       return slot;
     }
@@ -288,9 +319,12 @@ class Walker {
     this.pattern(c.pattern);
   }
 
-  /** A reference of a const-bound lambda to its own name (05 22.5): kept when it has the least start. */
+  /**
+   * A reference of a const-bound lambda to its own name (05 22.5): kept when it has the least start.
+   * Package F17 (f17 11.2): a typed lambda's is no error, and is a use as any other (11.3).
+   */
   private selfRef(id: number, node: A.Call | A.Ident, span: Span): void {
-    if (!this.walking.has(id)) return;
+    if (!this.walking.has(id) || typedLambda(this.res.lambdas[id])) return;
     this.res.recursive.add(node);
     const r = this.selfRefs.get(id);
     if (r === undefined || span.start < r.start) this.selfRefs.set(id, span);
@@ -329,6 +363,8 @@ class Walker {
   }
 
   private lambda(l: A.Lambda): void {
+    this.res.lambdaDepth.set(l, this.frames.length);
+    this.frames.push(1);
     this.push();
     for (const p of l.params) {
       if (p.default !== null) this.expr(p.default);
@@ -343,6 +379,7 @@ class Walker {
     if (l.result !== null) this.annotation(l.result);
     this.expr(l.body);
     this.pop();
+    this.res.frameSize.set(l, this.frames.pop()!);
   }
 
   /** A block, a branch, a try body: a new scope. */

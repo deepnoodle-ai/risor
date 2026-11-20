@@ -3285,5 +3285,138 @@
     }
    ]
   }
+ },
+ {
+  "name": "assignment: a field named by a reserved word is a complete operand",
+  "source": "a.if = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: the same after ?.",
+  "source": "a?.else = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: a field named try is not the word of a try",
+  "source": "a.try = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: the same in a map's value at the end of the text",
+  "source": "{\"\": \"\".if =",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      12,
+      1,
+      13
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "negated-is: after a field named by a reserved word",
+  "source": "a.if !is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "negated-is",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "is has no negated form; write !(x is T)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field named try is not the word of a try, so no try-form",
+  "source": "a.try x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "unexpected x"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field named if is not the word of an if, so no if-form",
+  "source": "a.if x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "unexpected x"
+    }
+   ]
+  }
  }
 ]

@@ -1291,6 +1291,14 @@ impl<'a> Checker<'a> {
             self.once_result.insert(l.0, Ty::never());
             return;
         }
+        // F17 11.3: a typed lambda's result type is its result annotation,
+        // known before the body is checked, so a self-reference in its
+        // defaults or its body has it; `never` when a static rule refused
+        // the annotation.
+        if let Some(r) = result {
+            let rt = self.annot(r).unwrap_or_else(Ty::never);
+            self.once_result.insert(l.0, rt);
+        }
         for &p in params {
             if let NodeKind::Param { pattern, .. } = self.kind(p) {
                 let t = self.param_annot(p).unwrap_or_else(Ty::never);

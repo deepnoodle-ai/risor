@@ -222,6 +222,16 @@ These rows apply when the Core diagnostic is `unexpected-token` by a rule of
    2.4): `a ?? b as T` is D3 at the `as`, and `x as T ?? d` is D3 at the `??`.
 2. A reserved word where the `Name` of `catch` should stand is `reserved-word`
    by 14.2 rule 1 before rule 12 is reached: `catch (if)` stays `reserved-word`.
+3. D4 is given at a token that would continue an operand: a binary operator,
+   `?`, `.`, `?.`, `[`, `?.[`, `(`, and the words `in`, `as` and `is`
+   (`01-language.md` 14.3). The word `not` is such a token only when `in`
+   follows it, and the span is then that of `not in`: `try { 1 } catch { 2 }
+   not x` stays `unexpected-token` at the `not`. Any other token there stays
+   `unexpected-token` too.
+4. D4 holds wherever the `if` or the `try` stands as an `Expr`, the first
+   branch of `? :` among the places. In `c ? try { 1 } catch { 2 } (1) : 3`
+   the `(` is D4; that the `:` is missing there does not take the rule's
+   place.
 
 ### 2.7 Other text that does not parse
 
@@ -295,6 +305,11 @@ item 2 keeps. They are tried in this order.
 7. E22 covers `{max-retries: 3}` and `const {max-retries: r} = m;`, and comes
    before E23, so `x => {max-retries: 1}` is `unquoted-key`. `{a - b: 1}`, with
    spaces, stays `unexpected-token`.
+8. A word after `.` or `?.` is a field's name, whatever the word
+   (`01-language.md` 14.2), and it ends an operand. No row reads it as the word
+   of a form: `a.if = 1` and `a.try = 1` are E7, `a.if !is int` is E2's
+   `negated-is` (F4 2.6), and `a.try x` and `a.if x` stay `unexpected-token`,
+   where E6 and E4 name the word `try` of a `Try` and the word `if` of an `If`.
 
 ### 2.8 Spans
 
@@ -714,7 +729,7 @@ is the type the checker gives at that place, as named.
 |  | `size` | `the type here has more than 100000 parts` | 05-types.md 20.7; a program type (F4 6.1) |
 | `duplicate-case` | `default` | `{text} is listed twice in this match` |  |
 | `unreachable-arm` | `default` | `this arm comes after _ and is never chosen` |  |
-| `recursion-needs-types` | `default` | `{name} is this lambda's own name, and a lambda cannot refer to itself` |  |
+| `recursion-needs-types` | `default` | `{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name` |  |
 | `non-exhaustive` | `default` | `the match has no _ arm and does not cover every value of type {type}` |  |
 | `result-mismatch` | `result` | `expected {expected}, found {found}` | A place of failure (05-types.md 15.1). expected is the type there; found is the type of the expression there |
 |  | `missing` | `required field {key} has no entry` | A map with no entry for a required field. key is the least such key |

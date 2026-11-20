@@ -204,9 +204,12 @@ func Check(prog *syntax.Program, names *Names) *Result {
 	}
 	w.expr(prog.Result, s)
 	// recursion-needs-types, on the first reference of each lambda to its
-	// own name (01-language.md 14.4; 05-types.md 22.5).
-	for _, r := range w.self {
-		w.diagm("recursion-needs-types", r.sp, "", nameP(r.name))
+	// own name, unless every parameter and the result carry a type
+	// (01-language.md 14.4; 05-types.md 22.5; F17 11.2).
+	for l, r := range w.self {
+		if !l.Typed() {
+			w.diagm("recursion-needs-types", r.sp, "", nameP(r.name))
+		}
 	}
 	sort.Slice(w.res.Diags, func(i, j int) bool {
 		a, b := w.res.Diags[i], w.res.Diags[j]

@@ -75,6 +75,25 @@ func TestModesAndForms(t *testing.T) {
 	}
 }
 
+// The generator writes typed recursive lambdas (F17 step E1), and -noe1
+// leaves them out.
+func TestSelfRecursion(t *testing.T) {
+	lib := loadLib(t)
+	with := 0
+	for i := range 2000 {
+		c := Generate(lib, Options{}, 9, 0, i)
+		if c.E1 {
+			with++
+		}
+		if d := Generate(lib, Options{NoE1: true}, 9, 0, i); d.E1 {
+			t.Fatalf("case %d has a recursive lambda with NoE1", i)
+		}
+	}
+	if with < 100 {
+		t.Errorf("%d of 2000 cases have a recursive lambda", with)
+	}
+}
+
 func TestNumberJSON(t *testing.T) {
 	for v, want := range map[float64]string{0: "0", 1e21: "1e+21", 1e-7: "1e-7", 5e-324: "5e-324", 0.1: "0.1", 9007199254740991: "9007199254740991", 123456.789: "123456.789", 1e-6: "0.000001", 1.5e300: "1.5e+300", 100: "100"} {
 		if got := formatNumber(v); got != want {
