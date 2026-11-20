@@ -3010,7 +3010,14 @@ impl<'a> Checker<'a> {
         let Some(&p) = params.first() else {
             return elem;
         };
-        let NodeKind::Param { pattern, .. } = self.kind(p) else {
+        // A default takes the place of a null element (12.4), so the body
+        // tests the default: nothing is narrowed.
+        let NodeKind::Param {
+            pattern,
+            default: None,
+            ..
+        } = self.kind(p)
+        else {
             return elem;
         };
         let Res::Bind(slot) = self.res[pattern.index()] else {
