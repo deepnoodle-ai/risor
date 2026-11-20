@@ -233,6 +233,11 @@ export interface ReadOptions {
   read?: (ref: string) => string;
   /** 03 3.10.9 item 3: whether the base environment declares a host function, or a method `T.m`. */
   declares?: (name: string) => boolean;
+  /**
+   * The static codes of the file (03 3.10.10 item 17), for a file whose own rule names them, as a catalog file of
+   * a package does (f16 8 item 3, f17 13.8 item 2). By default, those of the file's directory.
+   */
+  staticCodes?: ReadonlySet<string>;
 }
 
 export function loadCaseFile(path: string, opts: ReadOptions = {}): CaseFile {
@@ -600,7 +605,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      const staticCodes = staticCodesOf(basename(dir)) ?? STATIC_CODE_SET;
+      const staticCodes = opts.staticCodes ?? staticCodesOf(basename(dir)) ?? STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }

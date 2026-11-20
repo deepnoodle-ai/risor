@@ -966,7 +966,9 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;
       const label = typeof r.name === "string" ? r.name : typeof r.code === "string" ? r.code : "?";
-      out.push(...verdictsOf(validateCaseFile(r.cases, join(path, "..")), `${file} ${label}`, opts));
+      // The cases are read with the static codes they are run with.
+      const read = opts.staticCodes === undefined ? {} : { staticCodes: opts.staticCodes };
+      out.push(...verdictsOf(validateCaseFile(r.cases, join(path, ".."), read), `${file} ${label}`, opts));
     }
     return out;
   }
