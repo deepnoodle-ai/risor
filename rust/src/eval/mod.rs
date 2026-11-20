@@ -266,6 +266,9 @@ impl Program {
             slots,
             display,
             cb_frames: Vec::new(),
+            closures: Vec::new(),
+            closure_display: Vec::new(),
+            display_saved: Vec::new(),
             vars_read: Bits::new(nvars),
             vars_missing: Bits::new(nvars),
             m: Meter {
@@ -315,6 +318,8 @@ impl Program {
 /// closure.
 pub(crate) struct Callback<'h> {
     l: NodeId,
+    /// F17 13.4: the closure of a lambda bound to a function parameter.
+    closure: Option<u32>,
     frame: Frame,
     /// For the fast path: where the frame the entry's calls share starts.
     base: usize,
@@ -322,11 +327,19 @@ pub(crate) struct Callback<'h> {
     fast: Option<(&'h [Option<u32>], NodeId, Option<&'h code::Code>)>,
 }
 
+/// A lambda to call: its node and, for the lambda bound to a function
+/// parameter (F17 13.4), its closure, an index into `Run::closures`.
+#[derive(Clone, Copy)]
+pub(crate) struct Fun {
+    l: NodeId,
+    closure: Option<u32>,
+}
+
 /// An argument of a library call: a value, or a lambda.
 #[derive(Clone)]
 enum Arg<'h> {
     Val(Value<'h>),
-    Lam(NodeId),
+    Lam(Fun),
 }
 
 /// The arguments of a library call (`Run::args`): up to three in place,
@@ -338,14 +351,11 @@ enum Args<'h> {
 
 impl<'h> Args<'h> {
     fn new() -> Args<'h> {
-        Args::Few(
-            [
-                Arg::Lam(NodeId(0)),
-                Arg::Lam(NodeId(0)),
-                Arg::Lam(NodeId(0)),
-            ],
-            0,
-        )
+        let none = Fun {
+            l: NodeId(0),
+            closure: None,
+        };
+        Args::Few([Arg::Lam(none), Arg::Lam(none), Arg::Lam(none)], 0)
     }
 
     fn as_slice(&self) -> &[Arg<'h>] {
@@ -372,6 +382,18 @@ pub(crate) struct Run<'h> {
     /// The frames that library entries in progress share among the calls
     /// of their callbacks, with the entry of `display` each replaced.
     cb_frames: Vec<(Frame, usize)>,
+    /// F17 13.4: the lambdas bound to the function parameters of the calls
+    /// in progress, each with where its entries of `display` start in
+    /// `closure_display`: the entries below its frame's depth as they were
+    /// where it was evaluated, which a call of it puts back while it runs.
+    /// A function parameter's slot holds the index of its closure here, as
+    /// a number; static rule 4 keeps any read of it as a value from
+    /// compiling. A call of a higher-order lambda drops what its arguments
+    /// added when it ends.
+    closures: Vec<(NodeId, u32)>,
+    closure_display: Vec<usize>,
+    /// The entries of `display` that a call of a closure replaced.
+    display_saved: Vec<usize>,
     /// The variables asked of the host, and those it did not have: a run
     /// asks for each name at most once (`03-host.md` 3.4.1).
     vars_read: Bits,
@@ -1984,34 +2006,71 @@ impl<'h> Run<'h> {
         }
     }
 
-    /// Whether an argument is a lambda: written in place, or the name of a
-    /// `const`-bound lambda.
-    fn lambda_of(&self, a: NodeId) -> Option<NodeId> {
+    /// For the shape test (`04-library.md` 2.2): the count of parameters of
+    /// an argument that is a lambda, written in place or the name of a
+    /// `const`-bound lambda; for a function parameter's name, the listed
+    /// count of its function type (F17 13.4 item 1). `None` for a value.
+    fn lambda_count(&self, a: NodeId) -> Option<usize> {
+        let count = |l: NodeId| match self.ast.kind(l) {
+            NodeKind::Lambda { params, .. } => params.len(),
+            _ => 0,
+        };
         match (self.ast.kind(a), self.res(a)) {
-            (NodeKind::Lambda { .. }, _) => Some(a),
-            (_, Res::LambdaRef(l)) => Some(*l),
+            (NodeKind::Lambda { .. }, _) => Some(count(a)),
+            (_, Res::LambdaRef(l)) => Some(count(*l)),
+            (_, Res::FnRef(_, p)) => Some(crate::compile::listed_count(self.ast, *p)),
             _ => None,
         }
     }
 
-    fn lambda_params(&self, l: NodeId) -> usize {
-        match self.ast.kind(l) {
-            NodeKind::Lambda { params, .. } => params.len(),
-            _ => 0,
-        }
-    }
-
     /// One argument of a library call: a lambda written in place (1 step),
-    /// the name of one, or a value.
+    /// the name of one, a function parameter's name, or a value.
     #[inline]
     fn arg(&mut self, a: NodeId) -> R<'h, Arg<'h>> {
         if let NodeKind::Lambda { .. } = self.ast.kind(a) {
-            self.charge(1).map(|()| Arg::Lam(a))
+            self.charge(1).map(|()| {
+                Arg::Lam(Fun {
+                    l: a,
+                    closure: None,
+                })
+            })
         } else if let Res::LambdaRef(l) = self.res(a) {
-            Ok(Arg::Lam(*l))
+            Ok(Arg::Lam(Fun {
+                l: *l,
+                closure: None,
+            }))
+        } else if let Res::FnRef(s, _) = self.res(a) {
+            Ok(Arg::Lam(self.bound(*s)))
         } else {
             self.eval(a).map(Arg::Val)
         }
+    }
+
+    /// F17 13.4: the lambda bound to the function parameter of slot `s`, in
+    /// the call now running, with its closure.
+    #[inline(never)]
+    fn bound(&self, s: u32) -> Fun {
+        let c = match &self.slots[self.slot(s)] {
+            Value::Num(i) => *i as u32,
+            _ => 0,
+        };
+        Fun {
+            l: self.closures[c as usize].0,
+            closure: Some(c),
+        }
+    }
+
+    /// F17 13.4: a lambda given at a function parameter, bound with the
+    /// entries of `display` below its frame's depth, as they are where it
+    /// is evaluated. The value is the closure's index, which the parameter's
+    /// slot holds.
+    fn closure(&mut self, l: NodeId) -> Value<'h> {
+        let depth = self.p.frames[l.index()].depth as usize;
+        let start = self.closure_display.len();
+        self.closure_display
+            .extend_from_slice(&self.display[..depth]);
+        self.closures.push((l, start as u32));
+        Value::Num((self.closures.len() - 1) as f64)
     }
 
     /// The arguments of a library call into `out`, left to right. A call of
@@ -2135,7 +2194,7 @@ impl<'h> Run<'h> {
             ));
         }
         for (i, &a) in args.iter().enumerate() {
-            if self.lambda_of(a).is_some() {
+            if self.lambda_count(a).is_some() {
                 return Err(fail(
                     "wrong-kind",
                     "not-callback",
@@ -2192,7 +2251,7 @@ impl<'h> Run<'h> {
             return Err(count());
         }
         for (i, &a) in args.iter().enumerate() {
-            let lam = self.lambda_of(a).is_some();
+            let lam = self.lambda_count(a).is_some();
             match (rec.callback(i), lam) {
                 (Some(_), false) => {
                     return Err(fail(
@@ -2214,8 +2273,8 @@ impl<'h> Run<'h> {
             }
         }
         for (i, &a) in args.iter().enumerate() {
-            if let (Some(k), Some(l)) = (rec.callback(i), self.lambda_of(a)) {
-                if self.lambda_params(l) > k {
+            if let (Some(k), Some(n)) = (rec.callback(i), self.lambda_count(a)) {
+                if n > k {
                     return Err(fail(
                         "wrong-kind",
                         "parameters",
@@ -2233,6 +2292,8 @@ impl<'h> Run<'h> {
     fn call(&mut self, id: NodeId, args: &'h [NodeId]) -> R<'h, Value<'h>> {
         let span = self.ast.span(id);
         match self.res(id) {
+            Res::CallLambda(l) if self.p.higher[l.index()] => self.call_higher(*l, id, args, span),
+            Res::CallFn(s, _) => self.call_fn(*s, id, args, span),
             Res::CallLambda(l) => {
                 let l = *l;
                 let mut vals = Vec::with_capacity(args.len());
@@ -2254,6 +2315,101 @@ impl<'h> Run<'h> {
             Res::CallHost(i) => self.call_host(*i as usize, args, span),
             _ => Err(self.internal(span)),
         }
+    }
+
+    /// F17 13.4: a call of a higher-order lambda by name. A lambda argument
+    /// at a function parameter is bound as a closure where it stands: a
+    /// lambda written there charges 1 step, a name nothing. The closures the
+    /// arguments added are dropped when the call ends, whether it gave a
+    /// value or failed.
+    #[inline(never)]
+    fn call_higher(
+        &mut self,
+        l: NodeId,
+        id: NodeId,
+        args: &'h [NodeId],
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        let marks = (self.closures.len(), self.closure_display.len());
+        let r = self.call_higher_args(l, id, args, span);
+        self.closures.truncate(marks.0);
+        self.closure_display.truncate(marks.1);
+        r
+    }
+
+    fn call_higher_args(
+        &mut self,
+        l: NodeId,
+        id: NodeId,
+        args: &'h [NodeId],
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        let mut vals = Vec::with_capacity(args.len());
+        for &a in args {
+            let v = match (self.ast.kind(a), self.res(a)) {
+                (NodeKind::Lambda { .. }, _) => {
+                    self.charge(1)?;
+                    self.closure(a)
+                }
+                (_, Res::LambdaRef(f)) => self.closure(*f),
+                // A function parameter given on: the closure it holds.
+                (_, Res::FnRef(s, _)) => {
+                    let i = self.slot(*s);
+                    self.slots[i].clone()
+                }
+                _ => self.eval(a)?,
+            };
+            vals.push(v);
+        }
+        self.charge(1)?;
+        let measure = self.p.measure[id.index()] as u32;
+        match self.invoke(l, &mut vals, measure, span) {
+            Ok(v) => Ok(v),
+            Err(f) => Err(self.call_traced(f, id, span)),
+        }
+    }
+
+    /// F17 13.4: a call of a function parameter, a call by name of its
+    /// bound lambda (`02-evaluation.md` 11.2). Its trace entry is named by
+    /// the parameter.
+    #[inline(never)]
+    fn call_fn(&mut self, s: u32, id: NodeId, args: &'h [NodeId], span: Range) -> R<'h, Value<'h>> {
+        let mut vals = Vec::with_capacity(args.len());
+        for &a in args {
+            vals.push(self.eval(a)?);
+        }
+        self.charge(1)?;
+        let measure = self.p.measure[id.index()] as u32;
+        let f = self.bound(s);
+        match self.invoke_fun(f, &mut vals, measure, span) {
+            Ok(v) => Ok(v),
+            Err(f) => Err(self.call_traced(f, id, span)),
+        }
+    }
+
+    /// Call a lambda; for a closure, with the entries of `display` below
+    /// its frame's depth as they were where it was evaluated (F17 13.4 item
+    /// 2), and those of the caller put back when it ends.
+    fn invoke_fun(
+        &mut self,
+        f: Fun,
+        args: &mut [Value<'h>],
+        measure: u32,
+        span: Range,
+    ) -> R<'h, Value<'h>> {
+        let Some(c) = f.closure else {
+            return self.invoke(f.l, args, measure, span);
+        };
+        let (l, start) = self.closures[c as usize];
+        let depth = self.p.frames[l.index()].depth as usize;
+        let start = start as usize;
+        let saved = self.display_saved.len();
+        self.display_saved.extend_from_slice(&self.display[..depth]);
+        self.display[..depth].copy_from_slice(&self.closure_display[start..start + depth]);
+        let r = self.invoke(l, args, measure, span);
+        self.display[..depth].copy_from_slice(&self.display_saved[saved..]);
+        self.display_saved.truncate(saved);
+        r
     }
 
     /// A call of a library function: the arguments, then the entry.
@@ -2323,12 +2479,12 @@ impl<'h> Run<'h> {
         &mut self,
         entry: &str,
         index: usize,
-        l: NodeId,
+        f: Fun,
         args: &mut [Value<'h>],
         measure: u32,
         span: Range,
     ) -> R<'h, Value<'h>> {
-        let r = self.invoke(l, args, measure, span);
+        let r = self.invoke_fun(f, args, measure, span);
         release_all(args);
         match r {
             Ok(v) => Ok(v),
@@ -2354,9 +2510,14 @@ impl<'h> Run<'h> {
     /// path they share one frame (F17 11.5): it is pushed here, each call
     /// binds its names in it again, and the caller of the entry drops it
     /// when the entry ends, by `end_callbacks`.
-    pub(crate) fn callback(&mut self, l: NodeId) -> Callback<'h> {
+    ///
+    /// A closure (F17 13.4) takes the slow path: each call binds its own
+    /// frame, with the entries of `display` of the place it was evaluated.
+    pub(crate) fn callback(&mut self, f: Fun) -> Callback<'h> {
         let p = self.p;
+        let l = f.l;
         let fast = match (p.params.get(l.index()), self.ast.kind(l)) {
+            _ if f.closure.is_some() => None,
             (Some(Some(slots)), NodeKind::Lambda { body, .. }) => Some((
                 &slots[..],
                 *body,
@@ -2373,9 +2534,18 @@ impl<'h> Run<'h> {
         }
         Callback {
             l,
+            closure: f.closure,
             frame,
             base,
             fast,
+        }
+    }
+
+    /// The lambda a callback calls.
+    fn fun(cb: &Callback<'h>) -> Fun {
+        Fun {
+            l: cb.l,
+            closure: cb.closure,
         }
     }
 
@@ -2409,7 +2579,7 @@ impl<'h> Run<'h> {
         span: Range,
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
-            return self.invoke_for(entry, index, cb.l, &mut [a, b], measure, span);
+            return self.invoke_for(entry, index, Self::fun(cb), &mut [a, b], measure, span);
         };
         if let Err(f) = self.enter2(cb, slots, a, b, measure, span) {
             return Err(traced(f, span, entry, index));
@@ -2434,7 +2604,7 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         let Some((slots, body, code)) = cb.fast else {
             let mut args = args;
-            return self.invoke_for(entry, index, cb.l, &mut args, measure, span);
+            return self.invoke_for(entry, index, Self::fun(cb), &mut args, measure, span);
         };
         if let Err(f) = self.enter3(cb, slots, args, measure, span) {
             return Err(traced(f, span, entry, index));
