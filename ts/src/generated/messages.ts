@@ -908,7 +908,8 @@ export const CATALOG: CatalogEntry[] = [
       "namespace": "{name} is a namespace, not a value",
       "function": "{name} is a function, not a value; call it",
       "lambda": "{name} is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function",
-      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value"
+      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value",
+      "higher-order": "{name} is a const-bound lambda, not a value; it takes a function, so it can only be called"
     }
   },
   {
@@ -919,7 +920,8 @@ export const CATALOG: CatalogEntry[] = [
       "name": "word"
     },
     "templates": {
-      "default": "{name} is a value, not a function, and cannot be called"
+      "default": "{name} is a value, not a function, and cannot be called",
+      "fn-hint": "{name} is a parameter; to call it, give it a function type, as {name}: (x: int) => int"
     }
   },
   {
@@ -930,7 +932,9 @@ export const CATALOG: CatalogEntry[] = [
       "name": "word"
     },
     "templates": {
-      "default": "a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead"
+      "default": "a function cannot be passed to {name} at a parameter that takes a value",
+      "higher-order": "a function that takes a function cannot be passed to {name}",
+      "fn-hint": "{name} is a parameter; to pass a function to it, give it a function type, as {name}: (x: int) => int"
     }
   },
   {
@@ -1131,7 +1135,7 @@ export const CATALOG: CatalogEntry[] = [
       "body": "the function given to {name} gives {found}, which does not fit {expected}",
       "ordered": "{name} needs all numbers or all strings, found {found}",
       "number": "{name} needs numbers, found {found}",
-      "fn-value": "{name} passes {found} to a parameter that takes a function"
+      "parameter-at-fn": "{name} is a value; to pass it as a function, give it a function type"
     }
   },
   {

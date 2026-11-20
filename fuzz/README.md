@@ -125,6 +125,18 @@ And the forms of package F16, slice D1 (`spec/packages/f16-entry-points.md`):
 
 `-nof16` leaves the package out.
 
+And the function parameters of package F17, step E3
+(`spec/packages/f17-recursion.md` 13), in about one `const` line in fourteen:
+a block with a typed lambda that takes a function and a call of it. The lambda
+calls its function parameter, gives it to `map`, `filter`, `reduce` or
+`sortBy`, calls it in a lambda it gives to `map`, or gives it on to another
+such lambda. The call gives a lambda written there, the name of a
+`const`-bound lambda that fits, or a lambda that calls the helper again, as
+`apply(y => apply(z => z, y + 10), 1)`. A loose program breaks one static
+rule in three: the function type left out, a value at the function parameter,
+the parameter read as a value, a call with another count, or the lambda given
+to `map`. `-noe3` leaves the forms out, and `-nof16` does too.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -176,6 +188,7 @@ The status is 1 when there was any finding, else 0.
 | `-nof6`, `-nof7` | Leave out the opt-in groups of F6, or the projection and methods of F7 |
 | `-nof17` | Leave out the guards and the calls of `walk` of F17 |
 | `-nof16` | Leave out the type lines and annotations of F16 |
+| `-noe1`, `-noe3` | Leave out the typed recursive lambdas of F17's step E1, or the function parameters of its step E3 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |
@@ -200,9 +213,9 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
 Every implementation offers F1 to F8, and some offer more. The generator writes
-only forms that every implementation offers, the guards, `walk` and typed recursive lambdas of F17 and the annotations of F16
-among them, so no difference is filtered: `cmd/fuzz/known.go` is where a form of a
-package that not every implementation offers would be counted apart. With F8 a parse or check diagnostic carries a message, and a run
+forms that every implementation offers, the guards, `walk`, typed recursive
+lambdas and function parameters of F17 and the annotations of F16 among them.
+No difference is known (`cmd/fuzz/known.go`): every one is a finding. With F8 a parse or check diagnostic carries a message, and a run
 diagnostic a trace; each is compared among the implementations that write it
 (`spec/packages/f08-errors.md` 8).
 

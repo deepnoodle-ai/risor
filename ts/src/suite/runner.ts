@@ -33,7 +33,7 @@ import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
 import { complete, hover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
 import type { Classifier } from "../value/value.ts";
-import { ENTRY_POINTS_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
+import { ENTRY_POINTS_STATIC, RECURSION_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
 import { pathText, renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import type { RenderDiagnostic } from "../host/render.ts";
@@ -960,6 +960,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     if (basename(path) === "messages-check.json") opts = { ...opts, checkOnly: true };
     // f16 8 item 3: the cases of messages-entry-points.json run checked, with the static codes of f16 3.1 item 11.
     if (basename(path) === "messages-entry-points.json") opts = { ...opts, checkOnly: true, staticCodes: ENTRY_POINTS_STATIC };
+    // f17 13.8 item 1: the cases of messages-recursion.json run checked, with the static codes of 13.8 item 2.
+    if (basename(path) === "messages-recursion.json") opts = { ...opts, checkOnly: true, staticCodes: RECURSION_STATIC };
     const out: Verdict[] = [];
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;

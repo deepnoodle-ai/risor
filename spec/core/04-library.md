@@ -134,7 +134,9 @@ method of an opaque type takes no callback, so for an opaque receiver test 3
 never fails and test 4 fails for any lambda argument. All five need only the
 program's text and the method's record: an implementation may prepare them when
 compiling, but may not report them then, because the method is known only when
-the receiver's kind is.
+the receiver's kind is. With package F17 the name of a parameter with a
+function type is a lambda for tests 3 and 4, and test 5 counts the parameters
+its function type lists (`spec/packages/f17-recursion.md` 13.4).
 
 4. It evaluates the arguments, left to right.
 5. It makes the tests of 2.6, then charges the call's step, then the entry runs

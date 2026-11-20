@@ -805,6 +805,33 @@ fn deepest_programs(depth: u32) {
         assert_eq!(run(&at(d - 1)), Ok(want.into()), "{src}");
         assert_eq!(run(&at(d)), Err("depth-exceeded".into()), "{src}");
     }
+    // F17 13.4 item 6, the two forms of `03-host.md` 3.9.1: calls through
+    // function parameters. In the first, `d` and `down` call each other,
+    // `down` through its function parameter: a count of 2N + 2. In the
+    // second, each call of `r` gives on a new lambda that calls the one
+    // before, and the last call of `r` runs that chain: a count of 2N + 3.
+    // With N the largest whose count stays within the limit the run gives
+    // its value; with N one more it passes the limit.
+    for (src, at_limit) in [
+        (
+            "const down = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : f(n - 1); \
+             const d = (n: int): int => down(d, n); d(N)",
+            (d - 2) / 2,
+        ),
+        (
+            "const r = (f: (x: int) => int, n: int): int => \
+             n == 0 ? f(0) : r(y => f(y), n - 1); r(x => x, N)",
+            (d - 3) / 2,
+        ),
+    ] {
+        let at = |n: usize| src.replace('N', &n.to_string());
+        assert_eq!(run(&at(at_limit)), Ok("0".into()), "{src}");
+        assert_eq!(
+            run(&at(at_limit + 1)),
+            Err("depth-exceeded".into()),
+            "{src}"
+        );
+    }
 }
 
 /// F17 11.5: each call reads the names of the calls on its own chain. A
@@ -843,6 +870,33 @@ fn each_call_reads_the_frames_of_its_own_chain() {
             .compile(&parse(src).unwrap(), crate::CompileOptions::default())
             .unwrap_or_else(|e| panic!("{src}: {e}"));
         assert_eq!(outcome(&checked, &none), Ok(want.into()), "{src}");
+    }
+}
+
+/// F17 13.2 item 4: a hint parameter is one of a `const`-bound lambda, also
+/// one bound by a `const` line in a block; a parameter of a lambda written
+/// as an argument, also inside such a lambda's body, is not one.
+#[test]
+fn a_hint_parameter_is_one_of_a_const_bound_lambda() {
+    let env = Env::default();
+    let messages = |src: &str| -> Vec<String> {
+        let p = parse(src).unwrap();
+        crate::check::check(&env, &p, &crate::check::Want::Nothing)
+            .diagnostics
+            .iter()
+            .map(|d| format!("{} {}", d.code, d.message))
+            .collect()
+    };
+    let hint = "call-of-parameter x is a parameter; to call it, give it a function type, \
+                as x: (x: int) => int";
+    let plain = "call-of-parameter x is a value, not a function, and cannot be called";
+    for (src, want) in [
+        ("{ const g = (x) => x(1); 1 }", hint),
+        ("const h = (n) => { const g = (x) => x(n); 1 }; 1", hint),
+        ("const h = (n) => { const g = [1].map(x => x(n)); 1 }; 1", plain),
+        ("{ const g = (xs) => xs.map(x => x(1)); 1 }", plain),
+    ] {
+        assert_eq!(messages(src), vec![want.to_string()], "{src}");
     }
 }
 

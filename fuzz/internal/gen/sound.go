@@ -81,6 +81,7 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 	prog := g.program()
 	base.F16 = g.f16
 	base.E1 = g.e1
+	base.E3 = g.e3
 	for k := range ValueSets {
 		c := *base
 		c.Name = fmt.Sprintf("%s-v%d", sp.Name, k)

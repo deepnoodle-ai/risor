@@ -674,8 +674,9 @@ The candidates of the names context are, in this order:
    in a scope of its own: in `const a = 1; const f = n => ‸` the order is
    `n`, `a`, `f`.
 2. Each name once, at its innermost binding. `_` binds nothing.
-3. A const-bound lambda has the kind `lambda`; every other name bound in the
-   program has the kind `name`.
+3. A const-bound lambda has the kind `lambda`, and so has a parameter with a
+   function type (F17); every other name bound in the program has the kind
+   `name`.
 4. Then the environment's variables, in code point order, kind `variable`.
 5. Then the functions of the environment: the library's functions that are not
    removed, and the host's functions with no namespace, in code point order,
@@ -790,7 +791,8 @@ When the hole is a string literal, the candidates are string values, kind
 | `key` | 3.9 item 2 |
 | `function`, `method` | For a library entry, its record signature. For a host function, or a method of an opaque type, its printed signature, without the receiver for a method |
 | `constant` | Its type, printed |
-| `lambda`, `namespace`, `literal`, `type` | null |
+| `lambda` | null; for a parameter with a function type (F17), its printed function type (`spec/packages/f17-recursion.md` 13.7) |
+| `namespace`, `literal`, `type` | null |
 
 ### 3.13 Hover
 
@@ -827,6 +829,11 @@ When the hole is a string literal, the candidates are string values, kind
    lambda whose every parameter and result carry a type
    (`spec/packages/f17-recursion.md` 11.3), and `never` for any other
    (`05-types.md` 13.9).
+8. **A parameter with a function type** (F17) has the kind `lambda` and its
+   printed function type as its `signature`, wherever its name stands: where
+   it is declared, as the name of a `Call` of it, which also gives the type of
+   the `Call`, and as a lambda argument (`spec/packages/f17-recursion.md`
+   13.7).
 
 ## 4. The command-line program
 

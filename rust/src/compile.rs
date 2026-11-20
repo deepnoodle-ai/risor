@@ -60,6 +60,13 @@ pub enum Res {
     /// An `Ident` that names a `const`-bound lambda where a value is needed:
     /// `not-a-value`, no use, and read only by hover (F12 3.13, R245).
     NotValue(NodeId),
+    /// F17 13.1: an `Ident` whose binding is a function binding and that is
+    /// not called: a lambda argument, or a read, which is `not-a-value`
+    /// (13.2 rule 4). The slot of the function parameter, and its `Param`.
+    FnRef(u32, NodeId),
+    /// F17 13.2 rule 1: a `Call` of a function binding: the slot of the
+    /// function parameter, and its `Param`.
+    CallFn(u32, NodeId),
 }
 
 /// F16 7.3: a type name in a program type, or the name of a type line, with
@@ -104,6 +111,9 @@ pub struct Program {
     /// count.
     pub(crate) var_index: Vec<u32>,
     pub(crate) vars_read: usize,
+    /// F17 13.1: for each node, whether it is a higher-order lambda: a
+    /// `Lambda` with a function parameter. A call of one binds lambdas.
+    pub(crate) higher: Vec<bool>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -111,6 +121,28 @@ enum Bind {
     Slot(u32),
     Var(u32),
     Lambda(NodeId),
+    /// F17 13.1: a function binding: the slot of a function parameter, and
+    /// its `Param`.
+    Fn(u32, NodeId),
+}
+
+/// F17 13.1: the listed count of a function parameter's function type.
+pub(crate) fn listed_count(ast: &crate::syntax::ast::Ast, p: NodeId) -> usize {
+    match ast.kind(p) {
+        NodeKind::Param { fn_: Some(f), .. } => f.params.len(),
+        _ => 0,
+    }
+}
+
+/// F17 13.1: whether a node is a higher-order lambda, one that has a
+/// function parameter.
+pub(crate) fn is_higher_order(ast: &crate::syntax::ast::Ast, l: NodeId) -> bool {
+    match ast.kind(l) {
+        NodeKind::Lambda { params, .. } => params
+            .iter()
+            .any(|p| matches!(ast.kind(*p), NodeKind::Param { fn_: Some(_), .. })),
+        _ => false,
+    }
 }
 
 /// Compile with the static rules and no type rules (`03-host.md` 3.2.1
@@ -168,6 +200,9 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
     let code = crate::eval::code::build(&parsed.ast, &r.res, &r.place, &var_index, &coalesced);
     let params = crate::eval::code::params(&parsed.ast, &r.res, &r.place);
     let max_depth = r.frames.iter().map(|f| f.depth as usize).max().unwrap_or(0);
+    let higher = (0..parsed.ast.nodes.len())
+        .map(|i| is_higher_order(&parsed.ast, NodeId(i as u32)))
+        .collect();
     Ok(Program {
         env: env.clone(),
         code,
@@ -175,6 +210,7 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         coalesced,
         var_index,
         vars_read: vars_read as usize,
+        higher,
         parsed,
         res: r.res,
         measure: r.measure,
@@ -222,6 +258,9 @@ pub struct Resolution {
     /// F16 7.3: the type names that resolved, and the names of the type
     /// lines that declare.
     pub type_refs: Vec<TypeRef>,
+    /// F17 13.2 item 4: the slots of the parameters written as a name with
+    /// no default and no function type, whose hints name the fix.
+    pub plain_params: HashSet<u32>,
 }
 
 /// Resolve every name of a program, and apply the static rules.
@@ -249,6 +288,7 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         open: vec![0],
         place: Vec::new(),
         frames: vec![Frame::default(); n],
+        plain_params: HashSet::new(),
     };
     let root = parsed.ast.root;
     if let NodeKind::Program {
@@ -295,6 +335,7 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         diags: d,
         annots: r.annots,
         type_refs: r.type_refs,
+        plain_params: r.plain_params,
     }
 }
 
@@ -335,6 +376,16 @@ struct Resolver<'a> {
     open: Vec<u32>,
     place: Vec<Place>,
     frames: Vec<Frame>,
+    plain_params: HashSet<u32>,
+}
+
+/// A lambda argument (`05-types.md` 22.4, F17 13.1): a lambda, written in
+/// place or the name of a `const`-bound one, or the name of a function
+/// parameter, by its `Param`.
+#[derive(Clone, Copy)]
+enum LamArg {
+    Lambda(NodeId),
+    Fn(NodeId),
 }
 
 /// F17 11.1: a lambda is typed when it has a result annotation and every
@@ -371,6 +422,8 @@ impl Counts {
 enum Callee {
     Unknown,
     Lambda(NodeId),
+    /// F17 13.2 rule 1: a function binding, by its slot and its `Param`.
+    Fn(u32, NodeId),
     Lib(usize),
     Host(usize),
 }
@@ -816,6 +869,9 @@ impl Resolver<'_> {
                     body,
                     result,
                 } => {
+                    // F17 13.1: only a `const`-bound lambda has hint
+                    // parameters. `const_line` pushes the lambda it binds.
+                    let const_bound = self.walking.last() == Some(&id);
                     self.lambda_levels.push(self.p.ast.node(id).level);
                     self.scopes.push(HashMap::new());
                     // F17 11.5: each call of the lambda has its own frame,
@@ -832,18 +888,37 @@ impl Resolver<'_> {
                             if let Some(t) = &ty {
                                 self.annotation(t);
                             }
+                            // F17 13.3: the checker reads each listed type
+                            // and the result, `None` with a diagnostic.
                             if let Some(f) = &fn_ {
                                 for (_, _, t) in &f.params {
-                                    self.program_type(t);
+                                    self.annotation(t);
                                 }
                                 if let Some(r) = &f.result {
-                                    self.program_type(r);
+                                    self.annotation(r);
                                 }
                             }
                             if let Some(d) = default {
                                 self.walk(d);
                             }
                             self.pattern(pattern);
+                            // F17 13.1 item 1: a function parameter makes a
+                            // function binding, bound as a parameter is.
+                            // 13.2 item 4: a hint parameter is one of a
+                            // `const`-bound lambda, written as a name with
+                            // no default and no function type.
+                            if let (NodeKind::NamePat { name: Some(n) }, Res::Bind(s)) =
+                                (self.kind(pattern).clone(), &self.res[pattern.index()])
+                            {
+                                let s = *s;
+                                if fn_.is_some() {
+                                    if let Some(scope) = self.scopes.last_mut() {
+                                        scope.insert(n, Bind::Fn(s, p));
+                                    }
+                                } else if default.is_none() && const_bound {
+                                    self.plain_params.insert(s);
+                                }
+                            }
                         }
                     }
                     if let Some(r) = &result {
@@ -892,10 +967,26 @@ impl Resolver<'_> {
             Some(Bind::Var(v)) => self.res[id.index()] = Res::Var(v),
             Some(Bind::Lambda(l)) => {
                 self.res[id.index()] = Res::NotValue(l);
+                // F17 13.5: a higher-order lambda can only be called.
+                let template = if is_higher_order(&self.p.ast, l) {
+                    "higher-order"
+                } else {
+                    "lambda"
+                };
                 self.diag(
                     code::STATIC[2],
                     span,
-                    "lambda",
+                    template,
+                    &[("name", name.to_string())],
+                );
+            }
+            // F17 13.2 rule 4: a function is not a value.
+            Some(Bind::Fn(s, p)) => {
+                self.res[id.index()] = Res::FnRef(s, p);
+                self.diag(
+                    code::STATIC[2],
+                    span,
+                    "function",
                     &[("name", name.to_string())],
                 );
             }
@@ -987,8 +1078,10 @@ impl Resolver<'_> {
         for s in steps.into_iter().rev() {
             match self.kind(s).clone() {
                 NodeKind::Index { index, .. } => self.walk(index),
-                NodeKind::MethodCall { args, .. } => {
+                NodeKind::MethodCall { args, name, .. } => {
                     self.set_measure(s);
+                    // F17 13.2 rule 8, at every method call.
+                    self.higher_order_args(&args, &name.name);
                     self.args(&args);
                 }
                 NodeKind::Each { reads, .. } => self.reads(&reads),
@@ -1020,41 +1113,89 @@ impl Resolver<'_> {
         }
     }
 
-    /// The lambda of a lambda argument: a `Lambda` node, or the name of a
-    /// `const`-bound lambda.
-    fn lambda_arg(&self, a: NodeId) -> Option<NodeId> {
+    /// A lambda argument (22.4, F17 13.1): a `Lambda` node, the name of a
+    /// `const`-bound lambda, or the name of a function parameter.
+    fn lambda_arg(&self, a: NodeId) -> Option<LamArg> {
         match self.kind(a) {
-            NodeKind::Lambda { .. } => Some(a),
+            NodeKind::Lambda { .. } => Some(LamArg::Lambda(a)),
             NodeKind::Ident { name } => match self.lookup(name) {
-                Some(Bind::Lambda(l)) => Some(l),
+                Some(Bind::Lambda(l)) => Some(LamArg::Lambda(l)),
+                Some(Bind::Fn(_, p)) => Some(LamArg::Fn(p)),
                 _ => None,
             },
             _ => None,
         }
     }
 
-    fn lambda_params(&self, l: NodeId) -> usize {
-        match self.kind(l) {
-            NodeKind::Lambda { params, .. } => params.len(),
-            _ => 0,
+    /// The count of parameters of a lambda argument: a lambda's, or the
+    /// listed count of a function parameter's type (F17 13.1).
+    fn lambda_params(&self, l: LamArg) -> usize {
+        match l {
+            LamArg::Lambda(l) => match self.kind(l) {
+                NodeKind::Lambda { params, .. } => params.len(),
+                _ => 0,
+            },
+            LamArg::Fn(p) => listed_count(&self.p.ast, p),
         }
     }
 
-    /// Walk the arguments of a call (22.5, last paragraph).
+    /// F17 13.2 rule 8: each lambda argument that is a higher-order lambda,
+    /// written there or named, is `lambda-to-lambda` whatever the callee,
+    /// and no other rule tests it. Returns which arguments it reported.
+    fn higher_order_args(&mut self, args: &[NodeId], callee: &str) -> Vec<bool> {
+        let mut out = vec![false; args.len()];
+        for (i, &a) in args.iter().enumerate() {
+            if let Some(LamArg::Lambda(l)) = self.lambda_arg(a) {
+                if is_higher_order(&self.p.ast, l) {
+                    let span = self.span(a);
+                    let p = [("name", callee.to_string())];
+                    self.diag(code::STATIC[4], span, "higher-order", &p);
+                    out[i] = true;
+                }
+            }
+        }
+        out
+    }
+
+    /// Walk the arguments of a call (22.5, last paragraph). A function
+    /// parameter's name as a lambda argument is no read (F17 13.2 item 3).
     fn args(&mut self, args: &[NodeId]) {
         for &a in args {
             match self.kind(a).clone() {
-                NodeKind::Ident { name } => match self.lambda_arg(a) {
-                    Some(l) if self.is_self_ref(l) => {
+                NodeKind::Ident { name } => match self.lookup(&name) {
+                    Some(Bind::Lambda(l)) if self.is_self_ref(l) => {
                         let span = self.span(a);
                         self.self_ref(l, span, &name);
                         self.res[a.index()] = Res::SelfRef(l);
                     }
-                    Some(l) => self.res[a.index()] = Res::LambdaRef(l),
-                    None => self.walk(a),
+                    Some(Bind::Lambda(l)) => self.res[a.index()] = Res::LambdaRef(l),
+                    Some(Bind::Fn(s, p)) => self.res[a.index()] = Res::FnRef(s, p),
+                    _ => self.walk(a),
                 },
                 _ => self.walk(a),
             }
+        }
+    }
+
+    /// The name of a parameter written as a name.
+    fn param_name(&self, p: NodeId) -> String {
+        match self.kind(p) {
+            NodeKind::Param { pattern, .. } => match self.kind(*pattern) {
+                NodeKind::NamePat { name: Some(n) } => n.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        }
+    }
+
+    /// F17 13.2 item 4: whether an argument is an `Ident` whose innermost
+    /// binding is a parameter written as a name with no default.
+    fn is_plain_param(&self, a: NodeId) -> bool {
+        match self.kind(a) {
+            NodeKind::Ident { name } => {
+                matches!(self.lookup(name), Some(Bind::Slot(s)) if self.plain_params.contains(&s))
+            }
+            _ => false,
         }
     }
 
@@ -1089,9 +1230,16 @@ impl Resolver<'_> {
             },
             None => match self.lookup(name) {
                 Some(Bind::Lambda(l)) => Callee::Lambda(l),
-                Some(_) => {
+                Some(Bind::Fn(s, p)) => Callee::Fn(s, p),
+                // F17 13.2 rule 1: the hint names the fix for a parameter
+                // written as a name with no default.
+                Some(b) => {
+                    let template = match b {
+                        Bind::Slot(s) if self.plain_params.contains(&s) => "fn-hint",
+                        _ => "default",
+                    };
                     let p = [("name", full.clone())];
-                    self.diag(code::STATIC[3], name_span, "default", &p);
+                    self.diag(code::STATIC[3], name_span, template, &p);
                     Callee::Unknown
                 }
                 None => {
@@ -1111,6 +1259,8 @@ impl Resolver<'_> {
                 }
             },
         };
+        // F17 13.2 rule 8 decides first and alone, at every call.
+        let reported = self.higher_order_args(args, &full);
         let counts = match &callee {
             Callee::Unknown => None,
             Callee::Lambda(l) => {
@@ -1122,10 +1272,29 @@ impl Resolver<'_> {
                     .iter()
                     .rposition(|p| matches!(self.kind(*p), NodeKind::Param { default: None, .. }))
                     .map_or(0, |i| i + 1);
+                // F17 13.2 rules 2, 3 and 9: a function parameter takes a
+                // lambda argument of at most its listed count.
+                let fn_params = params
+                    .iter()
+                    .map(|p| match self.kind(*p) {
+                        NodeKind::Param { fn_: Some(f), .. } => Some(f.params.len()),
+                        _ => None,
+                    })
+                    .collect();
                 Some(Counts {
                     required,
                     at_most: Some(params.len()),
-                    fn_params: vec![None; params.len()],
+                    fn_params,
+                    rest_fn: None,
+                })
+            }
+            // F17 13.2 rule 7: exactly the listed count.
+            Callee::Fn(_, p) => {
+                let n = listed_count(&self.p.ast, *p);
+                Some(Counts {
+                    required: n,
+                    at_most: Some(n),
+                    fn_params: vec![None; n],
                     rest_fn: None,
                 })
             }
@@ -1138,14 +1307,74 @@ impl Resolver<'_> {
                 self.arity(call_span, &full, n, c.required, c.at_most);
             } else {
                 for (i, &a) in args.iter().enumerate() {
-                    let Some(l) = self.lambda_arg(a) else {
+                    if reported[i] {
+                        continue;
+                    }
+                    let span = self.span(a);
+                    let lam = self.lambda_arg(a);
+                    if let Callee::Lambda(callee_l) = &callee {
+                        let NodeKind::Lambda { params, .. } = self.kind(*callee_l) else {
+                            continue;
+                        };
+                        let param = params[i];
+                        match (c.param(i).flatten(), lam) {
+                            // Rule 9.
+                            (Some(k), Some(l)) => {
+                                if self.lambda_params(l) > k {
+                                    let p = [("name", full.clone()), ("most", k.to_string())];
+                                    self.diag(code::STATIC[8], span, "parameters", &p);
+                                }
+                            }
+                            // Rule 3.
+                            (Some(_), None) => {
+                                if self.is_plain_param(a) {
+                                    let p = [("name", self.text(span))];
+                                    self.diag("arg-mismatch", span, "parameter-at-fn", &p);
+                                } else {
+                                    let p =
+                                        [("param", self.param_name(param)), ("name", full.clone())];
+                                    self.diag("arg-mismatch", span, "function", &p);
+                                }
+                            }
+                            // Rule 2: `fn-hint`, naming the parameter, when
+                            // it is written as a name with no default; a
+                            // pattern, `_` or a default takes a value.
+                            (None, Some(_)) => match self.kind(param) {
+                                NodeKind::Param {
+                                    pattern,
+                                    default: None,
+                                    ..
+                                } if matches!(
+                                    self.kind(*pattern),
+                                    NodeKind::NamePat { name: Some(_) }
+                                ) =>
+                                {
+                                    let p = [("name", self.param_name(param))];
+                                    self.diag(code::STATIC[4], span, "fn-hint", &p)
+                                }
+                                _ => {
+                                    let p = [("name", full.clone())];
+                                    self.diag(code::STATIC[4], span, "default", &p)
+                                }
+                            },
+                            (None, None) => {}
+                        }
+                        continue;
+                    }
+                    let Some(l) = lam else {
                         continue;
                     };
-                    let span = self.span(a);
                     match &callee {
-                        Callee::Lambda(_) => {
-                            let p = [("name", full.clone())];
-                            self.diag(code::STATIC[4], span, "default", &p)
+                        // Rule 7: each listed parameter takes a value.
+                        Callee::Fn(_, p) => {
+                            let word = match self.kind(*p) {
+                                NodeKind::Param { fn_: Some(f), .. } => {
+                                    f.params.get(i).map(|w| w.0.clone()).unwrap_or_default()
+                                }
+                                _ => String::new(),
+                            };
+                            let p = [("name", full.clone()), ("param", word)];
+                            self.diag(code::STATIC[2], span, "argument", &p)
                         }
                         _ => match c.param(i).flatten() {
                             None => {
@@ -1180,6 +1409,7 @@ impl Resolver<'_> {
                 Res::SelfRef(l)
             }
             Callee::Lambda(l) => Res::CallLambda(l),
+            Callee::Fn(s, p) => Res::CallFn(s, p),
             Callee::Lib(i) => Res::CallLib(i as u32),
             Callee::Host(i) => Res::CallHost(i as u32),
         };

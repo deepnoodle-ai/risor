@@ -97,6 +97,10 @@ type Case struct {
 	// written by the generator of package F17, step E1. It is not written to
 	// the case file.
 	E1 bool
+	// E3 is set when the program has a parameter with a function type,
+	// written by the generator of package F17, step E3. It is not written
+	// to the case file.
+	E3 bool
 }
 
 // Text gives the program text: the printed tree, or the mangled source.

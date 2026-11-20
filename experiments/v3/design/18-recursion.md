@@ -9,9 +9,14 @@ dropped `iterate` and settled passing functions to user-defined functions
 18-11 and 18-13 are settled as stated; section 10 marks the others as rulings
 or recommendations. Built so far, in all three implementations: `match`
 guards and `walk` (step E0), and typed self-recursion on per-call frames
-(step E1), in `spec/packages/f17-recursion.md`. Recursive named types (step
-E2) and function parameters (step E3) are not built; their spec text is in
-sections 4 and 7 in a form ready to move into the package chapter.
+(step E1), in `spec/packages/f17-recursion.md`, and function parameters (step
+E3), in that chapter's section 13. The recommendations 18-15 and 18-16, and
+those of 7.2 and 7.3, were taken, with changes: the template of rule 8 names
+the callee, not the lambda; the hints of 7.2 are given only at a parameter of
+a `const`-bound lambda; and two more templates make the messages true with
+step E3 (`15-build-rulings.md` R280 to R297). Recursive named types
+(step E2) are not built; their spec text is in section 4 in a form ready to
+move into the package chapter.
 
 **Evidence.** **(R)** read in the specification or a sibling document at the
 place cited. **(ran)** run with the Go CLI built from `main` at `aeaaf1f`
@@ -525,8 +530,8 @@ Safari and Firefox were not measured.
 | 18-12 | Guard spelling | `if (c)` with parentheses | `if c` without them, as in Rust (M). Shorter, but then a guard needs a rule for where it ends before `=>` |
 | 18-13 | Function parameters | **Settled (owner, 2026-11-19, D57):** first-order `Fn` parameters; never stored, returned or given to the host | #644's full proposal: functions passed to host functions too. Rejected for the reasons of `19` 4 |
 | 18-14 | The static rules of 7.1, (a) to (d) among them | **Ruling (2026-11-19)**, with D57, so that an unchecked run stays safe | Leave them to the type rules. An unchecked run could then call null |
-| 18-15 | The codes of 7.1 rules 3 and 8, and the templates of 7.2 | Recommendation | New static codes. Each costs a row in every count |
-| 18-16 | A lambda argument to a user lambda charges 1 step | Recommendation (7.4) | Charge nothing. Then it differs from a library call |
+| 18-15 | The codes of 7.1 rules 3 and 8, and the templates of 7.2 | **Taken (R282, R281):** `arg-mismatch` and `lambda-to-lambda`; the template of rule 8 names the callee | New static codes. Each costs a row in every count |
+| 18-16 | A lambda argument to a user lambda charges 1 step | **Taken (R289)** (7.4) | Charge nothing. Then it differs from a library call |
 | 18-17 | Per-call frames as the reference path | **Ruling (2026-11-19)** (section 8) | Frames only where the text needs them. Two paths in each evaluator, and the second is wrong once `Fn` parameters exist |
 | 18-18 | Type variables in a non-recursive lambda's annotations | Recommendation, not settled (7.6). Additive; not in track E | Leave `Fn` monomorphic. Reusable helpers then use `any` |
 

@@ -46,15 +46,24 @@ export interface StaticEnv {
   constants?: ReadonlyMap<string, number>;
 }
 
+/**
+ * Package F17, step E3: a function binding (f17 13.1), the binding a
+ * parameter with a function type makes. `slot` holds, at run time, the lambda
+ * bound to it; `param` is the parameter, with its function type.
+ */
+export type FnRef = { k: "fn"; slot: number; param: A.Param };
+
 export type Ref =
   | { k: "slot"; slot: number }
   | { k: "var"; name: string }
-  | { k: "lambda"; id: number };
+  | { k: "lambda"; id: number }
+  | FnRef;
 
 export type Target =
   | { k: "lambda"; id: number }
   | { k: "library"; name: string }
   | { k: "host"; name: string }
+  | FnRef
   | { k: "unknown" };
 
 /** What the compiler needs from the walk. */
@@ -105,6 +114,14 @@ export interface Resolution {
   frameSize: Map<A.Lambda, number>;
   /** The number of lambdas around each lambda: the depth of the frame its link points to. */
   lambdaDepth: Map<A.Lambda, number>;
+  /**
+   * Package F17, step E3: the slot of each hint parameter (f17 13.1, 13.2 item
+   * 4): a parameter of a `const`-bound lambda written as a name with no
+   * default and no function type.
+   */
+  hintSlots: Set<number>;
+  /** Package F17, step E3: the slot of each function parameter, with its parameter (f17 13.1). */
+  fnSlots: Map<number, A.Param>;
 }
 
 /**
@@ -116,7 +133,16 @@ export function typedLambda(l: A.Lambda): boolean {
   return l.result !== null && l.params.every((p) => p.type !== null || p.fn !== null);
 }
 
-type Binding = { k: "value"; slot: number } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts };
+/** f17 13.1: a higher-order lambda has a function parameter. */
+export function higherOrder(l: A.Lambda): boolean {
+  return l.params.some((p) => p.fn !== null);
+}
+
+/**
+ * A binding of a scope. A value binding's `hint`: it is a hint parameter (f17
+ * 13.1, 13.2 item 4). A function binding is package F17's (f17 13.1).
+ */
+type Binding = { k: "value"; slot: number; hint: boolean } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts } | FnRef;
 
 export function lambdaCounts(l: A.Lambda): Counts {
   // 05 22: the required count is the position of the last parameter with no default.
@@ -127,8 +153,10 @@ export function lambdaCounts(l: A.Lambda): Counts {
   return {
     min,
     max: l.params.length,
-    fns: l.params.map(() => null),
+    // f17 13.2: a function parameter takes a lambda argument of at most its listed count.
+    fns: l.params.map((p) => (p.fn === null ? null : p.fn.params.length)),
     rest: false,
+    names: l.params.map((p) => (p.pattern.kind === "NamePat" ? (p.pattern.name ?? "") : "")),
   };
 }
 
@@ -173,6 +201,8 @@ class Walker {
     slotIndex: [],
     frameSize: new Map(),
     lambdaDepth: new Map(),
+    hintSlots: new Set(),
+    fnSlots: new Map(),
   };
   /** The next free index of the frame of each lambda whose text the walk is in, innermost last (f17 11.5). */
   private readonly frames: number[] = [];
@@ -221,8 +251,12 @@ class Walker {
     this.scopes.pop();
   }
 
-  /** Bind a name in the innermost scope (05 22.7). Returns the slot, or null. */
-  private bind(name: string | null, span: Span, b?: Binding): number | null {
+  /**
+   * Bind a name in the innermost scope (05 22.7). Returns the slot, or null.
+   * With no binding `b`, the name gets a slot, and `make` gives its binding:
+   * a value binding with no hint when it is not given.
+   */
+  private bind(name: string | null, span: Span, b?: Binding, make?: (slot: number) => Binding): number | null {
     if (name === null || name === "_") return null;
     if (this.env.namespaces.has(name)) {
       this.diag("shadows-namespace", span, "default", { name });
@@ -236,7 +270,7 @@ class Walker {
       const depth = this.frames.length;
       this.res.slotDepth[slot] = depth;
       this.res.slotIndex[slot] = depth === 0 ? slot : this.frames[depth - 1]++;
-      scope.set(name, { k: "value", slot });
+      scope.set(name, make === undefined ? { k: "value", slot, hint: false } : make(slot));
       return slot;
     }
     scope.set(name, b);
@@ -308,7 +342,7 @@ class Walker {
       this.bind(p.name, p.span, { k: "lambda", id, counts: lambdaCounts(c.value) });
       this.res.slots.set(p, -1 - id);
       this.walking.add(id);
-      this.lambda(c.value);
+      this.lambda(c.value, true);
       this.walking.delete(id);
       const r = this.selfRefs.get(id);
       if (r !== undefined) this.diag("recursion-needs-types", r, "default", { name: p.name ?? "" });
@@ -362,7 +396,8 @@ class Walker {
     }
   }
 
-  private lambda(l: A.Lambda): void {
+  /** A lambda. `constBound`: the value of a `const` line, whose parameters may be hint parameters (f17 13.1). */
+  private lambda(l: A.Lambda, constBound = false): void {
     this.res.lambdaDepth.set(l, this.frames.length);
     this.frames.push(1);
     this.push();
@@ -374,7 +409,23 @@ class Walker {
         for (const fp of p.fn.params) this.annotation(fp.type);
         if (p.fn.result !== null) this.annotation(p.fn.result);
       }
-      this.pattern(p.pattern);
+      const pat = p.pattern;
+      if (pat.kind === "NamePat" && p.fn !== null) {
+        // f17 13.1 item 1: a function binding, bound as a parameter is. Its slot holds the bound lambda.
+        const s = this.bind(pat.name, pat.span, undefined, (slot) => ({ k: "fn", slot, param: p }));
+        if (s !== null) {
+          this.res.slots.set(pat, s);
+          this.res.fnSlots.set(s, p);
+        }
+      } else if (constBound && pat.kind === "NamePat" && p.default === null) {
+        // f17 13.2 item 4: a hint parameter, of a const-bound lambda, written as a name with no default.
+        // A parameter of a lambda written as an argument is none: a function type there is refused (rule 8).
+        const s = this.bind(pat.name, pat.span, undefined, (slot) => ({ k: "value", slot, hint: true }));
+        if (s !== null) {
+          this.res.slots.set(pat, s);
+          this.res.hintSlots.add(s);
+        }
+      } else this.pattern(pat);
     }
     if (l.result !== null) this.annotation(l.result);
     this.expr(l.body);
@@ -394,17 +445,26 @@ class Walker {
     this.pop();
   }
 
+  /**
+   * An `Ident`. `asLambdaArg`: it is a lambda argument. A reference of a
+   * lambda to its own name is tested also where rule 8 of f17 13.2 reports
+   * the argument: that rule is the lambda's, not the argument's (13.2 item 1).
+   */
   private ident(id: A.Ident, asLambdaArg: boolean): void {
     const b = this.lookup(id.name);
     if (b !== undefined) {
       if (b.k === "value") this.res.refs.set(id, { k: "slot", slot: b.slot });
       else if (b.k === "var") this.res.refs.set(id, { k: "var", name: b.name });
-      else {
+      else if (b.k === "fn") {
+        // f17 13.2 rule 4: a function binding read as a value; as a lambda argument it is no read (13.2 item 3).
+        this.res.refs.set(id, b);
+        if (!asLambdaArg) this.diag("not-a-value", id.span, "function", { name: id.name });
+      } else {
         this.res.refs.set(id, { k: "lambda", id: b.id });
         if (asLambdaArg) {
           this.res.lambdaArgs.add(id);
           this.selfRef(b.id, id, id.span);
-        } else this.diag("not-a-value", id.span, "lambda", { name: id.name });
+        } else this.diag("not-a-value", id.span, higherOrder(this.res.lambdas[b.id]) ? "higher-order" : "lambda", { name: id.name });
       }
       return;
     }
@@ -413,10 +473,33 @@ class Walker {
     else this.diag("undefined-name", id.span, "name", { name: id.name });
   }
 
+  /** 05 22.4, with f17 13.1: a `Lambda`, or an `Ident` whose innermost binding is a `const`-bound lambda or a function binding. */
   private isLambdaArg(a: A.Arg): boolean {
     if (a.kind === "Lambda") return true;
     if (a.kind !== "Ident") return false;
-    return this.lookup(a.name)?.k === "lambda";
+    const k = this.lookup(a.name)?.k;
+    return k === "lambda" || k === "fn";
+  }
+
+  /** f17 13.2 rule 8: a lambda argument that is a higher-order lambda, written there or named. */
+  private isHigherOrder(a: A.Arg): boolean {
+    if (a.kind === "Lambda") return higherOrder(a);
+    if (a.kind !== "Ident") return false;
+    const b = this.lookup(a.name);
+    return b !== undefined && b.k === "lambda" && higherOrder(this.res.lambdas[b.id]);
+  }
+
+  /**
+   * f17 13.2 rule 8, at every `Call` and `MethodCall`, whatever the callee:
+   * each higher-order lambda argument is `lambda-to-lambda`, template
+   * `higher-order`. Returns which arguments it reported.
+   */
+  private higherOrderArgs(args: A.Arg[], callName: string): boolean[] {
+    return args.map((a) => {
+      if (!this.isHigherOrder(a)) return false;
+      this.diag("lambda-to-lambda", a.span, "higher-order", { name: callName });
+      return true;
+    });
   }
 
   private walkArgs(args: A.Arg[]): void {
@@ -427,17 +510,32 @@ class Walker {
     }
   }
 
+  /** The count of parameters of a lambda argument; a function parameter's is its listed count (f17 13.1). */
   private argParams(a: A.Arg): number {
     if (a.kind === "Lambda") return a.params.length;
     const b = this.lookup((a as A.Ident).name);
+    if (b !== undefined && b.k === "fn") return b.param.fn!.params.length;
     return b !== undefined && b.k === "lambda" ? b.counts.max : 0;
+  }
+
+  /** f17 13.2 rule 3: the template of a value at a function parameter, and its parameters. */
+  private valueAtFn(a: A.Arg, param: string, callName: string): void {
+    if (a.kind === "Ident") {
+      const b = this.lookup(a.name);
+      if (b !== undefined && b.k === "value" && b.hint) {
+        this.diag("arg-mismatch", a.span, "parameter-at-fn", { name: a.name });
+        return;
+      }
+    }
+    this.diag("arg-mismatch", a.span, "function", { param, name: callName });
   }
 
   /** 05 22.5. */
   private call(node: A.Call | A.MethodCall, namespace: string | null, name: string, nameSpan: Span, args: A.Arg[]): void {
     let target: Target = { k: "unknown" };
     let counts: Counts | null = null;
-    let isLambda = false;
+    /** The callee when it is a const-bound lambda. */
+    let callee: A.Lambda | null = null;
     if (namespace !== null) {
       const full = `${namespace}.${name}`;
       const c = this.env.hostFunctions.get(full);
@@ -455,10 +553,14 @@ class Walker {
       if (b !== undefined && b.k === "lambda") {
         target = { k: "lambda", id: b.id };
         counts = b.counts;
-        isLambda = true;
+        callee = this.res.lambdas[b.id];
         if (node.kind === "Call") this.selfRef(b.id, node, nameSpan);
+      } else if (b !== undefined && b.k === "fn") {
+        // f17 13.2 rule 1: a call of a function binding.
+        target = b;
       } else if (b !== undefined) {
-        this.diag("call-of-parameter", nameSpan, "default", { name });
+        // f17 13.2 rule 1 and item 4: the hint names the fix for a parameter written as a name with no default.
+        this.diag("call-of-parameter", nameSpan, b.k === "value" && b.hint ? "fn-hint" : "default", { name });
       } else if (this.env.hostFunctions.has(name)) {
         target = { k: "host", name };
         counts = this.env.hostFunctions.get(name)!;
@@ -470,20 +572,47 @@ class Walker {
       }
     }
     this.res.targets.set(node, target);
-    if (counts !== null) {
-      const callName = namespace === null ? name : `${namespace}.${name}`;
+    const callName = namespace === null ? name : `${namespace}.${name}`;
+    // f17 13.2 rule 8 decides its argument first and alone, at every call (13.2 item 1).
+    const higher = this.higherOrderArgs(args, callName);
+    if (target.k === "fn") {
+      // f17 13.2 rule 7: exactly the listed count, and a value at each listed parameter.
+      const listed = target.param.fn!.params;
+      if (args.length !== listed.length) {
+        this.diag("arity", node.span, "exact", { name, count: args.length, required: listed.length, most: listed.length });
+      } else {
+        args.forEach((a, i) => {
+          if (!higher[i] && this.isLambdaArg(a)) this.diag("not-a-value", a.span, "argument", { name, param: listed[i].word });
+        });
+      }
+    } else if (counts !== null) {
       if (args.length < counts.min || args.length > counts.max) {
         const c = counts;
         this.diag("arity", node.span, c.rest ? "at-least" : c.min === c.max ? "exact" : "range", { name: callName, count: args.length, required: c.min, most: c.max });
       } else {
+        // f17 13.2 item 2: each argument that rule 8 does not report is tested by its callee, left to right.
         args.forEach((a, i) => {
-          if (!this.isLambdaArg(a)) return;
-          if (isLambda) {
-            this.diag("lambda-to-lambda", a.span, "default", { name: callName });
-            return;
-          }
+          if (higher[i]) return;
           const fn = fnAt(counts!, i);
           const names = counts!.names ?? [];
+          if (callee !== null) {
+            if (fn === null) {
+              // f17 13.2 rule 2 and item 4: a lambda argument at a parameter with no function type. The hint
+              // names that parameter when it is written as a name with no default; a pattern, `_` or a
+              // default shows that it takes a value.
+              if (!this.isLambdaArg(a)) return;
+              const lp = callee.params[i];
+              const named = lp !== undefined && lp.pattern.kind === "NamePat" && lp.pattern.name !== null && lp.pattern.name !== "_" && lp.default === null;
+              if (named) this.diag("lambda-to-lambda", a.span, "fn-hint", { name: (lp.pattern as A.NamePat).name });
+              else this.diag("lambda-to-lambda", a.span, "default", { name: callName });
+              return;
+            }
+            // f17 13.2 rules 3 and 9: at a function parameter, a lambda argument of at most the listed count.
+            if (!this.isLambdaArg(a)) this.valueAtFn(a, names[i] ?? "", callName);
+            else if (this.argParams(a) > fn) this.diag("arity", a.span, "parameters", { name: callName, most: fn });
+            return;
+          }
+          if (!this.isLambdaArg(a)) return;
           if (fn === null) this.diag("not-a-value", a.span, "argument", { name: callName, param: names[Math.min(i, names.length - 1)] ?? "" });
           else if (this.argParams(a) > fn) this.diag("arity", a.span, "parameters", { name: callName, most: fn });
         });
@@ -668,6 +797,8 @@ class Walker {
           this.expr(n.index);
           break;
         case "MethodCall":
+          // f17 13.2 rule 8 holds at a method too; the type rules and the shape test decide the rest.
+          this.higherOrderArgs(n.args, n.name);
           this.walkArgs(n.args);
           break;
         case "Each":

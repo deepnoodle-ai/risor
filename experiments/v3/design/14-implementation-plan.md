@@ -400,7 +400,8 @@ implementations.
   The text of `type-declaration` names `type Name = {...}` for `interface`.
 - Until step E3, a parameter with an `Fn` keeps Core's static rules: it
   cannot be called (`call-of-parameter`) and takes no lambda
-  (`lambda-to-lambda`). Step E1 lands before the alpha that carries D1 is
+  (`lambda-to-lambda`). Step E3 lifts this (`spec/packages/f17-recursion.md`
+  13.2). Step E1 lands before the alpha that carries D1 is
   tagged, so no release accepts the types of a self-reference and refuses the
   self-reference (my reading; `18` 3.1).
 
@@ -411,7 +412,7 @@ implementations.
 | E0 | `walk` with an explicit stack; `match` guards (`18` 5, 6). **Done (R222 to R231),** before D1, in all three implementations | Nothing. It may go before D1 |
 | E1 | Typed self-recursion (`18` 3). Per-call frames become the reference path in every evaluator, and every implementation runs the whole suite in frame mode; fixed places stay only as an optimization for a program with no recursive lambda and no `Fn` parameter, and only if benchmarks show it is needed (`18` 8). The stack test gains self-recursion. **Done (R247 to R257),** in all three implementations: `spec/packages/f17-recursion.md` 11, the cases `suite/recursion/e1-*.json` and `tools-e1-*.json`, the stack test and the fuzzer's generator. Each evaluator runs every program on frames and keeps no fixed-place path. Measured against its build with fixed places, in the geometric mean of its own benchmarks: Go 2.9% slower (R252), TypeScript 1.9%, Rust 3.9%; the largest costs are in programs that call a lambda for each element of a short list | D1 |
 | E2 | Recursive named types in programs, recursive `$ref` in F1, self-referential structs in Go's `TypeOf`, superseding R112. Coinductive Fits, Equal and Join with a normative order of visits, a bound of 4,096 pairs, and the shortcut for one name on both sides (`18` 4) | D1, F4 |
-| E3 | Function parameters (D57, `18` 7): the static rules of 7.1, the review's (a) to (d) among them; checking by 7.3; the costs of 7.4; the hints of 7.2; the `apply` case of `18` 8 | D1, E1 |
+| E3 | Function parameters (D57, `18` 7): the static rules of 7.1, the review's (a) to (d) among them; checking by 7.3; the costs of 7.4; the hints of 7.2; the `apply` case of `18` 8. **Done (R280 to R297),** in all three implementations: `spec/packages/f17-recursion.md` 13, the cases `suite/recursion/e3-*.json` and `tools-e3-*.json`, the catalog file `suite/messages-recursion.json` and the fuzzer's generator (`-noe3`). `arg-mismatch` becomes a static code in `suite/recursion/`; the check codes stay 31, and the check templates go from 74 to 78: F17 adds five, F16's `fn-value` retires, and Core's `lambda-to-lambda` `default` changes its text | D1, E1 |
 
 Two things to record with track E:
 

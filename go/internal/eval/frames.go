@@ -188,14 +188,30 @@ func (r *run) restoreFrames(m frameMark) {
 // fn is a lambda handed to a library entry: its code, and the number of
 // frames up from the frame of the call to the frame where it was written.
 // A library entry calls it while the frame of its call is the current one.
+//
+// A lambda given at a parameter with a function type of a const-bound
+// lambda (f17-recursion.md 13.4) is called from frames that are not its
+// call's, so it is a closure: abs is set, and up is the index of the frame
+// where it was evaluated. No function outlives the call where it was
+// evaluated, so that frame is on the stack whenever the closure runs.
 type fn struct {
 	*lambdaCode
 	hops int
+	abs  bool
+	up   int
+}
+
+// frameOf is the frame where a lambda handed on was written.
+func (r *run) frameOf(l *fn) int {
+	if l.abs {
+		return l.up
+	}
+	return r.frameAt(l.hops)
 }
 
 // enterFn pushes the frame of a call of a lambda handed to a library entry.
 func (r *run) enterFn(l *fn) (fp, base int) {
-	return r.enter(r.frameAt(l.hops), l.size)
+	return r.enter(r.frameOf(l), l.size)
 }
 
 // cbEnter makes current the frame of a library entry's next call of its

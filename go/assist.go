@@ -266,6 +266,9 @@ type binding struct {
 	name   string
 	key    any // the slot key: *syntax.NamePat, *syntax.MapField or *syntax.Try
 	lambda bool
+	// fn is the parameter of a parameter with a function type: a candidate
+	// of kind lambda whose detail is its function type (F17 13.7).
+	fn *syntax.Param
 }
 
 // walker finds the hole in a repaired program and its context (3.5).
@@ -681,6 +684,9 @@ func (w *walker) visit(n syntax.Node, exp *types.Type) bool {
 				return true
 			}
 			for _, b := range patternBindings(p.Pattern) {
+				if p.Fn != nil {
+					b.fn = p
+				}
 				w.bind(b)
 			}
 		}
@@ -797,9 +803,12 @@ func (a *assist) namesContext(scopes [][]binding) []Candidate {
 				continue
 			}
 			c := Candidate{Label: b.name, Kind: "name"}
-			if b.lambda {
+			switch {
+			case b.lambda:
 				c.Kind = "lambda"
-			} else {
+			case b.fn != nil:
+				c.Kind, c.Detail = "lambda", a.fnSig(b.fn)
+			default:
 				c.Detail = printed(a.slotType(b.key))
 			}
 			add(c)
@@ -841,6 +850,30 @@ func (a *assist) namesContext(scopes [][]binding) []Candidate {
 		add(Candidate{Label: n, Kind: "namespace"})
 	}
 	return out
+}
+
+// fnSig is the printed function type of a parameter with a function type
+// (F17 13.7): as F1 5.2 prints a signature, each parameter's word and type,
+// and the result or unknown. A type with a static diagnostic prints never.
+func (a *assist) fnSig(p *syntax.Param) *string {
+	if p == nil || p.Fn == nil || a.res == nil {
+		return nil
+	}
+	at := func(pt *syntax.PType) string {
+		if t, ok := a.res.AnnTypes[pt]; ok {
+			return t.String()
+		}
+		return "never"
+	}
+	parts := make([]string, len(p.Fn.Params))
+	for i, q := range p.Fn.Params {
+		parts[i] = q.Name + ": " + at(q.Type)
+	}
+	r := "unknown"
+	if p.Fn.Result != nil {
+		r = at(p.Fn.Result)
+	}
+	return strp("(" + strings.Join(parts, ", ") + ") => " + r)
 }
 
 func printed0(s string) *string {
@@ -1253,6 +1286,15 @@ func (a *assist) hover(word syntax.Span) *Hover {
 		})
 		return found
 	}
+	// fnParam is the record of a parameter with a function type (F17
+	// 13.7): kind lambda, its function type as the signature, and its name
+	// in its parameter list as the declaration.
+	fnParam := func(p *syntax.Param) *Hover {
+		h := rec("lambda")
+		h.Signature = a.fnSig(p)
+		h.Declaration = declOf(p.Pattern)
+		return h
+	}
 	site := func(key any) *Hover {
 		h := rec("name")
 		h.Type = printed(a.slotType(key))
@@ -1280,6 +1322,10 @@ func (a *assist) hover(word syntax.Span) *Hover {
 			h := rec("lambda")
 			h.Type = printed(a.typeOf(n))
 			h.Declaration = lambdaName(c.Lambda)
+			return h
+		case static.Param:
+			h := fnParam(c.Binding.Param)
+			h.Type = printed(a.typeOf(n))
 			return h
 		}
 		return nil
@@ -1352,6 +1398,10 @@ func (a *assist) hover(word syntax.Span) *Hover {
 			ptypes(n.Type)
 		case *syntax.Lambda:
 			for _, p := range n.Params {
+				if np, ok := p.Pattern.(*syntax.NamePat); ok && p.Fn != nil && np.Span() == word {
+					out = fnParam(p)
+					continue
+				}
 				checkPattern(p.Pattern)
 			}
 			params(n.Params)
@@ -1378,6 +1428,8 @@ func (a *assist) hover(word syntax.Span) *Hover {
 				// a value, so it has no type (F12 3.13).
 				out = rec("lambda")
 				out.Declaration = lambdaName(b.Lambda)
+			case b.Kind == static.FnParam:
+				out = fnParam(b.Param)
 			default:
 				out = rec("name")
 				out.Type = printed(a.typeOf(n))

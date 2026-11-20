@@ -806,6 +806,7 @@ stack overflow. This specification fixes no number of bytes for all bindings.
 | Calls that a library entry makes of a lambda | The same chain, where each link calls the one before through `map`, and in a second case through `flatMap`, at a cost of 1 to the depth count for each link: `const f1 = x => [x].map(f0)[0];`, `const f1 = x => [x].flatMap(f0);`. The depth count passes the depth limit |
 | A walk | A value nested to the depth limit, compared with `==` and rendered (`02-evaluation.md` 8.4 item 5) |
 | Self-recursion, with package F17 | A typed lambda that calls itself by name, and one that gives its own name to `map`, and to `flatMap`, at a cost of 1 to the depth count for each call: `const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)` and the two forms of `spec/packages/f17-recursion.md` 11.6. With N one less than the depth limit the run reaches the limit; with N the limit it passes it |
+| Calls through a function parameter, with package F17 | A recursion that goes through a call of a function parameter at every level, `const down = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : f(n - 1); const d = (n: int): int => down(d, n); d(N)`, and a chain of lambdas given at function parameters, each calling the one before, `const r = (f: (x: int) => int, n: int): int => n == 0 ? f(0) : r(y => f(y), n - 1); r(x => x, N)` (`spec/packages/f17-recursion.md` 13.4 item 6). With N the largest whose depth count stays within the limit the run gives its value; with N one more it passes the limit |
 
 The calls through a library entry are in the list because an evaluator spends
 more of its own stack on them than on a call by name (informative). Measured on
@@ -1471,7 +1472,8 @@ The **static codes** are the twelve codes of the static rules of
 `recursion-needs-types`.
 `arity` is static for a call by name only. On a method call it is a type rule,
 so a case that expects `arity` on a method call belongs in
-`suite/core-check/`.
+`suite/core-check/`. A package's chapter may name more static codes for its own
+directory, as F4 6.1 item 4, F16 3.1 item 11 and F17 13.8 do.
 
 ## 3.11 What packages add
 
@@ -1493,8 +1495,8 @@ above. A package's chapter is the home of its rules: this table only points.
 | F8, errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings, the field `rendered` and the `render` case. The `parse` and `check` templates of the catalog, in `suite/messages-parse.json` and `suite/messages-check.json`, and `message` in an expected parse or check diagnostic. `ConformAll`, with `max` and `failures` in a conform case | `spec/packages/f08-errors.md` |
 | F9, testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Cases that test a runner: the fields `runner`, `update` and `program`, and an `expect` of verdicts. Update mode. Case files written as programs. The report text. The command `risor test` | `spec/packages/f09-testing.md` |
 | F14, host facts | The declaration of a host fact: a statement about the values of an environment's variables beyond their types, part of the precondition. Its one kind, `someNotNull`. The case field `facts`, and a key of the description | `spec/packages/f14-host-facts.md` |
-| F16, entry points, slice D1 | Nothing in the host contract or the case format. Type lines and annotations. The check code `name-clash` and a template of `arg-mismatch`, in a catalog file of its own, `suite/messages-entry-points.json`; with F12, the hover kind `type` | `spec/packages/f16-entry-points.md` |
-| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1 | `spec/packages/f17-recursion.md` |
+| F16, entry points, slice D1 | Nothing in the host contract or the case format. Type lines and annotations. The check code `name-clash`, in a catalog file of its own, `suite/messages-entry-points.json`; with F12, the hover kind `type` | `spec/packages/f16-entry-points.md` |
+| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1. Parameters with a function type, two more deepest cases of that test, and five check templates in a catalog file of its own, `suite/messages-recursion.json`; in its directory and that file, `arg-mismatch` is a static code | `spec/packages/f17-recursion.md` |
 | F12, tools | The formatter and the assist stage (completion and hover), each a call in every binding. The case fields `format`, `formatTemplate`, `complete` and `hover`, and the results `formatted`, `completion` and `hover`. The contract of the command line program | `spec/packages/f12-tools.md` |
 
 1. The cases of a package are in a directory of their own, and its library
