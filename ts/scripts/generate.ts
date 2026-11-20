@@ -8,6 +8,7 @@
 //   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
 //   suite/messages-parse.json and messages-check.json join it too (package F8, f08 3.1)
 //   suite/messages-entry-points.json joins it as F7's file does, and adds a code (package F16, f16 9.1)
+//   suite/messages-recursion.json adds templates to codes the catalog has (package F17, f17 13.5)
 // Run with `npm run generate`. A test fails when the generated files are stale.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -46,6 +47,16 @@ export function generated(): Record<string, string> {
       continue;
     }
     for (const t of Object.keys(e.templates as object)) if (t in c.templates) throw new Error(`messages-entry-points.json: ${String(e.code)} has the template ${t} already`);
+    Object.assign(c.params, e.params as object);
+    Object.assign(c.templates, e.templates as object);
+  }
+  // f17 13.5: each entry adds templates to a code another file has (f08 3.1 item 8): the same code and phase, params of
+  // kinds that code has already, new template names.
+  for (const e of JSON.parse(readFileSync(join(suite, "messages-recursion.json"), "utf8")) as Record<string, unknown>[]) {
+    const c = catalog.find((x) => x.code === e.code);
+    if (c === undefined || c.phase !== e.phase) throw new Error(`messages-recursion.json: no code ${String(e.code)} of phase ${String(e.phase)}`);
+    for (const [k, kind] of Object.entries(e.params as Record<string, string>)) if (k in c.params && c.params[k] !== kind) throw new Error(`messages-recursion.json: ${String(e.code)} has the param ${k} of another kind`);
+    for (const t of Object.keys(e.templates as object)) if (t in c.templates) throw new Error(`messages-recursion.json: ${String(e.code)} has the template ${t} already`);
     Object.assign(c.params, e.params as object);
     Object.assign(c.templates, e.templates as object);
   }

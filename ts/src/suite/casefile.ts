@@ -195,11 +195,18 @@ export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "
 /** The static codes of suite/entry-points/ (f16 3.1 item 11): Core's, the two of a program type, and `name-clash`. */
 export const ENTRY_POINTS_STATIC: ReadonlySet<string> = new Set([...CONVERSION_STATIC, "name-clash"]);
 
+/**
+ * The static codes of suite/recursion/ and of suite/messages-recursion.json (f17 8 item 5, 13.8 item 2): Core's
+ * and `arg-mismatch`, which step E3 makes static at one place (f17 13.2 item 5).
+ */
+export const RECURSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "arg-mismatch"]);
+
 /** The static codes of the case files in a directory of the suite. */
 export function staticCodesOf(dirName: string): ReadonlySet<string> | undefined {
   if (dirName === "conversion" || dirName === "unions" || dirName === "facts") return CONVERSION_STATIC;
   if (dirName === "config") return CONFIG_STATIC;
   if (dirName === "entry-points") return ENTRY_POINTS_STATIC;
+  if (dirName === "recursion") return RECURSION_STATIC;
   return undefined;
 }
 

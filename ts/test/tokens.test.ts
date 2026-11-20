@@ -63,6 +63,15 @@ describe("tokens", () => {
     assert.deepEqual(show(`const f = (x: Order): int => x`).slice(3, 9), ["punctuation:(", "name:x", "punctuation::", "name:Order", "punctuation:)", "punctuation::"]);
   });
 
+  test("package F17: a function parameter is a name, and its function type has F16's words (f17 13.7 item 5)", () => {
+    assert.deepEqual(show(`const apply = (f: (x: int) => unknown) => f(1); apply(y => y)`), [
+      "keyword:const", "name:apply", "operator:=", "punctuation:(", "name:f", "punctuation::",
+      "punctuation:(", "name:x", "punctuation::", "name:int", "punctuation:)", "operator:=>", "name:unknown",
+      "punctuation:)", "operator:=>", "function:f", "punctuation:(", "number:1", "punctuation:)", "punctuation:;",
+      "function:apply", "punctuation:(", "name:y", "operator:=>", "name:y", "punctuation:)",
+    ]);
+  });
+
   test("a template and its interpolations", () => {
     assert.deepEqual(show("`n ${a + 1} of ${b}!`"), [
       "template:`n ", "interpolation:${", "name:a", "operator:+", "number:1", "interpolation:}",
