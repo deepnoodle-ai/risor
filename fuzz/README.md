@@ -135,9 +135,7 @@ such lambda. The call gives a lambda written there, the name of a
 `apply(y => apply(z => z, y + 10), 1)`. A loose program breaks one static
 rule in three: the function type left out, a value at the function parameter,
 the parameter read as a value, a call with another count, or the lambda given
-to `map`. TypeScript and Rust do not offer the step yet, so a difference on
-such a program is counted apart as `e3-ts-rust` (`cmd/fuzz/known.go`).
-`-noe3` leaves the forms out, and `-nof16` does too.
+to `map`. `-noe3` leaves the forms out, and `-nof16` does too.
 
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
@@ -215,12 +213,9 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
 Every implementation offers F1 to F8, and some offer more. The generator writes
-forms that every implementation offers, the guards, `walk` and typed recursive
-lambdas of F17 and the annotations of F16 among them, and one form that only Go
-offers yet: the function parameters of F17's step E3. A difference on a
-program with one is counted apart as `e3-ts-rust` when TypeScript and Rust
-agree with each other (`cmd/fuzz/known.go`); every other difference is a
-finding. With F8 a parse or check diagnostic carries a message, and a run
+forms that every implementation offers, the guards, `walk`, typed recursive
+lambdas and function parameters of F17 and the annotations of F16 among them.
+No difference is known (`cmd/fuzz/known.go`): every one is a finding. With F8 a parse or check diagnostic carries a message, and a run
 diagnostic a trace; each is compared among the implementations that write it
 (`spec/packages/f08-errors.md` 8).
 
