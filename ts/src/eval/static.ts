@@ -115,8 +115,9 @@ export interface Resolution {
   /** The number of lambdas around each lambda: the depth of the frame its link points to. */
   lambdaDepth: Map<A.Lambda, number>;
   /**
-   * Package F17, step E3: the slot of each parameter written as a name with no
-   * default and no function type, whose name a hint names (f17 13.2 item 4).
+   * Package F17, step E3: the slot of each hint parameter (f17 13.1, 13.2 item
+   * 4): a parameter of a `const`-bound lambda written as a name with no
+   * default and no function type.
    */
   hintSlots: Set<number>;
   /** Package F17, step E3: the slot of each function parameter, with its parameter (f17 13.1). */
@@ -138,9 +139,8 @@ export function higherOrder(l: A.Lambda): boolean {
 }
 
 /**
- * A binding of a scope. A value binding's `hint`: it is a parameter written
- * as a name with no default (f17 13.2 item 4). A function binding is package
- * F17's (f17 13.1).
+ * A binding of a scope. A value binding's `hint`: it is a hint parameter (f17
+ * 13.1, 13.2 item 4). A function binding is package F17's (f17 13.1).
  */
 type Binding = { k: "value"; slot: number; hint: boolean } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts } | FnRef;
 
@@ -342,7 +342,7 @@ class Walker {
       this.bind(p.name, p.span, { k: "lambda", id, counts: lambdaCounts(c.value) });
       this.res.slots.set(p, -1 - id);
       this.walking.add(id);
-      this.lambda(c.value);
+      this.lambda(c.value, true);
       this.walking.delete(id);
       const r = this.selfRefs.get(id);
       if (r !== undefined) this.diag("recursion-needs-types", r, "default", { name: p.name ?? "" });
@@ -396,7 +396,8 @@ class Walker {
     }
   }
 
-  private lambda(l: A.Lambda): void {
+  /** A lambda. `constBound`: the value of a `const` line, whose parameters may be hint parameters (f17 13.1). */
+  private lambda(l: A.Lambda, constBound = false): void {
     this.res.lambdaDepth.set(l, this.frames.length);
     this.frames.push(1);
     this.push();
@@ -416,8 +417,9 @@ class Walker {
           this.res.slots.set(pat, s);
           this.res.fnSlots.set(s, p);
         }
-      } else if (pat.kind === "NamePat" && p.default === null) {
-        // f17 13.2 item 4: a parameter written as a name with no default; its hints name the fix.
+      } else if (constBound && pat.kind === "NamePat" && p.default === null) {
+        // f17 13.2 item 4: a hint parameter, of a const-bound lambda, written as a name with no default.
+        // A parameter of a lambda written as an argument is none: a function type there is refused (rule 8).
         const s = this.bind(pat.name, pat.span, undefined, (slot) => ({ k: "value", slot, hint: true }));
         if (s !== null) {
           this.res.slots.set(pat, s);
@@ -462,7 +464,7 @@ class Walker {
         if (asLambdaArg) {
           this.res.lambdaArgs.add(id);
           this.selfRef(b.id, id, id.span);
-        } else this.diag("not-a-value", id.span, "lambda", { name: id.name });
+        } else this.diag("not-a-value", id.span, higherOrder(this.res.lambdas[b.id]) ? "higher-order" : "lambda", { name: id.name });
       }
       return;
     }
@@ -532,7 +534,8 @@ class Walker {
   private call(node: A.Call | A.MethodCall, namespace: string | null, name: string, nameSpan: Span, args: A.Arg[]): void {
     let target: Target = { k: "unknown" };
     let counts: Counts | null = null;
-    let isLambda = false;
+    /** The callee when it is a const-bound lambda. */
+    let callee: A.Lambda | null = null;
     if (namespace !== null) {
       const full = `${namespace}.${name}`;
       const c = this.env.hostFunctions.get(full);
@@ -550,7 +553,7 @@ class Walker {
       if (b !== undefined && b.k === "lambda") {
         target = { k: "lambda", id: b.id };
         counts = b.counts;
-        isLambda = true;
+        callee = this.res.lambdas[b.id];
         if (node.kind === "Call") this.selfRef(b.id, node, nameSpan);
       } else if (b !== undefined && b.k === "fn") {
         // f17 13.2 rule 1: a call of a function binding.
@@ -592,10 +595,16 @@ class Walker {
           if (higher[i]) return;
           const fn = fnAt(counts!, i);
           const names = counts!.names ?? [];
-          if (isLambda) {
+          if (callee !== null) {
             if (fn === null) {
-              // f17 13.2 rule 2: a lambda argument at a parameter with no function type.
-              if (this.isLambdaArg(a)) this.diag("lambda-to-lambda", a.span, "default", { name: callName });
+              // f17 13.2 rule 2 and item 4: a lambda argument at a parameter with no function type. The hint
+              // names that parameter when it is written as a name with no default; a pattern, `_` or a
+              // default shows that it takes a value.
+              if (!this.isLambdaArg(a)) return;
+              const lp = callee.params[i];
+              const named = lp !== undefined && lp.pattern.kind === "NamePat" && lp.pattern.name !== null && lp.pattern.name !== "_" && lp.default === null;
+              if (named) this.diag("lambda-to-lambda", a.span, "fn-hint", { name: (lp.pattern as A.NamePat).name });
+              else this.diag("lambda-to-lambda", a.span, "default", { name: callName });
               return;
             }
             // f17 13.2 rules 3 and 9: at a function parameter, a lambda argument of at most the listed count.

@@ -908,7 +908,8 @@ export const CATALOG: CatalogEntry[] = [
       "namespace": "{name} is a namespace, not a value",
       "function": "{name} is a function, not a value; call it",
       "lambda": "{name} is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function",
-      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value"
+      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value",
+      "higher-order": "{name} is a const-bound lambda, not a value; it takes a function, so it can only be called"
     }
   },
   {
@@ -931,8 +932,9 @@ export const CATALOG: CatalogEntry[] = [
       "name": "word"
     },
     "templates": {
-      "default": "a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead",
-      "higher-order": "a function that takes a function cannot be passed to {name}"
+      "default": "a function cannot be passed to {name} at a parameter that takes a value",
+      "higher-order": "a function that takes a function cannot be passed to {name}",
+      "fn-hint": "{name} is a parameter; to pass a function to it, give it a function type, as {name}: (x: int) => int"
     }
   },
   {
