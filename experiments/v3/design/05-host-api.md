@@ -1502,7 +1502,9 @@ type CallCheck struct{ Args []Arg; Span Span }
 
 > **Superseded by Part E** (R201) where they disagree: E.8 has the
 > diagnostics and the three renderings. A nested Risor error's message is
-> ruled by `20-9`, a Core amendment not yet built.
+> ruled by `20-9`, a Core amendment. Its message and cause are built (`15`
+> R217); the `data` carry and the JSON `cause` that `20-9` recommends are
+> not.
 
 ```go
 // Error is the only error type this package returns.

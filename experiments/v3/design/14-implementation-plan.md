@@ -351,7 +351,8 @@ corrected the count.
    - a plain first paragraph on big integers in `03-host.md` 3.4.4 (`19-14`);
    - hosts that live long, with the poisoned run, in a new informative
      `03-host.md` 3.2.5 (`19-15`);
-   - a nested Risor error's message, cause and data (`20-9`);
+   - a nested Risor error's message and cause (`20-9`). Its `data` stays
+     null, and no rendering writes the cause (R217);
    - the largest depth of D58 in `03-host.md` 3.3.4, 3.6.1, 3.9.1 and the
      schema of 3.10.11, and the stack test's rule in 3.9.1;
    - F8 3.1 item 2: 96 becomes 97;
