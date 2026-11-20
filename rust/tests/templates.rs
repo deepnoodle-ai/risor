@@ -2,7 +2,8 @@
 //! does not reach.
 
 use risor::{
-    parse, parse_template, CompileOptions, Data, Env, Expected, Segment, Step, TemplateMode, Value,
+    parse, parse_template, CompileOptions, Data, Env, Expected, Pos, Segment, Span, Step,
+    TemplateMode, Value,
 };
 use std::collections::BTreeMap;
 
@@ -172,12 +173,24 @@ fn a_call_of_many_arguments() {
         assert_eq!(format!("{out:?}"), format!("{:?}", Value::Num(i as f64)));
     }
     // The last argument reads a name no environment declares: its
-    // diagnostic is at its span in the whole text.
+    // diagnostic is at its span in the whole text, the `z` of `z)`.
+    let column = src.chars().count() as u32 - 1;
+    let z = Span {
+        start: Pos { line: 1, column },
+        end: Pos {
+            line: 1,
+            column: column + 1,
+        },
+    };
+    assert_eq!(c.arg_spans[n - 1], z);
     let last = c.args[n - 1].clone().unwrap();
     let Err(e) = Env::default().compile(&last, CompileOptions::default()) else {
         panic!("z compiles");
     };
-    assert_eq!(e.diagnostics[0].span, Some(c.arg_spans[n - 1]));
+    assert_eq!(
+        (e.diagnostics[0].code, e.diagnostics[0].span),
+        ("undefined-name", Some(z))
+    );
 }
 
 /// 3.1 item 5: what does not open a level costs no stack. A long chain and a

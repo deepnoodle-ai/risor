@@ -229,8 +229,10 @@ fn innermost(toks: &[Token]) -> Option<Tok> {
 }
 
 /// The repair (3.3): tokens inserted at the end until the program is
-/// complete.
+/// complete. *post* is the closers of the interpolations the cut left open,
+/// from `lex_before`, and nothing else.
 fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast> {
+    debug_assert!(post.iter().all(|t| matches!(t.tok, Tok::TmplTail(_))));
     let limit = pre.len();
     let mut ins: Vec<Token> = Vec::new();
     let build = |ins: &[Token]| -> Vec<Token> {
@@ -245,13 +247,17 @@ fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast>
         match parse_repair(src, &build(&ins), limit) {
             Ok(a) => return Some(a),
             Err(pos) if pos < limit => return None,
-            // The parser read past the place of the insertions, through a
-            // closer of an interpolation the cut left open (3.2 item 4), and
-            // failed after it. A template ends at its closer whatever its
-            // interpolation holds, so no token inserted before the closer
-            // changes what follows it: the repair fails. Inserting on to the
-            // bound gave the same failure, at the cost of a parse of the
-            // whole text for each token tried.
+            // A failure past the place of the insertions is a failure after a
+            // closer: the tokens after the insertions are only the closers of
+            // the interpolations the cut left open (3.2 item 4) and then the
+            // end, and with no closer the end is at k itself. So the parser
+            // closed the innermost template and failed after it. The repair
+            // inserts no template token, so each closer still closes the
+            // same template, and what follows a template's closer does not
+            // depend on what its interpolation holds: no insertion can mend
+            // the failure, and the repair fails. Inserting on to the bound
+            // gave the same failure, at the cost of a parse of the whole text
+            // for each token tried.
             Err(pos) if pos > k => return None,
             Err(_) => {}
         }
