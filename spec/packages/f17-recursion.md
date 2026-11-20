@@ -1075,6 +1075,29 @@ evaluated where it stands, in the call that holds the argument.
 5. **The depth bound** of `02-evaluation.md` 8.4 item 10 is not claimed for a
    program with a function parameter: a call of one runs a lambda that the
    checker checked where it was written, not at the call.
+6. **The stack.** The stack test of `03-host.md` 3.9.1 has two more deepest
+   cases with this step, the same in every implementation:
+
+   ```js
+   const down = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : f(n - 1); const d = (n: int): int => down(d, n); d(N)
+   const r = (f: (x: int) => int, n: int): int => n == 0 ? f(0) : r(y => f(y), n - 1); r(x => x, N)
+   ```
+
+   In the first, the recursion goes through a call of a function parameter at
+   every level: `d` calls `down`, and `down` calls `d` through `f`. Each call
+   adds 1 to the depth count, so `d(N)` reaches 2N + 2. At a depth limit L,
+   `d(L/2 - 1)` reaches L and gives 0, and `d(L/2)` is `depth-exceeded`. In
+   the second, each call of `r` gives on a new lambda that calls the one
+   before, and the run ends in a chain of calls of function parameters:
+   `f(0)` in the last call of `r`, then `f(y)` in the body of each of the N
+   lambdas. The calls of `r` reach N + 1, `f(0)` stands in the middle operand
+   of `? :` and adds 2, and each `f(y)` adds 1: a count of 2N + 3. The count is
+   odd, so `r(x => x, L/2 - 2)` reaches L − 1, the most this form reaches
+   within L, and gives 0, and `r(x => x, L/2 - 1)` is `depth-exceeded`. The
+   suite holds both forms within and past the limit at 200 and at 400
+   (`suite/recursion/e3-run.json`), so a runner on the documented stack runs
+   them; the stack test runs them on the stack divided by 1.5
+   (`15-build-rulings.md` R296).
 
 ### 13.5 Messages
 
@@ -1165,7 +1188,7 @@ F2's analysis reads the amended scope (F2 3.2):
 | Path | Holds |
 | --- | --- |
 | `suite/recursion/e3-static.json` | Each static rule of 13.2, with its templates, and the rules of Core beside a function parameter |
-| `suite/recursion/e3-run.json` | Values, steps, units, depth and its limit, traces, `catch`, each call's own names (the `apply` example of 13.4 item 3), runs without the type rules and the shape test |
+| `suite/recursion/e3-run.json` | Values, steps, units, depth and its limit, the two forms of the stack test at 200 and 400 (13.4 item 6), traces, `catch`, each call's own names (the `apply` example of 13.4 item 3), runs without the type rules and the shape test |
 | `suite/recursion/e3-check.json` | The checker of 13.3: types, sites, fits, each lambda argument, the library entries, `any` |
 | `suite/recursion/e3-earlier.json` | The eight texts of 13.9, with this step's outcome |
 | `suite/recursion/e3-analysis.json` | Analysis of 13.6 (F2) |

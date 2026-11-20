@@ -372,8 +372,8 @@ func TestFlatPrograms(t *testing.T) {
 // StackNeeds documents and tests the stack this binding needs
 // (03-host.md 3.9.1): to parse at the nesting limit, and to run at the
 // default depth limit, 200, and the largest, 400, with calls by name, calls
-// that map and flatMap make of a lambda, self-recursion through each, and
-// walks. stackDoc is the stack
+// that map and flatMap make of a lambda, self-recursion through each, calls
+// through a function parameter, and walks. stackDoc is the stack
 // the binding documents (risor.go); the test caps every goroutine's stack at
 // stackDoc divided by 1.5, so a deepest case that needs more crashes the
 // test. Go grows a goroutine's stack as needed, and it grows by doubling: a
@@ -456,7 +456,28 @@ func TestStackNeeds(t *testing.T) {
 			d = runErr(t, env, fmt.Sprintf(s, depth), nil)
 			assert.Equal(t, d.Code, "depth-exceeded", s)
 		}
+		// Calls through a function parameter (F17 13.4 item 6). The first
+		// reaches a depth count of 2N + 2, the second 2N + 3; n is the
+		// largest N within the limit, and n + 1 passes it.
+		for _, s := range fnParamCalls {
+			n := (depth - s.extra) / 2
+			assert.NotNil(t, run(t, env, fmt.Sprintf(s.src, n), nil), s.src)
+			d = runErr(t, env, fmt.Sprintf(s.src, n+1), nil)
+			assert.Equal(t, d.Code, "depth-exceeded", s.src)
+		}
 	}
+}
+
+// fnParamCalls are the forms of the stack test that call through a function
+// parameter, with %d for N, and extra the depth count of N = 0: a recursion
+// through a call of a function parameter at every level, and a chain of
+// lambdas, each given at a function parameter and calling the one before.
+var fnParamCalls = []struct {
+	src   string
+	extra int
+}{
+	{"const down = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : f(n - 1); const d = (n: int): int => down(d, n); d(%d)", 2},
+	{"const r = (f: (x: int) => int, n: int): int => n == 0 ? f(0) : r(y => f(y), n - 1); r(x => x, %d)", 3},
 }
 
 // selfRecursions are the forms of self-recursion of the stack test, with %d
