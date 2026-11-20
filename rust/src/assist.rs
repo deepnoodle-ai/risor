@@ -18,6 +18,7 @@ use crate::syntax::parser::{parse_repair, HOLE};
 use crate::syntax::token::{StrForm, Tok, Token, P};
 use crate::syntax::Expr;
 use crate::value::Kind;
+use std::collections::HashSet;
 
 /// A candidate of a completion (3.12).
 #[derive(Clone, Debug, PartialEq)]
@@ -240,12 +241,20 @@ fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast>
         v
     };
     for _ in 0..(4 * limit + 64) {
+        let k = limit + ins.len();
         match parse_repair(src, &build(&ins), limit) {
             Ok(a) => return Some(a),
             Err(pos) if pos < limit => return None,
+            // The parser read past the place of the insertions, through a
+            // closer of an interpolation the cut left open (3.2 item 4), and
+            // failed after it. A template ends at its closer whatever its
+            // interpolation holds, so no token inserted before the closer
+            // changes what follows it: the repair fails. Inserting on to the
+            // bound gave the same failure, at the cost of a parse of the
+            // whole text for each token tried.
+            Err(pos) if pos > k => return None,
             Err(_) => {}
         }
-        let k = limit + ins.len();
         let mut all: Vec<Token> = pre.to_vec();
         all.extend(ins.iter().cloned());
         let mut cands: Vec<Tok> = innermost(&all).into_iter().collect();
@@ -626,9 +635,11 @@ impl<'a> Tree<'a> {
             scopes.push(cands);
         }
         let mut out: Vec<Candidate> = Vec::new();
+        // The labels so far, so that a scope of many names is linear.
+        let mut seen: HashSet<String> = HashSet::new();
         for scope in scopes.into_iter().rev() {
             for c in scope {
-                if !out.iter().any(|o| o.label == c.label) {
+                if seen.insert(c.label.clone()) {
                     out.push(c);
                 }
             }
@@ -1031,8 +1042,9 @@ fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
             }
         }
         let mut out = tree.scope_names(id);
+        let mut seen: HashSet<String> = out.iter().map(|o| o.label.clone()).collect();
         for c in env_names(env) {
-            if !out.iter().any(|o| o.label == c.label) {
+            if seen.insert(c.label.clone()) {
                 out.push(c);
             }
         }
@@ -1093,10 +1105,11 @@ fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
         return v;
     };
     if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
+        let mut seen: HashSet<String> = v.iter().map(|c| c.label.clone()).collect();
         for t in types {
             if t.span.end <= hole.start
                 && type_hole_span(&t.ty).is_none()
-                && !v.iter().any(|c| c.label == t.name)
+                && seen.insert(t.name.clone())
             {
                 v.push(cand(&t.name, "type", None));
             }

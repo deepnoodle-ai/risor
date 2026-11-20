@@ -9,7 +9,8 @@ specification, not here. This file records the crate's own choices.
 - No dependencies, in the library or the tests. JSON is read by `src/json.rs`,
   which also refuses a repeated key (`03-host.md` 3.10.10).
 - No `unsafe` (`#![forbid(unsafe_code)]`).
-- Offsets are counted in code points. `Source` holds the text as `Vec<char>`;
+- Offsets are counted in code points. `Source` holds the text as code
+  points (`Arc<[char]>`, shared, so a copy of a parsed program shares it);
   every `Range` (crate-private) is two indexes into it. The public `Span` is
   start and end as line and column (`03-host.md` 3.7.7, E.8); every span a
   host sees is one, converted at the boundary.

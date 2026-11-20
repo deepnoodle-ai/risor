@@ -2,11 +2,13 @@
 //!
 //! The specification counts in code points (`01-language.md` 6.4,
 //! `03-host.md` 3.7.7). Rust strings are UTF-8, so the lexer works on a
-//! `Vec<char>` and every offset in this crate is an index into it: a count of
-//! code points from the start of the text. A [`Range`] holds two such offsets.
+//! slice of `char` and every offset in this crate is an index into it: a
+//! count of code points from the start of the text. A [`Range`] holds two
+//! such offsets.
 //! A [`Pos`] is a line and a column, both from 1, as a diagnostic shows it.
 
 use std::fmt;
+use std::sync::Arc;
 
 /// A start and an end offset, in code points. The end is exclusive.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -74,11 +76,13 @@ impl fmt::Display for Span {
 }
 
 /// The text of a program, held as code points, with the offsets where lines
-/// start. A line ends at U+000A and at nothing else.
+/// start. A line ends at U+000A and at nothing else. The text is shared, so
+/// a copy costs nothing: analysis gives each argument of each call as a
+/// program over the whole text (F2 3.6 item 5).
 #[derive(Clone, Debug)]
 pub struct Source {
-    chars: Vec<char>,
-    line_starts: Vec<u32>,
+    chars: Arc<[char]>,
+    line_starts: Arc<[u32]>,
 }
 
 impl Source {
@@ -93,7 +97,10 @@ impl Source {
                 line_starts.push(i as u32 + 1);
             }
         }
-        Source { chars, line_starts }
+        Source {
+            chars: chars.into(),
+            line_starts: line_starts.into(),
+        }
     }
 
     /// The text with nothing removed: a U+FEFF at the start is a code point
@@ -106,7 +113,10 @@ impl Source {
                 line_starts.push(i as u32 + 1);
             }
         }
-        Source { chars, line_starts }
+        Source {
+            chars: chars.into(),
+            line_starts: line_starts.into(),
+        }
     }
 
     pub fn chars(&self) -> &[char] {

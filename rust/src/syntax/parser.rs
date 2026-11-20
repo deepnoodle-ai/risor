@@ -1119,6 +1119,8 @@ impl<'a> Parser<'a> {
         let lb = self.bump();
         self.open(lb.span)?;
         let mut fields: Vec<PField> = Vec::new();
+        // The keys so far, so that a long record is read in linear time.
+        let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut rest: Option<Option<Box<PType>>> = None;
         loop {
             let t = self.peek();
@@ -1147,7 +1149,7 @@ impl<'a> Parser<'a> {
                 Tok::Str(s, f) if f.is_line() && t.code.is_none() => s.clone(),
                 _ => return Err(self.bad_type_text(t, "record")),
             };
-            if fields.iter().any(|f| f.key == key) {
+            if !keys.insert(key.clone()) {
                 return Err(self.bad_type_text(t, "duplicate"));
             }
             self.bump();
