@@ -74,6 +74,8 @@ fn host() -> Host {
             ("n", Data::Int(1)),
             ("b", Data::Bool(false)),
             ("o", Data::Null),
+            ("m", Data::Map(BTreeMap::new())),
+            ("xs", Data::List(Vec::new())),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
@@ -89,6 +91,8 @@ fn env() -> Env {
         .var("o", "int | null")
         .var("r", "any")
         .var("l", "any")
+        .var("m", "map<int>")
+        .var("xs", "int[]")
         .function("f", "(x: string) => string", |_, _| {
             Ok(Data::Str("a".into()))
         })
@@ -111,6 +115,9 @@ struct Form {
     format: usize,
     /// Whether the form is an expression, which a template part holds.
     expression: bool,
+    /// Whether a compile without the check fails too, with the code of
+    /// `ty`: a static rule (F4 6.1).
+    static_rule: bool,
 }
 
 impl Form {
@@ -129,8 +136,38 @@ impl Form {
             units,
             format: N,
             expression: true,
+            static_rule: false,
         }
     }
+
+    /// A form that is not an expression: a program with `const` or `type`
+    /// lines.
+    fn program(
+        src: fn(usize) -> String,
+        ty: &'static str,
+        value: &str,
+        steps: u64,
+        units: u64,
+    ) -> Form {
+        Form {
+            expression: false,
+            ..Form::new(src, ty, value, steps, units)
+        }
+    }
+
+    /// A form whose check fails at a limit that `05-types.md` 20 states;
+    /// a compile without the check runs it to `value`.
+    fn over_the_limit(src: fn(usize) -> String, value: &str, steps: u64, units: u64) -> Form {
+        Form {
+            ty: Err("check-limit"),
+            ..Form::new(src, "", value, steps, units)
+        }
+    }
+}
+
+/// The parts of a form, joined: `n` of them, each from its index.
+fn each(n: usize, sep: &str, part: impl Fn(usize) -> String) -> String {
+    (0..n).map(part).collect::<Vec<_>>().join(sep)
 }
 
 /// The position after the last code point of a text.
@@ -176,7 +213,9 @@ fn through_every_entry_point(form: &Form) {
     let x = parse(&src).unwrap_or_else(|e| panic!("{name}: {e}"));
     let analysis = x.analyze();
     assert!(
-        analysis.refs.len() + analysis.calls.len() > 0 || !form.expression,
+        analysis.refs.len() + analysis.calls.len() > 0
+            || analysis.literal.is_some()
+            || !form.expression,
         "{name}"
     );
 
@@ -196,8 +235,11 @@ fn through_every_entry_point(form: &Form) {
     }
 
     // A compile without the check, and its run.
-    let want = (form.value.clone(), form.steps, form.units);
-    assert_eq!(run(&env, &src, false), Ok(want), "{name}");
+    let want = match (form.static_rule, form.ty) {
+        (true, Err(code)) => Err(code.to_string()),
+        _ => Ok((form.value.clone(), form.steps, form.units)),
+    };
+    assert_eq!(run(&env, &src, false), want, "{name}");
 
     // The formatter: its text parses.
     let short = (form.src)(form.format);
@@ -514,4 +556,246 @@ fn lines_and_parts_of_the_limit() {
             ),
         ]
     });
+}
+
+/// The arguments of a call and the entries of a map (13.1: "the next
+/// item, entry, argument"). A record of 100,000 fields has size 100,001,
+/// over the limit of `05-types.md` 20.7: the check gives `check-limit` at
+/// the map, and a compile without the check runs it. One entry fewer is at
+/// the limit, and checks.
+#[test]
+fn arguments_and_entries() {
+    on_the_stated_stack(|| {
+        let n = N as u64;
+        // A literal map of 100,000 entries: its JSON, with its keys in order.
+        let mut keys: Vec<String> = (0..N).map(|i| format!("k{i}")).collect();
+        keys.sort();
+        let map = format!(
+            "{{{}}}",
+            each(keys.len(), ",", |i| format!(
+                "\"{}\":{}",
+                keys[i],
+                &keys[i][1..]
+            ))
+        );
+        vec![
+            Form::new(
+                |n| format!("max({})", vec!["n"; n].join(", ")),
+                "int",
+                "1",
+                n,
+                0,
+            ),
+            Form::over_the_limit(
+                |n| format!("len({{{}}})", each(n, ", ", |i| format!("k{i}: n"))),
+                &N.to_string(),
+                1,
+                2 * n + 1,
+            ),
+            Form::new(
+                |n| format!("len({{{}}})", each(n - 1, ", ", |i| format!("k{i}: n"))),
+                "int",
+                &(N - 1).to_string(),
+                1,
+                2 * n - 1,
+            ),
+            // A literal program: analysis gives its value (F2 3.7).
+            Form::over_the_limit(
+                |n| format!("{{{}}}", each(n, ", ", |i| format!("k{i}: {i}"))),
+                &map,
+                0,
+                2 * n + 1,
+            ),
+        ]
+    });
+}
+
+/// The arms of a `match`, and the literals of one arm.
+#[test]
+fn arms_and_their_literals() {
+    on_the_stated_stack(|| {
+        let n = N as u64;
+        vec![
+            Form::new(
+                |n| {
+                    let arms = each(n, ", ", |i| format!("\"k{i}\" => {i}"));
+                    format!("match y {{ {arms}, _ => -1 }}")
+                },
+                "int",
+                "-1",
+                n + 2,
+                0,
+            ),
+            Form::new(
+                |n| {
+                    let lits = each(n, " | ", |i| format!("\"k{i}\""));
+                    format!("match y {{ {lits} => 1, _ => 2 }}")
+                },
+                "int",
+                "2",
+                2,
+                0,
+            ),
+        ]
+    });
+}
+
+/// The parameters of a lambda, and the fields and elements of a pattern
+/// (13.1: "the next ... parameter, field, element"). Each default reads
+/// the name bound before it, so every pass keeps the names of one long
+/// scope.
+#[test]
+fn parameters_and_patterns() {
+    on_the_stated_stack(|| {
+        let n = N as u64;
+        vec![
+            Form::program(
+                |n| {
+                    let params = each(n - 1, "", |i| format!(", a{} = a{i}", i + 1));
+                    format!("const g = (a0 = 0{params}) => a{};\ng()", n - 1)
+                },
+                "int",
+                "0",
+                2,
+                0,
+            ),
+            Form::program(
+                |n| {
+                    let fields = each(n - 1, "", |i| format!(", k{} = k{i}", i + 1));
+                    format!("const {{k0 = 0{fields}}} = m;\nk{}", n - 1)
+                },
+                "int",
+                "0",
+                n,
+                0,
+            ),
+            Form::program(
+                |n| {
+                    let elems = each(n - 1, "", |i| format!(", a{} = a{i}", i + 1));
+                    format!("const [a0 = 0{elems}] = xs;\na{}", n - 1)
+                },
+                "int",
+                "0",
+                n,
+                0,
+            ),
+        ]
+    });
+}
+
+/// The alternatives and the fields of a program type (F4 2.8), and `type`
+/// lines (F16 2.4). A record type of 100,000 fields is over the size limit,
+/// a static rule (F4 6.1): every compile gives `check-limit`. One field
+/// fewer is at the limit, and the walk reads each field.
+#[test]
+fn program_types_and_type_lines() {
+    on_the_stated_stack(|| {
+        let n = N as u64;
+        vec![
+            Form::new(
+                |n| format!("r is {}", each(n, " | ", |i| format!("\"k{i}\""))),
+                "bool",
+                "false",
+                1,
+                0,
+            ),
+            Form::new(
+                |n| {
+                    let alts = each(n - 1, " | ", |i| format!("\"k{i}\""));
+                    format!("len(y as {alts} | \"a\")")
+                },
+                "int",
+                "1",
+                2,
+                0,
+            ),
+            Form {
+                static_rule: true,
+                ..Form::over_the_limit(
+                    |n| format!("r is {{{}}}", each(n, ", ", |i| format!("k{i}?: int"))),
+                    "",
+                    0,
+                    0,
+                )
+            },
+            Form::new(
+                |n| format!("r is {{{}}}", each(n - 1, ", ", |i| format!("k{i}?: int"))),
+                "bool",
+                "false",
+                n + 3,
+                0,
+            ),
+            Form::program(
+                |n| format!("{}\nn", each(n, "\n", |i| format!("type T{i} = int;"))),
+                "int",
+                "1",
+                0,
+                0,
+            ),
+            // Each line names the line before it.
+            Form::program(
+                |n| {
+                    let lines = each(n - 1, "\n", |i| format!("type T{} = T{i};", i + 1));
+                    format!("type T0 = int;\n{lines}\nn as T{}", n - 1)
+                },
+                "int",
+                "1",
+                1,
+                0,
+            ),
+        ]
+    });
+}
+
+/// The parts of a template literal (each `${` opens a level of its own),
+/// and comments (13.1: "white space, comments").
+#[test]
+fn template_parts_and_comments() {
+    on_the_stated_stack(|| {
+        let n = N as u64;
+        vec![
+            Form::new(
+                |n| format!("`{}`", "${y}".repeat(n)),
+                "string",
+                &format!("\"{}\"", "a".repeat(N)),
+                1_563,
+                1_563,
+            ),
+            Form::new(|n| format!("{}n", "/* c */ ".repeat(n)), "int", "1", 0, 0),
+            Form::new(|n| format!("{}n", "// c\n".repeat(n)), "int", "1", 0, 0),
+            Form::new(
+                |n| format!("[{}n]", "n, /* c */ ".repeat(n)),
+                "int[]",
+                &format!("[{}]", vec!["1"; N + 1].join(",")),
+                0,
+                n + 2,
+            ),
+        ]
+    });
+}
+
+/// The parts of a template of F2 (2.2): each `${{` opens a level of its
+/// own, so parts side by side are flat. Its analysis, its program, a run and
+/// its formatter.
+#[test]
+fn parts_of_a_template() {
+    std::thread::Builder::new()
+        .stack_size(stated_stack(200))
+        .spawn(|| {
+            let env = env();
+            let text = "${{ y }}-".repeat(N);
+            let t = parse_template(&text).unwrap();
+            assert_eq!(t.analyze(TemplateMode::String).refs.len(), N);
+            let p = t.program(TemplateMode::String);
+            let r = env.check(&p, &Expected::None).unwrap();
+            assert_eq!(r.ty.to_string(), "string");
+            let prog = env.compile(&p, CompileOptions::default()).unwrap();
+            let vars = host();
+            let out = prog.run(&vars).unwrap();
+            assert_eq!(json_text(&out).unwrap(), format!("\"{}\"", "a-".repeat(N)));
+            assert!(format_template(&text).is_ok());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
