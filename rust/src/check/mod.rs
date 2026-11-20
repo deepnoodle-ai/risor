@@ -3510,8 +3510,9 @@ impl<'a> Checker<'a> {
         keys.dedup();
         let mut failed: Vec<usize> = Vec::new();
         let mut used_any: Vec<usize> = Vec::new();
-        // F16 3.3: a spread whose fit used `any`, with the first key's types.
-        let mut strict_failed: Vec<(usize, Ty, Ty)> = Vec::new();
+        // F16 3.3: a spread whose fit used `any`, with the first key's types,
+        // by entry index.
+        let mut strict_failed: Vec<Option<(Ty, Ty)>> = vec![None; ents.len()];
         let mut written: Vec<usize> = Vec::new();
         let mut surely: Vec<String> = Vec::new();
         let all: Vec<Option<&str>> = keys
@@ -3541,8 +3542,8 @@ impl<'a> Checker<'a> {
                     Ent::Spread { .. } => match fits(ty, &want) {
                         None => failed.push(i),
                         Some(true) if self.strict => {
-                            if !strict_failed.iter().any(|(j, _, _)| *j == i) {
-                                strict_failed.push((i, ty.clone(), want.clone()));
+                            if strict_failed[i].is_none() {
+                                strict_failed[i] = Some((ty.clone(), want.clone()));
                             }
                         }
                         Some(true) => used_any.push(i),
@@ -3583,8 +3584,10 @@ impl<'a> Checker<'a> {
                 self.report(vs, &vt, t, mode, Why::Fit);
             }
         }
-        for (i, ty, want) in strict_failed {
-            if failed.contains(&i) {
+        for (i, s) in strict_failed.into_iter().enumerate() {
+            // A definite failure takes priority for the same operand.
+            let Some((ty, want)) = s else { continue };
+            if failed.binary_search(&i).is_ok() {
                 continue;
             }
             if let Ent::Spread { operand, .. } = &ents[i] {
