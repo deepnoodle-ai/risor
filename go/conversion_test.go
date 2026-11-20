@@ -107,7 +107,8 @@ func TestNamedTypeDecls(t *testing.T) {
 	for code, decls := range map[string][]risor.Decl{
 		"bad-name":   {risor.NamedType("T", "int")},
 		"name-clash": {risor.NamedType("Ab", "int"), risor.NamedType("Ab", "int")},
-		"bad-type":   {risor.NamedType("Ab", "Cd"), risor.NamedType("Cd", "int")},
+		// A later name resolves (F17 12.2); a cycle with no guard does not.
+		"bad-type": {risor.NamedType("Ab", "Cd"), risor.NamedType("Cd", "Ab | null")},
 	} {
 		_, err := risor.NewEnv(decls...)
 		var e *risor.Error
