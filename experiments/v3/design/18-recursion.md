@@ -7,8 +7,11 @@ entries alone. The owner also accepted `match` guards. On 2026-11-19 the owner
 dropped `iterate` and settled passing functions to user-defined functions
 (#644a, D57), which section 7 adds. Sub-decisions 18-1 to 18-4, 18-6, 18-9 to
 18-11 and 18-13 are settled as stated; section 10 marks the others as rulings
-or recommendations. Nothing here is built. The spec text is in sections 3 to
-8 in a form ready to move into the package chapter.
+or recommendations. Built so far, in all three implementations: `match`
+guards and `walk` (step E0), and typed self-recursion on per-call frames
+(step E1), in `spec/packages/f17-recursion.md`. Recursive named types (step
+E2) and function parameters (step E3) are not built; their spec text is in
+sections 4 and 7 in a form ready to move into the package chapter.
 
 **Evidence.** **(R)** read in the specification or a sibling document at the
 place cited. **(ran)** run with the Go CLI built from `main` at `aeaaf1f`

@@ -93,14 +93,17 @@ usage it has without this package, but for the text of the message of
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
    F13, F14, F16 slice D1, F17, F12. F19 takes its place beside F17 when its
    chapter is written: F14, F16, F17, F19, F12 (`15-build-rulings.md` R211).
-   The place of F16's slice D1 is open (`spec/packages/f16-entry-points.md`
-   1.4). So an implementation that offers F17 offers every package before
+   F16's slice D1 stands before F17, and its later slices after it
+   (`spec/packages/f16-entry-points.md` 1.4). So an implementation that
+   offers F17 offers every package before
    it, and the cases of this package may use their forms and their case
    fields: the tagged unions of F5, the trace of F8, the host facts of F14.
-2. **How the steps of F17 are offered is open** (`14` 5.3). F17 as this
-   chapter states it holds steps E0 and E1, and an implementation that offers
-   it offers both. Step E0 needs no part of F16. Step E1 needs the annotations
-   of F16's slice D1: a lambda is typed only by them (11.1).
+2. **F17 is offered whole, and keeps one place.** As this chapter states it,
+   F17 holds steps E0 and E1, and an implementation that offers it offers
+   both. A later step extends this chapter, and every implementation offers
+   it in the change that adds it (`15-build-rulings.md` R261). Step E0 needs
+   no part of F16. Step E1 needs the annotations of F16's slice D1: a lambda
+   is typed only by them (11.1).
 3. **F12 was offered before this chapter was written,** and F17 stands before
    it in the order. So the cases of F17's forms in the formatter and in assist
    stand in this package's directory, in files whose names begin `tools-` (8),

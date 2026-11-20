@@ -287,15 +287,16 @@ A track with no syntax, such as track C, says which parts do not apply.
 | D3 | Doc comments, `SchemaOf`, `Doc` | `17` |
 | F | Author feedback; expression features; the design of host interfaces; v2 maintenance | `20`, `21`, `19-12` |
 
-**The slices and the order of offering. Open.** `03-host.md` 3.11 item 2
-offers each package whole, and only with all before it. Tracks D1, E, D2 and
-D3 build F17 between the first and second slices of F16, and E0 may come
-before D1, so a runner that offered packages whole could not run F17's cases
-when track E is done. A recommendation, not settled: when track D1 lands,
-3.11 item 2 names the slices in the order they are built, `..., F14, F16 D1,
-F17, F16 D2, F16 D3, F19, F12`, and each slice's cases stand in files of
-their own in F16's directory. If E0 goes before D1, its cases wait until F17
-is offered. The owner is asked.
+**The slices and the order of offering (R261).** `03-host.md` 3.11 item 2
+offers each package only with all before it. Tracks D1, E, D2 and D3 build
+F17 between the first and second slices of F16, so a runner that offered
+packages whole could not run F17's cases when track E is done. So each slice
+takes a place of its own, in the order the slices are built: `..., F14, F16
+D1, F17, F16 D2, F16 D3, F19, F12`. Each slice's cases stand in files of
+their own in F16's directory. F17 keeps one place: a later step extends it,
+and every implementation offers the step in the change that adds it. 3.11
+item 2 names a slice when it is built. Today its order ends `F14, F16 slice
+D1, F17, F12`.
 
 **Track A: unblock PR #642 and reconcile PR #643.**
 
@@ -308,6 +309,9 @@ is offered. The owner is asked.
 3. F8 3.1 item 2 says `suite/messages-parse.json` has 96 templates. The file
    has 58 codes and 97 templates (ran, 2026-11-19). The chapter is corrected
    in track B.
+
+**Done.** PR #645 fixed the lint, PRs #642 and #643 are merged, and track B
+corrected the count.
 
 **Track B: the stack test and the Core amendments.**
 
@@ -339,8 +343,8 @@ is offered. The owner is asked.
    - absence under `??` for every operand of a chain but the last (`20` 3.1),
      with `no-field` kept on a closed record. The suite pins a union receiver
      (flat(U)), `a?.b.c ?? d` with no key `b` (`null-operand`) and
-     `xs[*].f ?? d` (an `Each` node, not a coalesced read). The owner is asked
-     to confirm the exception to `03-host.md` 3.4.8 item 2;
+     `xs[*].f ?? d` (an `Each` node, not a coalesced read). The exception to
+     `03-host.md` 3.4.8 item 2 stands (R260);
    - the interactions in determinism (`19-1`): `02-evaluation.md` 9,
      `03-host.md` 3.6.2 and 3.9.1;
    - the host's ownership of opaque state, the aliasing duty, and the note on
@@ -348,7 +352,8 @@ is offered. The owner is asked.
    - a plain first paragraph on big integers in `03-host.md` 3.4.4 (`19-14`);
    - hosts that live long, with the poisoned run, in a new informative
      `03-host.md` 3.2.5 (`19-15`);
-   - a nested Risor error's message, cause and data (`20-9`);
+   - a nested Risor error's message and cause (`20-9`). Its `data` stays
+     null, and no rendering writes the cause (R217);
    - the largest depth of D58 in `03-host.md` 3.3.4, 3.6.1, 3.9.1 and the
      schema of 3.10.11, and the stack test's rule in 3.9.1;
    - F8 3.1 item 2: 96 becomes 97;
@@ -358,15 +363,21 @@ is offered. The owner is asked.
 
    Core stays at 19 run codes. The scope rule of a lambda's own name is not
    in this pull request: it lands with track D1.
+
+   **Done (R212, R215 to R220),** in all three implementations (PR #654).
 3. **The acceptance check and the tag.** The workflow engine is ported onto
    the amended Core. Then the first `go/v3.0.0-alpha.N` tag is cut.
+
+   **The port is done; the tag is not cut.** The port's tests pass against
+   `main` at `351701b0` (ran, 2026-11-19), and issue #656 records what the
+   port found in the Go host API.
 
 **Track C: Go S4 helpers (`19-13`), beside the others.** It lives in `go/`
 alone: no specification text, no suite case, nothing in TypeScript or Rust.
 `risor.Func`, `risor.Methods[T]`, `Function.Reflective()`, with the rules of
 `19` 6.1 for initialisms, colliding names, Go interface types and parameter
 names. `cmd/risor-bind` is an optional follow-up. `05-host-api.md` B.4 to
-B.7 already say that Part E replaced them.
+B.7 already say that Part E replaced them. **Done** (PR #646).
 
 **Track D1: annotations, `type` lines and the syntax of an `Fn` parameter**
 (F16, first slice; `17` 3.1, 3.2, 3.4). **Done (R232 to R246, R258, R259),** in all three

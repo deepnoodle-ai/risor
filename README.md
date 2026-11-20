@@ -207,9 +207,12 @@ risor                                       # the REPL
 ## Status
 
 All three implementations pass the Core specification with the type
-checker. Each is now building the follow-on packages in
+checker, and offer the same follow-on packages from
 [`spec/packages/`](spec/packages): JSON Schema, config files, templates,
-queries and others. Go is the furthest along.
+queries and others. The newest additions are type annotations and `type`
+lines, guards on `match` arms, `walk` for trees, and typed lambdas that call
+themselves. Recursive named types, function parameters and `export const`
+entry points are next.
 
 ## Request for comment
 

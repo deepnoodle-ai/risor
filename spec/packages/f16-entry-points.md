@@ -74,10 +74,10 @@ version number and no version marker.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F16 slice D1, F17, F12. **The place of slice D1 is open:** it is
-   the recommendation of `15-build-rulings.md` R211, which put F16 before
-   F17, and the owner has not confirmed how the slices of F16 and the steps
-   of F17 are offered (`14` 5.3).
+   F13, F14, F16 slice D1, F17, F12. Slice D1 stands before F17, and each
+   later slice takes a place of its own after F17, in the order the slices
+   are built: F16 slice D1, F17, F16 slice D2, F16 slice D3
+   (`15-build-rulings.md` R211, R261).
 2. An implementation that offers this package offers F4: an annotation is a
    program type of F4, resolved by F4's rules. It offers F8, so a case of this
    package may state messages.
