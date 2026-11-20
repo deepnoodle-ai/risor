@@ -33,7 +33,7 @@ import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
 import { complete, hover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
 import type { Classifier } from "../value/value.ts";
-import { CONFIG_STATIC, CONVERSION_STATIC, loadCaseFile, validateCaseFile } from "./casefile.ts";
+import { ENTRY_POINTS_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
 import { pathText, renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import type { RenderDiagnostic } from "../host/render.ts";
@@ -68,6 +68,7 @@ export interface Verdict {
 export const STATIC_CODES: ReadonlySet<string> = new Set([
   "undefined-name", "undefined-function", "call-of-parameter", "lambda-to-lambda", "not-a-value",
   "arity", "duplicate-name", "shadows-namespace", "duplicate-key", "duplicate-case", "unreachable-arm",
+  "recursion-needs-types",
 ]);
 
 const LIMIT_CODES: ReadonlySet<string> = new Set([
@@ -714,9 +715,18 @@ function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict
       const lit = a.report.literal;
       if (want === false || lit === false) same &&= want === false && lit === false;
       else same &&= plainEqual(lit.value, hostValue((want as JsonObject).value), CLASSIFIER);
-    } else same &&= JSON.stringify(found[k]) === JSON.stringify(want);
+    } else same &&= canonicalJson(found[k]) === canonicalJson(want);
   }
   return same ? v("pass") : v("fail", { differences: [{ field: "analysis", expected: ex.analysis, found }] });
+}
+
+/** JSON text with the keys of every object sorted: the keys of a JSON object have no order. */
+function canonicalJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) => {
+    if (x === null || typeof x !== "object" || Array.isArray(x)) return x;
+    const o = x as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+  });
 }
 
 function finish(c: Case, o: Outcome, unmatched: string[], v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
@@ -948,6 +958,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
   if (Array.isArray(json) && json.length > 0 && json.every((r) => isObject(r) && !("expect" in r)) && json.some((r) => isObject(r) && "cases" in r)) {
     // f08 7.8 item 2: every case of messages-check.json is run once, checked.
     if (basename(path) === "messages-check.json") opts = { ...opts, checkOnly: true };
+    // f16 8 item 3: the cases of messages-entry-points.json run checked, with the static codes of f16 3.1 item 11.
+    if (basename(path) === "messages-entry-points.json") opts = { ...opts, checkOnly: true, staticCodes: ENTRY_POINTS_STATIC };
     const out: Verdict[] = [];
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;
@@ -964,7 +976,7 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
   const dir = basename(dirname(path));
   const packageDir = basename(dirname(dirname(path))) === "suite" && dir !== "core-run" && dir !== "core-check";
   const checkOnly = opts.checkOnly ?? (["core-check", "host-types"].includes(dir) || (packageDir && basename(path).endsWith("-check.json")));
-  const staticCodes = dir === "conversion" || dir === "unions" || dir === "facts" ? CONVERSION_STATIC : dir === "config" ? CONFIG_STATIC : undefined;
+  const staticCodes = staticCodesOf(dir);
   // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly, staticCodes });
 }
@@ -977,8 +989,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F14, and F17 as far as step E0 (f17 1.4). */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17]);
+/** The packages this implementation offers: F1 to F14, F16 as far as slice D1 (f16 1.4), and F17 as far as step E0 (f17 1.4). */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

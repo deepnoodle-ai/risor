@@ -84,6 +84,36 @@ export interface Resolution {
    */
   coalesced: Set<A.Member | A.Index>;
   slotCount: number;
+  /**
+   * Each reference of a const-bound lambda to its own name, in its body or
+   * defaults: a `Call` or an `Ident` lambda argument (05 22.5). No use (13.9).
+   */
+  recursive: Set<A.Call | A.Ident>;
+  /** Package F16: each annotation's resolved type; null after a diagnostic of f16 3.1 (f16 3.3 item 2). */
+  annTypes: Map<A.TypeAnn, Type | null>;
+  /** Package F16: the type lines that declare their names (f16 3.1 item 5), with the types they declare. */
+  typeLines: Map<A.TypeLine, Type>;
+  /**
+   * Each call binds its own names (f17 11.5). Where each slot lives: the
+   * number of lambdas around the scope that binds it (0: the program, whose
+   * one frame is the run's slots), and for a slot in a lambda, its index in
+   * that lambda's frame (index 0 is the frame's link).
+   */
+  slotDepth: number[];
+  slotIndex: number[];
+  /** The size of each lambda's frame, its link included. */
+  frameSize: Map<A.Lambda, number>;
+  /** The number of lambdas around each lambda: the depth of the frame its link points to. */
+  lambdaDepth: Map<A.Lambda, number>;
+}
+
+/**
+ * f17 11.1: a typed lambda has a result annotation, and every parameter has an
+ * annotation, of a program type or of a function type. Read from the text
+ * alone, whatever the types resolve to.
+ */
+export function typedLambda(l: A.Lambda): boolean {
+  return l.result !== null && l.params.every((p) => p.type !== null || p.fn !== null);
 }
 
 type Binding = { k: "value"; slot: number } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts };
@@ -136,7 +166,22 @@ class Walker {
     constants: new Map(),
     coalesced: new Set(),
     slotCount: 0,
+    recursive: new Set(),
+    annTypes: new Map(),
+    typeLines: new Map(),
+    slotDepth: [],
+    slotIndex: [],
+    frameSize: new Map(),
+    lambdaDepth: new Map(),
   };
+  /** The next free index of the frame of each lambda whose text the walk is in, innermost last (f17 11.5). */
+  private readonly frames: number[] = [];
+  /** The const-bound lambdas whose text the walk is in, by id (05 22.5). */
+  private readonly walking = new Set<number>();
+  /** For each const-bound lambda, its reference to its own name with the least start (05 22.5). */
+  private readonly selfRefs = new Map<number, Span>();
+  /** Package F16: the type names in scope, the environment's and the type lines' walked so far (f16 3.1 items 2, 7). */
+  private typeNames: TypeNames;
   /** The `??` nodes of the chains already marked (coalesce). */
   private readonly chained = new Set<A.Binary>();
   private readonly scopes: Map<string, Binding>[] = [];
@@ -147,6 +192,7 @@ class Walker {
   constructor(env: StaticEnv, source?: Source) {
     this.env = env;
     this.source = source;
+    this.typeNames = env.typeNames ?? NO_TYPE_NAMES;
     const outer = new Map<string, Binding>();
     for (const v of env.variables) outer.set(v, { k: "var", name: v });
     this.scopes.push(outer);
@@ -186,6 +232,10 @@ class Walker {
     if (scope.has(name)) this.diag("duplicate-name", span, "default", { name });
     if (b === undefined) {
       const slot = this.res.slotCount++;
+      // f17 11.5: a name of the program in the run's slots, a name in a lambda in that lambda's frame.
+      const depth = this.frames.length;
+      this.res.slotDepth[slot] = depth;
+      this.res.slotIndex[slot] = depth === 0 ? slot : this.frames[depth - 1]++;
       scope.set(name, { k: "value", slot });
       return slot;
     }
@@ -195,24 +245,89 @@ class Walker {
 
   program(p: A.Program): void {
     this.push();
-    for (const c of p.consts) this.constLine(c);
+    // f16 3.1 item 1: the type lines and the const lines in the order of the text, then the result.
+    let t = 0;
+    for (const c of p.consts) {
+      while (t < p.types.length && p.types[t].span.start < c.span.start) this.typeLine(p.types[t++]);
+      this.constLine(c);
+    }
+    while (t < p.types.length) this.typeLine(p.types[t++]);
     this.expr(p.result);
     this.pop();
   }
 
+  /** The names of the type lines walked so far (f16 3.1 item 4). */
+  private readonly typeLineNames = new Set<string>();
+
+  /** Package F16: a type line (f16 3.1 items 2 to 6). */
+  private typeLine(l: A.TypeLine): void {
+    const env = this.env.typeNames ?? NO_TYPE_NAMES;
+    const clash = env.named.has(l.name) || env.opaque.has(l.name);
+    if (clash) this.diag("name-clash", l.nameSpan, "default", { name: l.name });
+    else if (this.typeLineNames.has(l.name)) this.diag("duplicate-name", l.nameSpan, "default", { name: l.name });
+    this.typeLineNames.add(l.name);
+    const t = this.annotation(l.type);
+    if (clash) return;
+    // A line that stands replaces an earlier line of its name (f16 3.1 item 4, R240); one whose type has a
+    // diagnostic declares nothing, nor one whose type the repair supplied (f16 7.3 item 5).
+    // The map is changed in place: every annotation is resolved, eagerly, when the walk reaches it, so it
+    // sees the type lines before it and no later one. The environment's own map is copied once, not changed.
+    if (this.lineNamed === null) {
+      this.lineNamed = new Map(this.typeNames.named);
+      this.typeNames = { opaque: this.typeNames.opaque, named: this.lineNamed };
+    }
+    if (t === null || l.supplied === true) this.lineNamed.delete(l.name);
+    else {
+      this.lineNamed.set(l.name, t);
+      this.res.typeLines.set(l, t);
+    }
+  }
+
+  /** The named types in scope once a type line is walked: the environment's and the type lines' (f16 3.1 item 7). */
+  private lineNamed: Map<string, Type> | null = null;
+
+  /** Package F16: resolve an annotation's program type in the type names in scope (f16 3.1 item 7). */
+  private annotation(a: A.TypeAnn): Type | null {
+    const r = resolveProgramType(a.type, a.span, a.spans, this.typeNames);
+    if (r.ok) {
+      this.res.annTypes.set(a, r.type);
+      return r.type;
+    }
+    this.res.annTypes.set(a, null);
+    for (const d of r.diagnostics) this.diag(d.code, d.span, d.template, d.params);
+    return null;
+  }
+
   private constLine(c: A.Const): void {
     if (c.value.kind === "Lambda") {
-      this.lambda(c.value);
+      // 05 22.7: the name is bound first; the lambda is walked in the scope with it bound.
       const id = this.res.lambdas.length;
       this.res.lambdas.push(c.value);
       const p = c.pattern as A.NamePat;
       (this.res.lambdaNames ??= new Map()).set(id, p.name ?? "");
       this.bind(p.name, p.span, { k: "lambda", id, counts: lambdaCounts(c.value) });
       this.res.slots.set(p, -1 - id);
+      this.walking.add(id);
+      this.lambda(c.value);
+      this.walking.delete(id);
+      const r = this.selfRefs.get(id);
+      if (r !== undefined) this.diag("recursion-needs-types", r, "default", { name: p.name ?? "" });
       return;
     }
     this.expr(c.value);
+    if (c.type !== null) this.annotation(c.type);
     this.pattern(c.pattern);
+  }
+
+  /**
+   * A reference of a const-bound lambda to its own name (05 22.5): kept when it has the least start.
+   * Package F17 (f17 11.2): a typed lambda's is no error, and is a use as any other (11.3).
+   */
+  private selfRef(id: number, node: A.Call | A.Ident, span: Span): void {
+    if (!this.walking.has(id) || typedLambda(this.res.lambdas[id])) return;
+    this.res.recursive.add(node);
+    const r = this.selfRefs.get(id);
+    if (r === undefined || span.start < r.start) this.selfRefs.set(id, span);
   }
 
   private pattern(p: A.Pattern): void {
@@ -248,13 +363,23 @@ class Walker {
   }
 
   private lambda(l: A.Lambda): void {
+    this.res.lambdaDepth.set(l, this.frames.length);
+    this.frames.push(1);
     this.push();
     for (const p of l.params) {
       if (p.default !== null) this.expr(p.default);
+      // Package F16: an annotation, or the types of a function type (f16 3.1 items 7, 9).
+      if (p.type !== null) this.annotation(p.type);
+      if (p.fn !== null) {
+        for (const fp of p.fn.params) this.annotation(fp.type);
+        if (p.fn.result !== null) this.annotation(p.fn.result);
+      }
       this.pattern(p.pattern);
     }
+    if (l.result !== null) this.annotation(l.result);
     this.expr(l.body);
     this.pop();
+    this.res.frameSize.set(l, this.frames.pop()!);
   }
 
   /** A block, a branch, a try body: a new scope. */
@@ -276,8 +401,10 @@ class Walker {
       else if (b.k === "var") this.res.refs.set(id, { k: "var", name: b.name });
       else {
         this.res.refs.set(id, { k: "lambda", id: b.id });
-        if (asLambdaArg) this.res.lambdaArgs.add(id);
-        else this.diag("not-a-value", id.span, "lambda", { name: id.name });
+        if (asLambdaArg) {
+          this.res.lambdaArgs.add(id);
+          this.selfRef(b.id, id, id.span);
+        } else this.diag("not-a-value", id.span, "lambda", { name: id.name });
       }
       return;
     }
@@ -329,6 +456,7 @@ class Walker {
         target = { k: "lambda", id: b.id };
         counts = b.counts;
         isLambda = true;
+        if (node.kind === "Call") this.selfRef(b.id, node, nameSpan);
       } else if (b !== undefined) {
         this.diag("call-of-parameter", nameSpan, "default", { name });
       } else if (this.env.hostFunctions.has(name)) {
@@ -491,7 +619,8 @@ class Walker {
 
   /** Resolve the program type of an `As` node (f04 3.5, 6.1). */
   private programType(e: A.As): void {
-    const r = resolveProgramType(e.type, e.typeSpan, e.typeSpans, this.env.typeNames ?? NO_TYPE_NAMES);
+    // f16 3.1 item 7: in the type lines before the line that holds it.
+    const r = resolveProgramType(e.type, e.typeSpan, e.typeSpans, this.typeNames);
     if (r.ok) this.res.asTypes.set(e, r.type);
     else {
       this.res.asTypes.set(e, null);

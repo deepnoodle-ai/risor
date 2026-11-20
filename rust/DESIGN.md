@@ -49,7 +49,7 @@ grouped by the sections E.3 to E.8.
 | `src/diag.rs` | S1 | `Diagnostic`, `Error`, `Phase`, the code names |
 | `src/syntax/token.rs` | S1 | Tokens, the 26 reserved words |
 | `src/syntax/lexer.rs` | S1 | The lexer. Templates nest through an explicit stack |
-| `src/syntax/ast.rs` | S1 | The 30 node kinds, in an arena |
+| `src/syntax/ast.rs` | S1 | The 30 node kinds, in an arena; F16's type lines and annotations are fields, not nodes |
 | `src/syntax/parser.rs` | S1 | The parser: recursive descent, precedence climbing for binary operators |
 | `src/types/text.rs` | S1 | The parser of type text: `Type`, `Sig`, `Method`, with the counts of `05-types.md` 22.3 |
 | `src/json.rs` | S1 | The strict JSON reader |
@@ -58,7 +58,7 @@ grouped by the sections E.3 to E.8.
 | `src/number.rs` | S2 | Arithmetic of 6.2, number to text and text to number |
 | `src/host.rs` | S2 | `Host`, `View`, `HostList`, `HostMap`, `Vars`, `Data`, `OpaqueRef` |
 | `src/env.rs` | S2 | `Env`, `EnvBuilder`, `Limits`, host functions and methods, the `declare` errors |
-| `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
+| `src/compile.rs` | S2 | Name resolution to slots and their places in each call's frame, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
 | `src/eval/code.rs` | — | The compiled form of the hot node kinds: a tree of closures built with the program, which the walk tries first |
 | `src/eval/lib.rs` | S3 | The library entries: the 53 of Core, the 6 queries of F7 and `walk` of F17; the entries of the groups (F6, F13) run in `eval/groups.rs`. The argument tests of every entry from its record's signature, and the table of formulas of all 79, which a test holds equal to the record files |
@@ -188,14 +188,44 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
 - Compile resolves every name once: to a variable of the environment, to a
   slot of a scope, to a library entry or host function, or to a `const`-bound
   lambda. Static rules are reported from the same walk.
-- At run time a scope is a frame of slots. A lambda is never a value
-  (`01-language.md` 8.1): it is called by name or passed to the library, and it
-  cannot outlive the scope it was written in. So a lambda is its `NodeId` and
-  a pointer to the frame it was written in, and a call pushes one frame for
-  its parameters whose parent is that frame. No lambda has two calls in
-  progress, since a name is not in scope in its own value.
-- Frames are `Rc` so that a lambda handed to a library entry can hold its
-  defining frame while the entry calls it.
+- **Each call has a frame** (F17 11.5). The resolver numbers every slot of
+  the program once, for the checker, and also gives it a place
+  (`compile::Place`): the depth of its frame and its index there. The
+  program's frame has depth 0; a lambda's frame is one deeper than the frame
+  of the code it is written in, and holds its parameters and every name its
+  body binds, blocks and `catch` included. A run keeps one buffer: the
+  variables the program reads, then the program's frame, then a frame for
+  each call in progress, pushed and dropped in order.
+- **The display.** `Run::display` holds, for each depth, where the frame on
+  the chain of the code now running starts. A slot is read at
+  `display[depth] + index`. A call of a lambda of depth `k` pushes its frame,
+  sets `display[k]` to it, and sets the old entry back when it ends, on a
+  failure too, so `catch` finds the names of its own call as they were. The
+  entries below `k` need no change: a lambda runs only where it is in scope,
+  by name or as an argument written there, and never outlives the code in
+  which it was evaluated (`02-evaluation.md` 11.1), so at its call they are
+  already those of the code it was written in. A self-call sets `display[k]`
+  to its own frame and gives back its caller's; a lambda written inside a
+  call reads that call's frame, whatever deeper calls of the same lambda
+  have done. A lambda that binds no name has no frame. A lambda is still
+  its `NodeId`: it needs no pointer to a frame. There is one path for every
+  program, with or without a self-reference; no slot has a fixed place.
+- **A library entry's calls share a frame.** The calls an entry makes of
+  its lambda never overlap, so on the fast path (plain parameters) they
+  share one: `Run::callback` pushes it, each call binds its names in it
+  again and sets the display entry to it, and the caller of the entry
+  (`method`, `call_lib`) drops every such frame the entry pushed, whether it
+  gave a value or failed (`end_callbacks`). A lambda with patterns or
+  defaults gets a frame for each call, as a call by name does.
+- **Measured** (`examples/bench.rs`, the 31 programs of `suite/bench`,
+  interleaved rounds against the build before step E1, medians, release,
+  rustc 1.100.0, aarch64 macOS): a frame pushed and dropped for every call
+  cost 13.6% in the geometric mean against fixed places (three rounds), up
+  to 54% (`heavy/reduce_10k`); with the shared frame of a library entry and
+  the display kept by the thread between runs, 3.9% (five rounds). The
+  largest costs left are 10% to 15%: `workflow/any`, `lists-10k/count_by`,
+  `lists-10k/sort_top5` and `workflow/filter_map`; a program can differ by a
+  few percent from one round to the next. No fixed-place path is kept.
 
 ### The meter
 
@@ -240,10 +270,12 @@ functions.
   subtree is at most 48 levels deep. Above that, the walk runs the node as
   before.
 - **Lambdas.** For a lambda whose parameters are all plain names,
-  `Program::params` holds their slots, so a call binds them without the walk
-  of patterns. Arguments are moved into the slots, not copied.
+  `Program::params` holds the index of each one's slot in the lambda's
+  frame, so a call binds them without the walk of patterns. Arguments are
+  moved into the slots, not copied. A closure that reads a slot holds its
+  place.
 - **Per-run cost.** A value is 24 bytes (an opaque value is behind `Rc`). A
-  run's slots and the variables it reads share one buffer; that buffer and
+  run's frames and the variables it reads share one buffer; that buffer and
   the text buffer of templates are kept by the thread from one run to the
   next, empty. A run asks the host for each variable once, as before
   (`03-host.md` 3.4.1), with two bit sets for read and missing. A library
@@ -271,8 +303,8 @@ and macOS usually has 8 MiB.
 
 | Depth limit | Optimized | Unoptimized |
 | --- | --- | --- |
-| 200, the default | 1 MiB (2.6 times the need) | 2 MiB (2.0 times) |
-| 400, the largest | 2 MiB (3.0 times) | 4 MiB (2.2 times) |
+| 200, the default | 1 MiB (2.5 times the need) | 2 MiB (1.9 times) |
+| 400, the largest | 2 MiB (2.8 times) | 4 MiB (2.1 times) |
 
 **Measured.** rustc 1.100.0 (the pinned toolchain), aarch64 macOS; optimized
 is the release profile and unoptimized the dev profile. The least stack, to
@@ -280,13 +312,21 @@ is the release profile and unoptimized the dev profile. The least stack, to
 the thread starts. The worst form is a chain of lambdas that each take a
 pattern parameter (`({v}) => ...`) and call the next through `mapValues`, the
 last nesting 98 map literals (`{a: ...}.a`). `sortBy` and `some` cost 0 to 4%
-less; `filter` and `reduce`, 4 to 17% less.
+less; `filter` and `reduce`, 4 to 17% less (measured before F17 step E1).
 
 | Work | Optimized | Unoptimized |
 | --- | --- | --- |
 | Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 83 KiB | 611 KiB |
-| Run the worst form at depth limit 200 | 387 KiB | 1,043 KiB |
-| Run the worst form at depth limit 400 | 691 KiB | 1,859 KiB |
+| Run the worst form at depth limit 200 | 404 KiB | 1,092 KiB |
+| Run the worst form at depth limit 400 | 724 KiB | 1,940 KiB |
+| Self-recursion (F17 11.6) at depth limit 200: by name, through `map`, through `flatMap` | 180, 244, 260 KiB | 372, 676, 756 KiB |
+| The same at depth limit 400 | 372, 500, 532 KiB | 756, 1,364, 1,524 KiB |
+
+Frames for each call (F17 11.5) raised the worst form from 387 and 691 KiB
+optimized, 1,043 and 1,859 KiB unoptimized, by 4% to 5%: a call by name
+keeps its frame's place while its body runs. The frame helpers are inlined
+only when `debug_assertions` is off, and the drop of a frame's slots is out
+of line, for the reason the last item below gives.
 
 The cost of one unit: the stack of a chain at the limit divided by the limit,
 optimized at depth 400 and unoptimized at depth 200, so it carries a share of
@@ -342,9 +382,11 @@ one link past the limit. It also runs `walk` (F17): a chain of nodes whose
 deepest callback runs at the limit, with the nesting limit in its body, and
 one node past it; data nested to the limit, and one level past; and walks
 inside walks, each link calling the one before from its walk's callback, to
-the limit and one link past. It runs each limit on a thread of two thirds of the
-stated figure, so the figure has a margin of 1.5. CI runs it unoptimized and
-optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
+the limit and one link past; and the three forms of self-recursion of F17
+11.6, a typed lambda that calls itself by name, through `map` and through
+`flatMap`, each call adding 1, to the limit and one call past. It runs each
+limit on a thread of two thirds of the stated figure, so the figure has a
+margin of 1.5. CI runs it unoptimized and optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
 and overflows on 12/16 (aarch64 and x86_64 macOS).
 
 ## Known departures from the work bound
@@ -378,7 +420,17 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 - A use of a `const`-bound lambda checks its body again with the use's
   parameter types, under the facts where the lambda was written. The limits
   of 20.2 and 20.3: the parser records the
-  greatest level open inside each lambda.
+  greatest level open inside each lambda. A lambda that F16 checks once is
+  the exception (below).
+- **A lambda's own name** (`01-language.md` 5 rule 6, `05-types.md` 22.5).
+  The resolver binds the name of a `const`-bound lambda before it walks the
+  lambda, and keeps a stack of the lambdas whose text it is in. A call of
+  one of them, or its name given as a lambda argument, resolves to
+  `Res::SelfRef`, not to a call or a lambda reference: the checker counts no
+  use of it, a call there has type `never` with its plain arguments
+  synthesized, and a lambda argument there is not checked. The first such
+  reference of each lambda, by start, is `recursion-needs-types`, reported
+  after the walk.
 - Signatures stay type text. Solving a call (13.5) binds and substitutes type
   variables in that text; `ty::substitute` gives the type with no depth test,
   and the checker tests depth where 20.4 says.
@@ -686,8 +738,93 @@ A plain text error has no cause: its text is already the message.
   `reduce`, whose R is the `Var`, this is the rule as before.
 - **The runner**: `PACKAGES` holds 17 before 12, so a file named
   `until-f17-` is not run; `recursion_package` runs
-  `suite/recursion/`, its `tools-` files among them, and
-  `library_recursion_cases` the record's cases.
+  `suite/recursion/`, its `tools-` and `e1-` files among them, and
+  `library_recursion_cases` the record's cases. F17 is offered as steps E0
+  and E1 together (R254).
+
+### Step E1: typed self-recursion
+
+- **The static rule** (`compile.rs`): `is_typed` reads F17 11.1 from the
+  text: a result annotation, and an annotation or a function type on every
+  parameter, whatever the annotation resolves to. A reference of a lambda
+  to its own name is `SelfRef` and `recursion-needs-types` only when the
+  lambda is not typed; a typed lambda's self-call is a `CallLambda` and its
+  name as an argument a `LambdaRef`, so `arity`, `lambda-to-lambda` and
+  `not-a-value` test it as any reference, and a compile without the type
+  rules runs it.
+- **The checker** (`check/mod.rs`, `check_once`): a typed lambda is always
+  checked once (F16 3.4). Before its defaults and body are checked, its
+  result type is set to its result annotation (`never` when a static rule
+  refused it), so a self-call there is a use of a lambda checked once:
+  arguments fitted, the result type, no second check of the body, and no
+  count against 20.2 or 20.3.
+- **Evaluation**: a self-call is a call by name, with the depth test before
+  its frame is pushed; nothing else is new. Each call's own names are the
+  frames of "Scopes and lambdas" above.
+
+## Package F16, slice D1: annotations and type lines
+
+- **Nodes** (`syntax/ast.rs`): no node kind is added. `Program.types` holds
+  the type lines (`TypeLine`: name, span of the name, `PType`, span), which
+  are not nodes; `Const.ty`, `Lambda.result` and `Param.ty` hold a `PType`,
+  and `Param.fn_` a `PFn` (its words and types, and its result, `None` for
+  `unknown`). A walker that orders a program's lines merges `consts` and
+  `types` by start.
+- **Parsing** (`syntax/parser.rs`): `type` begins a type line only in the
+  loop of a program's lines, when an upper-case word and `=` follow it; a
+  block and a branch never look for one, so `type` there stays a name and E17
+  reports it. A `(` begins a lambda when its partner is followed by `=>` or
+  `:`. After the `:` of a parameter that is a name, `(` followed by `)`, or by
+  a word and `:`, begins a `PFn`; it takes no default, so a `=` after it is
+  the loop's `unexpected-token`. E9 keeps only its third case. In a repair
+  (`parse_repair` sets `limit`), these choices read only the tokens before
+  the end, and a `(` with no partner followed by a name or `_` and `:` begins
+  a parameter list (F16 7.2 items 3, 4 and 7). There `type` and one word that
+  ends those tokens begin a type line whatever the word's first letter, and
+  also when the word is the hole with an empty prefix (R242).
+- **Static rules** (`compile.rs`): the lines of a program are walked in the
+  order of the text. A type name resolves against the environment's named
+  and opaque types, then the type lines that declared so far
+  (`Resolver::type_lines`). A later line of one name whose type fails
+  removes the earlier line's entry: it stands and declares nothing (R240).
+  Each annotation is resolved once, where it
+  stands, and kept in `Resolution::annots` by the start of its span, `None`
+  when a static rule refused it. The resolver also keeps each type name that
+  resolved, and each declaring type line's name, with the type and the
+  declaration (`TypeRef`), for hover.
+- **The checker** (`check/mod.rs`): `fit_strict` is 15.1's fit through the
+  form with `strict` set: a fit that uses `any` is followed to its places of
+  failure and reported there, a spread with the types of its first key, and
+  `maybe-null` only for a value that surely fits without null. A
+  `const`-bound lambda whose parameters are all annotated, with at least one
+  annotation, is checked once at its `const` line (`check_once`): one count
+  against 20.3, its nesting where it is written against 20.2, its sites kept,
+  and its result type kept in `once_result`. A use of it fits each plain
+  argument (`fit_args`) and each value the library passes (`fit_passed`) and
+  takes the result type; its body is not checked again. A lambda that is
+  partly annotated is checked at each use as before, with each annotated
+  parameter bound to its annotation and the result annotation fitted. The
+  narrowing of `filter` and `find` reads Q, as before, not the annotation.
+- **Evaluation**: nothing. A run never reads an annotation or a type line.
+- **Tools**: the formatter merges type lines into the program's lines and
+  prints every annotation token as a kept token; a `PFn` is one line.
+  Completion is in the types context when the hole is in any annotation, a
+  `PFn` or a type line's type, with the names of the type lines that end
+  before the hole, less the line that holds the hole: the repair's `;` ends
+  that line at the hole too (R243). Hover answers a word that is a `TypeRef`
+  first, with the kind `type`. A repaired hover on a type line's name gives
+  nothing, since the cut is at the word's end and the repair wrote the type
+  (F16 7.3 item 5).
+- **The runner**: `PACKAGES` holds 16 after 14 and before 17. The files
+  named `until-f16-` were deleted when all three implementations offered the
+  slice (`03-host.md` 3.11 item 5). `entry_points_package` runs
+  `suite/entry-points/`, its `tools-` files among them;
+  `catalog_entry_points_cases` the cases of
+  `suite/messages-entry-points.json`, whose entries add `name-clash` and the
+  template `fn-value` of `arg-mismatch` to the catalog. In that directory
+  `name-clash`, `untagged-union` and `check-limit` are static codes beside
+  Core's twelve. The place of D1 before F17 is the recommendation of R211,
+  not yet confirmed (F16 1.5).
 
 ## Package F12, tools
 
@@ -707,9 +844,13 @@ A plain text error has no cause: its text is already the message.
   repair inserts one token, re-parses, and keeps it when the parser stands
   past it; `parse_repair` matches no bracket among the inserted tokens.
   `check::check_probe` gives the types of the nodes and of the slots where
-  the check first reached the hole (F12 3.12).
+  the check first reached the hole (F12 3.12). The resolver marks an `Ident`
+  that names a `const`-bound lambda where a value is needed
+  (`Res::NotValue`), as it marks a lambda argument (`Res::LambdaRef`), so a
+  hover on either gives the kind `lambda` with no type (R245).
 - **Records** (`library.rs`): a record keeps its `signature` text and `doc`
   verbatim, which completion and hover show.
 - **Cases** (`testing/tools.rs`): a format, completion or hover case is read
   as a program case whose source is its text, so its environment is built by
-  the same code.
+  the same code. Read for the outcome command, such a case may have no
+  `expect`; update mode does not write one for it.

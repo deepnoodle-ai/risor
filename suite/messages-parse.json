@@ -2934,7 +2934,7 @@
     "since": "3.0",
     "params": {},
     "templates": {
-      "default": "types are inferred; remove the annotation"
+      "default": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     },
     "cases": [
       {
@@ -2951,7 +2951,7 @@
                 1,
                 4
               ],
-              "message": "types are inferred; remove the annotation"
+              "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
             }
           ]
         }
@@ -3086,7 +3086,7 @@
       "token": "token"
     },
     "templates": {
-      "default": "a program cannot declare a type with {token}; write the type in place, or use a name the host declared"
+      "default": "{token} does not declare a type here; at the top level of a program, write type Name = and then the type"
     },
     "cases": [
       {
@@ -3103,7 +3103,7 @@
                 1,
                 10
               ],
-              "message": "a program cannot declare a type with interface; write the type in place, or use a name the host declared"
+              "message": "interface does not declare a type here; at the top level of a program, write type Name = and then the type"
             }
           ]
         }

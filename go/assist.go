@@ -94,6 +94,9 @@ type assist struct {
 	ty    *check.Types
 	names *static.Names
 	exp   *types.Type // the expected result, when it is a type
+	// cut is the cut of a hover that reads a repaired program: the tokens
+	// at it and after it are the repair's. It is -1 when the text parsed.
+	cut int
 }
 
 // analyze checks a repaired program (F12 3.3 item 4), ignoring its
@@ -379,18 +382,61 @@ func (w *walker) pattern(p syntax.Pattern) bool {
 
 func (w *walker) consts(cs []*syntax.Const) bool {
 	for _, k := range cs {
-		if w.pattern(k.Pattern) || w.visit(k.Value, nil) {
+		if w.constLine(k) {
 			return true
-		}
-		_, isLambda := k.Value.(*syntax.Lambda)
-		for _, b := range patternBindings(k.Pattern) {
-			if _, name := k.Pattern.(*syntax.NamePat); name && isLambda {
-				b.lambda = true
-			}
-			w.bind(b)
 		}
 	}
 	return false
+}
+
+// constLine visits a const line and binds its names. The name of a
+// const-bound lambda is in scope in the lambda's body and defaults
+// (01-language.md 5 rule 6), so it is bound first.
+func (w *walker) constLine(k *syntax.Const) bool {
+	_, isLambda := k.Value.(*syntax.Lambda)
+	np, isName := k.Pattern.(*syntax.NamePat)
+	if isLambda && isName && k.Type == nil {
+		if w.pattern(k.Pattern) {
+			return true
+		}
+		if !np.Discard {
+			w.bind(binding{name: np.Name, key: np, lambda: true})
+		}
+		return w.visit(k.Value, nil)
+	}
+	if w.pattern(k.Pattern) || w.ptype(k.Type) || w.visit(k.Value, nil) {
+		return true
+	}
+	for _, b := range patternBindings(k.Pattern) {
+		w.bind(b)
+	}
+	return false
+}
+
+// typeLine visits a type line of package F16: a hole in its name has no
+// context, and its type is a program type (F16 7.2).
+func (w *walker) typeLine(t *syntax.TypeLine) bool {
+	if w.isHoleWord(t.Name, t.NameSpan) {
+		return w.hit("none")
+	}
+	return w.ptype(t.Type)
+}
+
+// pfn visits the function type of a parameter: a hole in a parameter's
+// word has no context; its types are program types (F16 7.2).
+func (w *walker) pfn(f *syntax.PFn) bool {
+	if f == nil {
+		return false
+	}
+	for _, q := range f.Params {
+		if w.isHoleWord(q.Name, q.NameSpan) {
+			return w.hit("none")
+		}
+		if w.ptype(q.Type) {
+			return true
+		}
+	}
+	return w.ptype(f.Result)
 }
 
 // listElem is the expected type of an item of a list (3.9).
@@ -493,8 +539,21 @@ func (w *walker) visit(n syntax.Node, exp *types.Type) bool {
 		return false
 	case *syntax.Program:
 		w.push()
-		if w.consts(n.Consts) {
-			return true
+		// The const lines and the type lines of F16, in the order of the
+		// text.
+		ci, ti := 0, 0
+		for ci < len(n.Consts) || ti < len(n.Types) {
+			if ti < len(n.Types) && (ci >= len(n.Consts) || n.Types[ti].Span.Start < n.Consts[ci].Span().Start) {
+				if w.typeLine(n.Types[ti]) {
+					return true
+				}
+				ti++
+				continue
+			}
+			if w.constLine(n.Consts[ci]) {
+				return true
+			}
+			ci++
 		}
 		return w.visit(n.Result, exp)
 	case *syntax.Block:
@@ -615,7 +674,7 @@ func (w *walker) visit(n syntax.Node, exp *types.Type) bool {
 		w.push()
 		defer w.pop()
 		for _, p := range n.Params {
-			if w.pattern(p.Pattern) {
+			if w.pattern(p.Pattern) || w.ptype(p.Type) || w.pfn(p.Fn) {
 				return true
 			}
 			if p.Default != nil && w.visit(p.Default, nil) {
@@ -625,7 +684,7 @@ func (w *walker) visit(n syntax.Node, exp *types.Type) bool {
 				w.bind(b)
 			}
 		}
-		return w.visit(n.Body, nil)
+		return w.ptype(n.Result) || w.visit(n.Body, nil)
 	case *syntax.Match:
 		if w.visit(n.Subject, nil) {
 			return true
@@ -681,7 +740,7 @@ func (w *walker) candidates(quote rune) []Candidate {
 		}
 		return a.members(a.typeOf(w.recv))
 	case "types":
-		return a.typesContext()
+		return a.typesContext(w.hole)
 	case "strings":
 		return a.stringsContext(w.strType, w.arm, w.hole, quote)
 	}
@@ -964,8 +1023,9 @@ func sortedTypeKeys(m map[string]*types.Type) []string {
 	return out
 }
 
-// typesContext is the types context (3.10).
-func (a *assist) typesContext() []Candidate {
+// typesContext is the types context (3.10). With package F16, the names
+// of the type lines that end before the hole are candidates too (F16 7.2).
+func (a *assist) typesContext(hole syntax.Span) []Candidate {
 	names := map[string]bool{}
 	for _, w := range []string{"any", "bool", "float", "int", "map", "never", "null", "string"} {
 		names[w] = true
@@ -975,6 +1035,18 @@ func (a *assist) typesContext() []Candidate {
 	}
 	for n := range a.e.opaque {
 		names[n] = true
+	}
+	if a.prog != nil {
+		for _, t := range a.prog.Types {
+			// A line that ends before the hole. The repair's tokens stand at
+			// the hole, so a line whose type is the hole, as in "type Pair
+			// = ‸", may end there too: it is not a candidate in its own type
+			// (F16 7.2 item 1).
+			inType := t.Type.Span.Start <= hole.Start && hole.End <= t.Type.Span.End
+			if t.Span.End <= hole.Start && !inType {
+				names[t.Name] = true
+			}
+		}
 	}
 	var out []Candidate
 	for _, n := range sortedKeys(names) {
@@ -1053,7 +1125,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 		source = value.ReplaceInvalid(source)
 	}
 	f := syntax.NewFile(source)
-	a := &assist{e: e, src: f.Runes(), file: f}
+	a := &assist{e: e, src: f.Runes(), file: f, cut: -1}
 	off, ok := offsetOf(a.src, pos)
 	if !ok || off >= len(a.src) {
 		return nil
@@ -1087,7 +1159,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 			if k+1 < len(toks) && toks[k+1].Kind == syntax.LParen && toks[k+1].Start == we {
 				cut = toks[k+1].End
 			}
-			prog = a.repairAt(cut)
+			prog, a.cut = a.repairAt(cut), cut
 		}
 	} else {
 		if !isWordPart(a.src[off]) {
@@ -1122,7 +1194,7 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 		if !found {
 			return nil
 		}
-		prog = a.repairAt(cut)
+		prog, a.cut = a.repairAt(cut), cut
 	}
 	if prog == nil {
 		return nil
@@ -1238,6 +1310,33 @@ func (a *assist) hover(word syntax.Span) *Hover {
 			}
 		}
 	}
+	// A type name of a program type, or the name of a type line (F16 7.3).
+	for _, t := range a.prog.Types {
+		if t.NameSpan == word {
+			return a.typeHover(t.Name, t, word.Start, sp)
+		}
+		if out = a.typeNameHover(t.Type, word, sp); out != nil {
+			return out
+		}
+	}
+	ptypes := func(pts ...*syntax.PType) {
+		for _, pt := range pts {
+			if out == nil {
+				out = a.typeNameHover(pt, word, sp)
+			}
+		}
+	}
+	params := func(ps []*syntax.Param) {
+		for _, p := range ps {
+			ptypes(p.Type)
+			if p.Fn != nil {
+				for _, q := range p.Fn.Params {
+					ptypes(q.Type)
+				}
+				ptypes(p.Fn.Result)
+			}
+		}
+	}
 	var visit func(n syntax.Node) bool
 	visit = func(n syntax.Node) bool {
 		if out != nil {
@@ -1246,12 +1345,17 @@ func (a *assist) hover(word syntax.Span) *Hover {
 		switch n := n.(type) {
 		case *syntax.Const:
 			checkPattern(n.Pattern)
+			ptypes(n.Type)
 		case *syntax.Param:
 			checkPattern(n.Pattern)
+		case *syntax.As:
+			ptypes(n.Type)
 		case *syntax.Lambda:
 			for _, p := range n.Params {
 				checkPattern(p.Pattern)
 			}
+			params(n.Params)
+			ptypes(n.Result)
 		case *syntax.Try:
 			if n.Name != "" && n.NameSpan == word {
 				out = site(n)
@@ -1270,8 +1374,9 @@ func (a *assist) hover(word syntax.Span) *Hover {
 				out = rec("variable")
 				out.Type = printed(a.typeOf(n))
 			case b.Kind == static.ConstLambda:
-				out = rec("name")
-				out.Type = printed(a.typeOf(n))
+				// A lambda argument, or a read as a value: a lambda is not
+				// a value, so it has no type (F12 3.13).
+				out = rec("lambda")
 				out.Declaration = lambdaName(b.Lambda)
 			default:
 				out = rec("name")
@@ -1316,6 +1421,81 @@ func (a *assist) hover(word syntax.Span) *Hover {
 	}
 	syntax.Walk(a.prog, visit)
 	return out
+}
+
+// typeNameHover is the hover record of a type name of a program type at
+// the word, or nil (F16 7.3).
+func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hover {
+	if pt == nil {
+		return nil
+	}
+	for _, alt := range pt.Alts {
+		p := alt.Prim
+		switch p.Kind {
+		case syntax.PName:
+			if p.Span == word {
+				return a.typeHover(p.Text, nil, p.Span.Start, sp)
+			}
+		case syntax.PMap, syntax.PParen:
+			if h := a.typeNameHover(p.Elem, word, sp); h != nil {
+				return h
+			}
+		case syntax.PRecord:
+			for _, f := range p.Fields {
+				if h := a.typeNameHover(f.Type, word, sp); h != nil {
+					return h
+				}
+			}
+			if h := a.typeNameHover(p.Rest, word, sp); h != nil {
+				return h
+			}
+		}
+	}
+	return nil
+}
+
+// typeHover is the record of a type name read at offset at: the type that
+// the last type line that ends before it declares, with that line's name as
+// the declaration; else the environment's named or opaque type, with no
+// declaration. own is the type line whose name the word is, or nil. A name
+// nothing declares has no hover, nor has a line whose type the repair
+// supplied (F16 7.3).
+func (a *assist) typeHover(name string, own *syntax.TypeLine, at int, sp Span) *Hover {
+	h := &Hover{Kind: "type", Span: sp}
+	line := own
+	if own == nil {
+		for _, t := range a.prog.Types {
+			if t.Name == name && t.Span.End <= at {
+				line = t
+			}
+		}
+	}
+	env := a.names.Types
+	if line != nil {
+		if env != nil && (env.Opaque[name] || env.Named[name] != nil) {
+			line = nil // name-clash: the environment's type stands
+		}
+	}
+	if line != nil && a.cut >= 0 && line.Type.Span.End >= a.cut {
+		return nil // its type is the repair's: it declares nothing
+	}
+	switch {
+	case line != nil:
+		t, ok := a.res.AnnTypes[line.Type]
+		if !ok {
+			return nil
+		}
+		h.Type = printed(t)
+		d := a.span(line.NameSpan.Start, line.NameSpan.End)
+		h.Declaration = &d
+	case env != nil && env.Named[name] != nil:
+		h.Type = printed(env.Named[name])
+	case env != nil && env.Opaque[name]:
+		h.Type = printed(types.Opaque(name))
+	default:
+		return nil
+	}
+	return h
 }
 
 // methodSig is the signature and the doc of the method a receiver's type

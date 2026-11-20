@@ -60,7 +60,7 @@ pub mod code {
     pub const BAD_LIMIT: &str = "bad-limit";
 
     /// The eleven static codes (`05-types.md` 22.1).
-    pub const STATIC: [&str; 11] = [
+    pub const STATIC: [&str; 12] = [
         "undefined-name",
         "undefined-function",
         "not-a-value",
@@ -72,6 +72,7 @@ pub mod code {
         "arity",
         "duplicate-case",
         "unreachable-arm",
+        "recursion-needs-types",
     ];
 
     /// The five codes of class `limit` (`03-host.md` 3.6.1).

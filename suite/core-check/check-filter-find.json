@@ -39,6 +39,13 @@
   {"name": "ids.filter(x => x != null && c)", "source": "ids.filter(x => x != null && c)", "expect": {"type": "int[]", "sites": []}},
   {"name": "ids.filter(x => x > 1)", "source": "ids.filter(x => x > 1)", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 17, 1, 18]}]}},
   {"name": "ids.find(x => x == null)", "source": "ids.find(x => x == null)", "expect": {"type": "int | null", "sites": []}},
-  {"name": "ids.filter(x => { const q = 1; x != null })", "source": "ids.filter(x => { const q = 1; x != null })", "expect": {"type": "(int | null)[]", "sites": []}}
+  {"name": "ids.filter(x => { const q = 1; x != null })", "source": "ids.filter(x => { const q = 1; x != null })", "expect": {"type": "(int | null)[]", "sites": []}},
+  {"name": "a default on the first parameter narrows nothing: ids.filter((x = 1) => x != null)", "source": "ids.filter((x = 1) => x != null)", "expect": {"type": "(int | null)[]", "sites": []}},
+  {"name": "a default narrows nothing, with a second parameter", "source": "ids.filter((x = 1, i) => x != null)", "expect": {"type": "(int | null)[]", "sites": []}},
+  {"name": "a default narrows nothing in a const-bound lambda given by name", "source": "const keep = (x = 1) => x != null; ids.filter(keep)", "expect": {"type": "(int | null)[]", "sites": []}},
+  {"name": "a default narrows nothing: the null that filter keeps is still seen", "source": "ids.filter((x = 1) => x != null).map(y => y + 1)", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 43, 1, 44]}]}},
+  {"name": "a default narrows nothing: the sum of what filter keeps", "source": "ids.filter((x = 1) => x is int).sum()", "reject": [], "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 1, 1, 38]}]}},
+  {"name": "a default on the first parameter of find", "source": "ids.find((x = 1) => x != null)", "expect": {"type": "int | null", "sites": []}},
+  {"name": "a default narrows nothing: filter keeps the null element", "source": "ids.filter((x = 1) => x != null)", "vars": {"ids": [null, 2]}, "expect": {"type": "(int | null)[]", "sites": [], "value": [null, 2], "steps": 8, "allocated": 3}}
  ]
 }

@@ -18,17 +18,18 @@ var SuiteDirs = []string{
 	"host-types", // F1
 	"templates",  // F2
 	"analysis",
-	"conversion", // F4
-	"unions",     // F5
-	"groups",     // F6
-	"queries",    // F7
-	"errors",     // F8
-	"testing",    // F9
-	"config",     // F10
-	"math",       // F13
-	"facts",      // F14
-	"recursion",  // F17
-	"tools",      // F12
+	"conversion",   // F4
+	"unions",       // F5
+	"groups",       // F6
+	"queries",      // F7
+	"errors",       // F8
+	"testing",      // F9
+	"config",       // F10
+	"math",         // F13
+	"facts",        // F14
+	"entry-points", // F16, slice D1
+	"recursion",    // F17
+	"tools",        // F12
 }
 
 // SuiteCatalog is a catalog file and the field that names its entries.
@@ -37,13 +38,14 @@ type SuiteCatalog struct{ Rel, Key string }
 // SuiteCatalogs are the catalog files of the suite.
 var SuiteCatalogs = []SuiteCatalog{
 	{"library.json", "name"},
-	{"library-groups.json", "name"},    // F6
-	{"library-queries.json", "name"},   // F7
-	{"library-math.json", "name"},      // F13
-	{"library-recursion.json", "name"}, // F17
-	{"messages-queries.json", "code"},  // F7
-	{"messages-parse.json", "code"},    // F8
-	{"messages-check.json", "code"},    // F8
+	{"library-groups.json", "name"},        // F6
+	{"library-queries.json", "name"},       // F7
+	{"library-math.json", "name"},          // F13
+	{"library-recursion.json", "name"},     // F17
+	{"messages-queries.json", "code"},      // F7
+	{"messages-entry-points.json", "code"}, // F16
+	{"messages-parse.json", "code"},        // F8
+	{"messages-check.json", "code"},        // F8
 	{"messages.json", "code"},
 }
 
@@ -58,6 +60,9 @@ func RunSuiteDir(dir string) ([]Result, error) {
 	CheckedOnly = b == "core-check" || b == "host-types"
 	if b == "conversion" || b == "unions" || b == "config" { // F4 6.1 item 4, F5 11.2 item 3, F10 10.3 item 3
 		casefile.ExtraStatic = casefile.ConversionStatic
+	}
+	if b == "entry-points" { // F16 8 item 2
+		casefile.ExtraStatic = casefile.EntryPointsStatic
 	}
 	defer func() {
 		CheckedOnly = false
@@ -75,8 +80,16 @@ func RunSuiteCatalog(path, key string) ([]Result, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
-	// Every case of messages-check.json runs checked only.
-	CheckedOnly = filepath.Base(path) == "messages-check.json"
-	defer func() { CheckedOnly = false }()
+	// Every case of messages-check.json and of messages-entry-points.json
+	// runs checked only; in the second, F16's codes are static (F16 9).
+	b := filepath.Base(path)
+	CheckedOnly = b == "messages-check.json" || b == "messages-entry-points.json"
+	if b == "messages-entry-points.json" {
+		casefile.ExtraStatic = casefile.EntryPointsStatic
+	}
+	defer func() {
+		CheckedOnly = false
+		casefile.ExtraStatic = map[string]bool{}
+	}()
 	return RunEntries(path, key), nil
 }

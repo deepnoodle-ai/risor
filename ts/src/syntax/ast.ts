@@ -29,12 +29,46 @@ interface Base {
 export interface Program extends Base {
   kind: "Program";
   consts: Const[];
+  /** Package F16: the type lines, in the order of the text (f16 2.3). Not nodes. */
+  types: TypeLine[];
   result: Expr;
+}
+
+/** Package F16: a program type written in an annotation or a type line (f16 1.1). Not a node. */
+export interface TypeAnn {
+  type: TypeNode;
+  /** From the type's first token to its last. */
+  span: Span;
+  /** The spans of the type's names and of each PType with alternatives (f04 6.1). */
+  spans: Map<TypeNode, Span>;
+}
+
+/** Package F16: `type Name = T;` (f16 2.1, 2.3). Its span runs from `type` to its `;`. */
+export interface TypeLine {
+  name: string;
+  nameSpan: Span;
+  type: TypeAnn;
+  span: Span;
+  /** Package F12 with F16: the repair supplied the type, so the line declares nothing (f16 7.3 item 5). */
+  supplied?: true;
+}
+
+/** Package F16: a function type on a parameter, `(a: T) => R` (f16 2.1). Its words bind nothing. */
+export interface FnAnn {
+  params: { word: string; span: Span; type: TypeAnn }[];
+  /** The result type, or null for `unknown`. */
+  result: TypeAnn | null;
+  /** The span of the result, `unknown` included. */
+  resultSpan: Span;
+  /** From the `(` to the end of the result. */
+  span: Span;
 }
 
 export interface Const extends Base {
   kind: "Const";
   pattern: Pattern;
+  /** Package F16: the annotation, or null (f16 2.3). */
+  type: TypeAnn | null;
   value: Expr | Lambda;
 }
 
@@ -179,12 +213,18 @@ export interface Lambda extends Base {
   /** The levels open at the node's first token (01 13.2 rule 5). */
   level: number;
   params: Param[];
+  /** Package F16: the result annotation, or null (f16 2.3). */
+  result: TypeAnn | null;
   body: Expr;
 }
 
 export interface Param extends Base {
   kind: "Param";
   pattern: Pattern;
+  /** Package F16: the annotation, a program type, or null; at most one of `type` and `fn` is set (f16 2.3). */
+  type: TypeAnn | null;
+  /** Package F16: the function type, or null. */
+  fn: FnAnn | null;
   default: Expr | null;
 }
 

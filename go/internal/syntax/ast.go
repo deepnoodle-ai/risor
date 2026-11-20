@@ -89,18 +89,31 @@ func (b *base) Span() Span { return b.span }
 // Depth returns the levels of nesting open at the node's first token.
 func (b *base) Depth() int { return b.depth }
 
-// Program is a whole text: const lines and one expression.
+// Program is a whole text: const lines, type lines and one expression.
+// Types holds the type lines of package F16 in the order of the text; a type
+// line is not a node, and its place among the const lines is its span.
 type Program struct {
 	base
 	Consts []*Const
+	Types  []*TypeLine
 	Result Node
 }
 
+// TypeLine is "type Name = T;" (f16-entry-points.md 2.1). It is not a node,
+// as a program type is not one: nothing in it is evaluated.
+type TypeLine struct {
+	Span     Span
+	Name     string
+	NameSpan Span
+	Type     *PType
+}
+
 // Const is "const pattern = value;". Value is a *Lambda for a const-bound
-// lambda.
+// lambda. Type is the annotation of package F16, or nil.
 type Const struct {
 	base
 	Pattern Pattern
+	Type    *PType
 	Value   Node
 }
 
@@ -266,18 +279,57 @@ type OptChain struct {
 	X Node
 }
 
-// Lambda is "x => e", "_ => e" or "(p, q) => e".
+// Lambda is "x => e", "_ => e" or "(p, q) => e". Result is the result
+// annotation of package F16, "(p): T => e", or nil.
 type Lambda struct {
 	base
 	Params []*Param
+	Result *PType
 	Body   Node
 }
 
-// Param is one parameter of a lambda.
+// Param is one parameter of a lambda. Type and Fn are its annotation of
+// package F16: a program type, or a function type; at most one is set.
 type Param struct {
 	base
 	Pattern Pattern
+	Type    *PType
+	Fn      *PFn
 	Default Node // nil when there is none
+}
+
+// Annotated reports whether the parameter carries an annotation.
+func (p *Param) Annotated() bool { return p.Type != nil || p.Fn != nil }
+
+// Typed reports whether every parameter of the lambda and its result carry
+// a type (f17-recursion.md 11.1): such a lambda may refer to its own name.
+func (l *Lambda) Typed() bool {
+	if l.Result == nil {
+		return false
+	}
+	for _, p := range l.Params {
+		if !p.Annotated() {
+			return false
+		}
+	}
+	return true
+}
+
+// PFn is the function type of a parameter (f16-entry-points.md 2.1):
+// "(a: T, b: U) => R". Result is nil when the result is "unknown".
+type PFn struct {
+	Span    Span
+	Params  []*PFnParam
+	Result  *PType
+	Unknown Span // the word unknown, when it is the result
+}
+
+// PFnParam is one parameter of a PFn: a word, documentation only, and its
+// program type.
+type PFnParam struct {
+	Name     string
+	NameSpan Span
+	Type     *PType
 }
 
 // Match is "match subject { arms }".

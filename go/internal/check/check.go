@@ -339,12 +339,16 @@ func orFacts(a, b facts) facts {
 	return out
 }
 
-// lamInfo is where a const-bound lambda was written.
+// lamInfo is where a const-bound lambda was written. once marks a lambda
+// checked once, where it is written, and result is then its result type
+// (F16 3.4).
 type lamInfo struct {
 	facts    facts
 	base     int
 	lamDepth int
 	maxRel   int
+	once     bool
+	result   *types.Type
 }
 
 type checker struct {
@@ -568,8 +572,9 @@ func (c *checker) setSlot(key any, t *types.Type) {
 // findUses marks each const-bound lambda that a call or an argument names
 // (13.9).
 func (c *checker) findUses(prog *syntax.Program) {
-	for _, callee := range c.res.Calls {
-		if callee.Kind == static.Lambda {
+	// A reference of a lambda to its own name is no use (13.9).
+	for n, callee := range c.res.Calls {
+		if callee.Kind == static.Lambda && !c.res.SelfRefs[n] {
 			c.used[callee.Lambda] = true
 		}
 	}
@@ -577,7 +582,7 @@ func (c *checker) findUses(prog *syntax.Program) {
 	// value is not-a-value and no use (13.9).
 	mark := func(args []syntax.Node) {
 		for _, a := range args {
-			if id, ok := a.(*syntax.Ident); ok {
+			if id, ok := a.(*syntax.Ident); ok && !c.res.SelfRefs[id] {
 				if b := c.res.Idents[id]; b != nil && b.Kind == static.ConstLambda {
 					c.used[b.Lambda] = true
 				}

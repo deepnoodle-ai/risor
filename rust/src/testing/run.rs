@@ -936,7 +936,7 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
             f.phase == Phase::Check
                 && f.diagnostics
                     .iter()
-                    .any(|d| !super::case::is_static(&d.code, case.conversion))
+                    .any(|d| !super::case::is_static(&d.code, case.statics))
         }
     };
     // F5 11.2 item 2: a case with `schemas`, or that states `description`,
@@ -1029,7 +1029,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
             if f.phase == Phase::Check
                 && f.diagnostics
                     .iter()
-                    .any(|d| !super::case::is_static(&d.code, case.conversion)) =>
+                    .any(|d| !super::case::is_static(&d.code, case.statics)) =>
         {
             return Verdict::Skip(
                 "expects a check code outside the static rules: needs the type checker".into(),
@@ -2191,9 +2191,9 @@ fn outcome_core(case: &Case) -> String {
             return out;
         }
     };
-    // F1 7.4: the description, when the case has `schemas`; F14 10.4: or
-    // `facts`.
-    if !case.schemas.is_empty() || case.facts.is_some() {
+    // F1 7.4: the description, when the case has `schemas`; F4 9.5: or
+    // `types` (R246); F14 10.4: or `facts`.
+    if !case.schemas.is_empty() || !case.types.is_empty() || case.facts.is_some() {
         out.push_str(",\"description\":");
         out.push_str(&env.description_text());
     }

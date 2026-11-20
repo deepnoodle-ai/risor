@@ -14,11 +14,11 @@ import (
 	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
 )
 
-// argCode is one argument of a call. A lambda argument is passed as its
-// *lambdaCode.
+// argCode is one argument of a call. A lambda argument is passed as an *fn:
+// its code and the way up to the frame where it was written (frames.go).
 type argCode struct {
 	x       code
-	lam     *lambdaCode
+	lam     *fn
 	inPlace bool
 	nparams int
 }
@@ -28,10 +28,10 @@ func (a *argCode) isLambda() bool { return a.lam != nil }
 func (c *compiler) arg(n syntax.Node) argCode {
 	switch n := n.(type) {
 	case *syntax.Lambda:
-		return argCode{lam: c.lambda(n), inPlace: true, nparams: len(n.Params)}
+		return argCode{lam: &fn{lambdaCode: c.lambda(n)}, inPlace: true, nparams: len(n.Params)}
 	case *syntax.Ident:
 		if b := c.res.Idents[n]; b != nil && b.Kind == static.ConstLambda {
-			return argCode{lam: c.lambdas[b.Lambda], nparams: len(b.Lambda.Params)}
+			return argCode{lam: &fn{lambdaCode: c.lambdas[b.Lambda], hops: c.upTo(b.Lambda)}, nparams: len(b.Lambda.Params)}
 		}
 	}
 	return argCode{x: c.expr(n)}
@@ -180,19 +180,24 @@ func (c *compiler) plan(s *stepCode) {
 	}
 }
 
-// valueSlot gives the slot of a name bound by const, a parameter or a
+// valuePlace gives the place of a name bound by const, a parameter or a
 // pattern.
-func (c *compiler) valueSlot(n syntax.Node) (int, bool) {
+func (c *compiler) valuePlace(n syntax.Node) (place, bool) {
 	id, ok := n.(*syntax.Ident)
 	if !ok {
-		return 0, false
+		return place{}, false
 	}
 	b := c.res.Idents[id]
 	if b == nil || b.Kind != static.Value {
-		return 0, false
+		return place{}, false
 	}
-	return b.Slot, true
+	return c.place(b.Slot), true
 }
+
+// upTo is the number of frames up from the code being compiled to the frame
+// where a const-bound lambda is written: one less than the level of the
+// lambda's own frame.
+func (c *compiler) upTo(l *syntax.Lambda) int { return c.level - (c.ly.lamLevel[l] - 1) }
 
 // chain compiles a chain as a base and a list of steps run by a loop
 // (01-language.md 7.4). An optional step that finds null makes the whole
@@ -286,9 +291,9 @@ func (c *compiler) chainCode(x syntax.Node, base code, steps []*stepCode) code {
 	}
 	if allMember && len(steps) == 1 {
 		st := steps[0]
-		if slot, ok := c.valueSlot(x); ok && x != nil {
+		if pl, ok := c.valuePlace(x); ok && x != nil {
 			return func(r *run) any {
-				v := r.slots[slot]
+				v := r.get(pl)
 				if v == nil && st.optional {
 					return nil
 				}
@@ -508,7 +513,10 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 	sp := n.Span()
 	switch callee.Kind {
 	case static.Lambda:
+		// The lambda is known before its body is compiled, so a call of a
+		// lambda's own name finds it (F17 6).
 		lam := c.lambdas[callee.Lambda]
+		hops := c.upTo(callee.Lambda)
 		m := c.measure(n)
 		name := ""
 		if cn, ok := n.(*syntax.Call); ok {
@@ -521,7 +529,7 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 			lc := r.pushCall()
 			lc.lam, lc.name, lc.span, lc.depth0 = true, name, sp, r.depth
 			r.enterCall(m)
-			v := lam.invoke(r, vals)
+			v := lam.invoke(r, r.frameAt(hops), vals)
 			r.depth -= m
 			r.lcTop--
 			r.popArgs(base)

@@ -1,21 +1,24 @@
 # F17. Recursion, function parameters and guards
 
 This chapter is normative. It specifies follow-on package F17 as far as step
-E0 of its plan (`experiments/v3/design/18-recursion.md`, and
-`experiments/v3/design/14-implementation-plan.md` 5.3, track E): a guard on an
-arm of `match`, and the library function `walk`. It adds one optional field of
-the node `Arm`, one library entry, the file `suite/library-recursion.json` and
-the directory `suite/recursion/`. It adds no node kind, no value, no type, no
-run code, no check code, no `parse` code, no reserved word, no message template
-and no case field.
+E1 of its plan (`experiments/v3/design/18-recursion.md`, and
+`experiments/v3/design/14-implementation-plan.md` 5.3, track E). Step E0: a
+guard on an arm of `match`, and the library function `walk` (sections 2 to
+10). Step E1: typed self-recursion, a `const`-bound lambda whose parameters
+and result carry types and that calls itself (section 11). It adds one
+optional field of the node `Arm`, one library entry, the file
+`suite/library-recursion.json` and the directory `suite/recursion/`. It adds
+no node kind, no value, no type, no run code, no check code, no `parse` code,
+no reserved word, no message template and no case field. It changes the text
+of one template of Core, that of `recursion-needs-types` (9).
 
-Steps E1 to E3 of the plan are not in this chapter yet: typed self-recursion,
-recursive named types and function parameters. Each adds to this chapter when
-it lands.
+Steps E2 and E3 of the plan are not in this chapter yet: recursive named
+types and function parameters. Each adds to this chapter when it lands.
 
-The package only adds. In Core a guard is a `parse` error, and `walk` is a name
-that no function has. Section 10 lists the one earlier case whose outcome
-changes.
+The package only adds. In Core a guard is a `parse` error, `walk` is a name
+that no function has, and a reference of a lambda to its own name is the
+static error `recursion-needs-types`. Section 10 lists the earlier cases whose
+outcome changes.
 
 Other chapters: `01-language.md` (grammar, nodes, spans, levels, `match`),
 `02-evaluation.md` (order, steps, units, the depth count), `03-host.md`
@@ -23,8 +26,9 @@ Other chapters: `01-language.md` (grammar, nodes, spans, levels, `match`),
 format, how an entry is specified, the cost rules), `05-types.md` (`match`,
 tested positions, facts, calls, the static rules), F2
 (`spec/packages/f02-templates-analysis.md`), F5 (`spec/packages/f05-unions.md`),
-F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`) and F14
-(`spec/packages/f14-host-facts.md`).
+F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`), F14
+(`spec/packages/f14-host-facts.md`) and F16
+(`spec/packages/f16-entry-points.md`).
 
 ## 1. Terms and scope
 
@@ -38,6 +42,7 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`) and F14
 | Node | A value that `walk` visits: its root, and each element of each list that its callback gives |
 | Depth of a node | 0 for the root. For any other node, 1 more than the depth of the node whose callback gave it |
 | Pre-order | The order of a walk: a node, then the nodes under its first child, then those under its second, and so on |
+| Typed lambda, self-reference, self-call | Section 11.1 |
 
 ### 1.2 What this package changes in earlier rules
 
@@ -59,15 +64,25 @@ F8 (`spec/packages/f08-errors.md`), F12 (`spec/packages/f12-tools.md`) and F14
 | F8 4.2 item 2 | The index of a trace entry of `walk` (5.4) |
 | F12 2.8 | The document of a guard (7.1) |
 | F12 3.11 item 1 | A string listed only by guarded arms stays a candidate (7.2) |
-| `03-host.md` 3.11 item 2 | F17 is offered after F14 and before F12 (1.4) |
+| `03-host.md` 3.11 item 2 | F17 is offered after F16, slice D1, and before F12 (1.4) |
+| `01-language.md` 5 rule 6 and 14.4, `05-types.md` 22.5 and 22.7, F16 3.1 item 10 | A self-reference of a typed lambda is not `recursion-needs-types` (11.2) |
+| `05-types.md` 13.9, F16 3.4 | A self-reference of a typed lambda is a use of a lambda checked once, and a self-call has the result type (11.3) |
+| `02-evaluation.md` 8.4 item 10 | A checked program reaches the depth limit through self-calls (11.4) |
+| `02-evaluation.md` 10.2 and 11.1 | Each call binds its own names; three facts of 11.1, and the fixed places that rest on them, hold only for a program with no self-reference (11.5) |
+| `03-host.md` 3.9.1 | Three deepest cases of self-recursion in the stack test (11.6) |
+| F12 3.13 | A hover on a self-call of a typed lambda gives the result type (11.7) |
+| `suite/messages-check.json`, `recursion-needs-types` | Its text names the fix (9) |
 
-No other rule changes. A program with no guard and no call of `walk` has the
-type, sites, diagnostics, value and usage it has without this package.
+No other rule changes. A program with no guard, no call of `walk` and no
+self-reference of a typed lambda has the type, sites, diagnostics, value and
+usage it has without this package, but for the text of the message of
+`recursion-needs-types` (9).
 
 ### 1.3 Version
 
-1. The guard and `walk` are part of version `3.0`. The record of `walk` has
-   `since` `3.0`. This package adds no version number and no version marker.
+1. The guard, `walk` and self-recursion are part of version `3.0`. The record
+   of `walk` has `since` `3.0`. This package adds no version number and no
+   version marker.
 2. With this package an implementation offers 79 library entries: the 53 of
    Core, the 8 of F6, the 6 of F7, the 11 of F13, and `walk`. 60 of them are
    in the group `core`: Core's 53, F7's 6 and `walk`.
@@ -76,14 +91,16 @@ type, sites, diagnostics, value and usage it has without this package.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F17, F12. F16 and F19 take their places beside F17 when their
-   chapters are written: F14, F16, F17, F19, F12 (`15-build-rulings.md`
-   R211). So an implementation that offers F17 offers every package before
+   F13, F14, F16 slice D1, F17, F12. F19 takes its place beside F17 when its
+   chapter is written: F14, F16, F17, F19, F12 (`15-build-rulings.md` R211).
+   The place of F16's slice D1 is open (`spec/packages/f16-entry-points.md`
+   1.4). So an implementation that offers F17 offers every package before
    it, and the cases of this package may use their forms and their case
    fields: the tagged unions of F5, the trace of F8, the host facts of F14.
 2. **How the steps of F17 are offered is open** (`14` 5.3). F17 as this
-   chapter states it holds step E0 only, and an implementation that offers it
-   offers that step. Step E0 needs no part of F16.
+   chapter states it holds steps E0 and E1, and an implementation that offers
+   it offers both. Step E0 needs no part of F16. Step E1 needs the annotations
+   of F16's slice D1: a lambda is typed only by them (11.1).
 3. **F12 was offered before this chapter was written,** and F17 stands before
    it in the order. So the cases of F17's forms in the formatter and in assist
    stand in this package's directory, in files whose names begin `tools-` (8),
@@ -502,6 +519,12 @@ guard is a place of the last row of its table.
 | `suite/recursion/tools-format.json` | The formatter of 7.1 (F12) |
 | `suite/recursion/tools-assist.json` | Completion and hover of 7.2 (F12) |
 | `suite/recursion/tools-complete.json` | The earlier case of section 10, with `walk` |
+| `suite/recursion/e1-static.json` | Self-recursion: the static rule of 11.2 and the other static rules at a self-reference |
+| `suite/recursion/e1-run.json` | Self-recursion: values, steps, units, each call's own names (11.5), the depth count and its limit at 10, 200 and 400, the step limit, traces, a run without the type rules |
+| `suite/recursion/e1-check.json` | Self-recursion: the checker of 11.3, types and sites |
+| `suite/recursion/e1-analysis.json` | Analysis of a typed recursive lambda (F2) |
+| `suite/recursion/tools-e1-format.json` | The formatter on a typed recursive lambda (F12) |
+| `suite/recursion/tools-e1-assist.json` | Hover and completion at a self-reference (11.7, F12) |
 
 1. A runner of an implementation that offers F17 loads
    `suite/library-recursion.json` and runs its cases as it runs those of
@@ -519,7 +542,19 @@ guard is a place of the last row of its table.
 
 ## 9. Messages
 
-This package adds no template. Its failures use Core's templates:
+This package adds no template. It changes the text of one: the template
+`default` of `recursion-needs-types` in `suite/messages-check.json` (F8 3.1)
+names the fix that step E1 makes possible.
+
+| Code | Template | Text before | Text with this package |
+| --- | --- | --- | --- |
+| `recursion-needs-types` | `default` | `{name} is this lambda's own name, and a lambda cannot refer to itself` | `{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name` |
+
+The template is Core's, so the text changes in Core's catalog file, and a
+build without this package prints it too. No build offers Core and slice D1
+without F17 (1.4), so no build names a fix it refuses.
+
+Its failures use Core's templates:
 
 | Failure | Code | Template | Parameters |
 | --- | --- | --- | --- |
@@ -527,6 +562,8 @@ This package adds no template. Its failures use Core's templates:
 | A value at `children` in an unchecked run | `wrong-kind` | `argument` | `name` `walk`; `kind` the value's kind |
 | A walk deeper than the limit | `depth-exceeded` | `default` | `limit` |
 | No arm taken | `no-match` | `default` | `found` the subject |
+| A recursion past the depth limit | `depth-exceeded` | `default` | `limit` |
+| A recursion past the step limit | `steps-exceeded` | `default` | `limit` |
 
 ## 10. Earlier cases
 
@@ -537,6 +574,236 @@ This package adds no template. Its failures use Core's templates:
    file was deleted when every implementation offered F17 (3.11 item 5).
    `suite/recursion/tools-complete.json` holds the same text with this
    package's outcome.
-2. No other earlier case changes. No case of the suite calls `walk` or writes a
-   guard: the texts of `match` with `if` in the suite have it in an arm's
-   result.
+2. No other earlier case changes with step E0. No case of the suite calls
+   `walk` or writes a guard: the texts of `match` with `if` in the suite have
+   it in an arm's result.
+3. **Step E1** changes one earlier case: the case of `recursion-needs-types`
+   in `suite/messages-check.json` expects the text of 9. It changed in place,
+   with no file named `until-`: a catalog file has no `until-` form, and step
+   E1 lands in every implementation in one change (`15-build-rulings.md`
+   R251). No earlier case writes a self-reference of a typed lambda: every
+   case of `suite/core-run/static-recursion.json`,
+   `suite/core-check/check-recursion.json` and `suite/analysis/scope.json`
+   has a parameter or a result with no type, so its code, span and type stand.
+   Those cases expect no message.
+
+## 11. Self-recursion (step E1)
+
+Step E1 of the plan (`18` 3, 8 and 9): a `const`-bound lambda whose
+parameters and result all carry a type may refer to its own name. Its body may
+call it, and may give its name to a library entry as a lambda argument. The
+name is in scope there already (`01-language.md` 5 rule 6), and the types are
+F16's annotations. The step adds no syntax, node, value, type, code or case
+field. It changes one static rule (11.2), how the checker reads a reference of
+a lambda to its own name (11.3), the facts of `02-evaluation.md` 11.1 (11.5),
+the stack test (11.6) and one message (9).
+
+### 11.1 Terms
+
+| Term | Meaning |
+| --- | --- |
+| Typed lambda | A `Lambda` that has a result annotation and whose every parameter has an annotation, of a program type or of a function type (F16 2.1). A lambda with no parameter is typed when it has a result annotation |
+| Self-reference | A reference of a `const`-bound lambda L to its own name, as `05-types.md` 22.5 defines it: a `Call` whose callee is L, or an `Ident` lambda argument whose innermost binding is L, that stands in L's body or in a default of one of its parameters, also inside a lambda written there |
+| Self-call | A self-reference that is a `Call` |
+| Recursive lambda | A `const`-bound lambda that has a self-reference |
+
+1. Whether a lambda is typed is read from its text alone, by every compile,
+   with or without the type rules. An annotation counts whatever its type
+   resolves to: in `const f = (n: Nope): int => f(n); 1` the parameter is
+   typed, and the program has one diagnostic, `undefined-name` on `Nope`.
+2. A default is no type. `(n = 3): int => e` is not typed; `(n: int = 3): int
+   => e` is.
+3. A parameter with a function type is typed. Until step E3 it keeps Core's
+   static rules (F16 3.1 item 9), so a self-call cannot give a lambda at it
+   (`lambda-to-lambda`), and a checked program cannot give it a value
+   (`arg-mismatch`, 11.3).
+
+### 11.2 The static rule
+
+1. A self-reference of a typed lambda is not `recursion-needs-types`. A
+   self-reference of any other `const`-bound lambda is, as `05-types.md` 22.5
+   says: once for each lambda, on its first reference.
+2. Every other static rule tests a self-reference as it tests any reference of
+   the name (`05-types.md` 22.4, 22.5). The rules do not change:
+
+| Text in the body of a typed lambda `f` | Static rule |
+| --- | --- |
+| A self-call with fewer arguments than `f` requires, or more than it has parameters: `f(1, 2)` for one parameter | `arity` on the `Call` |
+| A lambda argument of a self-call: `f(x => 1)`, or `f(f)` | `lambda-to-lambda` on the argument |
+| Its name at a parameter of a function that takes no function: `len(f)` | `not-a-value` on the name |
+| Its name at an `Fn` of a function with fewer parameters than `f` has: `walk(a, f)`, with three parameters | `arity` on the name |
+| Its name read as a value: `[f]` | `not-a-value` on the name. A read is no self-reference |
+| A self-reference of a lambda written inside `f` that is not typed, to its own name | `recursion-needs-types`, for that lambda |
+
+3. So a compile without the type rules accepts a typed recursive lambda as a
+   compile with them does, and runs it.
+
+### 11.3 The checker
+
+A typed lambda is checked once, where it is written: it has an annotation, and
+every parameter has one (F16 3.4). Its result type is its result annotation.
+That type is known before the body is checked, so a self-call in the body has
+it.
+
+| Matter | Rule |
+| --- | --- |
+| A self-call | A use of a lambda checked once (F16 3.4). Each plain argument is synthesized and fitted to its parameter's annotation by F16 3.3: it must surely fit, else `arg-mismatch` on the argument. The call's type is the result type. The body is not checked again |
+| Its name as a lambda argument at an `Fn` of a library function or method, or of a method on an `any` receiver | As F16 3.4 says for a lambda checked once. Each value the library passes must surely fit its parameter's annotation, else `arg-mismatch` on the annotation. The result type stands for the body's type |
+| The body | Checked once, fitted to the result annotation by F16 3.3 (`result-mismatch` on the body) |
+| A result annotation with a static diagnostic | The result type is `never` at every call, a self-call included (F16 3.4) |
+| Sites (`05-types.md` 18) | Those of the one check of the body. A self-call records what any call of a lambda checked once records |
+| The limits of `05-types.md` 20.2 and 20.3 | The one check of the body counts, as F16 3.4 says. A self-reference is no check of the body, and counts against neither limit |
+| A self-reference of a lambda that is not typed | As `05-types.md` 13.9 says: no use, the type `never` for a self-call, and nothing checked at a lambda argument |
+
+1. The checker never follows a self-call into the body. Its work on a
+   recursive lambda is one check of the body, however deep the recursion runs.
+2. The checker does not test that a recursion ends. One that does not end
+   reaches the depth limit or the step limit when it runs (11.4).
+3. In `const f = (n: int): int | null => n <= 0 ? null : f(n - 1) + 1;` the
+   self-call has the type `int | null`, and `+` is `maybe-null` on it. The
+   annotation, not what the body gives, is the call's type.
+
+### 11.4 Evaluation
+
+A self-call is a call by name (`02-evaluation.md` 11.2). Its name given to a
+library entry is a lambda argument (`02-evaluation.md` 11.3). No cost
+changes:
+
+| Matter | Rule |
+| --- | --- |
+| Steps | A self-call charges 1 step after its arguments, then what its parameters' patterns, its defaults and its body charge (`02-evaluation.md` 5.2, 11.2). Its name as a lambda argument charges no step where it stands (`02-evaluation.md` 5.6 item 3). The library entry charges for each call it makes of it, as for any lambda (5.6 item 1) |
+| Units | None of a self-call's own |
+| Depth | A self-call adds 1 plus its nesting depth within the body while it is in progress (`02-evaluation.md` 8.4 items 1 and 2). A call that a library entry makes of the lambda adds the measure of the library call (8.4 item 3) |
+| The limit | `depth-exceeded` at the call that would pass it: a self-call after its step and before its parameters are bound, a call by a library entry after the element's two steps (`02-evaluation.md` 8.4 item 7). `catch` does not catch it |
+| A failure | As at any call. Its trace (F8 4) has an entry for each call in progress, each self-call among them, so at most as many entries as the depth limit |
+
+1. **Depth is counted in levels, not calls.** Where a self-call stands in the
+   body sets what each call adds. The call `d(n)` in the program stands at
+   nesting depth 0 and adds 1. Each row has cases in
+   `suite/recursion/e1-run.json`.
+
+| Body of `d`, with `n: int` | Each self-call adds | `d(n)` runs within the depth limit L when |
+| --- | --- | --- |
+| `n <= 0 ? 0 : d(n - 1)` | 1: the `else` branch of `? :` opens no level | n + 1 ≤ L |
+| `n <= 0 ? 0 : [n - 1].map(d)[0]` | 1: the measure of the call of `map` | n + 1 ≤ L |
+| `n <= 0 ? [] : [n - 1].flatMap(d)` | 1: the measure of the call of `flatMap` | n + 1 ≤ L |
+| `n <= 0 ? 0 : 1 + d(n - 1)` | 2: `d` is the right operand of `+` | 2n + 1 ≤ L |
+| `if (n <= 0) { 0 } else { d(n - 1) }` | 2: `d` is inside the braces of the branch | 2n + 1 ≤ L |
+| `n <= 0 ? 0 : [n - 1].map(k => d(k))[0]` | 2: 1 for `map`, 1 for `d` by name in the lambda's body | 2n + 1 ≤ L |
+
+2. **Steps, worked.** `const sum = (n: int): int => n == 0 ? 0 : sum(n - 1) +
+   n; sum(4)` gives 10 and charges 19 steps and 0 units: 1 where the `const`
+   line evaluates the lambda; for each of the four calls with `n` above 0, 1
+   for the call, 1 for `==`, 1 for `-` and 1 for `+`, 16 in all; for `sum(0)`,
+   1 for the call and 1 for `==`. With a step limit of 18 the run is
+   `steps-exceeded`.
+3. **Through `map`, worked.** `const d = (n: int): int => n <= 0 ? 0 : [n -
+   1].map(d)[0]; d(9)` charges 57 steps: 1 for the `const` line and 1 for the
+   call `d(9)`; for each `n` from 9 to 1, 1 for `<=`, 1 for `-`, 1 for the
+   call of `map`, 2 for its element and 1 for `[0]`, 54 in all; and 1 for `<=`
+   at `n` 0. It makes 10 calls of `d`, each adding 1, so it runs with a depth
+   limit of 10, and `d(10)` does not.
+4. **The bound of an evaluator's recursion** does not change:
+   `02-evaluation.md` 8.5 item 3 bounds it by the depth limit plus 100 levels
+   of source, through every call in progress. A checked program can now reach
+   the depth limit through calls (`02-evaluation.md` 8.4 item 10).
+5. **Steps turned off.** A host may turn the step limit off (`03-host.md`
+   3.6.1). A lambda that calls itself twice at each level then makes up to
+   2^L calls at the depth limit L, which no run finishes. Such a host should
+   set a deadline. This is recommendation 18-5 of `18` 10, which the owner
+   has not confirmed; the alternative is to refuse a recursive program when
+   steps are off.
+
+### 11.5 Each call's own names
+
+`02-evaluation.md` 11.1 lists facts that the text fixes for every program
+without a self-reference. A self-reference breaks three of them:
+
+| Fact of `02-evaluation.md` 11.1 | In a program with a self-reference |
+| --- | --- |
+| The callee of every call is known when the program is compiled | Holds |
+| A lambda runs only while every body around it is in progress | Holds |
+| No lambda is entered while an earlier call of it is in progress | Does not hold: a self-call enters its lambda while the call that made it is in progress |
+| A program with `k` lambdas has at most `k` calls in progress | Does not hold: the depth limit bounds the calls in progress |
+| The calls form a graph with no cycle | Does not hold: a self-reference makes a cycle. The cycle is of one lambda, or of that lambda and lambdas written inside it, as the lambda given to `map` in the first example below. Every cycle passes through a self-reference: a lambda names only itself, lambdas bound before it and the lambdas around it (`01-language.md` 5), so two `const`-bound lambdas of one scope never call each other |
+
+The rules of the reference evaluation that take their place:
+
+1. **Each call binds its own names.** A call of a lambda binds its parameters,
+   the names of each `const` line of its body and the name of each `catch
+   (err)` in its body, for that call alone. A self-call binds them again, for
+   itself. When it ends, the names of the call that made it have the values
+   they had before it.
+2. **A name is read from the call it belongs to.** A lambda written in a body
+   is evaluated in a call of that body's lambda, and reads that body's names
+   from that call, whichever deeper calls of the same lambda are in progress
+   when it reads them. A lambda never outlives the call in which it was
+   evaluated (`02-evaluation.md` 11.1, second fact), so that call is in
+   progress whenever it runs.
+3. **`catch`** ends every call that the failure passed through. The names of
+   the call that holds the `try` keep their values, as the depth count goes
+   back to its value when the `try` began (`02-evaluation.md` 8.4 item 8).
+4. **How an implementation keeps the names is not fixed.** A frame for each
+   call, linked to the frame of the call in which its lambda was evaluated, is
+   one way; a closure is another. No frame is a value, so values stay acyclic
+   (R3 of `00`).
+5. **Fixed places.** One fixed place for each name for the whole run
+   (`02-evaluation.md` 10.2) is an optimization that an implementation may make
+   only for a program with no self-reference.
+
+In `const f = (n: int): int => n == 0 ? 0 : [1].map(x => f(n - 1) + n)[0];
+f(3)` the lambda `x => f(n - 1) + n` reads `n` after `f(n - 1)` has returned.
+By item 2 it reads the `n` of the call in which it was evaluated, and the
+program gives 6. With one fixed place for `n`, the deeper calls would have left
+0 there, and the program would give 0. In `const sum = (n: int): int => n == 0
+? 0 : sum(n - 1) + n; sum(4)` the `n` of `+ n` is read after the self-call
+ends: 10 by item 1, 0 with one fixed place.
+
+### 11.6 The stack
+
+The stack test of `03-host.md` 3.9.1 has three more deepest cases with this
+step. Each is a typed lambda that calls itself, each call adding 1 to the
+depth count:
+
+```js
+const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)
+const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(N)
+const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(N)
+```
+
+At each depth limit L of the test, 200 and 400, `d(L - 1)` makes L calls and
+gives its value, and `d(L)` is `depth-exceeded`. The suite holds both at 200
+and at 400 (`suite/recursion/e1-run.json`), so a runner on the documented
+stack runs them; the stack test runs them on the stack divided by 1.5.
+
+### 11.7 Tools
+
+1. **The formatter** has no rule of its own for this step. A typed recursive
+   lambda is formatted as F16 7.1 formats any annotated lambda.
+2. **Hover.** The row of F12 3.13 for the name of a `Call` of a `const`-bound
+   lambda gives the printed type of the `Call`. For a self-call of a typed
+   lambda that is the result type (11.3); for a self-call of a lambda that is
+   not typed it is `never`. Its name as a lambda argument has the kind
+   `lambda` and no type, as every such name has (F12 3.13; R245).
+3. **Completion** does not change. A lambda's own name is a candidate of kind
+   `lambda` in its body and its defaults (F12 3.6 item 1), typed or not. It
+   is listed with the names of the scope that holds its `const` line, in the
+   order bound.
+4. **Analysis** (F2) does not change. A self-reference is bound to the lambda,
+   so it is neither a free name nor a call of the environment (F2 3.2).
+
+### 11.8 Examples
+
+```js
+// A tree of any depth, in data typed as any.
+const total = (t: any): int =>
+  t is any[] ? t.map(total).reduce((a, b) => a + b, 0) : t as int;
+total([1, [2, [3, 4]], 5])        // 15
+
+// Its own name given to reduce, which passes the accumulator and the element.
+const f = (a: int, b: int): int => b <= 0 ? a : [b - 1].reduce(f, a + b);
+f(0, 4)                           // 10
+
+// recursion-needs-types: the result has no type.
+const g = (n: int) => n <= 0 ? 0 : g(n - 1);
+```

@@ -1272,20 +1272,24 @@ func (v *validator) diagnostic(x any, where string) (*ExpDiag, error) {
 	return d, nil
 }
 
-// StaticCodes are the eleven codes of the static rules (05-types.md 22.1).
+// StaticCodes are the twelve codes of the static rules (05-types.md 22.1).
 // ExtraStatic holds the codes that are static in the directory being run
-// besides the eleven of Core: in suite/conversion, untagged-union and
-// check-limit (package F4 6.1 item 4).
+// besides the twelve of Core: in suite/conversion, untagged-union and
+// check-limit (package F4 6.1 item 4); in suite/entry-points, those two and
+// name-clash (package F16 3.1).
 var ExtraStatic = map[string]bool{}
 
 // ConversionStatic are the codes F4 6.1 item 4 adds in suite/conversion.
 var ConversionStatic = map[string]bool{"untagged-union": true, "check-limit": true}
 
+// EntryPointsStatic are the codes F16 adds in suite/entry-points.
+var EntryPointsStatic = map[string]bool{"untagged-union": true, "check-limit": true, "name-clash": true}
+
 var StaticCodes = map[string]bool{
 	"undefined-name": true, "undefined-function": true, "not-a-value": true,
 	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
 	"shadows-namespace": true, "duplicate-key": true, "arity": true,
-	"duplicate-case": true, "unreachable-arm": true,
+	"duplicate-case": true, "unreachable-arm": true, "recursion-needs-types": true,
 }
 
 // analysis validates an expected analysis by F2 4.3 and 4.5 item 4.

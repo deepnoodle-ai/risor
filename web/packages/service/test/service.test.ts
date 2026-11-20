@@ -109,6 +109,22 @@ describe("localService", () => {
     assert.equal(text.slice(h.from, h.to), "total");
   });
 
+  test("type lines and annotations: check, complete, hover and format (package F16)", async () => {
+    const text = "type Item = {sku: string}; const f = (i: Item): string => i.sku; order.items.map(i => f(i))";
+    assert.deepEqual(await env.check(text), []);
+    const bad = (await env.check("const n: int = order.total; n"))!;
+    assert.deepEqual(bad.map((p) => p.code), ["result-mismatch"]);
+    const partial = "type Item = {sku: string}; const f = (i: It";
+    const c = (await env.complete(partial, partial.length))!;
+    assert.deepEqual(c.items.map((i) => [i.label, i.kind]), [["Item", "type"]]);
+    const at = text.indexOf("Item", 30);
+    const h = (await env.hover(text, at))!;
+    assert.equal(h.kind, "type");
+    assert.equal(h.type, "{sku: string}");
+    assert.equal(text.slice(h.from, h.to), "Item");
+    assert.deepEqual(await service.format("type Id=string;const x:Id=\"a\";x"), { ok: true, text: 'type Id = string;\nconst x: Id = "a";\nx\n' });
+  });
+
   test("run gives JSON text, the type and the usage", async () => {
     const r = await env.run("{t: order.total * 2, one: 1.0}", { order: { total: 1.5, items: [] } });
     if (!r.ok) throw new Error(JSON.stringify(r.problems));

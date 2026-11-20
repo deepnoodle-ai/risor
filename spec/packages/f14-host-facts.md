@@ -604,7 +604,7 @@ F9 2.1 gains a fixture.
    says.
 2. A runner of an implementation that does not offer F14 does not run
    `suite/facts/`. For it the field `facts` is unknown (`03-host.md` 3.10.10).
-3. In `suite/facts/` the static codes are the eleven of Core, and
+3. In `suite/facts/` the static codes are the twelve of Core, and
    `untagged-union` and `check-limit` at a program type of F4 (F4 6.1 item 4).
    No case of the directory expects either of the two.
 4. The result field `description` of F1 7.2 compares the description of 9.1.

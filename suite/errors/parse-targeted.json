@@ -2451,44 +2451,6 @@
   }
  },
  {
-  "name": "type-annotation: a parameter in an argument",
-  "source": "[1].map((x: int) => x)",
-  "expect": {
-   "phase": "parse",
-   "diagnostics": [
-    {
-     "code": "type-annotation",
-     "span": [
-      1,
-      11,
-      1,
-      12
-     ],
-     "message": "types are inferred; remove the annotation"
-    }
-   ]
-  }
- },
- {
-  "name": "type-annotation: a const line",
-  "source": "const n: int = 1; n",
-  "expect": {
-   "phase": "parse",
-   "diagnostics": [
-    {
-     "code": "type-annotation",
-     "span": [
-      1,
-      8,
-      1,
-      9
-     ],
-     "message": "types are inferred; remove the annotation"
-    }
-   ]
-  }
- },
- {
   "name": "type-annotation: TypeScript's result annotation",
   "source": "(x: number): number => x",
   "expect": {
@@ -2502,26 +2464,64 @@
       1,
       4
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
    ]
   }
  },
  {
-  "name": "type-annotation: a second parameter",
-  "source": "const f = (a, b: int) => a; 1",
+  "name": "unexpected-token: true is no name, so its : in parentheses is not type-annotation",
+  "source": "(true: int) => 1",
   "expect": {
    "phase": "parse",
    "diagnostics": [
     {
-     "code": "type-annotation",
+     "code": "unexpected-token",
      "span": [
       1,
-      16,
+      6,
       1,
-      17
+      7
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "unexpected :"
+    }
+   ]
+  }
+ },
+ {
+  "name": "unexpected-token: null and a : in parentheses",
+  "source": "(null: int) => 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "unexpected :"
+    }
+   ]
+  }
+ },
+ {
+  "name": "unexpected-token: false and a : at the end of the text",
+  "source": "(false:",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "unexpected :"
     }
    ]
   }
@@ -2616,26 +2616,7 @@
       1,
       5
      ],
-     "message": "a program cannot declare a type with enum; write the type in place, or use a name the host declared"
-    }
-   ]
-  }
- },
- {
-  "name": "type-declaration: type",
-  "source": "type Name = T",
-  "expect": {
-   "phase": "parse",
-   "diagnostics": [
-    {
-     "code": "type-declaration",
-     "span": [
-      1,
-      1,
-      1,
-      5
-     ],
-     "message": "a program cannot declare a type with type; write the type in place, or use a name the host declared"
+     "message": "enum does not declare a type here; at the top level of a program, write type Name = and then the type"
     }
    ]
   }
@@ -2654,7 +2635,7 @@
       1,
       5
      ],
-     "message": "a program cannot declare a type with type; write the type in place, or use a name the host declared"
+     "message": "type does not declare a type here; at the top level of a program, write type Name = and then the type"
     }
    ]
   }
@@ -3301,6 +3282,139 @@
       26
      ],
      "message": "a key that is not a word is quoted: write \"max-retries\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: a field named by a reserved word is a complete operand",
+  "source": "a.if = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: the same after ?.",
+  "source": "a?.else = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: a field named try is not the word of a try",
+  "source": "a.try = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "assignment: the same in a map's value at the end of the text",
+  "source": "{\"\": \"\".if =",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      12,
+      1,
+      13
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "negated-is: after a field named by a reserved word",
+  "source": "a.if !is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "negated-is",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "is has no negated form; write !(x is T)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field named try is not the word of a try, so no try-form",
+  "source": "a.try x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "unexpected x"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field named if is not the word of an if, so no if-form",
+  "source": "a.if x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "unexpected x"
     }
    ]
   }

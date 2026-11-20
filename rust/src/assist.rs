@@ -5,7 +5,7 @@
 //! (3.3). The repaired program is checked for the types of its nodes and of
 //! the names in scope at the hole; its diagnostics are not kept.
 
-use crate::check::ty::{from_text, join, print, Strs, Ty};
+use crate::check::ty::{from_text, join, print, Strs, Ty, TypeNames};
 use crate::check::{check_probe, Probe, Want};
 use crate::compile::Res;
 use crate::describe::print_sig;
@@ -276,11 +276,11 @@ fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast>
 fn children(k: &NodeKind) -> Vec<NodeId> {
     let mut v = Vec::new();
     match k {
-        NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
             v.extend(consts);
             v.push(*result);
         }
-        NodeKind::Const { pattern, value } => v.extend([*pattern, *value]),
+        NodeKind::Const { pattern, value, .. } => v.extend([*pattern, *value]),
         NodeKind::Template { parts } => {
             for p in parts {
                 if let crate::syntax::ast::TemplatePart::Expr(e) = p {
@@ -311,11 +311,13 @@ fn children(k: &NodeKind) -> Vec<NodeId> {
             v.push(*x);
             v.extend(args);
         }
-        NodeKind::Lambda { params, body } => {
+        NodeKind::Lambda { params, body, .. } => {
             v.extend(params);
             v.push(*body);
         }
-        NodeKind::Param { pattern, default } => {
+        NodeKind::Param {
+            pattern, default, ..
+        } => {
             v.push(*pattern);
             v.extend(default);
         }
@@ -466,9 +468,24 @@ impl<'a> Tree<'a> {
                 NodeKind::Program { consts, .. } | NodeKind::Block { consts, .. } => {
                     for &k in consts {
                         if k == c {
+                            // F16 7.2 item 5, F12 3.6 item 1 (R255): in its
+                            // body and defaults, the name of a `const`-bound
+                            // lambda is a name of this scope, after the names
+                            // bound before its line.
+                            if let NodeKind::Const { pattern, value, .. } = self.kind(k) {
+                                if let (
+                                    NodeKind::NamePat { name: Some(n) },
+                                    NodeKind::Lambda { .. },
+                                ) = (self.kind(*pattern), self.kind(*value))
+                                {
+                                    if path.contains(value) {
+                                        names.push((n.clone(), None, true));
+                                    }
+                                }
+                            }
                             break;
                         }
-                        if let NodeKind::Const { pattern, value } = self.kind(k) {
+                        if let NodeKind::Const { pattern, value, .. } = self.kind(k) {
                             let lambda = matches!(self.kind(*value), NodeKind::Lambda { .. })
                                 && matches!(self.kind(*pattern), NodeKind::NamePat { .. });
                             for (n, s, _) in self.pattern_names(*pattern) {
@@ -477,7 +494,7 @@ impl<'a> Tree<'a> {
                         }
                     }
                 }
-                NodeKind::Lambda { params, body } => {
+                NodeKind::Lambda { params, body, .. } => {
                     for &p in params {
                         if p == c {
                             break;
@@ -966,7 +983,10 @@ fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
             _ => return Vec::new(),
         };
         if let NodeKind::Ident { name } = tree.kind(x) {
-            let bound = matches!(tree.res(x), Res::Slot(_) | Res::Var(_) | Res::LambdaRef(_));
+            let bound = matches!(
+                tree.res(x),
+                Res::Slot(_) | Res::Var(_) | Res::LambdaRef(_) | Res::SelfRef(_)
+            );
             if !bound && env.is_namespace(name) {
                 return namespace_entries(env, name);
             }
@@ -974,9 +994,84 @@ fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
         return members(env, &tree.ty(x));
     }
     if find(&|k| matches!(k, NodeKind::As { ty, .. } if has_type_hole(ty))).is_some() {
-        return type_words(env);
+        return type_words_at(env, ast);
+    }
+    // F16 7.2 item 1: an annotation, a function type or a type line's type.
+    let annotated = ast.nodes.iter().any(|n| match &n.kind {
+        NodeKind::Const { ty: Some(t), .. } => has_type_hole(t),
+        NodeKind::Lambda {
+            result: Some(t), ..
+        } => has_type_hole(t),
+        NodeKind::Param { ty: Some(t), .. } => has_type_hole(t),
+        NodeKind::Param { fn_: Some(f), .. } => {
+            f.params.iter().any(|(_, _, t)| has_type_hole(t))
+                || f.result.as_ref().is_some_and(has_type_hole)
+        }
+        NodeKind::Program { types, .. } => types.iter().any(|t| has_type_hole(&t.ty)),
+        _ => false,
+    });
+    if annotated {
+        return type_words_at(env, ast);
     }
     Vec::new()
+}
+
+/// The types context (F12 3.10), with the names of the type lines that end
+/// before the hole (F16 7.2 item 1). The line that holds the hole is not one
+/// of them, though the repair's `;` ends it there (R243).
+fn type_words_at(env: &Env, ast: &Ast) -> Vec<Candidate> {
+    let mut v = type_words(env);
+    let hole = ast.nodes.iter().find_map(|n| hole_span(&n.kind));
+    let Some(hole) = hole else {
+        return v;
+    };
+    if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
+        for t in types {
+            if t.span.end <= hole.start
+                && type_hole_span(&t.ty).is_none()
+                && !v.iter().any(|c| c.label == t.name)
+            {
+                v.push(cand(&t.name, "type", None));
+            }
+        }
+    }
+    v.sort_by(|a, b| a.label.cmp(&b.label));
+    v
+}
+
+/// The span of the hole when it is a type name in a node's program types.
+fn hole_span(k: &NodeKind) -> Option<Range> {
+    let mut ts: Vec<&PType> = Vec::new();
+    match k {
+        NodeKind::As { ty, .. } => ts.push(ty),
+        NodeKind::Const { ty: Some(t), .. } => ts.push(t),
+        NodeKind::Lambda {
+            result: Some(t), ..
+        } => ts.push(t),
+        NodeKind::Param { ty: Some(t), .. } => ts.push(t),
+        NodeKind::Param { fn_: Some(f), .. } => {
+            ts.extend(f.params.iter().map(|(_, _, t)| t));
+            ts.extend(f.result.iter());
+        }
+        NodeKind::Program { types, .. } => ts.extend(types.iter().map(|t| &t.ty)),
+        _ => {}
+    }
+    ts.into_iter().find_map(type_hole_span)
+}
+
+fn type_hole_span(t: &PType) -> Option<Range> {
+    t.alts.iter().find_map(|a| match &a.prim {
+        PPrim::Name(n, s) if n == HOLE => Some(*s),
+        PPrim::Map(x) | PPrim::Paren(x) => type_hole_span(x),
+        PPrim::Record { fields, rest } => fields
+            .iter()
+            .find_map(|f| type_hole_span(&f.ty))
+            .or_else(|| match rest {
+                Some(Some(x)) => type_hole_span(x),
+                _ => None,
+            }),
+        _ => None,
+    })
 }
 
 /// The keys context (3.9 item 1), when the map has an expected record.
@@ -1150,6 +1245,21 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
             };
             let cut_src = Source::raw(&ch[..cut].iter().collect::<String>());
             let ast = repair(&cut_src, &pre, &post, cut)?;
+            // F16 7.3 item 5 (R243): a type line whose type the repair
+            // supplied, whole or in part, declares nothing, so its name has
+            // no hover. The cut is at the end of the word, so when the word
+            // is the line's name the repair wrote all of its type. A line
+            // whose name is a type of the environment is `name-clash`, and
+            // the hover gives the environment's type (items 2 and 5).
+            if let NodeKind::Program { types, .. } = ast.kind(ast.root) {
+                if types.iter().any(|t| {
+                    t.name_span == wspan
+                        && t.ty.span.start as usize >= cut
+                        && env.data().names.lookup(&t.name).is_none()
+                }) {
+                    return None;
+                }
+            }
             Expr {
                 source: cut_src,
                 ast,
@@ -1171,6 +1281,13 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
         doc: None,
         declaration: None,
     };
+    // F16 7.3: a type name, or the name of a type line.
+    if let Some(r) = tree.probe.type_refs.iter().rev().find(|r| r.span == w) {
+        return Some(RawHover {
+            declaration: r.declaration,
+            ..rec("type", Some(print(&r.ty)))
+        });
+    }
     for (i, n) in tree.ast.nodes.iter().enumerate() {
         let id = NodeId(i as u32);
         match &n.kind {
@@ -1182,6 +1299,11 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
                         ..rec("name", t)
                     }),
                     Res::Var(_) => Some(rec("variable", t)),
+                    // R245: a lambda argument, or a place that needs a value.
+                    Res::LambdaRef(l) | Res::SelfRef(l) | Res::NotValue(l) => Some(RawHover {
+                        declaration: lambda_site(tree, *l),
+                        ..rec("lambda", None)
+                    }),
                     _ if env.is_namespace(name) => Some(rec("namespace", None)),
                     _ => None,
                 };
@@ -1281,16 +1403,21 @@ fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: RawHover) -> Option<RawHover> 
         Res::CallHost(i) => {
             h.signature = Some(print_sig(&d.functions[*i as usize].sig, &d.names));
         }
-        Res::CallLambda(l) => {
+        Res::CallLambda(l) | Res::SelfRef(l) => {
             h.kind = "lambda";
-            h.declaration = tree.ast.nodes.iter().find_map(|n| match &n.kind {
-                NodeKind::Const { pattern, value } if value == l => Some(tree.ast.span(*pattern)),
-                _ => None,
-            });
+            h.declaration = lambda_site(tree, *l);
         }
         _ => {}
     }
     Some(h)
+}
+
+/// The span of a `const`-bound lambda's name in its `const` line.
+fn lambda_site(tree: &Tree<'_>, l: NodeId) -> Option<Range> {
+    tree.ast.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Const { pattern, value, .. } if *value == l => Some(tree.ast.span(*pattern)),
+        _ => None,
+    })
 }
 
 /// The span of the name that binds a slot.

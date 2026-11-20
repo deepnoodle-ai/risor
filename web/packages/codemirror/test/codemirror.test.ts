@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
 import { describeSample, localService } from "@deepnoodle/risor-service";
-import { colourDecorations, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics, validateRisor } from "../src/index.ts";
+import { colourDecorations, hoverText, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics, validateRisor } from "../src/index.ts";
 import type { EditorView } from "@codemirror/view";
 import type { RisorService } from "@deepnoodle/risor-service";
 
@@ -21,6 +21,9 @@ describe("colours", () => {
     assert.deepEqual(marks(`const s = "😀"; // hi\nlen(s) > 1`), [
       "keyword:const", "operator:=", 'string:"😀"', "comment:// hi", "function:len", "operator:>", "number:1",
     ]);
+  });
+  test("type is a keyword where it begins a type line, and a name elsewhere (package F16)", () => {
+    assert.deepEqual(marks("type Id = string; const type = 1; type"), ["keyword:type", "operator:=", "keyword:const", "operator:=", "number:1"]);
   });
 });
 
@@ -69,6 +72,23 @@ describe("completion", () => {
     assert.ok(r?.options.some((o) => o.label === "order" && o.type === "variable"));
     const s2 = state("1 + ");
     assert.equal(await risorCompletions(new CompletionContext(s2, 4, false)), null);
+  });
+});
+
+describe("hoverText", () => {
+  const env = localService().environment(describeSample({}));
+
+  test("a type name that stands for never shows never (package F16)", async () => {
+    const h = await env.hover("type Empty = never; 0", 6);
+    assert.equal(h?.kind, "type");
+    assert.equal(hoverText(h!), "never");
+  });
+
+  test("a name of type never, which the checker could not resolve, shows nothing", async () => {
+    const h = await env.hover(`const a = 1 + "s"; a`, 19);
+    assert.equal(h?.kind, "name");
+    assert.equal(h?.type, "never");
+    assert.equal(hoverText(h!), "");
   });
 });
 

@@ -86,6 +86,7 @@ const (
 	mLambdaArrow                   // the => of a lambda
 	mSwitchCall                    // the ) of a Call named switch
 	mDefaultEnd                    // the last token of a pattern's default
+	mAnnEnd                        // the last token of an annotation or a type line's type (F16)
 )
 
 func (p *parser) mark1(i int, m uint8) {
@@ -236,8 +237,17 @@ func (p *parser) requireName() Token {
 func (p *parser) program() *Program {
 	m := p.mark()
 	var consts []*Const
-	for p.tok.isWord("const") {
-		consts = append(consts, p.constLine())
+	var types []*TypeLine
+	for {
+		if p.tok.isWord("const") {
+			consts = append(consts, p.constLine())
+			continue
+		}
+		if p.typeLineStart() {
+			types = append(types, p.typeLine())
+			continue
+		}
+		break
 	}
 	res := p.expr()
 	if p.tok.Kind == Semi {
@@ -246,7 +256,41 @@ func (p *parser) program() *Program {
 	if p.tok.Kind != EOF {
 		p.unexpected()
 	}
-	return &Program{base: p.base(m), Consts: consts, Result: res}
+	return &Program{base: p.base(m), Consts: consts, Types: types, Result: res}
+}
+
+// typeLineStart reports whether a type line of package F16 starts at the
+// start of a top-level line (f16-entry-points.md 2.1): the word type, a word
+// that begins with an upper-case letter, then "=". In a repaired text the
+// end of the text may stand for the "=" (F12 3.3). There the word is the
+// hole, whatever the author has typed of it (F16 7.2 item 7): HoleText
+// begins with an upper-case letter.
+func (p *parser) typeLineStart() bool {
+	if !p.tok.isWord("type") {
+		return false
+	}
+	n := p.peek(1)
+	if n.Kind != Word || n.Text == "" || n.Text[0] < 'A' || n.Text[0] > 'Z' {
+		return false
+	}
+	return p.peek(2).Kind == Assign || (p.zone > 0 && p.i+2 >= p.zone-1)
+}
+
+// typeLine parses "type Name = T;". A name of one letter is bad-type-text
+// at the name (2.4).
+func (p *parser) typeLine() *TypeLine {
+	start := p.tok.Start
+	p.next() // type
+	nt := p.tok
+	if !IsTypeName(nt.Text) {
+		p.badTypeText(nt, "type")
+	}
+	p.next()
+	p.expect(Assign)
+	t := p.ptype()
+	p.mark1(p.i-1, mAnnEnd)
+	p.expect(Semi)
+	return &TypeLine{Span: Span{start, p.prevEnd}, Name: nt.Text, NameSpan: Span{nt.Start, nt.End}, Type: t}
 }
 
 func (p *parser) constLine() *Const {
@@ -254,14 +298,24 @@ func (p *parser) constLine() *Const {
 	p.next() // const
 	pat := p.pattern()
 	p.mark1(p.i-1, mPatEnd)
-	if p.tok.Kind == Colon {
-		p.raise("E9")
+	var ann *PType
+	if p.tok.Kind == Colon { // F16 2.1
+		p.next()
+		ann = p.ptype()
+		p.mark1(p.i-1, mAnnEnd)
 	}
 	p.expect(Assign)
-	np, ok := pat.(*NamePat)
-	val := p.argOrExpr(ok && !np.Discard)
+	var val Node
+	if ann != nil {
+		// An annotated const line takes an Expr: a lambda is no value of a
+		// type (F16 2.1).
+		val = p.expr()
+	} else {
+		np, ok := pat.(*NamePat)
+		val = p.argOrExpr(ok && !np.Discard)
+	}
 	p.expect(Semi)
-	return &Const{base: p.base(m), Pattern: pat, Value: val}
+	return &Const{base: p.base(m), Pattern: pat, Type: ann, Value: val}
 }
 
 // argOrExpr parses the place of an Arg or of a const value (3.2 rule 5).
@@ -278,13 +332,16 @@ func (p *parser) argOrExpr(allowLambda bool) Node {
 }
 
 // parenLambda reports whether the "(" at the current place begins a Lambda:
-// the token after its matching ")" is "=>" (3.2 rules 5 and 6). A template is
-// one token for this count.
+// the token after its matching ")" is "=>", or ":" with package F16 (3.2
+// rules 5 and 6; f16-entry-points.md 2.2). A template is one token for this
+// count. In a repaired text, a "(" whose matching ")" is not before the end
+// begins a parameter list when a Name or "_" and then ":" follow it (F16
+// 7.2; F12 3.3 item 7).
 func (p *parser) parenLambda() bool {
 	depth := 0
 	for j := p.i + 1; j < len(p.toks); j++ {
 		if p.zone > 0 && j >= p.zone-1 {
-			return false
+			return p.zoneParams()
 		}
 		switch p.toks[j].Kind {
 		case LParen, LBrack, OptLBrack, LBrace:
@@ -303,7 +360,11 @@ func (p *parser) parenLambda() bool {
 		case RParen, RBrack, RBrace:
 			depth--
 			if depth < 0 {
-				return p.toks[j].Kind == RParen && j+1 < len(p.toks) && p.toks[j+1].Kind == Arrow
+				if p.toks[j].Kind != RParen || j+1 >= len(p.toks) {
+					return false
+				}
+				k := p.toks[j+1].Kind
+				return k == Arrow || k == Colon
 			}
 		case TemplateMiddle, TemplateTail, EOF:
 			return false
@@ -312,9 +373,17 @@ func (p *parser) parenLambda() bool {
 	return false
 }
 
+// zoneParams is the rule of a repaired text in parenLambda: the "(" is
+// followed by a Name or "_" and then ":", both before the end of the text.
+func (p *parser) zoneParams() bool {
+	n := p.peek(1)
+	return p.i+2 < p.zone-1 && n.Kind == Word && (IsName(n.Text) || n.Text == "_") && p.peek(2).Kind == Colon
+}
+
 func (p *parser) lambda(allow bool) *Lambda {
 	m := p.mark()
 	var params []*Param
+	var result *PType
 	if p.tok.Kind == Word {
 		t := p.tok
 		p.next()
@@ -330,15 +399,25 @@ func (p *parser) lambda(allow bool) *Lambda {
 				pm := p.mark()
 				pat := p.pattern()
 				p.mark1(p.i-1, mPatEnd)
-				if p.tok.Kind == Colon {
-					p.raise("E9")
-				}
-				var def Node
-				if p.tok.Kind == Assign {
+				prm := &Param{Pattern: pat}
+				if p.tok.Kind == Colon { // F16 2.1
 					p.next()
-					def = p.expr()
+					if np, ok := pat.(*NamePat); ok && !np.Discard && p.fnStart() {
+						prm.Fn = p.pfn()
+					} else {
+						prm.Type = p.ptype()
+					}
+					p.mark1(p.i-1, mAnnEnd)
 				}
-				params = append(params, &Param{base: p.base(pm), Pattern: pat, Default: def})
+				if p.tok.Kind == Assign {
+					if prm.Fn != nil { // a parameter with an Fn has no default (F16 2.1)
+						p.unexpected()
+					}
+					p.next()
+					prm.Default = p.expr()
+				}
+				prm.base = p.base(pm)
+				params = append(params, prm)
 				if p.tok.Kind == Comma {
 					p.next()
 					if p.tok.Kind == RParen {
@@ -351,6 +430,11 @@ func (p *parser) lambda(allow bool) *Lambda {
 		}
 		p.expect(RParen)
 		p.exit()
+		if p.tok.Kind == Colon { // a result annotation (F16 2.1)
+			p.next()
+			result = p.ptype()
+			p.mark1(p.i-1, mAnnEnd)
+		}
 	}
 	if p.tok.Kind != Arrow {
 		p.unexpected()
@@ -361,7 +445,56 @@ func (p *parser) lambda(allow bool) *Lambda {
 	p.mark1(p.i, mLambdaArrow)
 	p.next()
 	body := p.expr()
-	return &Lambda{base: p.base(m), Params: params, Body: body}
+	return &Lambda{base: p.base(m), Params: params, Result: result, Body: body}
+}
+
+// fnStart reports whether an Fn begins after the ":" of a parameter that is
+// a name (F16 2.1; 05-types.md 3.2): "(" then ")", or "(" then a Word then
+// ":".
+func (p *parser) fnStart() bool {
+	if p.tok.Kind != LParen {
+		return false
+	}
+	n := p.peek(1)
+	return n.Kind == RParen || (n.Kind == Word && p.peek(2).Kind == Colon)
+}
+
+// pfn parses a PFn (F16 2.1): "(" [ Word ":" PType { "," Word ":" PType } ]
+// ")" "=>" ( PType | "unknown" ). Its "(" opens a level, to its ")".
+func (p *parser) pfn() *PFn {
+	lp := p.tok
+	f := &PFn{Span: Span{Start: lp.Start}}
+	p.next()
+	p.enter(lp.Start, lp.End)
+	if p.tok.Kind != RParen {
+		for {
+			nt := p.tok
+			if nt.Kind != Word {
+				p.unexpected()
+			}
+			p.next()
+			if p.tok.Kind != Colon {
+				p.unexpected()
+			}
+			p.next()
+			f.Params = append(f.Params, &PFnParam{Name: nt.Text, NameSpan: Span{nt.Start, nt.End}, Type: p.ptype()})
+			if p.tok.Kind != Comma {
+				break
+			}
+			p.next()
+		}
+	}
+	p.expect(RParen)
+	p.exit()
+	p.expect(Arrow)
+	if t := p.tok; t.isWord("unknown") {
+		f.Unknown = Span{t.Start, t.End}
+		p.next()
+	} else {
+		f.Result = p.ptype()
+	}
+	f.Span.End = p.prevEnd
+	return f
 }
 
 // patDefault reads the default of a pattern: an Expr inside the pattern,

@@ -160,6 +160,7 @@ pub const HOLE: &str = "\u{10FFFF}";
 pub(crate) fn parse_repair(src: &Source, toks: &[Token], limit: usize) -> Result<Ast, usize> {
     let mut p = Parser::new(src, toks);
     p.core = true;
+    p.limit = limit;
     for (i, q) in p.partner.iter_mut().enumerate() {
         if i >= limit || q.is_some_and(|c| c as usize >= limit) {
             *q = None;
@@ -285,13 +286,14 @@ struct Parser<'a> {
     expr_end: usize,
     if_end: usize,
     type_end: usize,
-    const_pat_end: usize,
-    param_end: usize,
     arm_start: usize,
     /// Give the Core diagnostic, unmapped.
     core: bool,
     /// Where the parser stood at its last error (F12 3.3).
     err_pos: std::cell::Cell<usize>,
+    /// F12 3.3: in a repair, the count of the tokens before the end; else
+    /// `usize::MAX`.
+    limit: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -346,11 +348,10 @@ impl<'a> Parser<'a> {
             expr_end: usize::MAX,
             if_end: usize::MAX,
             type_end: usize::MAX,
-            const_pat_end: usize::MAX,
-            param_end: usize::MAX,
             arm_start: usize::MAX,
             core: false,
             err_pos: std::cell::Cell::new(0),
+            limit: usize::MAX,
         }
     }
 
@@ -489,8 +490,15 @@ impl<'a> Parser<'a> {
     fn program(&mut self) -> R<NodeId> {
         let first = self.peek().span.start as usize;
         let mut consts = Vec::new();
-        while self.at_word("const") {
-            consts.push(self.const_line()?);
+        let mut types = Vec::new();
+        loop {
+            if self.at_word("const") {
+                consts.push(self.const_line()?);
+            } else if self.type_line_starts() {
+                types.push(self.type_line()?);
+            } else {
+                break;
+            }
         }
         let result = self.expr()?;
         let mut end = self.outer(result).end as usize;
@@ -500,13 +508,82 @@ impl<'a> Parser<'a> {
         if !matches!(self.peek().tok, Tok::Eof) {
             return Err(self.unexpected(self.peek()));
         }
-        Ok(self.node(NodeKind::Program { consts, result }, Range::new(first, end)))
+        Ok(self.node(
+            NodeKind::Program {
+                consts,
+                result,
+                types,
+            },
+            Range::new(first, end),
+        ))
+    }
+
+    /// F16 2.2 rule 1: at the start of a top-level line, `type` begins a type
+    /// line when an upper-case word and `=` follow it.
+    fn type_line_starts(&self) -> bool {
+        if !self.at_word("type") || self.peek().code.is_some() {
+            return false;
+        }
+        // F16 7.2 item 7 (R242): in a repair, any word that ends the tokens
+        // before the end begins a type line, a hole among them whatever its
+        // prefix: no expression goes on with a word after the name `type`.
+        let at_end = self.pos + 2 == self.limit;
+        match self.peek_n(1).word() {
+            Some(_) if at_end => true,
+            Some(w) => {
+                w.starts_with(|c: char| c.is_ascii_uppercase())
+                    && self.peek_n(2).is_punct(P::Assign)
+            }
+            None => false,
+        }
+    }
+
+    /// Whether the token `n` after the current one is before the end of a
+    /// repair (F12 3.3 item 7).
+    fn before_end(&self, n: usize) -> bool {
+        self.pos + n < self.limit
+    }
+
+    /// `TypeLine = "type" TName "=" PType ";"` (F16 2.1). The `type`, the
+    /// name and the `=` open no level (2.4).
+    fn type_line(&mut self) -> R<TypeLine> {
+        let kw = self.bump();
+        let nt = self.peek();
+        let name = nt.word().unwrap_or_default().to_string();
+        if !is_type_name(&name) {
+            return Err(self.bad_type_text(nt, "expected"));
+        }
+        self.bump();
+        self.expect(P::Assign)?;
+        let ty = self.ptype()?;
+        let semi = self.expect(P::Semi)?;
+        Ok(TypeLine {
+            name,
+            name_span: nt.span,
+            ty,
+            span: kw.span.to(semi.span),
+        })
     }
 
     fn const_line(&mut self) -> R<NodeId> {
         let kw = self.bump();
         let pattern = self.pattern()?;
-        self.const_pat_end = self.pos;
+        // F16 2.2 rule 4: an annotated line's value is an `Expr`.
+        if self.at_punct(P::Colon) {
+            self.bump();
+            let ty = self.ptype()?;
+            self.expect(P::Assign)?;
+            let value = self.expr()?;
+            let semi = self.expect(P::Semi)?;
+            return Ok(self.node(
+                NodeKind::Const {
+                    pattern,
+                    value,
+                    ty: Some(Box::new(ty)),
+                },
+                kw.span.to(semi.span),
+            ));
+        }
         self.expect(P::Assign)?;
         let pattern_is_name = matches!(self.ast.kind(pattern), NodeKind::NamePat { name: Some(_) });
         self.reserved_param()?;
@@ -516,7 +593,14 @@ impl<'a> Parser<'a> {
             self.expr()?
         };
         let semi = self.expect(P::Semi)?;
-        Ok(self.node(NodeKind::Const { pattern, value }, kw.span.to(semi.span)))
+        Ok(self.node(
+            NodeKind::Const {
+                pattern,
+                value,
+                ty: None,
+            },
+            kw.span.to(semi.span),
+        ))
     }
 
     /// `{` `{ Const }` `Expr` `}` after `if (...)`, `else`, `try` and `catch`
@@ -1749,13 +1833,27 @@ impl<'a> Parser<'a> {
         let t = self.peek();
         match &t.tok {
             Tok::Word(w) if is_name(w) || w == "_" => self.peek_n(1).is_punct(P::Arrow),
+            // F16 2.2 rule 2: also when a `:` follows the `)`.
             Tok::Punct(P::LParen) => match self.partner[self.pos] {
                 Some(c) => {
                     let c = c as usize;
                     self.t[c].is_punct(P::RParen)
-                        && self.t.get(c + 1).is_some_and(|n| n.is_punct(P::Arrow))
+                        && self
+                            .t
+                            .get(c + 1)
+                            .is_some_and(|n| n.is_punct(P::Arrow) || n.is_punct(P::Colon))
                 }
-                None => false,
+                // F16 7.2 item 3: in a repair, a `(` with no `)` before the
+                // end, followed by a name or `_` and a `:` before the end.
+                None => {
+                    self.limit != usize::MAX
+                        && self.before_end(2)
+                        && self
+                            .peek_n(1)
+                            .word()
+                            .is_some_and(|w| (is_name(w) && w != HOLE) || w == "_")
+                        && self.peek_n(2).is_punct(P::Colon)
+                }
             },
             _ => false,
         }
@@ -1775,6 +1873,7 @@ impl<'a> Parser<'a> {
     fn lambda_inner(&mut self, in_const: Option<bool>) -> R<NodeId> {
         let start = self.peek().span;
         let mut params = Vec::new();
+        let mut result = None;
         if let Some(w) = self.peek().word() {
             let nt = self.bump_word()?;
             let name = if w == "_" { None } else { Some(w.to_string()) };
@@ -1783,6 +1882,8 @@ impl<'a> Parser<'a> {
                 NodeKind::Param {
                     pattern,
                     default: None,
+                    ty: None,
+                    fn_: None,
                 },
                 nt.span,
             ));
@@ -1802,6 +1903,11 @@ impl<'a> Parser<'a> {
             }
             self.expect(P::RParen)?;
             self.close();
+            // F16 2.1: a result annotation after the parameter list.
+            if self.at_punct(P::Colon) {
+                self.bump();
+                result = Some(Box::new(self.ptype()?));
+            }
         }
         let arrow = self.peek();
         if !arrow.is_punct(P::Arrow) {
@@ -1815,13 +1921,49 @@ impl<'a> Parser<'a> {
         self.bump();
         let body = self.expr()?;
         let span = start.to(self.outer(body));
-        Ok(self.node(NodeKind::Lambda { params, body }, span))
+        Ok(self.node(
+            NodeKind::Lambda {
+                params,
+                body,
+                result,
+            },
+            span,
+        ))
     }
 
     fn param(&mut self) -> R<NodeId> {
         let pattern = self.pattern()?;
-        self.param_end = self.pos;
         let mut span = self.ast.span(pattern);
+        let mut ty = None;
+        if self.at_punct(P::Colon) {
+            self.bump();
+            // F16 2.2 rule 3: after the `:` of a parameter that is a name.
+            let named = matches!(self.ast.kind(pattern), NodeKind::NamePat { name: Some(_) });
+            // F16 7.2 item 4: in a repair, decided from the tokens before
+            // the end.
+            let pfn = self.at_punct(P::LParen)
+                && ((self.before_end(1) && self.peek_n(1).is_punct(P::RParen))
+                    || (self.before_end(2)
+                        && self.peek_n(1).word().is_some()
+                        && self.peek_n(2).is_punct(P::Colon)));
+            if named && pfn {
+                // A `PFn` takes no default (2.1 rule 4).
+                let f = self.pfn()?;
+                span = span.to(f.span);
+                return Ok(self.node(
+                    NodeKind::Param {
+                        pattern,
+                        default: None,
+                        ty: None,
+                        fn_: Some(Box::new(f)),
+                    },
+                    span,
+                ));
+            }
+            let t = self.ptype()?;
+            span = span.to(t.span);
+            ty = Some(Box::new(t));
+        }
         let mut default = None;
         if self.at_punct(P::Assign) {
             self.bump();
@@ -1829,7 +1971,60 @@ impl<'a> Parser<'a> {
             span = span.to(self.outer(d));
             default = Some(d);
         }
-        Ok(self.node(NodeKind::Param { pattern, default }, span))
+        Ok(self.node(
+            NodeKind::Param {
+                pattern,
+                default,
+                ty,
+                fn_: None,
+            },
+            span,
+        ))
+    }
+
+    /// `PFn = "(" [ Word ":" PType { "," Word ":" PType } ] ")" "=>" ( PType
+    /// | "unknown" )` (F16 2.1). Its `(` opens one level (2.4).
+    fn pfn(&mut self) -> R<PFn> {
+        let lp = self.bump();
+        self.open(lp.span)?;
+        let mut params = Vec::new();
+        if !self.at_punct(P::RParen) {
+            loop {
+                let w = self.peek();
+                let word = match w.word() {
+                    Some(word) if w.code.is_none() => word,
+                    _ => return Err(self.unexpected(w)),
+                };
+                // 14.3: `r`, white space and a string is `string-prefix`.
+                self.bump_word()?;
+                self.expect(P::Colon)?;
+                let t = self.ptype()?;
+                params.push((word.to_string(), w.span, t));
+                if self.at_punct(P::Comma) {
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(P::RParen)?;
+        self.close();
+        self.expect(P::Arrow)?;
+        let rt = self.peek();
+        let (result, result_span) = if rt.is_word("unknown") && rt.code.is_none() {
+            self.bump();
+            (None, rt.span)
+        } else {
+            let t = self.ptype()?;
+            let s = t.span;
+            (Some(t), s)
+        };
+        Ok(PFn {
+            params,
+            result,
+            result_span,
+            span: lp.span.to(result_span),
+        })
     }
 
     // ---- patterns -------------------------------------------------------
@@ -1998,11 +2193,19 @@ impl<'a> Parser<'a> {
         Err(self.tag(e, Rule::Key))
     }
 
-    /// 14.2 rule 1: a reserved word followed by `=>`, where an argument or
-    /// the value of a `const` may stand, is a parameter.
+    /// A reserved word followed by `=>`, where an argument or the value of a
+    /// `const` may stand. Only a `Name` or `_` before `=>` begins a lambda
+    /// (3.2 rule 5), so the place holds an `Expr`. A word that begins one
+    /// (14.2 rule 2: `true`, `false`, `null` and `match` an operand, `if` and
+    /// `try` an `Expr`) is read as that, and fails later, at the `=>` or
+    /// where its form does. Any other is `reserved-word` at the word.
     fn reserved_param(&self) -> R<()> {
+        const BEGINS_EXPR: [&str; 6] = ["true", "false", "null", "match", "if", "try"];
         let t = self.peek();
-        if t.word().is_some_and(is_reserved) && self.peek_n(1).is_punct(P::Arrow) {
+        if t.word()
+            .is_some_and(|w| is_reserved(w) && !BEGINS_EXPR.contains(&w))
+            && self.peek_n(1).is_punct(P::Arrow)
+        {
             return Err(self.reserved(t, Rule::Name));
         }
         Ok(())
@@ -2178,7 +2381,8 @@ impl<'a> Parser<'a> {
             _ => {}
         }
         // 3.4 rule 4: after the last branch of an `if` or the handler of a
-        // `try`, an operator or a step.
+        // `try`, an operator or a step. F8 2.6 item 3 (R256): `not` is an
+        // operator only when `in` follows it.
         if ti == self.if_end {
             let step = matches!(
                 t.tok,
@@ -2205,7 +2409,8 @@ impl<'a> Parser<'a> {
                         | P::Question
                         | P::LParen
                 )
-            ) || matches!(t.word(), Some("in" | "not" | "as" | "is"));
+            ) || matches!(t.word(), Some("in" | "as" | "is"))
+                || (t.is_word("not") && next.is_some_and(|n| n.is_word("in")));
             if step {
                 return at("needs-parentheses", "after-branch");
             }
@@ -2233,7 +2438,13 @@ impl<'a> Parser<'a> {
         if t.is_punct(P::Comma) && enclosing.is_some_and(|o| self.mark[o] == MARK_IF_TEST) {
             return at("if-form", "call");
         }
+        // E6. F8 2.7 item 8 (R257): a word after `.` or `?.` is a field's
+        // name, never the word of a form.
+        let field = |j: usize| {
+            j >= 1 && (self.t[j - 1].is_punct(P::Dot) || self.t[j - 1].is_punct(P::QDot))
+        };
         if prev(1).is_some_and(|p| p.is_word("try"))
+            && !field(ti - 1)
             && !t.is_punct(P::LBrace)
             && !t.is_punct(P::LParen)
         {
@@ -2245,12 +2456,12 @@ impl<'a> Parser<'a> {
         if t.is_punct(P::Colon) && enclosing.is_some_and(|o| self.mark[o] == MARK_INDEX) {
             return at("slice-syntax", "default");
         }
+        // E9, narrowed by F16 2.5 item 1 to its third case: `:` after a
+        // `Name` that follows the `(` of a parenthesized expression.
         if t.is_punct(P::Colon)
-            && (ti == self.const_pat_end
-                || ti == self.param_end
-                || (ti >= 2
-                    && self.t[ti - 1].word().is_some_and(is_name)
-                    && self.mark[ti - 2] == MARK_PAREN))
+            && ti >= 2
+            && self.t[ti - 1].word().is_some_and(is_name)
+            && self.mark[ti - 2] == MARK_PAREN
         {
             return at("type-annotation", "default");
         }
@@ -2285,8 +2496,7 @@ impl<'a> Parser<'a> {
                 let named = o >= 1
                     && self.t[o].is_punct(P::LParen)
                     && self.t[o - 1].is_word("switch")
-                    && !(o >= 2
-                        && (self.t[o - 2].is_punct(P::Dot) || self.t[o - 2].is_punct(P::QDot)));
+                    && !field(o - 1);
                 if named {
                     return at_span("switch-statement", self.t[o - 1].span);
                 }

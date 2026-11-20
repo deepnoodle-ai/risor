@@ -372,7 +372,8 @@ func TestFlatPrograms(t *testing.T) {
 // StackNeeds documents and tests the stack this binding needs
 // (03-host.md 3.9.1): to parse at the nesting limit, and to run at the
 // default depth limit, 200, and the largest, 400, with calls by name, calls
-// that map and flatMap make of a lambda, and walks. stackDoc is the stack
+// that map and flatMap make of a lambda, self-recursion through each, and
+// walks. stackDoc is the stack
 // the binding documents (risor.go); the test caps every goroutine's stack at
 // stackDoc divided by 1.5, so a deepest case that needs more crashes the
 // test. Go grows a goroutine's stack as needed, and it grows by doubling: a
@@ -446,7 +447,24 @@ func TestStackNeeds(t *testing.T) {
 			d = runErr(t, env, linkChain(c.base, c.link, depth), nil)
 			assert.Equal(t, d.Code, "depth-exceeded", c.link)
 		}
+		// Self-recursion (F17 11): a typed lambda that calls itself by name,
+		// and that gives its own name to map and to flatMap. Each call adds
+		// 1, so d(depth - 1) makes depth calls, the limit, and d(depth) one
+		// more.
+		for _, s := range selfRecursions {
+			assert.NotNil(t, run(t, env, fmt.Sprintf(s, depth-1), nil), s)
+			d = runErr(t, env, fmt.Sprintf(s, depth), nil)
+			assert.Equal(t, d.Code, "depth-exceeded", s)
+		}
 	}
+}
+
+// selfRecursions are the forms of self-recursion of the stack test, with %d
+// for the argument of the first call.
+var selfRecursions = []string{
+	"const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(%d)",
+	"const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(%d)",
+	"const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(%d)",
 }
 
 // 02-evaluation.md 5.3 item 3: map == visits the left map's keys in order when a value is a

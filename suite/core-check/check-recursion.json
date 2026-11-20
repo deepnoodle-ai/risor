@@ -1,0 +1,10 @@
+[
+  {"name": "a call of its own name has type never", "source": "const f = x => f(x) + \"a\"; f(1)", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,16,1,17]}],"phase":"check"}},
+  {"name": "a call of its own name is no use: the lambda is checked as unused", "source": "const f = x => f(x.a); 1", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,16,1,17]}],"phase":"check"}},
+  {"name": "its own name as a lambda argument is not checked", "source": "const f = xs => xs.map(f); f([1])", "expect": {"diagnostics":[{"code":"recursion-needs-types","span":[1,24,1,25]}],"phase":"check"}},
+  {"name": "a call of its own name as a plain argument of a call of its own name is synthesized", "source": "const f = x => f(f(1 + \"a\")); 0", "expect": {"phase": "check", "diagnostics": [{"code": "recursion-needs-types", "span": [1, 16, 1, 17]}, {"code": "kind", "span": [1, 20, 1, 27]}]}},
+  {"name": "a call of its own name as an argument of a function is synthesized", "source": "const f = x => len(f(1 + \"a\")); 0", "expect": {"phase": "check", "diagnostics": [{"code": "recursion-needs-types", "span": [1, 20, 1, 21]}, {"code": "kind", "span": [1, 22, 1, 29]}]}},
+  {"name": "a call of its own name where a method takes a function is a plain argument", "source": "const f = x => [1].map(f(1 + \"a\")); 0", "expect": {"phase": "check", "diagnostics": [{"code": "recursion-needs-types", "span": [1, 24, 1, 25]}, {"code": "arg-mismatch", "span": [1, 24, 1, 34]}, {"code": "kind", "span": [1, 26, 1, 33]}]}},
+  {"name": "a parameter of the same name hides the lambda's name: the type", "source": "const f = f => f + 1; f(1)", "expect": {"type": "int", "sites": []}},
+  {"name": "a const line of the same name in the body hides it: the type", "source": "const f = x => { const f = 2; f + x }; f(1)", "expect": {"type": "int", "sites": []}}
+]

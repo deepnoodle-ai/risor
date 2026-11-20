@@ -293,6 +293,7 @@ F3.
 | Rule | Example | Free |
 | --- | --- | --- |
 | A name is not in scope in its own value (5 rule 6) | `const x = x + 1; x` | The `x` after `=` |
+| The name of a `const`-bound lambda is in scope in its own body and defaults (5 rule 6) | `const f = x => f(x) + y; f(1)` | `y`. The `f` of the body is bound |
 | A block's and a branch's names end with it (5 rule 3) | `{ const a = 1; a } + a` | The last `a` |
 | The body and the handler of a `try` are two scopes (5 rule 9) | `try { const a = 1; a } catch { a }` | The `a` of the handler |
 | A default sees only the names to its left (8.3 rule 3, 8.4 rule 1) | `const {b = a, a} = m; b` | The `a` of the default, and `m` |
@@ -477,7 +478,7 @@ of the text.
 | A5 | `xs.map(x => lookup(x.id) + y)` | `xs`, `y` | `xs` empty; `y` empty | `xs.map` `xs` false; `lookup` null true |
 | A6 | `geo.distance(a, b) > limit` | `a`, `b`, `geo`, `limit` | `geo`, `a`, `b`, `limit`, each empty | `geo.distance` `geo` false |
 | A7 | `const double = x => x * 2; double(n) + rate(n)` | `n` | `n` empty, twice | `rate` null false |
-| A8 | `const f = x => f(x); f(1)` | none | none | `f` null true: the `f` in the body is free (`01-language.md` 5 rule 6) |
+| A8 | `const f = x => f(x); f(1)` | none | none | none: the `f` in the body is bound to the lambda (`01-language.md` 5 rule 6), as `double` is in A7. The program is `recursion-needs-types`, and its analysis is still given |
 | A9 | `{a: 1, b: [true, null], c: -2.5}` | none | none | none; `literal` is the map |
 
 ## 4. Additions to the case format

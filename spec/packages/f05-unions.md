@@ -818,7 +818,7 @@ This package adds no field to the case format. Its cases use the fields of
    `description`, or that expects a `check` code that is not static, is run
    once, checked. A conform case is run by F4 9.3. Every other case is run
    checked and with the static rules alone.
-3. In `suite/unions/` the static codes are the eleven of Core, `untagged-union`,
+3. In `suite/unions/` the static codes are the twelve of Core, `untagged-union`,
    and `check-limit` at a program type, as in `suite/conversion/` (F4 6.1 item
    4).
 

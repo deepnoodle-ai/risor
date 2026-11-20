@@ -37,6 +37,29 @@ function walkEntry(depth: number): string {
   return o.value === depth - 1 ? "ok" : "wrong-value";
 }
 
+/**
+ * Package F17, step E1 (f17 11.6): a typed lambda that calls itself, by name,
+ * through `map` and through `flatMap`, each call adding 1 to the depth count.
+ * `d(depth - 1)` makes `depth` calls and gives its value; `d(depth)` is
+ * `depth-exceeded`, not a stack overflow.
+ */
+const SELF: Record<string, { src: string; value: unknown }> = {
+  self: { src: "const d = (n: int): int => n <= 0 ? 0 : d(n - 1); d(N)", value: 0 },
+  "self-map": { src: "const d = (n: int): int => n <= 0 ? 0 : [n - 1].map(d)[0]; d(N)", value: 0 },
+  "self-flatMap": { src: "const d = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(d); d(N)", value: [] },
+};
+
+function self(name: string, depth: number): string {
+  const { src, value } = SELF[name];
+  const env = createEnv({ limits: { depth, steps: null, allocation: null } });
+  const run = (n: number) => execute(env.compile(parse(src.replace("N", String(n)))), {});
+  const within = run(depth - 1);
+  if (!within.ok) return within.diagnostic.code;
+  if (JSON.stringify(within.value) !== JSON.stringify(value)) return "wrong-value";
+  const past = run(depth);
+  return past.ok ? "no-limit" : past.diagnostic.code === "depth-exceeded" ? "ok" : past.diagnostic.code;
+}
+
 /** 100 levels of source nesting, in each kind of opener. */
 function nesting(): string {
   const env = createEnv({ varRecord: "{c: any}", limits: { steps: null, allocation: null } });
@@ -69,5 +92,6 @@ const out = ["nesting 100", nesting()];
 for (const depth of [200, 400]) {
   out.push(`calls ${depth}`, calls(depth), `walk ${depth}`, walk(depth), `walk() ${depth}`, walkEntry(depth));
   for (const f of FORMS) out.push(`${f.name} ${depth}`, form(f.name, depth));
+  for (const name of Object.keys(SELF)) out.push(`${name} ${depth}`, self(name, depth));
 }
 console.log(out.join(" "));

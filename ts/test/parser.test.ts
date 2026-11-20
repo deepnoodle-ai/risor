@@ -283,8 +283,9 @@ describe("01 14.3: every row", () => {
   test("x[a:b]; (x: int) => x; const n: int = 1;", () => {
     err("x[a:b]", "slice-syntax", [1, 4, 1, 5]);
     err("(x: int) => x", "type-annotation", [1, 3, 1, 4]);
-    err("f((x: int) => x)", "type-annotation", [1, 5, 1, 6]);
-    err("const n: int = 1; n", "type-annotation", [1, 8, 1, 9]);
+    // Package F16 (f16 2.5): E9 narrows to a name after the `(` of a parenthesized expression.
+    err("f((x: int))", "type-annotation", [1, 5, 1, 6]);
+    err("const f: int = (x: int) => x; 1", "type-annotation", [1, 18, 1, 19]);
   });
   test("xs.*.f; xs[?c]; xs[].f", () => {
     err("xs.*.f", "star-form", [1, 4, 1, 5]);
@@ -312,7 +313,9 @@ describe("01 14.3: every row", () => {
     err("x satisfies T", "satisfies-operator", [1, 3, 1, 12]);
     err("interface Foo { }", "type-declaration", [1, 1, 1, 10]);
     err("enum Color { }", "type-declaration", [1, 1, 1, 5]);
-    err("type Name = T", "type-declaration", [1, 1, 1, 5]);
+    // Package F16 (f16 2.5): E17 narrows for `type` to where no type line begins.
+    err("type x", "type-declaration", [1, 1, 1, 5]);
+    err("{ const a = 1; type Foo = int; a }", "type-declaration", [1, 16, 1, 20]);
     err("export const x = 1; x", "export-statement", [1, 1, 1, 7]);
     err("x => { x + 1 }", "unexpected-token", [1, 3, 1, 5]);
     err("f(x => { x + 1 })", "block-without-const", [1, 8, 1, 9]);
@@ -518,5 +521,60 @@ describe("01 13: nesting", () => {
     ok("if (a) { 1 } " + "else if (b) { 2 } ".repeat(n) + "else { 3 }");
     ok("const a = 1; ".repeat(1).concat(Array.from({ length: n }, (_, i) => `const a${i} = ${i};`).join(" "), " a"));
     ok("[" + "1, ".repeat(n) + "]");
+  });
+});
+
+describe("package F16: type lines and annotations (f16 2)", () => {
+  const prog = (src: string) => ok(src);
+  test("a type line is in Program.types, in the order of the text, with the span from type to ;", () => {
+    const p = prog("const a = 1; type Pair = {a: int}; type Ids = int[]; a");
+    assert.deepEqual(p.types.map((l) => l.name), ["Pair", "Ids"]);
+    assert.deepEqual(p.types[0].span, { start: 13, end: 34 });
+    assert.deepEqual(p.types[0].nameSpan, { start: 18, end: 22 });
+    assert.deepEqual(p.types[0].type.span, { start: 25, end: 33 });
+    assert.equal(p.consts.length, 1);
+  });
+  test("type is a name where no type line begins (2.2 rule 1)", () => {
+    assert.equal(result("type(1)").kind, "Call");
+    assert.equal(result("const type = 1; type").kind, "Ident");
+    assert.equal(prog("const type = 1; type").types.length, 0);
+    err("type T = int; 1", "bad-type-text", [1, 6, 1, 7]);
+  });
+  test("the annotation of a const line, a parameter and a result", () => {
+    const p = prog("const n: int | null = 1; const f = (x: int, y = 2): string => y; n");
+    assert.deepEqual(p.consts[0].type!.span, { start: 9, end: 19 });
+    const l = p.consts[1].value as A.Lambda;
+    assert.notEqual(l.params[0].type, null);
+    assert.equal(l.params[1].type, null);
+    assert.deepEqual(l.result!.span, { start: 52, end: 58 });
+  });
+  test("a parameter's span ends at its annotation when it has no default (2.3 item 1)", () => {
+    const l = prog("const f = (x: {a: int}, y: int = 1) => x; 1").consts[0].value as A.Lambda;
+    assert.deepEqual(l.params[0].span, { start: 11, end: 22 });
+    assert.deepEqual(l.params[1].span, { start: 24, end: 34 });
+  });
+  test("a function type on a parameter that is a name (2.2 rule 3)", () => {
+    const l = prog("const g = (f: (a: int, b: string) => bool, h: () => unknown) => 1; 1").consts[0].value as A.Lambda;
+    assert.deepEqual(l.params[0].fn!.params.map((p) => p.word), ["a", "b"]);
+    assert.notEqual(l.params[0].fn!.result, null);
+    assert.equal(l.params[1].fn!.params.length, 0);
+    assert.equal(l.params[1].fn!.result, null);
+    assert.equal(l.params[0].type, null);
+    // `(x)` then `=>` is not a PFn: a parenthesized program type follows.
+    err("const g = (f: (x) => int) => 1; 1", "bad-type-text", [1, 16, 1, 17]);
+  });
+  test("a ( followed after its ) by : begins a lambda (2.2 rule 2)", () => {
+    const c = result("xs.map((x): int => x)") as A.MethodCall;
+    assert.equal(c.args[0].kind, "Lambda");
+    err("f((x, y): int)", "unexpected-token", [1, 14, 1, 15]);
+  });
+  test("an annotated const line takes an Expr only (2.2 rule 4)", () => {
+    err("const f: int = x => x; 1", "unexpected-token", [1, 18, 1, 20]);
+  });
+  test("the : of an annotation opens no level; the ( of a PFn opens one (2.4)", () => {
+    const nest = (n: number, inner: string) => "(".repeat(n) + inner + ")".repeat(n);
+    ok(`const x: int = ${nest(100, "1")}; x`);
+    ok(`const g = (f: (a: ${nest(98, "int")}) => int) => 1; 1`);
+    err(`const g = (f: (a: ${nest(99, "int")}) => int) => 1; 1`, "nesting-exceeded");
   });
 });

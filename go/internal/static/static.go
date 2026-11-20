@@ -112,6 +112,15 @@ type Result struct {
 	// coalesced read under ?? (01-language.md 6.6). The node alone decides
 	// it, so a checked and an unchecked compile agree.
 	Coalesced map[syntax.Node]bool
+	// AnnTypes holds the resolved type of each program type of an
+	// annotation or a type line that has no diagnostic (package F16 3.1):
+	// the type of a const line, a parameter, a result, and the parameters
+	// and result of an Fn.
+	AnnTypes map[*syntax.PType]*types.Type
+	// SelfRefs holds each reference of a const-bound lambda to its own
+	// name: a Call by that name, or an Ident given as a lambda argument
+	// (01-language.md 5 rule 6, 14.4; recursion-needs-types).
+	SelfRefs map[syntax.Node]bool
 }
 
 type scope struct {
@@ -143,6 +152,20 @@ type walker struct {
 	// notLast holds each ?? node whose operands are all operands of its
 	// chain other than the last (01-language.md 6.6).
 	notLast map[*syntax.Binary]bool
+	// types is what a program type may name at the place being walked: the
+	// environment's type names and the type lines before it (F16 3.1).
+	types *types.Scope
+	// lineNames holds the name of each type line walked (F16 3.1).
+	lineNames map[string]bool
+	// self holds, for each const-bound lambda that refers to its own name,
+	// its first reference in the text (05-types.md 22.5).
+	self map[*syntax.Lambda]selfRef
+}
+
+// selfRef is a reference of a const-bound lambda to its own name.
+type selfRef struct {
+	name string
+	sp   syntax.Span
 }
 
 // Check applies the static rules to a program and resolves its names.
@@ -154,13 +177,40 @@ func Check(prog *syntax.Program, names *Names) *Result {
 		Slots:     map[any]int{},
 		AsTypes:   map[*syntax.As]*types.Type{},
 		Coalesced: map[syntax.Node]bool{},
+		AnnTypes:  map[*syntax.PType]*types.Type{},
+		SelfRefs:  map[syntax.Node]bool{},
 	}}
+	w.types = &types.Scope{Opaque: map[string]bool{}, Named: map[string]*types.Type{}}
+	if names.Types != nil {
+		for k, v := range names.Types.Opaque {
+			w.types.Opaque[k] = v
+		}
+		for k, v := range names.Types.Named {
+			w.types.Named[k] = v
+		}
+	}
 	outer := &scope{names: map[string]*Binding{}, vars: names.Vars}
 	s := &scope{parent: outer, names: map[string]*Binding{}}
-	for _, c := range prog.Consts {
-		w.constLine(c, s)
+	// The const lines and the type lines, in the order of the text.
+	ci, ti := 0, 0
+	for ci < len(prog.Consts) || ti < len(prog.Types) {
+		if ti < len(prog.Types) && (ci >= len(prog.Consts) || prog.Types[ti].Span.Start < prog.Consts[ci].Span().Start) {
+			w.typeLine(prog.Types[ti])
+			ti++
+			continue
+		}
+		w.constLine(prog.Consts[ci], s)
+		ci++
 	}
 	w.expr(prog.Result, s)
+	// recursion-needs-types, on the first reference of each lambda to its
+	// own name, unless every parameter and the result carry a type
+	// (01-language.md 14.4; 05-types.md 22.5; F17 11.2).
+	for l, r := range w.self {
+		if !l.Typed() {
+			w.diagm("recursion-needs-types", r.sp, "", nameP(r.name))
+		}
+	}
 	sort.Slice(w.res.Diags, func(i, j int) bool {
 		a, b := w.res.Diags[i], w.res.Diags[j]
 		if a.Span.Start != b.Span.Start {
@@ -214,16 +264,99 @@ func (w *walker) bind(name string, sp syntax.Span, s *scope, kind BindKind, lam 
 }
 
 func (w *walker) constLine(c *syntax.Const, s *scope) {
-	if lam, ok := c.Value.(*syntax.Lambda); ok {
+	if lam, ok := c.Value.(*syntax.Lambda); ok && c.Type == nil {
 		if np, ok := c.Pattern.(*syntax.NamePat); ok && !np.Discard {
-			w.lambda(lam, s)
+			// The name is bound first: it is in scope in the lambda's body
+			// and defaults (01-language.md 5 rule 6; 22.7).
 			w.bind(np.Name, np.Span(), s, ConstLambda, lam)
+			w.lambda(lam, s)
 			return
 		}
 	}
+	w.annotation(c.Type)
 	w.expr(c.Value, s)
 	w.pattern(c.Pattern, s)
 }
+
+// typeLine walks a type line of package F16 (3.1): name-clash with a type
+// name of the environment, duplicate-name with an earlier type line, and
+// the static rules of F4 6.1 for its type. A line declares its name for the
+// rest of the program when neither name-clash nor a diagnostic of its type
+// stands; of two lines with one name, the later stands.
+func (w *walker) typeLine(tl *syntax.TypeLine) {
+	clash := false
+	if env := w.names.Types; env != nil {
+		_, named := env.Named[tl.Name]
+		clash = named || env.Opaque[tl.Name]
+	}
+	switch {
+	case clash:
+		w.diagm("name-clash", tl.NameSpan, "", nameP(tl.Name))
+	case w.lineNames[tl.Name]:
+		w.diagm("duplicate-name", tl.NameSpan, "", nameP(tl.Name))
+	}
+	if w.lineNames == nil {
+		w.lineNames = map[string]bool{}
+	}
+	w.lineNames[tl.Name] = true
+	t := w.resolve(tl.Type)
+	if clash {
+		return
+	}
+	if t != nil {
+		w.types.Named[tl.Name] = t
+	} else {
+		delete(w.types.Named, tl.Name)
+	}
+}
+
+// resolve resolves a program type with the static rules of F4 6.1, in the
+// type names in scope, and records its type when it has no diagnostic.
+func (w *walker) resolve(pt *syntax.PType) *types.Type {
+	t, ds := types.FromPType(pt, w.types)
+	for _, d := range ds {
+		switch d.Code {
+		case "undefined-name":
+			w.diagm(d.Code, d.Span, "type", nameP(d.Name))
+		case "check-limit":
+			w.diagm(d.Code, d.Span, d.Tmpl)
+		default:
+			w.diag(d.Code, d.Span)
+		}
+	}
+	if t != nil {
+		w.res.AnnTypes[pt] = t
+	}
+	return t
+}
+
+// annotation resolves the program type of an annotation, if there is one.
+func (w *walker) annotation(pt *syntax.PType) {
+	if pt != nil {
+		w.resolve(pt)
+	}
+}
+
+// selfRef records a reference of a const-bound lambda to its own name: a
+// reference whose binding is the lambda, inside the lambda's own text.
+func (w *walker) selfRef(n syntax.Node, b *Binding) {
+	if b.Lambda == nil || !within(n.Span(), b.Lambda.Span()) {
+		return
+	}
+	w.res.SelfRefs[n] = true
+	sp := n.Span()
+	if c, ok := n.(*syntax.Call); ok {
+		sp = c.NameSpan
+	}
+	if w.self == nil {
+		w.self = map[*syntax.Lambda]selfRef{}
+	}
+	if r, ok := w.self[b.Lambda]; !ok || sp.Start < r.sp.Start {
+		w.self[b.Lambda] = selfRef{name: b.Name, sp: sp}
+	}
+}
+
+func within(a, b syntax.Span) bool { return a.Start >= b.Start && a.End <= b.End }
 
 func (w *walker) pattern(p syntax.Pattern, s *scope) {
 	switch p := p.(type) {
@@ -259,11 +392,19 @@ func (w *walker) pattern(p syntax.Pattern, s *scope) {
 func (w *walker) lambda(l *syntax.Lambda, s *scope) {
 	ls := &scope{parent: s, names: map[string]*Binding{}}
 	for _, p := range l.Params {
+		w.annotation(p.Type)
+		if p.Fn != nil {
+			for _, q := range p.Fn.Params {
+				w.annotation(q.Type)
+			}
+			w.annotation(p.Fn.Result)
+		}
 		if p.Default != nil {
 			w.expr(p.Default, ls)
 		}
 		w.pattern(p.Pattern, ls)
 	}
+	w.annotation(l.Result)
 	w.expr(l.Body, ls)
 }
 
@@ -289,6 +430,7 @@ func (w *walker) isLambdaArg(a syntax.Node, s *scope) (bool, int) {
 	case *syntax.Ident:
 		if b := s.lookup(a.Name); b != nil && b.Kind == ConstLambda {
 			w.res.Idents[a] = b
+			w.selfRef(a, b)
 			return true, len(b.Lambda.Params)
 		}
 	}
@@ -332,6 +474,7 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		if b := s.lookup(name); b != nil {
 			if b.Kind == ConstLambda {
 				callee = &Callee{Kind: Lambda, Lambda: b.Lambda}
+				w.selfRef(n, b)
 			} else {
 				w.diagm("call-of-parameter", nameSpan, "", messages.Word("name", name))
 			}
@@ -448,22 +591,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		}
 	case *syntax.As:
 		w.expr(n.X, s)
-		sc := w.names.Types
-		if sc == nil {
-			sc = &types.Scope{}
-		}
-		t, ds := types.FromPType(n.Type, sc)
-		for _, d := range ds {
-			switch d.Code {
-			case "undefined-name":
-				w.diagm(d.Code, d.Span, "type", nameP(d.Name))
-			case "check-limit":
-				w.diagm(d.Code, d.Span, d.Tmpl)
-			default:
-				w.diag(d.Code, d.Span)
-			}
-		}
-		if t != nil {
+		if t := w.resolve(n.Type); t != nil {
 			w.res.AsTypes[n] = t
 		}
 	case *syntax.Try:

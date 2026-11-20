@@ -427,21 +427,37 @@ func plain(f func() part) func() (part, part) {
 // branch, separated by H (2.8, 2.9 item 4). firstResult is the unit that
 // begins the result when there are const lines.
 func (b *builder) body(consts []*syntax.Const, result syntax.Node, sep atom) []part {
+	lines := make([]line, len(consts))
+	for k, c := range consts {
+		c := c
+		lines[k] = line{c.Span(), func() part { return b.node(c) }}
+	}
+	return b.lines(lines, result, sep)
+}
+
+// line is a const line or a type line of a body.
+type line struct {
+	span syntax.Span
+	doc  func() part
+}
+
+// lines is body over const lines and type lines in the order of the text.
+func (b *builder) lines(ls []line, result syntax.Node, sep atom) []part {
 	var out []part
-	n := len(consts) + 1
+	n := len(ls) + 1
 	for k := 0; k < n; k++ {
-		var node syntax.Node
+		var doc func() part
 		var firstSrc int
-		if k < len(consts) {
-			node = consts[k]
-			firstSrc = b.at(consts[k].Span().Start)
+		if k < len(ls) {
+			doc = ls[k].doc
+			firstSrc = b.at(ls[k].span.Start)
 		} else {
-			node = result
-			if len(consts) > 0 {
-				firstSrc = b.ending(consts[len(consts)-1].Span().End) + 1
+			doc = func() part { return b.node(result) }
+			if len(ls) > 0 {
+				firstSrc = b.ending(ls[len(ls)-1].span.End) + 1
 			}
 		}
-		d, first, last := b.element(k > 0, func() part { return b.node(node) })
+		d, first, last := b.element(k > 0, doc)
 		if k > 0 {
 			out = append(out, sep)
 			if b.blankBef[firstSrc] >= 2 && (first < 0 || len(b.lead[first]) == 0) {
@@ -454,7 +470,22 @@ func (b *builder) body(consts []*syntax.Const, result syntax.Node, sep atom) []p
 }
 
 func (b *builder) program(p *syntax.Program) part {
-	out := b.body(p.Consts, p.Result, pHard)
+	// The const lines and the type lines of package F16, in the order of
+	// the text.
+	var ls []line
+	ci, ti := 0, 0
+	for ci < len(p.Consts) || ti < len(p.Types) {
+		if ti < len(p.Types) && (ci >= len(p.Consts) || p.Types[ti].Span.Start < p.Consts[ci].Span().Start) {
+			t := p.Types[ti]
+			ls = append(ls, line{t.Span, func() part { return b.typeLine(t) }})
+			ti++
+			continue
+		}
+		c := p.Consts[ci]
+		ls = append(ls, line{c.Span(), func() part { return b.node(c) }})
+		ci++
+	}
+	out := b.lines(ls, p.Result, pHard)
 	out = append(out, pHard)
 	out = append(out, b.closeLead(len(b.us)-1, true))
 	return out
@@ -488,8 +519,13 @@ func (b *builder) node(n syntax.Node) part {
 	switch n := n.(type) {
 	case *syntax.Const:
 		c := b.at(n.Span().Start)
-		eq := b.next(n.Pattern.Span().End, syntax.Assign)
 		semi := b.ending(n.Span().End)
+		if n.Type != nil { // an annotation of package F16 (F12 2.13)
+			colon := b.ending(n.Pattern.Span().End) + 1
+			eq := b.ending(n.Type.Span.End) + 1
+			return []part{b.tok(c), pSpace, b.pattern(n.Pattern), b.tok(colon), pSpace, b.ptype(n.Type), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi)}
+		}
+		eq := b.next(n.Pattern.Span().End, syntax.Assign)
 		return []part{b.tok(c), pSpace, b.pattern(n.Pattern), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi)}
 	case *syntax.Block:
 		lb, rb := b.at(n.Span().Start), b.ending(n.Span().End)
@@ -757,7 +793,7 @@ func (b *builder) args(args []syntax.Node, lp, rp int) part {
 func (b *builder) lambda(n *syntax.Lambda) (part, part) {
 	var params part
 	var arrow int
-	if len(n.Params) == 1 {
+	if len(n.Params) == 1 && n.Result == nil && !n.Params[0].Annotated() {
 		if p, ok := n.Params[0].Pattern.(*syntax.NamePat); ok && n.Params[0].Default == nil {
 			params = b.tok(b.at(p.Span().Start))
 			arrow = b.next(p.Span().End, syntax.Arrow)
@@ -773,6 +809,10 @@ func (b *builder) lambda(n *syntax.Lambda) (part, part) {
 			items[k] = item{p.Span().Start, p.Span().End, plain(func() part { return b.param(p) })}
 		}
 		params = b.seqOf(lp, rp, items)
+		if n.Result != nil { // a result annotation of package F16 (F12 2.13)
+			params = []part{params, b.tok(rp + 1), pSpace, b.ptype(n.Result)}
+			arrow = b.ending(n.Result.Span.End) + 1
+		}
 	}
 	ar := b.tok(arrow)
 	switch n.Body.(type) {
@@ -791,11 +831,54 @@ func (b *builder) lambda(n *syntax.Lambda) (part, part) {
 
 func (b *builder) param(p *syntax.Param) part {
 	d := b.pattern(p.Pattern)
+	end := p.Pattern.Span().End
+	if p.Annotated() { // an annotation of package F16 (F12 2.13)
+		// The colon is written before the type, so that the last unit of
+		// the parameter is the annotation's last (F16 7.1 item 3).
+		c := b.tok(b.ending(end) + 1)
+		var t part
+		if p.Fn != nil {
+			t, end = b.pfn(p.Fn), p.Fn.Span.End
+		} else {
+			t, end = b.ptype(p.Type), p.Type.Span.End
+		}
+		d = []part{d, c, pSpace, t}
+	}
 	if p.Default == nil {
 		return d
 	}
-	eq := b.next(p.Pattern.Span().End, syntax.Assign)
+	eq := b.ending(end) + 1
 	return []part{d, pSpace, b.tok(eq), b.assigned(p.Default)}
+}
+
+// pfn is the function type of a parameter, on one line (F12 2.13).
+func (b *builder) pfn(f *syntax.PFn) part {
+	lp := b.at(f.Span.Start)
+	out := []part{b.tok(lp)}
+	for k, q := range f.Params {
+		if k > 0 {
+			out = append(out, comma(), b.moveTrail(b.last), pSpace)
+		}
+		nm := b.at(q.NameSpan.Start)
+		out = append(out, b.tok(nm), b.tok(nm+1), pSpace, b.ptype(q.Type))
+	}
+	rp := lp + 1
+	if len(f.Params) > 0 {
+		rp = b.ending(f.Params[len(f.Params)-1].Type.Span.End) + 1
+	}
+	out = append(out, b.tok(rp), pSpace, b.tok(rp+1), pSpace)
+	if f.Result != nil {
+		return append(out, b.ptype(f.Result))
+	}
+	return append(out, b.tok(b.at(f.Unknown.Start)))
+}
+
+// typeLine is a type line of package F16, its type on one line (F12 2.13).
+func (b *builder) typeLine(t *syntax.TypeLine) part {
+	kw := b.at(t.Span.Start)
+	nm := b.at(t.NameSpan.Start)
+	semi := b.ending(t.Span.End)
+	return []part{b.tok(kw), pSpace, b.tok(nm), pSpace, b.tok(nm + 1), pSpace, b.ptype(t.Type), b.tok(semi)}
 }
 
 func (b *builder) withDefault(d part, nameEnd int, def syntax.Node) part {

@@ -13,7 +13,7 @@ import type { Diagnostic } from "./diagnostic.ts";
 import { lex } from "./lexer.ts";
 import { Source } from "./source.ts";
 import type { Span } from "./source.ts";
-import { HOLE, isReserved } from "./token.ts";
+import { HOLE, isName, isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
 import type { TypeNode } from "../types/typetext.ts";
 import { END, parseMessage } from "./messages.ts";
@@ -266,8 +266,8 @@ class Parser {
     if (below <= 8) return;
     // E8: `:` in the expression of an index step.
     if (this.isP(t, ":") && top?.kind === "index") this.fail("slice-syntax", t);
-    // E9: `:` after a name in parentheses.
-    if (this.isP(t, ":") && top?.kind === "paren" && prev !== undefined && prev.kind === "word" && this.i >= 2 && this.toks[this.i - 2] === top.at) this.fail("type-annotation", t);
+    // E9: `:` after a Name in parentheses; `true`, `false` and `null` are no Name.
+    if (this.isP(t, ":") && top?.kind === "paren" && prev !== undefined && prev.kind === "word" && isName(prev.text) && this.i >= 2 && this.toks[this.i - 2] === top.at) this.fail("type-annotation", t);
     if (below <= 10) return;
     // E10
     if (this.isP(t, "|")) this.fail("bitwise-operator", t, "or");
@@ -380,11 +380,56 @@ class Parser {
 
   program(): A.Program {
     const start = this.cur.start;
-    const consts = this.consts();
+    const consts: A.Const[] = [];
+    const types: A.TypeLine[] = [];
+    // Package F16 (f16 2.1, 2.2 rule 1): type lines and const lines, in any order.
+    for (;;) {
+      if (this.isW(this.cur, "const")) consts.push(this.constLine());
+      else if (this.typeLineStartsHere()) types.push(this.typeLine());
+      else break;
+    }
     const result = this.expr();
     if (this.isP(this.cur, ";")) this.advance();
     if (this.cur.kind !== "eof") this.unexpected(this.cur);
-    return { kind: "Program", consts, result, span: { start, end: this.prevEnd } };
+    return { kind: "Program", consts, types, result, span: { start, end: this.prevEnd } };
+  }
+
+  /** f16 2.2 rule 1: `type`, then a Word whose first code point is `A` to `Z`, then `=`. */
+  private typeLineStartsHere(): boolean {
+    if (!this.isW(this.cur, "type")) return false;
+    const name = this.peek(1);
+    const after = this.peek(2);
+    if (name.kind !== "word") return false;
+    // f16 7.2 item 7 (R242): at the end of the text, `type` and one word and nothing more begins a type line,
+    // whatever the word's first letter; the word may be the hole, empty or not. What follows is the end, or a
+    // token the repair inserted there (f12 3.3).
+    if (after.cut === true) return true;
+    return /^[A-Z]/.test(name.text) && this.isP(after, "=");
+  }
+
+  /** TypeLine = "type" TName "=" PType ";" (f16 2.1). Its words open no level (2.4). */
+  private typeLine(): A.TypeLine {
+    const start = this.advance().start; // type
+    const n = this.cur;
+    // f16 2.2 item 3: the name is read as a word; one letter is `bad-type-text`, template `letter`.
+    if (n.text !== HOLE && !/^[A-Z][A-Za-z0-9_]+$/.test(n.text)) this.badType(n);
+    this.advance();
+    this.expect("=");
+    // f16 7.3 item 5: a type the repair supplied (its first token was inserted at the end) declares nothing.
+    const supplied = this.cur.cut === true;
+    const type = this.annotation();
+    this.expect(";");
+    const line: A.TypeLine = { name: n.text, nameSpan: { start: n.start, end: n.end }, type, span: this.span(start) };
+    if (supplied) line.supplied = true;
+    return line;
+  }
+
+  /** Package F16: a program type after the `:` of an annotation, or in a type line (f16 2.1). */
+  private annotation(): A.TypeAnn {
+    const spans = new Map<TypeNode, Span>();
+    const start = this.cur.start;
+    const type = this.ptype(spans);
+    return { type, span: { start, end: this.prevEnd }, spans };
   }
 
   private consts(): A.Const[] {
@@ -396,11 +441,15 @@ class Parser {
   private constLine(): A.Const {
     const start = this.advance().start; // const
     const pattern = this.pattern();
-    // f08 2.7 E9: `:` after the pattern of a const.
-    if (this.isP(this.cur, ":")) this.fail("type-annotation", this.cur);
+    // Package F16 (f16 2.1): an annotation. Its value is an Expr only (2.2 rule 4).
+    let type: A.TypeAnn | null = null;
+    if (this.isP(this.cur, ":")) {
+      this.advance();
+      type = this.annotation();
+    }
     this.expect("=");
     let value: A.Expr | A.Lambda;
-    if (this.lambdaStartsHere()) {
+    if (type === null && this.lambdaStartsHere()) {
       value = this.lambda((arrow) => {
         // 01 3.4 rule 9: only a Name may bind a lambda.
         if (!(pattern.kind === "NamePat" && pattern.name !== null)) {
@@ -411,7 +460,7 @@ class Parser {
       value = this.expr();
     }
     this.expect(";");
-    return { kind: "Const", pattern, value, span: this.span(start) };
+    return { kind: "Const", pattern, type, value, span: this.span(start) };
   }
 
   /** A branch (01 3.1, 3.2 rule 2, 3.4 rules 7 and 8). */
@@ -1288,23 +1337,32 @@ class Parser {
 
   // ---- lambdas and patterns ----------------------------------------------
 
-  /** 01 3.2 rules 5 and 6. */
+  /** 01 3.2 rules 5 and 6; with package F16, a `)` followed by `:` too (f16 2.2 rule 2). */
   private lambdaStartsHere(): boolean {
     const t = this.cur;
     if (t.kind === "word" && !isReserved(t.text)) return this.isP(this.peek(1), "=>");
     if (!this.isP(t, "(")) return false;
     let depth = 0;
+    // Package F12 with F16 (f12 3.3 item 7, f16 7.2 item 3): at the end of the text, a `(` whose `)` is not
+    // before the end begins a parameter list when a Name or `_` and then `:` follow it, both before the end.
+    const atEnd = (): boolean => {
+      const n1 = this.toks[this.i + 1];
+      const n2 = this.toks[this.i + 2];
+      return n1 !== undefined && n2 !== undefined && n1.kind === "word" && !isReserved(n1.text) && n1.cut !== true && this.isP(n2, ":") && n2.cut !== true;
+    };
     for (let j = this.i + 1; j < this.toks.length; j++) {
       const u = this.toks[j];
-      if (u.kind === "eof" || u.kind === "interpEnd") return false;
+      if (u.kind === "eof" || u.kind === "interpEnd") return u.cut === true && atEnd();
       if (u.kind !== "punct") continue;
       if (OPENERS.has(u.text)) depth++;
       else if (CLOSERS.has(u.text)) {
         depth--;
         if (depth < 0) {
           if (u.text !== ")") return false;
+          // A `)` the repair inserted is not among the tokens before the end (f12 3.3 item 7).
+          if (u.cut === true) return atEnd();
           const after = this.toks[j + 1];
-          return after !== undefined && this.isP(after, "=>");
+          return after !== undefined && (this.isP(after, "=>") || this.isP(after, ":"));
         }
       }
     }
@@ -1317,19 +1375,18 @@ class Parser {
     const outerMax = this.maxLevel;
     this.maxLevel = level;
     const params: A.Param[] = [];
+    let result: A.TypeAnn | null = null;
     if (t.kind === "word") {
       this.advance();
       const span = { start: t.start, end: t.end };
       const pattern: A.NamePat = { kind: "NamePat", name: t.text === "_" ? null : t.text, span };
-      params.push({ kind: "Param", pattern, default: null, span });
+      params.push({ kind: "Param", pattern, type: null, fn: null, default: null, span });
     } else {
       const lp = this.advance();
       this.open(lp, "params");
       for (;;) {
         if (this.isP(this.cur, ")")) break;
         params.push(this.param());
-        // f08 2.7 E9: `:` after the pattern of a parameter.
-        if (this.isP(this.cur, ":")) this.fail("type-annotation", this.cur);
         if (this.isP(this.cur, ",")) {
           this.advance();
           continue;
@@ -1339,6 +1396,11 @@ class Parser {
       }
       this.advance();
       this.close();
+      // Package F16 (f16 2.1): the result annotation.
+      if (this.isP(this.cur, ":")) {
+        this.advance();
+        result = this.annotation();
+      }
     }
     const arrow = this.expect("=>");
     this.lambdaArrows.add(arrow);
@@ -1346,18 +1408,59 @@ class Parser {
     const body = this.expr();
     const maxLevel = this.maxLevel;
     this.maxLevel = Math.max(outerMax, maxLevel);
-    return { kind: "Lambda", params, body, level, maxLevel, span: { start: t.start, end: this.outer(body).end } };
+    return { kind: "Lambda", params, result, body, level, maxLevel, span: { start: t.start, end: this.outer(body).end } };
   }
 
+  /** Param = Pattern [ ":" PType ] [ "=" Expr ] | Name ":" PFn (f16 2.1). */
   private param(): A.Param {
     const pattern = this.pattern();
+    let type: A.TypeAnn | null = null;
+    let fn: A.FnAnn | null = null;
+    if (this.isP(this.cur, ":")) {
+      this.advance();
+      // f16 2.2 rule 3: after the `:` of a parameter that is a name, `(` then `)`, or `(` then a Word and `:`, begins a PFn.
+      const n1 = this.peek(1);
+      if (pattern.kind === "NamePat" && pattern.name !== null && this.isP(this.cur, "(") && (this.isP(n1, ")") || (n1.kind === "word" && this.isP(this.peek(2), ":")))) {
+        fn = this.pfn();
+      } else type = this.annotation();
+    }
     let dflt: A.Expr | null = null;
-    if (this.isP(this.cur, "=")) {
+    // f16 2.5: a PFn takes no default; the `=` is `unexpected-token`.
+    if (fn === null && this.isP(this.cur, "=")) {
       this.advance();
       dflt = this.expr();
     }
-    const end = dflt !== null ? this.outer(dflt).end : pattern.span.end;
-    return { kind: "Param", pattern, default: dflt, span: { start: pattern.span.start, end } };
+    const end = dflt !== null ? this.outer(dflt).end : fn !== null ? fn.span.end : type !== null ? type.span.end : pattern.span.end;
+    return { kind: "Param", pattern, type, fn, default: dflt, span: { start: pattern.span.start, end } };
+  }
+
+  /** PFn = "(" [ Word ":" PType { "," Word ":" PType } ] ")" "=>" ( PType | "unknown" ). Its `(` opens a level (f16 2.4). */
+  private pfn(): A.FnAnn {
+    const lp = this.advance();
+    this.open(lp);
+    const params: A.FnAnn["params"] = [];
+    if (!this.isP(this.cur, ")")) {
+      for (;;) {
+        const w = this.cur;
+        if (w.kind !== "word") this.unexpected(w);
+        this.advance();
+        this.expect(":");
+        params.push({ word: w.text, span: { start: w.start, end: w.end }, type: this.annotation() });
+        if (this.isP(this.cur, ",")) {
+          this.advance();
+          continue;
+        }
+        break;
+      }
+    }
+    this.expect(")");
+    this.close();
+    this.expect("=>");
+    const rs = this.cur;
+    let result: A.TypeAnn | null = null;
+    if (this.isW(rs, "unknown")) this.advance();
+    else result = this.annotation();
+    return { params, result, resultSpan: { start: rs.start, end: this.prevEnd }, span: { start: lp.start, end: this.prevEnd } };
   }
 
   /** A token where the grammar needs a Name (01 14.2). */

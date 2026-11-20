@@ -172,17 +172,21 @@ type MethodCall struct {
 	Opt  bool
 }
 
-// Param is one parameter of a lambda.
+// Param is one parameter of a lambda. Type is its annotation of package
+// F16 (f16-entry-points.md 2.1), as text, or "".
 type Param struct {
 	Pat     Pattern
+	Type    string
 	Default Expr
 }
 
 // Lambda is x => e, _ => e or (params) => e. Bare is the parameter of the
-// form without parentheses; when it is "", Params is used.
+// form without parentheses; when it is "", Params is used. Result is the
+// result annotation of package F16, as text, or "".
 type Lambda struct {
 	Bare   string
 	Params []Param
+	Result string
 	Body   Expr
 }
 
@@ -272,13 +276,19 @@ func (*MapPat) isPat()  {}
 func (*ListPat) isPat() {}
 
 // Const is const p = e;. Value may be a *Lambda when Pat is a NamePat.
+// Type is the annotation of package F16, as text, or "".
 type Const struct {
 	Pat   Pattern
+	Type  string
 	Value Expr
 }
 
-// Program is the whole text.
+// TypeLine is type Name = T; of package F16 (f16-entry-points.md 2.1).
+type TypeLine struct{ Name, Type string }
+
+// Program is the whole text. Its type lines come before its const lines.
 type Program struct {
+	Types  []TypeLine
 	Consts []*Const
 	Result Expr
 	Semi   bool

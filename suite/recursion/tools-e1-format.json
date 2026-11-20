@@ -1,0 +1,5 @@
+[
+  {"name": "a typed lambda that calls itself", "format": "const f=(n:int):int=>n<=0?0:f(n-1)+n;f(3)", "expect": {"formatted": "const f = (n: int): int => n <= 0 ? 0 : f(n - 1) + n;\nf(3)\n"}},
+  {"name": "a typed lambda that gives its own name to flatMap", "format": "const f=(n:int):int[]=>n<=0?[]:[n-1].flatMap(f);f(2)", "expect": {"formatted": "const f = (n: int): int[] => n <= 0 ? [] : [n - 1].flatMap(f);\nf(2)\n"}},
+  {"name": "a long typed lambda that calls itself breaks its body", "format": "const total=(t:any):int=>t is any[]?t.map(total).reduce((a,b)=>a+b,0):t as int;total([1,[2,[3,4]],5])", "expect": {"formatted": "const total = (t: any): int =>\n  t is any[] ? t.map(total).reduce((a, b) => a + b, 0) : t as int;\ntotal([1, [2, [3, 4]], 5])\n"}}
+]

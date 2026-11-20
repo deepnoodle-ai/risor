@@ -212,3 +212,82 @@ fn the_check_field() {
     invalid(r#"[{"name": "a", "check": "no", "source": "1", "expect": {}}]"#);
     assert!(verdicts(r#"{"check": false, "cases": [{"name": "a", "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-key"}]}}]}"#).is_ok());
 }
+
+/// `f09-testing.md` 4.3: in update mode a skipped case keeps `skip` and is
+/// not written, also a format, completion or hover case with no `expect`.
+/// Such a case with no `skip` differs in `outcome`.
+#[test]
+fn update_keeps_a_skipped_tool_case() {
+    let text = r#"[
+  {"name": "a", "format": "1+2", "skip": "not now"},
+  {"name": "b", "complete": "le‸", "skip": "not now"},
+  {"name": "c", "hover": "len‸([1])", "skip": "not now"},
+  {"name": "d", "format": "1+2"}
+]"#;
+    let cases = crate::testing::load_doc_lax(&json::parse(text).unwrap(), Path::new(".")).unwrap();
+    let (results, new) = crate::testing::update::update_text(text, &cases);
+    for (name, v) in &results[..3] {
+        assert_eq!(v, &Verdict::Skip("not now".into()), "{name}");
+    }
+    assert!(matches!(&results[3].1, Verdict::Fail(d) if d[0].name == "outcome"));
+    assert_eq!(new, None);
+}
+
+/// The static codes by the directory of a case file (`03-host.md` 3.10.13):
+/// `untagged-union` and `check-limit` in `suite/conversion/`, `suite/unions/`
+/// and `suite/entry-points/` (F4 6.1 item 4, F5 11.2 item 3), and
+/// `name-clash` only in `suite/entry-points/` (F16 3.1 item 11).
+#[test]
+fn static_codes_by_directory() {
+    use crate::testing::case::{is_static, Statics};
+    let load = |dir: &str, text: &str| load_doc(&json::parse(text).unwrap(), Path::new(dir));
+    for (dir, want) in [
+        ("suite/core-run", Statics::Core),
+        ("suite/conversion", Statics::ProgramTypes),
+        ("suite/unions", Statics::ProgramTypes),
+        ("suite/entry-points", Statics::EntryPoints),
+    ] {
+        assert_eq!(Statics::of_dir(Path::new(dir)), want, "{dir}");
+    }
+    for (code, core, types, entry) in [
+        ("arity", true, true, true),
+        ("untagged-union", false, true, true),
+        ("check-limit", false, true, true),
+        ("name-clash", false, false, true),
+        ("kind", false, false, false),
+    ] {
+        assert_eq!(is_static(code, Statics::Core), core, "{code}");
+        assert_eq!(is_static(code, Statics::ProgramTypes), types, "{code}");
+        assert_eq!(is_static(code, Statics::EntryPoints), entry, "{code}");
+    }
+
+    // Validation, 3.10.10 item 17: a case with "check": false expects
+    // static codes only.
+    let unchecked = |code: &str| {
+        format!(
+            r#"[{{"name": "a", "check": false, "source": "1", "expect": {{"phase": "check", "diagnostics": [{{"code": "{code}"}}]}}}}]"#
+        )
+    };
+    for dir in ["suite/conversion", "suite/unions", "suite/entry-points"] {
+        assert!(load(dir, &unchecked("untagged-union")).is_ok(), "{dir}");
+    }
+    assert!(load("suite/core-run", &unchecked("untagged-union")).is_err());
+    assert!(load("suite/entry-points", &unchecked("name-clash")).is_ok());
+    assert!(load("suite/conversion", &unchecked("name-clash")).is_err());
+    assert!(load("suite/unions", &unchecked("name-clash")).is_err());
+
+    // Classification, 3.10.8: a case that expects a code that is not
+    // static needs the checker, so a runner with none skips it.
+    let clash = r#"[{"name": "a", "types": [{"name": "Order", "type": "{id: string}"}],
+        "source": "type Order = int; 1",
+        "expect": {"phase": "check", "diagnostics": [{"code": "name-clash", "span": [1, 6, 1, 11]}]}}]"#;
+    let entry = load("suite/entry-points", clash).unwrap();
+    assert_eq!(crate::testing::run_case_unchecked(&entry[0]), Verdict::Pass);
+    assert_eq!(run_case(&entry[0]), Verdict::Pass);
+    let conversion = load("suite/conversion", clash).unwrap();
+    assert!(matches!(
+        crate::testing::run_case_unchecked(&conversion[0]),
+        Verdict::Skip(_)
+    ));
+    assert_eq!(run_case(&conversion[0]), Verdict::Pass);
+}

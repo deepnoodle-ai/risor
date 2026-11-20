@@ -47,15 +47,28 @@ func init() {
 	}
 	// Package F7's catalog file adds templates to entries of Core's
 	// (f07-queries.md 11): the same code, params of the same kinds, new
-	// template names.
+	// template names. Package F16's file does the same, and adds the entry
+	// of a code no other file has (f16-entry-points.md 9).
+	addTemplates(sourceQueriesJSON, false)
+	addTemplates(sourceEntryPointsJSON, true)
+}
+
+// addTemplates merges a catalog file whose entries add templates to the
+// entries already read. With newCodes, an entry of a code not yet read is
+// added whole.
+func addTemplates(src string, newCodes bool) {
 	var more []*Entry
-	if err := json.Unmarshal([]byte(sourceQueriesJSON), &more); err != nil {
-		panic("messages: the queries catalog does not parse: " + err.Error())
+	if err := json.Unmarshal([]byte(src), &more); err != nil {
+		panic("messages: a package's catalog file does not parse: " + err.Error())
 	}
 	for _, m := range more {
 		e, ok := catalog[m.Code]
 		if !ok {
-			panic("messages: " + m.Code + " is not a code of the catalog")
+			if !newCodes {
+				panic("messages: " + m.Code + " is not a code of the catalog")
+			}
+			catalog[m.Code] = m
+			continue
 		}
 		for k, v := range m.Params {
 			if old, ok := e.Params[k]; ok && old != v {

@@ -27,7 +27,6 @@
   {"name": "a name bound in a block is not in scope after the block", "source": "const a = { const b = 1; b }; b", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 31, 1, 32]}]}},
   {"name": "a map pattern default does not see a name bound to its right", "source": "const {a = b, b} = m; a", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 12, 1, 13]}]}},
   {"name": "a parameter default does not see a parameter to its right", "source": "const f = (a = b, b) => a; 1", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 16, 1, 17]}]}},
-  {"name": "a const-bound lambda's body does not see its own name", "source": "const f = x => f; 1", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 16, 1, 17]}]}},
   {"name": "a type name is not a value name", "source": "Time", "opaque": ["Time"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 5]}]}},
   {"name": "the name of a namespaced function alone is undefined-name", "source": "distance", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 9]}]}},
   {"name": "a library method's name alone is undefined-name", "source": "trim", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 5]}]}},

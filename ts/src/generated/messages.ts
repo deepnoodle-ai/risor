@@ -745,7 +745,7 @@ export const CATALOG: CatalogEntry[] = [
     "caught": null,
     "params": {},
     "templates": {
-      "default": "types are inferred; remove the annotation"
+      "default": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
   },
   {
@@ -792,7 +792,7 @@ export const CATALOG: CatalogEntry[] = [
       "token": "token"
     },
     "templates": {
-      "default": "a program cannot declare a type with {token}; write the type in place, or use a name the host declared"
+      "default": "{token} does not declare a type here; at the top level of a program, write type Name = and then the type"
     }
   },
   {
@@ -1130,7 +1130,8 @@ export const CATALOG: CatalogEntry[] = [
       "function": "parameter {param} of {name} takes a function",
       "body": "the function given to {name} gives {found}, which does not fit {expected}",
       "ordered": "{name} needs all numbers or all strings, found {found}",
-      "number": "{name} needs numbers, found {found}"
+      "number": "{name} needs numbers, found {found}",
+      "fn-value": "{name} passes {found} to a parameter that takes a function"
     }
   },
   {
@@ -1176,6 +1177,17 @@ export const CATALOG: CatalogEntry[] = [
     "params": {},
     "templates": {
       "default": "this arm comes after _ and is never chosen"
+    }
+  },
+  {
+    "code": "recursion-needs-types",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name"
     }
   },
   {
@@ -1249,6 +1261,17 @@ export const CATALOG: CatalogEntry[] = [
     "params": {},
     "templates": {
       "default": "two record types in one union need a field that tells them apart"
+    }
+  },
+  {
+    "code": "name-clash",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a type of the environment, and a type line cannot declare it again"
     }
   }
 ];

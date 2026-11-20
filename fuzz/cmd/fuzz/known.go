@@ -9,10 +9,12 @@ import "github.com/deepnoodle-ai/risor/fuzz/internal/gen"
 // the outcome command has no way to turn a package off. A package may give a
 // text that an earlier one rejects a meaning or a parse code of its own, so
 // a difference may come from the packages offered rather than from a fault.
-// Every implementation now offers F1 to F8, and the generator writes only
-// the forms of those packages, so no difference is known: every one is a
-// finding. A form of a package that only some implementations offer gets an
-// entry here when the generator learns it.
+// Every implementation now offers the packages up to F17's step E1, and the
+// generator writes only the forms of those packages, so no difference is
+// known: every one is a finding. A form of a package that only some
+// implementations offer gets an entry here when the generator learns it, and
+// the entry names the implementations that lack the package, so that the
+// same answer from one that offers it stays a finding.
 var knownNames []string
 
 // known names the known difference a disagreement is, or gives "".

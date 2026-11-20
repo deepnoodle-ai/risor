@@ -2,7 +2,7 @@ package ast
 
 // Clone makes a deep copy of a program.
 func Clone(p *Program) *Program {
-	return &Program{Consts: cloneConsts(p.Consts), Result: CloneExpr(p.Result), Semi: p.Semi}
+	return &Program{Types: append([]TypeLine(nil), p.Types...), Consts: cloneConsts(p.Consts), Result: CloneExpr(p.Result), Semi: p.Semi}
 }
 
 func cloneConsts(cs []*Const) []*Const {
@@ -11,7 +11,7 @@ func cloneConsts(cs []*Const) []*Const {
 	}
 	out := make([]*Const, len(cs))
 	for i, c := range cs {
-		out[i] = &Const{Pat: clonePat(c.Pat), Value: CloneExpr(c.Value)}
+		out[i] = &Const{Pat: clonePat(c.Pat), Type: c.Type, Value: CloneExpr(c.Value)}
 	}
 	return out
 }
@@ -129,9 +129,9 @@ func CloneExpr(e Expr) Expr {
 	case *MethodCall:
 		return &MethodCall{X: CloneExpr(e.X), Name: e.Name, Args: cloneExprs(e.Args), Opt: e.Opt}
 	case *Lambda:
-		c := &Lambda{Bare: e.Bare, Body: CloneExpr(e.Body)}
+		c := &Lambda{Bare: e.Bare, Result: e.Result, Body: CloneExpr(e.Body)}
 		for _, p := range e.Params {
-			c.Params = append(c.Params, Param{Pat: clonePat(p.Pat), Default: CloneExpr(p.Default)})
+			c.Params = append(c.Params, Param{Pat: clonePat(p.Pat), Type: p.Type, Default: CloneExpr(p.Default)})
 		}
 		return c
 	case *Paren:

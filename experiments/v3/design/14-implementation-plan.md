@@ -369,7 +369,8 @@ names. `cmd/risor-bind` is an optional follow-up. `05-host-api.md` B.4 to
 B.7 already say that Part E replaced them.
 
 **Track D1: annotations, `type` lines and the syntax of an `Fn` parameter**
-(F16, first slice; `17` 3.1, 3.2, 3.4).
+(F16, first slice; `17` 3.1, 3.2, 3.4). **Done (R232 to R246, R258, R259),** in all three
+implementations.
 
 - The grammar of `17` 3.1: type lines with names of two characters or more;
   annotations on a `const` line, a parameter and a result; an `Fn` on a
@@ -397,7 +398,7 @@ B.7 already say that Part E replaced them.
 | Step | Work | Needs |
 | --- | --- | --- |
 | E0 | `walk` with an explicit stack; `match` guards (`18` 5, 6). **Done (R222 to R231),** before D1, in all three implementations | Nothing. It may go before D1 |
-| E1 | Typed self-recursion (`18` 3). Per-call frames become the reference path in every evaluator, and every implementation runs the whole suite in frame mode; fixed places stay only as an optimization for a program with no recursive lambda and no `Fn` parameter, and only if benchmarks show it is needed (`18` 8). The stack test gains self-recursion | D1 |
+| E1 | Typed self-recursion (`18` 3). Per-call frames become the reference path in every evaluator, and every implementation runs the whole suite in frame mode; fixed places stay only as an optimization for a program with no recursive lambda and no `Fn` parameter, and only if benchmarks show it is needed (`18` 8). The stack test gains self-recursion. **Done (R247 to R257),** in all three implementations: `spec/packages/f17-recursion.md` 11, the cases `suite/recursion/e1-*.json` and `tools-e1-*.json`, the stack test and the fuzzer's generator. Each evaluator runs every program on frames and keeps no fixed-place path. Measured against its build with fixed places, in the geometric mean of its own benchmarks: Go 2.9% slower (R252), TypeScript 1.9%, Rust 3.9%; the largest costs are in programs that call a lambda for each element of a short list | D1 |
 | E2 | Recursive named types in programs, recursive `$ref` in F1, self-referential structs in Go's `TypeOf`, superseding R112. Coinductive Fits, Equal and Join with a normative order of visits, a bound of 4,096 pairs, and the shortcut for one name on both sides (`18` 4) | D1, F4 |
 | E3 | Function parameters (D57, `18` 7): the static rules of 7.1, the review's (a) to (d) among them; checking by 7.3; the costs of 7.4; the hints of 7.2; the `apply` case of `18` 8 | D1, E1 |
 

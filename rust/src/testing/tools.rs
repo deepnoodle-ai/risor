@@ -54,11 +54,13 @@ const SOURCE_GROUP: [&str; 10] = [
 ];
 
 /// Read a case of F12 (7.1 to 7.4). `merge` reads the rest of it as a
-/// program case whose source is the text.
+/// program case whose source is the text. With `lax`, the case may have no
+/// `expect` (`suite/README.md`, the `outcome` command, item 1).
 pub(super) fn read(
     kind: ToolKind,
     header: &[(String, Json)],
     case: &[(String, Json)],
+    lax: bool,
     merge: impl FnOnce(&[(String, Json)]) -> Result<Case, String>,
 ) -> Result<Case, String> {
     let allowed: &[&str] = match kind {
@@ -130,7 +132,25 @@ pub(super) fn read(
         _ => (raw.to_string(), 0),
     };
     // The expected result.
-    let expect = get("expect").ok_or("the case has no expect")?;
+    let Some(expect) = get("expect") else {
+        if !lax {
+            return Err("the case has no expect".into());
+        }
+        let mut obj: Vec<(String, Json)> = case
+            .iter()
+            .filter(|(k, _)| k != kind.field())
+            .cloned()
+            .collect();
+        obj.push(("source".into(), Json::Str(text.clone())));
+        let mut c = merge(&obj)?;
+        c.tool = Some(ToolCase {
+            kind,
+            text,
+            offset,
+            want: None,
+        });
+        return Ok(c);
+    };
     let eo = expect.as_obj().ok_or("expect is not an object")?;
     let result_key = match kind {
         ToolKind::Format | ToolKind::FormatTemplate => "formatted",
@@ -249,7 +269,8 @@ fn check_hover(w: &Json) -> Result<(), String> {
         return Ok(());
     }
     let o = w.as_obj().ok_or("hover is neither null nor an object")?;
-    const KINDS: [&str; 8] = [
+    // F16 7.3: the kind `type`.
+    const KINDS: [&str; 9] = [
         "name",
         "lambda",
         "variable",
@@ -258,6 +279,7 @@ fn check_hover(w: &Json) -> Result<(), String> {
         "field",
         "method",
         "constant",
+        "type",
     ];
     for (k, v) in o {
         let ok = match k.as_str() {

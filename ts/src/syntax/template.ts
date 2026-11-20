@@ -93,7 +93,7 @@ function scan(source: Source): ParsedTemplateData {
 export function templateProgram(t: ParsedTemplateData, mode: TemplateMode): A.Program {
   if (mode === "value" && t.single) {
     const e = (t.segments[0] as { expr: A.Expr }).expr;
-    return { kind: "Program", consts: [], result: e, span: { start: e.span.start, end: e.span.end } };
+    return { kind: "Program", consts: [], types: [], result: e, span: { start: e.span.start, end: e.span.end } };
   }
   const span = { start: 0, end: t.source.length };
   let result: A.Expr;
@@ -102,5 +102,5 @@ export function templateProgram(t: ParsedTemplateData, mode: TemplateMode): A.Pr
   } else {
     result = { kind: "String", value: t.segments.map((s) => (s as { value: string }).value).join(""), form: "${{", span };
   }
-  return { kind: "Program", consts: [], result, span };
+  return { kind: "Program", consts: [], types: [], result, span };
 }

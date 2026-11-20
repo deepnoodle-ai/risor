@@ -244,9 +244,7 @@ func TestFollowOnText(t *testing.T) {
 		{`import x`, "reserved-word", [4]int{1, 1, 1, 7}},
 		{`try { 1 } catch { 2 } finally { 3 }`, "unexpected-token", [4]int{1, 23, 1, 30}},
 		{`x[a:b]`, "unexpected-token", [4]int{1, 4, 1, 5}},
-		{`f((x: int) => x)`, "unexpected-token", [4]int{1, 5, 1, 6}},
 		{`(x: int) => x`, "unexpected-token", [4]int{1, 3, 1, 4}},
-		{`const n: int = 1; n`, "unexpected-token", [4]int{1, 8, 1, 9}},
 		{`xs.*.f`, "unexpected-token", [4]int{1, 4, 1, 5}},
 		{`xs[?c]`, "unexpected-token", [4]int{1, 4, 1, 5}},
 		{`xs[].f`, "unexpected-token", [4]int{1, 4, 1, 5}},
@@ -270,7 +268,7 @@ func TestFollowOnText(t *testing.T) {
 		{`x satisfies T`, "unexpected-token", [4]int{1, 3, 1, 12}},
 		{`interface X {}`, "unexpected-token", [4]int{1, 11, 1, 12}},
 		{`enum E { A }`, "unexpected-token", [4]int{1, 6, 1, 7}},
-		{`type Name = T`, "unexpected-token", [4]int{1, 6, 1, 10}},
+		{`type Name = T`, "bad-type-text", [4]int{1, 13, 1, 14}}, // F16: a type line whose type is one letter
 		{`export const x = 1;`, "unexpected-token", [4]int{1, 8, 1, 13}},
 		{`f(x => { x + 1 })`, "unexpected-token", [4]int{1, 12, 1, 13}},
 		{`a?[i]`, "unexpected-token", [4]int{1, 6, 1, 6}},

@@ -735,7 +735,7 @@
       1,
       6
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
    ]
   }
@@ -773,7 +773,7 @@
       1,
       9
      ],
-     "message": "types are inferred; remove the annotation"
+     "message": "a lambda stands only as the value of a const line or as an argument, so this type annotates nothing"
     }
    ]
   }
@@ -1116,6 +1116,177 @@
       15
      ],
      "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 in the then-branch of ? :, not the missing colon: g ? try { 1 } catch { 2 } (1) : 3",
+  "source": "g ? try { 1 } catch { 2 } (1) : 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      27,
+      1,
+      28
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ("
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 in the then-branch of ? : at an operator: g ? if (g) { 1 } else { 2 } + 1 : 3",
+  "source": "g ? if (g) { 1 } else { 2 } + 1 : 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      29,
+      1,
+      30
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 in the then-branch of an inner ? :: g ? h ? try { 1 } catch { 2 } [0] : 2 : 3",
+  "source": "g ? h ? try { 1 } catch { 2 } [0] : 2 : 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      31,
+      1,
+      32
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 in the then-branch of ? : at the end of the text: g ? try { 1 } catch { 2 } (",
+  "source": "g ? try { 1 } catch { 2 } (",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      27,
+      1,
+      28
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ("
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 at not in: try { 1 } catch { 2 } not in x",
+  "source": "try { 1 } catch { 2 } not in x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      23,
+      1,
+      29
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before not in"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a not that in does not follow is no operator, so no D4: try { 1 } catch { 2 } not x",
+  "source": "try { 1 } catch { 2 } not x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      23,
+      1,
+      26
+     ],
+     "message": "unexpected not"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the same after an if: if (g) { 1 } else { 2 } not 1",
+  "source": "if (g) { 1 } else { 2 } not 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      25,
+      1,
+      28
+     ],
+     "message": "unexpected not"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the same at the end of the text: if (g) { 1 } else { 2 } not",
+  "source": "if (g) { 1 } else { 2 } not",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      25,
+      1,
+      28
+     ],
+     "message": "unexpected not"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a token that continues no operand in the then-branch of ? : is not D4: g ? try { 1 } catch { 2 } 5 : 3",
+  "source": "g ? try { 1 } catch { 2 } 5 : 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      27,
+      1,
+      28
+     ],
+     "message": "unexpected 5"
     }
    ]
   }

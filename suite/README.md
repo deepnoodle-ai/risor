@@ -26,7 +26,8 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `config/` | Package F10: a program as a config file: the expected result by schema, the load, the decode, layering by spread | `spec/packages/f10-config.md` |
 | `library-math.json`, `math/` | Package F13: the correctly rounded functions of `math` | `spec/packages/f13-math.md` |
 | `facts/` | Package F14: host facts, the fact "is null" and its effect | `spec/packages/f14-host-facts.md` |
-| `library-recursion.json`, `recursion/` | Package F17, step E0: the record of `walk` with its cases; guards on `match` arms; their analysis; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f17-recursion.md` |
+| `messages-entry-points.json`, `entry-points/` | Package F16, slice D1: type lines and annotations; the check code `name-clash` and a template of `arg-mismatch`; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f16-entry-points.md` |
+| `library-recursion.json`, `recursion/` | Package F17, steps E0 and E1: the record of `walk` with its cases; guards on `match` arms; typed self-recursion, in files named `e1-`; their analysis; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f17-recursion.md` |
 | `tools/` | Package F12: the formatter's output, completion and hover | `spec/packages/f12-tools.md` |
 
 A runner runs the Core paths and the directories of the packages its
@@ -72,7 +73,7 @@ A line is one JSON object with these fields, in this order.
 | Field | Value |
 | --- | --- |
 | `name` | The case's name |
-| `description` | Package F1 only, when the case has `schemas` and its environment was built: the environment's description |
+| `description` | When the case has `schemas` (package F1) or `types` (package F4, 9.5) and its environment was built: the environment's description |
 | `type`, `sites` | The inferred type as printed text, and the sites of the check, when the check passed. Absent for a case with `"check": false` |
 | `phase` | `null` when the run gave a value. Otherwise the phase that failed: `"parse"`, `"declare"`, `"check"` or `"run"` |
 | `value` | The result as JSON, when `phase` is null. An opaque value is written as in a case file: `{"$opaque": {"type": T, "id": N}}` |

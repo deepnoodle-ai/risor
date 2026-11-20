@@ -151,7 +151,7 @@ func (c *checker) fitMapRecord(e *syntax.Map, gs []giver, r *types.Record, want 
 			ok, used := types.Fits(gt, rt)
 			sp := g.spread.Value.Span()
 			switch {
-			case !ok:
+			case !ok || (used && k.strict()):
 				spreadDone[i] = true
 				if !listed && r.Rest.IsNever() && !other {
 					fail(sp, gt, types.Never, want, key)

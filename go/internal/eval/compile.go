@@ -54,9 +54,9 @@ type Program struct {
 	file       *syntax.File
 	whole      syntax.Span // the program's span: a limit diagnostic's (run.go)
 	root       code
-	nslots     int
+	top        int     // the number of values of the program's frame (frames.go)
 	nvars      int     // the variables the program reads, numbered densely
-	constSlots [][]int // for Entry: the slots of each top-level const line
+	constSlots [][]int // for Entry: the indexes in the program's frame of each top-level const line
 	pool       sync.Pool
 	// TypedPlans counts the reads the typed layer planned (package F11).
 	TypedPlans int
@@ -66,8 +66,11 @@ type lambdaCode struct {
 	params  []paramCode
 	body    code
 	nparams int
-	// simple holds the slot of each parameter (-1 for none) when every
-	// parameter is a name without a default; then a bind is one store.
+	// size is the number of values of the lambda's frame (frames.go).
+	size int
+	// simple holds the index in the frame of each parameter (-1 for none)
+	// when every parameter is a name without a default; then a bind is one
+	// store.
 	simple []int
 	// ref is set when the typed layer may give the lambda's element
 	// parameter by reference: every use of it is a planned field read
@@ -79,7 +82,10 @@ type paramCode func(r *run, v any, present bool)
 
 type binder func(r *run, v any)
 
-func (l *lambdaCode) invoke(r *run, args []any) any {
+// invoke calls the lambda with its own frame, linked to frame up, where the
+// lambda was written (frames.go).
+func (l *lambdaCode) invoke(r *run, up int, args []any) any {
+	fp, base := r.enter(up, l.size)
 	for i := 0; i < l.nparams; i++ {
 		if i < len(args) {
 			l.bind(r, i, args[i], true)
@@ -87,17 +93,19 @@ func (l *lambdaCode) invoke(r *run, args []any) any {
 			l.bind(r, i, nil, false)
 		}
 	}
-	return l.body(r)
+	v := l.body(r)
+	r.leave(fp, base)
+	return v
 }
 
-// bind binds parameter i.
+// bind binds parameter i, in the current frame, which is the lambda's.
 func (l *lambdaCode) bind(r *run, i int, v any, present bool) {
 	if l.simple == nil {
 		l.bindSlow(r, i, v, present)
 		return
 	}
 	if s := l.simple[i]; s >= 0 {
-		r.slots[s] = v
+		r.vals[r.base+s] = v
 	}
 }
 
@@ -109,7 +117,11 @@ type compiler struct {
 	res      *static.Result
 	lambdas  map[*syntax.Lambda]*lambdaCode
 	lamDepth int
-	vars     map[int]int // variable index to the program's dense index
+	// ly places each name in a frame; level is the level of the frame of
+	// the code being compiled, 0 for the program's (frames.go).
+	ly    *layout
+	level int
+	vars  map[int]int // variable index to the program's dense index
 	// goSlots are the Go types of the lambda parameters the typed layer
 	// knows, while their lambda's body is compiled (typed.go).
 	goSlots map[int]reflect.Type
@@ -121,7 +133,7 @@ type compiler struct {
 // Compile compiles a program whose static rules found nothing.
 func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *Config) (p *Program, err error) {
 	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}, vars: map[int]int{},
-		goSlots: map[int]reflect.Type{}, slotUses: map[int]int{}}
+		goSlots: map[int]reflect.Type{}, slotUses: map[int]int{}, ly: newLayout(prog, res)}
 	defer func() {
 		if x := recover(); x != nil {
 			err = fmt.Errorf("compile: %v", x)
@@ -134,7 +146,7 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 	} else {
 		root = c.block(prog.Consts, prog.Result)
 	}
-	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, nslots: res.NSlots, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
+	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, top: c.ly.top, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the
@@ -166,7 +178,7 @@ func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Us
 		for i, slots := range p.constSlots {
 			held[i] = make([]any, len(slots))
 			for j, s := range slots {
-				held[i][j] = r.slots[s]
+				held[i][j] = r.vals[s]
 			}
 		}
 	}
@@ -189,7 +201,8 @@ func (p *Program) getRun() *run {
 	lim := p.cfg.Limits
 	r := &run{
 		prog:     p,
-		slots:    make([]any, p.nslots),
+		vals:     make([]any, p.top, max(p.top, 64)),
+		frames:   []frameRec{{base: 0, up: -1}},
 		varVals:  make([]any, p.nvars),
 		varSeen:  make([]bool, p.nvars),
 		maxSteps: lim.Steps, maxUnits: lim.Alloc, maxDepth: lim.Depth,
@@ -207,7 +220,11 @@ func (p *Program) getRun() *run {
 // host data.
 func (p *Program) putRun(r *run) {
 	r.ctx, r.vars, r.pending = nil, nil, nil
-	clear(r.slots)
+	// A failure leaves the frames of the calls it ended on the stack.
+	clear(r.vals)
+	r.vals = r.vals[:p.top]
+	r.frames = r.frames[:1]
+	r.fp, r.base = 0, 0
 	clear(r.varVals)
 	clear(r.varSeen)
 	clear(r.args[:cap(r.args)])
@@ -269,6 +286,9 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 	slots := make([][]int, len(consts))
 	for i, k := range consts {
 		slots[i] = c.patternSlots(k.Pattern)
+		for j, s := range slots[i] {
+			slots[i][j] = c.local(s) // the program's frame
+		}
 		if i < len(held) {
 			if lam, ok := k.Value.(*syntax.Lambda); ok {
 				c.lambdas[lam] = c.lambda(lam)
@@ -279,7 +299,7 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 	return func(r *run) any {
 		for i, vals := range held {
 			for j, s := range slots[i] {
-				r.slots[s] = vals[j]
+				r.vals[s] = vals[j]
 			}
 		}
 		return body(r)
@@ -329,15 +349,18 @@ func (c *compiler) constLine(k *syntax.Const) code {
 	return func(r *run) any { bind(r, val(r)); return nil }
 }
 
+// lambda compiles a lambda. It is known to the compiler before its body is
+// compiled, so a call of its own name in the body finds it (F17 6).
 func (c *compiler) lambda(l *syntax.Lambda) *lambdaCode {
-	saved := c.lamDepth
-	c.lamDepth = l.Depth()
-	defer func() { c.lamDepth = saved }()
-	lc := &lambdaCode{nparams: len(l.Params)}
+	saved, savedLevel := c.lamDepth, c.level
+	c.lamDepth, c.level = l.Depth(), c.ly.lamLevel[l]
+	defer func() { c.lamDepth, c.level = saved, savedLevel }()
+	lc := &lambdaCode{nparams: len(l.Params), size: c.ly.size[l]}
+	c.lambdas[l] = lc
 	simple := make([]int, 0, len(l.Params))
 	for _, p := range l.Params {
 		if np, ok := p.Pattern.(*syntax.NamePat); ok && p.Default == nil && simple != nil {
-			simple = append(simple, c.slot(np))
+			simple = append(simple, c.local(c.slot(np)))
 		} else {
 			simple = nil
 		}
@@ -365,14 +388,29 @@ func (c *compiler) slot(key any) int {
 	return -1
 }
 
+// local is the index of a slot in the current frame, where every name is
+// bound, or -1 for no slot.
+func (c *compiler) local(s int) int {
+	if s < 0 {
+		return -1
+	}
+	if c.ly.level[s] != c.level {
+		panic("a name bound outside its frame")
+	}
+	return c.ly.idx[s]
+}
+
+// place is the place of a slot read by the code being compiled.
+func (c *compiler) place(s int) place { return c.ly.place(s, c.level) }
+
 func (c *compiler) pattern(p syntax.Pattern) binder {
 	switch p := p.(type) {
 	case *syntax.NamePat:
-		s := c.slot(p)
+		s := c.local(c.slot(p))
 		if s < 0 {
 			return func(*run, any) {}
 		}
-		return func(r *run, v any) { r.slots[s] = v }
+		return func(r *run, v any) { r.vals[r.base+s] = v }
 	case *syntax.MapPat:
 		return c.mapPat(p)
 	case *syntax.ListPat:
@@ -393,7 +431,7 @@ func (c *compiler) mapPat(p *syntax.MapPat) binder {
 	var fields []fieldCode
 	named := map[string]bool{}
 	for _, f := range p.Fields {
-		fc := fieldCode{key: f.Key, size: value.Size(f.Key), slot: c.slot(f), span: f.Span}
+		fc := fieldCode{key: f.Key, size: value.Size(f.Key), slot: c.local(c.slot(f)), span: f.Span}
 		if f.Default != nil {
 			fc.def = c.expr(f.Default)
 		}
@@ -402,7 +440,7 @@ func (c *compiler) mapPat(p *syntax.MapPat) binder {
 	}
 	rest := -1
 	if p.Rest != nil {
-		rest = c.slot(p.Rest)
+		rest = c.local(c.slot(p.Rest))
 	}
 	hasRest := p.Rest != nil
 	sp := p.Span()
@@ -426,7 +464,7 @@ func (c *compiler) mapPat(p *syntax.MapPat) binder {
 				r.raise(fail("missing-field", "pattern", f.span, messages.Val("key", f.key)))
 			}
 			if f.slot >= 0 {
-				r.slots[f.slot] = x
+				r.vals[r.base+f.slot] = x
 			}
 		}
 		if hasRest {
@@ -445,7 +483,7 @@ func (c *compiler) mapPat(p *syntax.MapPat) binder {
 				m[k], _ = value.Get(v, k)
 			}
 			if rest >= 0 {
-				r.slots[rest] = m
+				r.vals[r.base+rest] = m
 			}
 		}
 	}
@@ -460,7 +498,7 @@ type elemCode struct {
 func (c *compiler) listPat(p *syntax.ListPat) binder {
 	var elems []elemCode
 	for _, e := range p.Elems {
-		ec := elemCode{slot: c.slot(e.Name), span: e.Span}
+		ec := elemCode{slot: c.local(c.slot(e.Name)), span: e.Span}
 		if e.Default != nil {
 			ec.def = c.expr(e.Default)
 		}
@@ -468,7 +506,7 @@ func (c *compiler) listPat(p *syntax.ListPat) binder {
 	}
 	rest := -1
 	if p.Rest != nil {
-		rest = c.slot(p.Rest)
+		rest = c.local(c.slot(p.Rest))
 	}
 	hasRest := p.Rest != nil
 	sp := p.Span()
@@ -495,7 +533,7 @@ func (c *compiler) listPat(p *syntax.ListPat) binder {
 					messages.Word("length", fmt.Sprint(n)), messages.Word("index", fmt.Sprint(i))))
 			}
 			if e.slot >= 0 {
-				r.slots[e.slot] = x
+				r.vals[r.base+e.slot] = x
 			}
 		}
 		if hasRest {
@@ -510,7 +548,7 @@ func (c *compiler) listPat(p *syntax.ListPat) binder {
 				out[i] = value.At(v, len(elems)+i)
 			}
 			if rest >= 0 {
-				r.slots[rest] = out
+				r.vals[r.base+rest] = out
 			}
 		}
 	}
@@ -571,8 +609,12 @@ func (c *compiler) ident(n *syntax.Ident) code {
 	}
 	switch b.Kind {
 	case static.Value:
-		s := b.Slot
-		return func(r *run) any { return r.slots[s] }
+		p := c.place(b.Slot)
+		if p.hops == 0 {
+			i := p.idx
+			return func(r *run) any { return r.vals[r.base+i] }
+		}
+		return func(r *run) any { return r.get(p) }
 	case static.EnvVar:
 		i, ok := c.vars[b.Var]
 		if !ok {
@@ -699,10 +741,11 @@ func (c *compiler) try(n *syntax.Try) code {
 	slot := -1
 	named := n.Name != ""
 	if named {
-		slot = c.slot(n)
+		slot = c.local(c.slot(n))
 	}
 	return func(r *run) any {
 		depth, walk, nargs, lcTop := r.depth, r.walk, len(r.args), r.lcTop
+		mark := r.frameMark()
 		v, f := r.protect(body)
 		if f == nil {
 			return v
@@ -711,6 +754,7 @@ func (c *compiler) try(n *syntax.Try) code {
 			r.raise(f)
 		}
 		r.depth, r.walk, r.lcTop = depth, walk, lcTop
+		r.restoreFrames(mark)
 		r.popArgs(nargs)
 		if named {
 			var msg string
@@ -733,7 +777,7 @@ func (c *compiler) try(n *syntax.Try) code {
 				ev["data"] = f.data
 			}
 			if slot >= 0 {
-				r.slots[slot] = ev
+				r.vals[r.base+slot] = ev
 			}
 		}
 		return handler(r)

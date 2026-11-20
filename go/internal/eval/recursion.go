@@ -30,7 +30,7 @@ type walkLevel struct {
 // explicit stack, one level for each depth, so a deep tree costs no native
 // stack (5.3).
 func walk(r *run, c *libCall) any {
-	lam := c.args[1].(*lambdaCode)
+	lam := c.args[1].(*fn)
 	out := []any{}
 	var stack []walkLevel
 	// visit charges a node's 2 steps, makes the depth test, calls children
@@ -45,6 +45,7 @@ func walk(r *run, c *libCall) any {
 		out = append(out, node)
 		m := c.measure + d
 		r.enterCall(m)
+		r.cbEnter(c, lam)
 		if lam.nparams > 0 {
 			lam.bind(r, 0, node, true)
 		}

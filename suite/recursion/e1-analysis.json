@@ -1,0 +1,6 @@
+[
+  {"name": "a call of its own name is no call of the environment", "source": "const f = (n: int): int => n <= 0 ? 0 : f(n - 1); f(x)", "expect": {"analysis": {"calls": [], "literal": false, "names": ["x"], "refs": [{"name": "x", "path": [], "span": [1, 53, 1, 54]}], "segments": null}}},
+  {"name": "its own name given to map is no read", "source": "const f = (t: any): int => t is any[] ? len(t.map(f)) : 0; f(data.tree)", "expect": {"analysis": {"calls": [{"args": [[1, 45, 1, 53]], "lambda": true, "name": "len", "namespace": null, "span": [1, 41, 1, 54]}], "literal": false, "names": ["data"], "refs": [{"name": "data", "path": ["tree"], "span": [1, 62, 1, 71]}], "segments": null}}},
+  {"name": "a call of its own name in a default", "source": "const f = (n: int = f(1)): int => n + k; f()", "expect": {"analysis": {"calls": [], "literal": false, "names": ["k"], "refs": [{"name": "k", "path": [], "span": [1, 39, 1, 40]}], "segments": null}}},
+  {"name": "a call of its own name beside a call of the environment", "source": "const f = (n: int): int => n <= 0 ? g(n) : f(n - 1); f(1)", "expect": {"analysis": {"calls": [{"args": [[1, 39, 1, 40]], "lambda": true, "name": "g", "namespace": null, "span": [1, 37, 1, 41]}], "literal": false, "names": [], "refs": [], "segments": null}}}
+]

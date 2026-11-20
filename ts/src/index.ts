@@ -30,16 +30,24 @@
 // The stack this binding needs is Node's default, 984 KB, so no option is
 // needed. Measured (ran), each case in a fresh process, the V8 stack it needs
 // in Node 22.22.3 (V8 12.4) on an Apple M4 Max, at the default depth limit,
-// 200, and the largest, 400:
+// 200, and the largest, 400, with each call's names in a frame of its own
+// (f17 11.5), to within 3 KB:
 //
 //   case                                      depth 200   depth 400
 //   100 levels of nesting, parsed and run          144 KB
-//   calls by name                               75 KB      107 KB
-//   a walk                                      89 KB      141 KB
-//   a call of `walk` (F17), nodes to the limit  56 KB       56 KB
-//   deep-forms.ts `map`                        134 KB      224 KB
-//   deep-forms.ts `flatMap`                    138 KB      231 KB
-//   deep-forms.ts `heaviest`                   162 KB      281 KB
+//   calls by name                               79 KB      113 KB
+//   a walk                                      89 KB      142 KB
+//   a call of `walk` (F17), nodes to the limit  57 KB       57 KB
+//   deep-forms.ts `map`                        137 KB      232 KB
+//   deep-forms.ts `flatMap`                    140 KB      238 KB
+//   deep-forms.ts `heaviest`                   165 KB      288 KB
+//   self-recursion (F17 11.6), by name         104 KB      163 KB
+//   self-recursion through `map`               163 KB      282 KB
+//   self-recursion through `flatMap`           167 KB      288 KB
+//
+// The frames cost at most 6% more stack than one fixed slot for each name did,
+// measured the same way: calls by name needed 76 and 107 KB, `heaviest` 163
+// and 282 KB.
 //
 // test/deep.test.ts runs each case at both limits with 656 KB, 984 KB divided
 // by 1.5. A browser's Web Worker has a smaller stack, which a page cannot set.

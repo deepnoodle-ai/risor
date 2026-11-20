@@ -71,7 +71,7 @@ var (
 	completionFields  = set("span", "items")
 	hoverRecordFields = set("kind", "span", "type", "signature", "doc", "declaration")
 	candidateKinds    = set("name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "key", "literal", "type")
-	hoverKinds        = set("name", "lambda", "variable", "function", "namespace", "field", "method", "constant")
+	hoverKinds        = set("name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "type") // type: F16 7.3
 )
 
 // toolKind is the F12 field a case has, or "".

@@ -16,7 +16,7 @@ import type { Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, keymap, ViewPlugin } from "@codemirror/view";
 import { workerService } from "@deepnoodle/risor-service";
 import { tokens } from "@deepnoodle/risor/tokens";
-import type { Description, Problem, RisorEnvironment, RisorService } from "@deepnoodle/risor-service";
+import type { Description, Hover, Problem, RisorEnvironment, RisorService } from "@deepnoodle/risor-service";
 import { colours, risorTheme } from "./colours.ts";
 
 export { colourDecorations, risorTheme } from "./colours.ts";
@@ -150,12 +150,23 @@ export async function risorCompletions(context: CompletionContext): Promise<Comp
   return { from: r.from, to: r.to, options, validFor: /^[A-Za-z0-9_]*$/ };
 }
 
+/**
+ * The code a hover shows: its signature, else its type, else "". `never` is
+ * the type of a name the checker could not resolve, and its lint message says
+ * more, so it is not shown; a type name that stands for `never` shows it.
+ */
+export function hoverText(h: Hover): string {
+  const type = h.type === "never" && h.kind !== "type" ? null : h.type;
+  return h.signature ?? type ?? "";
+}
+
 const hover = hoverTooltip(async (view, pos) => {
   const session = view.state.facet(risorSession);
   if (!session) return null;
   const h = await session.environment.hover(view.state.doc.toString(), pos, { expected: session.options.expected });
-  // `never` is the type of a name the checker could not resolve: its lint message says more.
-  if (!h || ((!h.type || h.type === "never") && !h.signature && !h.doc)) return null;
+  if (!h) return null;
+  const text = hoverText(h);
+  if (!text && !h.doc) return null;
   return {
     pos: h.from,
     end: h.to,
@@ -164,8 +175,8 @@ const hover = hoverTooltip(async (view, pos) => {
       const dom = document.createElement("div");
       dom.className = "risor-hover";
       const code = document.createElement("code");
-      code.textContent = h.signature ?? (h.type === "never" ? "" : h.type) ?? "";
-      if (code.textContent) dom.appendChild(code);
+      code.textContent = text;
+      if (text) dom.appendChild(code);
       if (h.doc) {
         const doc = document.createElement("div");
         doc.className = "risor-hover-doc";

@@ -222,6 +222,16 @@ These rows apply when the Core diagnostic is `unexpected-token` by a rule of
    2.4): `a ?? b as T` is D3 at the `as`, and `x as T ?? d` is D3 at the `??`.
 2. A reserved word where the `Name` of `catch` should stand is `reserved-word`
    by 14.2 rule 1 before rule 12 is reached: `catch (if)` stays `reserved-word`.
+3. D4 is given at a token that would continue an operand: a binary operator,
+   `?`, `.`, `?.`, `[`, `?.[`, `(`, and the words `in`, `as` and `is`
+   (`01-language.md` 14.3). The word `not` is such a token only when `in`
+   follows it, and the span is then that of `not in`: `try { 1 } catch { 2 }
+   not x` stays `unexpected-token` at the `not`. Any other token there stays
+   `unexpected-token` too.
+4. D4 holds wherever the `if` or the `try` stands as an `Expr`, the first
+   branch of `? :` among the places. In `c ? try { 1 } catch { 2 } (1) : 3`
+   the `(` is D4; that the `:` is missing there does not take the rule's
+   place.
 
 ### 2.7 Other text that does not parse
 
@@ -273,12 +283,16 @@ item 2 keeps. They are tried in this order.
    1] = x;` is E7 at the second `=`.
 2. E9: `(x: int) => x` at the top of a program, where `(` cannot begin a lambda,
    is the third case; `[1].map((x: int) => x)` is the second; `const n: int = 1;
-   n` is the first.
+   n` is the first. With package F16 the first two are programs, and E9 holds
+   only in the third case (`spec/packages/f16-entry-points.md` 2.5).
 3. E11 and E12 read the forms of F7 as F7 leaves them: `xs[*]` is a projection,
    and `xs[]`, `xs.*` and `xs[?c]` are errors.
-4. E15 to E18: an operand word is a whole operand, so `typeof x` fails at `x`. A
-   call is not an operand word: `typeof(x)` is a call, and the checker reports
-   `undefined-function` when nothing declares `typeof`.
+4. E15 to E18: an operand word is a whole operand, so `typeof x` fails at `x`.
+   A call is not an operand word: `typeof(x)` is a call, and the checker
+   reports `undefined-function` when nothing declares `typeof`. With package
+   F16, `type` at the start of a top-level line, followed by an upper-case
+   word and `=`, begins a type line, and E17 does not hold there
+   (`spec/packages/f16-entry-points.md` 2.2, 2.5).
 5. E21: in `a?[i]` the conditional's `:` should stand at the end of input. In `c
    ? [1] : [2]`, with the `:`, nothing fails.
 6. E23 covers `x => { x + 1 }`. B9 covers `x => { if (c) { 1 } else { 2 } }`. B3
@@ -291,6 +305,11 @@ item 2 keeps. They are tried in this order.
 7. E22 covers `{max-retries: 3}` and `const {max-retries: r} = m;`, and comes
    before E23, so `x => {max-retries: 1}` is `unquoted-key`. `{a - b: 1}`, with
    spaces, stays `unexpected-token`.
+8. A word after `.` or `?.` is a field's name, whatever the word
+   (`01-language.md` 14.2), and it ends an operand. No row reads it as the word
+   of a form: `a.if = 1` and `a.try = 1` are E7, `a.if !is int` is E2's
+   `negated-is` (F4 2.6), and `a.try x` and `a.if x` stay `unexpected-token`,
+   where E6 and E4 name the word `try` of a `Try` and the word `if` of an `If`.
 
 ### 2.8 Spans
 
@@ -410,8 +429,10 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
    those of the `check` phase in `suite/messages-check.json`. Each file has the
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
 2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 97
-   templates. `messages-check.json` has one entry for each of the 29 check codes
-   (`05-types.md` 16.1, F4 6.7), with 71 templates.
+   templates. `messages-check.json` has one entry for each of the 30 check codes
+   (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
+   and a template in a file of its own (`spec/packages/f16-entry-points.md`
+   9.1).
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -569,12 +590,12 @@ one template, its name is `default`.
 |  | `or` | `\| is not an operator here; write \|\| for a logical or` | The token \| |
 | `pipe-operator` | `default` | `\|> is not an operator; write f(x), or call a method` |  |
 | `nil-literal` | `default` | `nil is not a value; write null` |  |
-| `type-annotation` | `default` | `types are inferred; remove the annotation` |  |
+| `type-annotation` | `default` | `a lambda stands only as the value of a const line or as an argument, so this type annotates nothing` |  |
 | `satisfies-operator` | `default` | `satisfies is not an operator; x as T tests a value when the program runs` |  |
 | `instanceof-operator` | `default` | `instanceof is not an operator; write x is T` |  |
 | `typeof-operator` | `default` | `typeof is not an operator; write type(x) for the kind, or x is T for a test` |  |
 | `angle-cast` | `default` | `<T>x is not a cast; write x as T` |  |
-| `type-declaration` | `default` | `a program cannot declare a type with {token}; write the type in place, or use a name the host declared` |  |
+| `type-declaration` | `default` | `{token} does not declare a type here; at the top level of a program, write type Name = and then the type` |  |
 | `as-const` | `default` | `as const is not needed, because no value can change; remove it` |  |
 | `negated-is` | `default` | `is has no negated form; write !(x is T)` |  |
 | `text-block-quote` | `default` | `a text block is written with three double quotes, not '''` |  |
@@ -708,6 +729,7 @@ is the type the checker gives at that place, as named.
 |  | `size` | `the type here has more than 100000 parts` | 05-types.md 20.7; a program type (F4 6.1) |
 | `duplicate-case` | `default` | `{text} is listed twice in this match` |  |
 | `unreachable-arm` | `default` | `this arm comes after _ and is never chosen` |  |
+| `recursion-needs-types` | `default` | `{name} is this lambda's own name; give every parameter and the result a type so that it may refer to itself, or give the lambda another name` |  |
 | `non-exhaustive` | `default` | `the match has no _ arm and does not cover every value of type {type}` |  |
 | `result-mismatch` | `result` | `expected {expected}, found {found}` | A place of failure (05-types.md 15.1). expected is the type there; found is the type of the expression there |
 |  | `missing` | `required field {key} has no entry` | A map with no entry for a required field. key is the least such key |
@@ -746,6 +768,7 @@ The parameters of each code, with their kinds:
 | `cannot-infer` | `name` (word) |
 | `check-limit` | `name` (word) |
 | `duplicate-case` | `text` (text) |
+| `recursion-needs-types` | `name` (word) |
 | `non-exhaustive` | `type` (type) |
 | `result-mismatch` | `expected` (type), `found` (type), `key` (string) |
 | `unchecked` | `text` (text) |
@@ -1296,7 +1319,7 @@ them.
 | 10 | `{for}` | `loop-statement` | `[1, 2, 1, 5]` | there are no loops or comprehensions in 3.0; use map, filter or reduce |
 | 11 | `f(a = 1)` | `assignment` | `[1, 5, 1, 6]` | a binding cannot be reassigned; bind a new name with const, or compare with == |
 | 12 | `[1].map(x => { x + 1 })` | `block-without-const` | `[1, 14, 1, 15]` | a lambda body in braces is a map; write the expression without braces, or start a block with a const line |
-| 13 | `(x: int) => x` | `type-annotation` | `[1, 3, 1, 4]` | types are inferred; remove the annotation |
+| 13 | `(x: int) => x` | `type-annotation` | `[1, 3, 1, 4]` | a lambda stands only as the value of a const line or as an argument, so this type annotates nothing |
 | 14 | `typeof x` | `typeof-operator` | `[1, 1, 1, 7]` | typeof is not an operator; write type(x) for the kind, or x is T for a test |
 | 15 | `a?[i]` | `optional-index` | `[1, 2, 1, 3]` | an optional index is written ?.[ with a dot |
 | 16 | `xs[]` | `star-form` | `[1, 4, 1, 5]` | a projection is written xs[*].f |

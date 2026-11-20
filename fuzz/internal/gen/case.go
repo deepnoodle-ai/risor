@@ -90,6 +90,13 @@ type Case struct {
 	// F17 is set when the program has a form of package F17: a guard or a
 	// call of walk. It is not written to the case file.
 	F17 bool
+	// F16 is set when the program has a form of package F16: a type line or
+	// an annotation. It is not written to the case file.
+	F16 bool
+	// E1 is set when the program has a lambda that refers to its own name,
+	// written by the generator of package F17, step E1. It is not written to
+	// the case file.
+	E1 bool
 }
 
 // Text gives the program text: the printed tree, or the mangled source.

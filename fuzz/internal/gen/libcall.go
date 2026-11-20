@@ -287,9 +287,28 @@ func (g *Gen) callback(fn *LibFunc, b map[string]*Ty, d int) ast.Expr {
 			g.bindName(name, pt)
 		}
 	}
-	lam.Body = g.expr(resTy(), d)
+	rt := resTy()
+	lam.Body = g.expr(rt, d)
 	g.pop()
-	if np == 1 && r.IntN(2) == 0 {
+	if g.annotChance(5) { // F16: the types the library passes, and the result
+		for i := range lam.Params {
+			pt := tyAny
+			if i < len(fn.Params) {
+				pt, _ = tyFromText(fn.Params[i], b)
+			}
+			if r.IntN(3) > 0 {
+				lam.Params[i].Type = g.annot(pt)
+			}
+		}
+		if r.IntN(4) == 0 && fn.Result != "unknown" {
+			lam.Result = g.annot(rt)
+		}
+	}
+	annotated := lam.Result != ""
+	for _, p := range lam.Params {
+		annotated = annotated || p.Type != ""
+	}
+	if np == 1 && !annotated && r.IntN(2) == 0 {
 		if np, ok := lam.Params[0].Pat.(*ast.NamePat); ok {
 			lam.Bare = np.Name
 		}
