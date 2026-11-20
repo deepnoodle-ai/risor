@@ -25,6 +25,22 @@ function end(text: string): { line: number; column: number } {
   return { line: lines.length, column: [...lines[lines.length - 1]].length + 1 };
 }
 
+const WORD = /[A-Za-z0-9_]/;
+
+/** The last word of a text: a position in it, and its span. Hover there reads the word's token (f12 3.13). */
+function lastWord(text: string): { at: { line: number; column: number }; span: { start: { line: number; column: number }; end: { line: number; column: number } } } {
+  const cps = [...text];
+  let i = cps.length - 1;
+  while (i > 0 && !WORD.test(cps[i])) i--;
+  let j = i;
+  while (j > 0 && WORD.test(cps[j - 1])) j--;
+  const lineStart = cps.lastIndexOf("\n", i) + 1;
+  let line = 1;
+  for (let k = 0; k < lineStart; k++) if (cps[k] === "\n") line++;
+  const at = (k: number) => ({ line, column: k - lineStart + 1 });
+  return { at: at(i), span: { start: at(j), end: at(i + 1) } };
+}
+
 /** Run an entry point. A RangeError is the stack, or a text too long to make: it names the entry point. */
 function through<T>(what: string, f: () => T): T {
   try {
@@ -86,6 +102,7 @@ function everyEntryPoint(f: FlatForm): void {
 
   // Compile and run: with the check, and with the static rules alone.
   if (past === null) run(f, n, source, true, "compile and run");
+  else assert.equal(codeOf("compile", () => env.compile(expr)), past.code);
   if (past === null || !past.alone) run(f, n, source, false, "compile and run with no check");
   else {
     assert.equal(codeOf("compile with no check", () => env.compile(expr, { check: false })), past.code);
@@ -107,8 +124,17 @@ function everyEntryPoint(f: FlatForm): void {
   );
   const first = through("hover on the first token", () => env.hover(source, { line: 1, column: 1 }));
   assert.deepEqual(first, env.hover(small, { line: 1, column: 1 }), "hover on the first token");
+  // On the last word: the record of three repeats, with the span of that word.
+  const word = lastWord(source);
+  const atEnd = through("hover on the last word", () => env.hover(source, word.at));
+  const want = env.hover(small, lastWord(small).at);
+  if (want === null) assert.equal(atEnd, null, "hover on the last word");
+  else {
+    assert.ok(atEnd !== null, "hover on the last word");
+    assert.deepEqual(atEnd.span, word.span, "hover on the last word: the span");
+    assert.deepEqual({ ...atEnd, span: null, declaration: null }, { ...want, span: null, declaration: null }, "hover on the last word");
+  }
   const last = end(source);
-  through("hover on the last token", () => env.hover(source, { line: last.line, column: Math.max(1, last.column - 1) }));
   through("hover in the middle", () => env.hover(source, { line: last.line, column: Math.max(1, last.column >> 1) }));
 
   // The formatter.
@@ -161,15 +187,21 @@ function diagnostics(): void {
   const m: Record<string, unknown> = {};
   m.a = m;
   const env = createEnv({ varRecord: "{y: string, m: any, c: bool}", limits: { steps: null, allocation: null } });
-  const failing: [string, string, string][] = [
-    ["parse", "unexpected-token", "y" + ".trim()".repeat(n) + " +"],
-    ["parse", "bad-type-text", "y" + " as any".repeat(n) + " as"],
-    ["check", "no-method", "y" + ".trim()".repeat(n) + ".nope()"],
-    ["check", "kind", "c" + " as any in [true]".repeat(n) + " + 1"],
-    ["run", "missing-field", "m" + ".a".repeat(n) + ".zz.q"],
-    ["run", "not-conforming", "y" + " as any".repeat(n) + " as int"],
+  // The phase, the code, the program, and the columns of the diagnostic's span in a program of l code points.
+  const failing: [string, string, string, (l: number) => [number, number]][] = [
+    // The end of the text.
+    ["parse", "unexpected-token", "y" + ".trim()".repeat(n) + " +", (l) => [l + 1, l + 1]],
+    ["parse", "bad-type-text", "y" + " as any".repeat(n) + " as", (l) => [l + 1, l + 1]],
+    // `nope`.
+    ["check", "no-method", "y" + ".trim()".repeat(n) + ".nope()", (l) => [l - 5, l - 1]],
+    // The last `[true]`, the left operand of `+`.
+    ["check", "kind", "c" + " as any in [true]".repeat(n) + " + 1", (l) => [l - 9, l - 3]],
+    // The read that fails, from `m` to `.zz`.
+    ["run", "missing-field", "m" + ".a".repeat(n) + ".zz.q", (l) => [1, l - 1]],
+    // The whole chain.
+    ["run", "not-conforming", "y" + " as any".repeat(n) + " as int", (l) => [1, l + 1]],
   ];
-  for (const [phase, code, source] of failing) {
+  for (const [phase, code, source, span] of failing) {
     let thrown: unknown;
     try {
       through(`${phase} ${code}`, () => env.compile(parse(source)).run({ y: "a", m, c: true }));
@@ -179,6 +211,8 @@ function diagnostics(): void {
     assert.ok(thrown instanceof RisorError, `${phase} ${code}: ${String(thrown).slice(0, 200)}`);
     assert.equal(thrown.phase, phase);
     assert.equal(thrown.diagnostics[0].code, code);
+    const [from, to] = span(source.length);
+    assert.deepEqual(thrown.diagnostics[0].span, { start: { line: 1, column: from }, end: { line: 1, column: to } }, `${code}: the span`);
     // The three renderings (f08 5).
     for (const render of [() => renderLine(thrown.diagnostics), () => renderDetail(thrown.diagnostics, source), () => renderJSON(thrown.diagnostics)]) {
       assert.equal(typeof through(`render ${code}`, render), "string");
