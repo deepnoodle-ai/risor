@@ -311,6 +311,21 @@ func Shown(t *Type) *Type {
 	return Ref(t.refs[0])
 }
 
+// RecordShown is the type a message prints for the record that a map
+// literal is fitted to (the parameter expected of the template extra): the
+// record alone, or the reference whose definition holds it, so that the
+// message names the type (F17 12.6 item 4).
+func RecordShown(t *Type) *Type {
+	if t.rec == nil {
+		for _, n := range t.refs {
+			if n.def != nil && n.def.rec != nil {
+				return Ref(n)
+			}
+		}
+	}
+	return RecType(t.u().rec)
+}
+
 // SetDefs sets the definitions of the references ns that one mapping made,
 // a schema's or a Go type's (12.4): defs[i] is ns[i]'s type, whose top may
 // hold references of ns, each replaced by its own definition. It reports

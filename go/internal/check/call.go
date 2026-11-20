@@ -893,7 +893,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 				return
 			}
 			if r := want.Record(); r != nil {
-				c.fitMapRecord(e, c.givers(e), r, want, k, fail)
+				c.fitMapRecord(e, c.givers(e), r, types.RecordShown(want), k, fail)
 				return
 			}
 		}
