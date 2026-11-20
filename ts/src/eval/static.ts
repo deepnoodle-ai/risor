@@ -133,9 +133,17 @@ export function typedLambda(l: A.Lambda): boolean {
   return l.result !== null && l.params.every((p) => p.type !== null || p.fn !== null);
 }
 
+/** Whether each lambda is higher-order, found once: its name may be used many times. */
+const higherOrderOf = new WeakMap<A.Lambda, boolean>();
+
 /** f17 13.1: a higher-order lambda has a function parameter. */
 export function higherOrder(l: A.Lambda): boolean {
-  return l.params.some((p) => p.fn !== null);
+  let h = higherOrderOf.get(l);
+  if (h === undefined) {
+    h = l.params.some((p) => p.fn !== null);
+    higherOrderOf.set(l, h);
+  }
+  return h;
 }
 
 /**
