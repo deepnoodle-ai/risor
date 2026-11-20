@@ -747,8 +747,10 @@ that runs, unless package F17 lets a lambda refer to its own name, or gives a
 lambda a parameter with a function type. A program with such a self-reference
 or such a parameter breaks the third, fourth and fifth facts: each call of a
 lambda then binds its own names, and the depth limit bounds the calls in
-progress (`spec/packages/f17-recursion.md` 11.5, 13.4). The callee of a call
-of a parameter with a function type is the lambda given at it.
+progress (`spec/packages/f17-recursion.md` 11.5, 13.4). Such a parameter also
+breaks the first fact for a call of it: its callee is the lambda given at it,
+which can differ from one call of its lambda to the next, so it is known only
+when the call is made.
 
 | Fact | Consequence an implementation may rely on |
 | --- | --- |
