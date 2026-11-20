@@ -3,12 +3,17 @@
 // A schema is a plain JSON value. Only what the rules read is looked at, so a
 // keyword the mapping does not read is never checked (3.1 item 1). The type
 // of a `$ref` target is mapped once and shared, never copied (3.10 item 5).
+//
+// Package F17 (f17 12.4): a target met again while it is being mapped, with
+// an array's items or an object's properties between, is a recursive type: it
+// gets a reference, whose definition is set when the mapping ends.
 
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, SIZE_LIMIT, TypeAcc, fits, isAny, isNever, join, lit, listOf, nonnull, record, typeSize,
-  mapAlt, variantsOf, withoutMap,
+  mapAlt, variantsOf, withoutMap, IncompleteRef, PairLimit, kindsOf, mergeKinds, newRef, refType, withoutRefs,
 } from "./type.ts";
-import type { Alts, Field, Rec, Type } from "./type.ts";
+import type { Alts, Field, Rec, Ref, Type } from "./type.ts";
+import { besideRef } from "./list.ts";
 
 export type SchemaOption = "closed" | "absent-is-null" | "defaults-applied";
 export const SCHEMA_OPTIONS: readonly SchemaOption[] = ["closed", "absent-is-null", "defaults-applied"];
@@ -154,26 +159,99 @@ interface Mapped {
   depth: number;
 }
 
+/** A type name (f04 3.2). */
+const TYPE_NAME = /^[A-Z][A-Za-z0-9_]+$/;
+
 class Mapper {
   private readonly root: unknown;
   private readonly opts: ReadonlySet<SchemaOption>;
+  private readonly rootName: string;
   /** The type and depth of each `$ref` target, mapped once (3.10 item 5). */
   private readonly targets = new Map<unknown, Mapped>();
-  /** Targets whose mapping is in progress, the root among them (3.7 item 7). */
-  private readonly progress = new Set<unknown>();
+  /**
+   * Targets whose mapping is in progress, the root among them (3.7 item 7),
+   * each with the guards that stood above it and the pointer that reached it.
+   */
+  private readonly progress = new Map<unknown, { guards: number; pointer: string | null }>();
+  /** The array items and object properties the mapping stands in now (f17 12.4 item 1). */
+  private guards = 0;
+  /** The recursive types: each target met again, with its reference and, once mapped, its type. */
+  private readonly recursive = new Map<unknown, { ref: Ref; type?: Type }>();
 
-  constructor(root: unknown, opts: ReadonlySet<SchemaOption>) {
+  constructor(root: unknown, opts: ReadonlySet<SchemaOption>, rootName: string) {
     this.root = root;
     this.opts = opts;
+    this.rootName = rootName;
   }
 
   run(): Type {
-    this.progress.add(this.root);
+    this.progress.set(this.root, { guards: 0, pointer: null });
     const m = this.map(this.root, true, 0);
-    let t = m.type;
-    if (this.opts.has("closed")) t = close(t);
+    let t = this.recursive.has(this.root) ? this.done(this.root, m.type) : m.type;
+    this.setDefinitions();
+    if (this.opts.has("closed")) {
+      const memo = new Map<Type, Type>();
+      t = close(t, memo);
+      for (const { ref } of this.recursive.values()) ref.def = close(ref.def!, memo);
+    }
     if (typeDepth(t) > MAX_DEPTH) fail("the type is deeper than 64");
+    for (const { ref } of this.recursive.values()) {
+      // f17 12.4 item 5: 12.2 item 6, then each definition's depth and size (12.6).
+      const beside = besideRef(ref.def!);
+      if (beside !== null) fail(`the reference ${beside.name} stands beside a type of its kind`);
+      if (typeDepth(ref.def!) > MAX_DEPTH) fail(`the type ${ref.name} is deeper than 64`);
+      if (typeSize(ref.def!) > SIZE_LIMIT) fail(`the type ${ref.name} is larger than 100,000`);
+    }
     return t;
+  }
+
+  /** A recursive target is mapped: it stands for its reference from now on. */
+  private done(target: unknown, t: Type): Type {
+    const r = this.recursive.get(target)!;
+    r.type = t;
+    return refType(r.ref);
+  }
+
+  /**
+   * f17 12.4 item 5: each definition is its target's type, with each
+   * reference of the schema at its top replaced by that reference's
+   * definition. A reference beside an alternative of its kind there is an
+   * error, as it is at any depth (12.2 item 6).
+   */
+  private setDefinitions(): void {
+    const byRef = new Map<Ref, Type>();
+    for (const { ref, type } of this.recursive.values()) byRef.set(ref, type!);
+    const defs = new Map<Ref, Type>();
+    const busy = new Set<Ref>();
+    const defOf = (r: Ref): Type => {
+      const known = defs.get(r);
+      if (known !== undefined) return known;
+      if (busy.has(r)) fail(`a cycle of $ref with no array item or property between, through ${r.name}`);
+      busy.add(r);
+      const t = byRef.get(r)!;
+      let out: Type = t;
+      if (!isAny(t) && t.refs !== undefined && t.refs.some((x) => byRef.has(x))) {
+        const keep = t.refs.filter((x) => !byRef.has(x));
+        out = keep.length > 0 ? { ...withoutRefs(t), refs: keep } : withoutRefs(t);
+        for (const x of t.refs) {
+          if (!byRef.has(x)) continue;
+          const d = defOf(x);
+          if (isAny(out)) break;
+          if (isAny(d)) {
+            out = ANY;
+            break;
+          }
+          const others = kindsOf(out);
+          for (const k of kindsOf(d)) if (others.has(k)) fail(`the reference ${x.name} stands beside a type of its kind`);
+          out = mergeKinds(out as Alts, d);
+        }
+      }
+      busy.delete(r);
+      defs.set(r, out);
+      return out;
+    };
+    for (const r of byRef.keys()) defOf(r);
+    for (const [r, d] of defs) r.def = d;
   }
 
   /** M(S), at `level` levels below the root. Its size is tested (f01 3.10 item 8). */
@@ -192,22 +270,27 @@ class Mapper {
     if (has(s, "$dynamicRef") || has(s, "$recursiveRef")) fail("$dynamicRef and $recursiveRef are not read");
     if (has(s, "$ref")) {
       const target = this.resolve(s.$ref);
-      const m = this.target(target, level);
+      const m = this.target(target, level, s.$ref as string);
       return { type: s.nullable === true ? join(m.type, NULL) : m.type, depth: m.depth + 1 };
     }
     const parts: Type[] = [];
     let depth = 0;
-    const sub = (x: unknown): Type => {
-      const m = this.map(x, false, level + 1);
-      depth = Math.max(depth, m.depth + 1);
-      return m.type;
+    const sub = (x: unknown, guarded = false): Type => {
+      if (guarded) this.guards++;
+      try {
+        const m = this.map(x, false, level + 1);
+        depth = Math.max(depth, m.depth + 1);
+        return m.type;
+      } finally {
+        if (guarded) this.guards--;
+      }
     };
     if (has(s, "type") || has(s, "enum") || has(s, "const")) parts.push(this.kindPart(s, sub));
     for (const k of ["allOf", "anyOf", "oneOf"] as const) {
       if (!has(s, k)) continue;
       const branches = s[k];
       if (!Array.isArray(branches) || branches.length === 0) fail(`${k} is a non-empty array of schemas`);
-      const types = branches.map(sub);
+      const types = branches.map((b) => sub(b));
       if (k === "allOf") parts.push(pick(types));
       else parts.push(branchUnion(types));
     }
@@ -217,21 +300,46 @@ class Mapper {
   }
 
   /** The type of a `$ref` target, mapped once and shared. */
-  private target(target: unknown, level: number): Mapped {
-    if (this.progress.has(target)) fail("a cycle of $ref");
+  private target(target: unknown, level: number, pointer: string): Mapped {
+    const going = this.progress.get(target);
+    if (going !== undefined) {
+      // f17 12.4 item 1: met again with an array's items or an object's properties between, a recursive type.
+      if (this.guards <= going.guards) fail("a cycle of $ref with no array item or property between");
+      return { type: refType(this.recursiveRef(target, going.pointer)), depth: 0 };
+    }
     const known = this.targets.get(target);
     if (known !== undefined) {
       if (level + 1 + known.depth > MAX_DEPTH) fail("the schema is deeper than 64");
       return known;
     }
-    this.progress.add(target);
+    this.progress.set(target, { guards: this.guards, pointer });
     try {
       const m = this.map(target, target === this.root, level + 1);
-      this.targets.set(target, m);
-      return m;
+      const out = this.recursive.has(target) ? { type: this.done(target, m.type), depth: m.depth } : m;
+      this.targets.set(target, out);
+      return out;
     } finally {
       this.progress.delete(target);
     }
+  }
+
+  /** The reference of a recursive target, named as f17 12.4 item 2 says. */
+  private recursiveRef(target: unknown, pointer: string | null): Ref {
+    const known = this.recursive.get(target);
+    if (known !== undefined) return known.ref;
+    let name: string;
+    if (target === this.root) name = this.rootName;
+    else {
+      const frag = percentDecode(pointer!.slice(1));
+      const raw = frag.slice(frag.lastIndexOf("/") + 1);
+      const tok = raw.replace(/~1/g, "/").replace(/~0/g, "~");
+      name = /^[a-z]/.test(tok) ? tok[0].toUpperCase() + tok.slice(1) : tok;
+    }
+    if (!TYPE_NAME.test(name)) fail(`the recursive type ${JSON.stringify(name)} has no type name`);
+    for (const r of this.recursive.values()) if (r.ref.name === name) fail(`two recursive types are named ${name}`);
+    const ref = newRef(name);
+    this.recursive.set(target, { ref });
+    return ref;
   }
 
   /** Resolve a `$ref` in the root (3.7). */
@@ -257,7 +365,7 @@ class Mapper {
   }
 
   /** The kind part (3.2, 3.3). */
-  private kindPart(s: Obj, sub: (x: unknown) => Type): Type {
+  private kindPart(s: Obj, sub: (x: unknown, guarded?: boolean) => Type): Type {
     let names: string[] | null = null;
     if (has(s, "type")) {
       const t = s.type;
@@ -287,7 +395,7 @@ class Mapper {
     return t;
   }
 
-  private named(n: string, s: Obj, sub: (x: unknown) => Type): Type {
+  private named(n: string, s: Obj, sub: (x: unknown, guarded?: boolean) => Type): Type {
     switch (n) {
       case "null": return NULL;
       case "boolean": return BOOL;
@@ -300,40 +408,40 @@ class Mapper {
   }
 
   /** The element type of an array (3.5). */
-  private elements(s: Obj, sub: (x: unknown) => Type): Type {
+  private elements(s: Obj, sub: (x: unknown, guarded?: boolean) => Type): Type {
     let e: Type = NEVER;
     const isSchema = (x: unknown) => isObj(x) || typeof x === "boolean";
     if (has(s, "prefixItems")) {
       if (!Array.isArray(s.prefixItems) || !s.prefixItems.every(isSchema)) fail("prefixItems is an array of schemas");
-      for (const x of s.prefixItems) e = join(e, sub(x));
+      for (const x of s.prefixItems) e = join(e, sub(x, true));
     }
     if (!has(s, "items")) return join(e, ANY);
     const items = s.items;
     if (Array.isArray(items)) {
       if (!items.every(isSchema)) fail("items is a schema or an array of schemas");
-      for (const x of items) e = join(e, sub(x));
+      for (const x of items) e = join(e, sub(x, true));
       if (has(s, "additionalItems")) {
         if (!isSchema(s.additionalItems)) fail("additionalItems is a schema");
-        e = join(e, sub(s.additionalItems));
+        e = join(e, sub(s.additionalItems, true));
       } else e = join(e, ANY);
       return e;
     }
     if (!isSchema(items)) fail("items is a schema or an array of schemas");
-    return join(e, sub(items));
+    return join(e, sub(items, true));
   }
 
   /** The record of an object (3.8, 4). */
-  private object(s: Obj, sub: (x: unknown) => Type): Rec {
+  private object(s: Obj, sub: (x: unknown, guarded?: boolean) => Type): Rec {
     const isSchema = (x: unknown) => isObj(x) || typeof x === "boolean";
     let rest: Type = ANY;
     const explicit = has(s, "additionalProperties");
     if (explicit) {
       if (!isSchema(s.additionalProperties)) fail("additionalProperties is a schema");
-      rest = sub(s.additionalProperties);
+      rest = sub(s.additionalProperties, true);
       if (has(s, "patternProperties")) {
         const pp = s.patternProperties;
         if (!isObj(pp) || !Object.values(pp).every(isSchema)) fail("patternProperties is an object of schemas");
-        for (const k of Object.keys(pp)) rest = join(rest, sub(pp[k]));
+        for (const k of Object.keys(pp)) rest = join(rest, sub(pp[k], true));
       }
     }
     let required = new Set<string>();
@@ -348,7 +456,7 @@ class Mapper {
       if (!isObj(props) || !Object.values(props).every(isSchema)) fail("properties is an object of schemas");
       for (const k of Object.keys(props)) {
         const ps = props[k];
-        const t = sub(ps);
+        const t = sub(ps, true);
         let fill: Type | undefined;
         if (!required.has(k)) {
           if (this.opts.has("defaults-applied") && isObj(ps) && has(ps, "default")) {
@@ -421,9 +529,26 @@ function percentDecode(s: string): string {
   }
 }
 
-/** M(S) with the options given (f01 3, 4). Throws SchemaError (`bad-type`). */
-export function typeOfSchema(schema: unknown, options: Iterable<SchemaOption> = []): Type {
-  return new Mapper(schema, new Set(options)).run();
+/**
+ * M(S) with the options given (f01 3, 4). Throws SchemaError (`bad-type`).
+ * `rootName`: the name of the root when it is a recursive type (f17 12.4 item
+ * 2): the named type it declares, else the variable's name with its first
+ * letter upper-cased, else `Root`.
+ */
+export function typeOfSchema(schema: unknown, options: Iterable<SchemaOption> = [], rootName = "Root"): Type {
+  try {
+    return new Mapper(schema, new Set(options), rootName).run();
+  } catch (e) {
+    // f17 12.4 item 4: a rule that looks into a reference of the schema while it is mapped.
+    if (e instanceof IncompleteRef) fail("a rule looks into a recursive type while the schema is mapped");
+    if (e instanceof PairLimit) fail("a comparison of types went past 4,096 pairs");
+    throw e;
+  }
+}
+
+/** The root name of a schema that declares a variable (f17 12.4 item 2): its name, its first letter upper-cased. */
+export function variableRootName(name: string): string {
+  return /^[a-z]/.test(name) ? name[0].toUpperCase() + name.slice(1) : name;
 }
 
 export { nonnull };

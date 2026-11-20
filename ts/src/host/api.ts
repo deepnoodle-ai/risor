@@ -32,8 +32,8 @@ import { numberToText } from "../value/number.ts";
 import { declare, DEFAULT_LIMITS } from "./env.ts";
 import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected as CheckExpected, Site as InnerSite } from "../types/check.ts";
-import { depth, fromNode, printType, opaque as opaqueType, SIZE_LIMIT, typeSize } from "../types/type.ts";
-import type { Type as InnerType } from "../types/type.ts";
+import { depth, fromNode, printType, printUnfolded, opaque as opaqueType, SIZE_LIMIT, soleRef, typeSize } from "../types/type.ts";
+import type { Ref as InnerRef, Type as InnerType } from "../types/type.ts";
 import { conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import type { SchemaOption } from "../types/schema.ts";
@@ -710,10 +710,15 @@ export class Env<V = any, N = any> {
     return x.type;
   }
 
-  /** Internal: type text read against this environment's opaque and named types. Throws on bad text. */
-  typeOfText(text: string): InnerType {
+  /**
+   * Internal: type text read against this environment's opaque and named
+   * types. Throws on bad text. With `atoms`, as a case's `type` is read (f17
+   * 12.6 item 5): every name that is no opaque type is an atom.
+   */
+  typeOfText(text: string, atoms?: Map<string, InnerRef>): InnerType {
     const t = parseTypeText(text);
     if (!t.ok) throw new Error(t.message);
+    if (atoms !== undefined) return fromNode(t.node, { opaque: this.environment.opaque, atoms });
     return fromNode(t.node, { opaque: this.environment.opaque, named: this.environment.named });
   }
 
@@ -726,6 +731,13 @@ export class Env<V = any, N = any> {
     const sorted = <T>(m: Iterable<[string, T]>) => Object.fromEntries([...m].sort((a, b) => compareText(a[0], b[0])));
     const opaque: Record<string, Record<string, string>> = {};
     for (const t of [...e.opaque].sort(compareText)) opaque[t] = {};
+    // f17 12.4: each named type, and each recursive type by its name, printed by its unfolding.
+    const types = new Map<string, string>();
+    for (const [k, t] of e.named) {
+      const r = soleRef(t);
+      types.set(k, r !== null && r.name === k ? printUnfolded(t) : printType(t));
+    }
+    for (const [k, r] of e.recursive) if (!types.has(k) && r.def !== undefined) types.set(k, printType(r.def));
     for (const m of e.methods.values()) opaque[m.type][m.name] = printSignature(m.sig, e.opaque, e.named);
     for (const t of Object.keys(opaque)) opaque[t] = sorted(Object.entries(opaque[t]));
     return {
@@ -736,7 +748,7 @@ export class Env<V = any, N = any> {
       removed: [...e.removed].sort(compareText),
       reject: [...e.reject].sort(compareText),
       limits: { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth },
-      ...(e.named.size > 0 ? { types: sorted([...e.named].map(([k, t]) => [k, printType(t)])) } : {}),
+      ...(types.size > 0 ? { types: sorted(types) } : {}),
       ...(e.groups.size > 0 ? { groups: [...e.groups].sort(compareText) } : {}),
       ...(e.facts.length > 0 ? { facts: describedFacts(e.facts) } : {}),
     };
@@ -1103,7 +1115,9 @@ export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>, n
 
 // ---- Conformance (package F4, f04 7; F8, f08 6.1) --------------------------------------
 
-function conformDiagnostic(f: { template: string; params: Record<string, unknown>; path: (string | number)[] }, cls: Classifier): Diagnostic {
+export function conformDiagnostic(f: { template: string; params: Record<string, unknown>; path: (string | number)[] }, cls: Classifier): Diagnostic {
+  // f17 12.7 item 3: past the default depth limit, as the JSON text of 03 3.2 fails. No path and no span.
+  if (f.template === "depth") return { phase: "run", code: "depth-exceeded", class: "limit", message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls), trace: [] };
   const failure = new RunFailure("not-conforming", undefined, f.template, f.params as never);
   return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, cls), trace: [] };
 }
@@ -1175,7 +1189,10 @@ export function tryLoad<T = unknown>(env: Env, text: string, options: LoadOption
   const max = options.max ?? 1;
   const fs = conformAllWalk(o.value, type, env.classifier, max >= 1 ? Math.floor(max) : 1);
   if (fs.length > 0) {
-    const diagnostics = fs.map((f): InnerDiagnostic => ({ phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) }));
+    const diagnostics = fs.map((f): InnerDiagnostic => {
+      const d = conformDiagnostic(f, env.classifier);
+      return d.path === undefined ? { phase: d.phase, code: d.code, class: d.class, message: d.message } : { phase: d.phase, code: d.code, class: d.class, path: d.path, message: d.message };
+    });
     return { ok: false, step: 4, diagnostics, usage: o.usage };
   }
   // Step 5: the decode into plain data.

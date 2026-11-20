@@ -8,7 +8,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { buildEnv, childEnv, conform, conformAll, execute, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
+import { buildEnv, childEnv, conform, conformAll, conformDiagnostic, execute, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
 import type { Analysis } from "../host/api.ts";
 import { lineSpanOf } from "../host/error.ts";
 import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
@@ -17,7 +17,7 @@ import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
 import { ANY, fromNode, typeEqual } from "../types/type.ts";
-import type { Type } from "../types/type.ts";
+import type { Ref, Type } from "../types/type.ts";
 import type { SigNode } from "../types/typetext.ts";
 import { compareText, jsonString, mapGet, mapKeys, readHost } from "../value/value.ts";
 import { conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
@@ -33,7 +33,7 @@ import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
 import { complete, hover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
 import type { Classifier } from "../value/value.ts";
-import { ENTRY_POINTS_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
+import { ENTRY_POINTS_STATIC, RECURSION_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
 import { pathText, renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import type { RenderDiagnostic } from "../host/render.ts";
@@ -360,7 +360,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     const fs = conformAllWalk(o.value, loadType, env.classifier, 1);
     if (fs.length > 0) {
       const f = fs[0];
-      const d: Diagnostic = { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) };
+      const { trace: _, ...d } = conformDiagnostic(f, env.classifier) as Diagnostic & { trace?: unknown };
       return { ...done({ kind: "failure", phase: "run", diagnostics: [d], source: compiled.program.source, usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
     }
   }
@@ -752,7 +752,9 @@ function compare(c: Case, o: Outcome): Difference[] {
     if (ex.type !== undefined) {
       let same = false;
       try {
-        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOfText(ex.type), CURRENT_ENV.typeOfText(o.type));
+        // f17 12.6 item 5: a name that is no opaque type of the case is an atom, compared by its spelling.
+        const atoms = new Map<string, Ref>();
+        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOfText(ex.type, atoms), CURRENT_ENV.typeOfText(o.type, atoms));
       } catch {
         same = false;
       }
@@ -960,6 +962,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     if (basename(path) === "messages-check.json") opts = { ...opts, checkOnly: true };
     // f16 8 item 3: the cases of messages-entry-points.json run checked, with the static codes of f16 3.1 item 11.
     if (basename(path) === "messages-entry-points.json") opts = { ...opts, checkOnly: true, staticCodes: ENTRY_POINTS_STATIC };
+    // f17 8 item 5: the cases of messages-recursion.json run checked, with the static codes of suite/recursion/.
+    if (basename(path) === "messages-recursion.json") opts = { ...opts, checkOnly: true, staticCodes: RECURSION_STATIC };
     const out: Verdict[] = [];
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;

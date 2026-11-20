@@ -9,9 +9,12 @@ import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { isName, isReserved } from "../syntax/token.ts";
 import { parseEnvRecord, parseSignature, parseType } from "../types/typetext.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
-import { ANY, depth, fromNode, SIZE_LIMIT, typeSize, TypeError as TypeRuleError } from "../types/type.ts";
-import type { Type } from "../types/type.ts";
-import { SchemaError, typeOfSchema } from "../types/schema.ts";
+import { ANY, depth, fromNode, PairLimit, refsReached, refType, sameType, SIZE_LIMIT, soleRef, typeSize, TypeError as TypeRuleError } from "../types/type.ts";
+import type { Ref, Type } from "../types/type.ts";
+import { SchemaError, typeOfSchema, variableRootName } from "../types/schema.ts";
+import { resolveList } from "../types/list.ts";
+import type { ListItem } from "../types/list.ts";
+import type { TypeDiag } from "../types/resolve.ts";
 import { FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS, GROUPS, METHODS } from "../library/registry.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { opaqueNamesIn } from "./type.ts";
@@ -100,6 +103,8 @@ export interface Environment {
   opaque: Set<string>;
   /** Package F4: the named types, in the order declared, each resolved (f04 3.1). */
   named: Map<string, Type>;
+  /** Package F17: the recursive types the declarations reach, one for each name (f17 12.4). */
+  recursive: Map<string, Ref>;
   methods: Map<string, MethodDecl>; // key "Type.method"
   reject: Set<string>;
   limits: Limits;
@@ -115,6 +120,17 @@ export type DeclareResult = { ok: true; env: Environment } | { ok: false; diagno
 
 function diag(code: string, message: string): Diagnostic {
   return { phase: "declare", code, message };
+}
+
+/** Why a named type of a list fails (f17 12.2), as the message of its bad-type. */
+function listMessage(d: TypeDiag): string {
+  switch (d.code) {
+    case "undefined-name": return `${String(d.params.name)} is not a declared type`;
+    case "circular-type": return d.template === "union" ? `the reference ${String(d.params.name)} stands beside a type of its kind` : `${String(d.params.name)} is itself with no list, record or map between`;
+    case "untagged-union": return "records that form no tagged union in one type";
+    case "check-limit": return d.template === "depth" ? "a type deeper than 64" : d.template === "size" ? "a type larger than 100,000" : "a comparison of types went past 4,096 pairs";
+  }
+  return String(d.params.message ?? d.code);
 }
 
 function hasFn(t: SigNode): boolean {
@@ -137,6 +153,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     namespaces: new Set(),
     opaque: new Set(),
     named: new Map(),
+    recursive: new Map(),
     methods: new Map(),
     reject: new Set(["constant-condition"]),
     limits: { ...DEFAULT_LIMITS, ...(d.limits ?? {}) },
@@ -189,7 +206,10 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     if (env.opaque.has(name)) errs.push(diag("name-clash", `${name} is a named type and an opaque type`));
     else env.named.set(name, t);
   }
+  // Package F17: the named types form one list (f17 12.4), so a named type may name itself and any other.
   const childNamed = new Set<string>();
+  const items: ListItem[] = [];
+  const failedTypes = new Set<string>();
   for (const nt of d.types ?? []) {
     const name = nt.name;
     if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) {
@@ -201,27 +221,47 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       continue;
     }
     childNamed.add(name);
-    let t: Type;
     try {
+      if ("type" in nt) {
+        const p = parseType(nt.type);
+        if (!p.ok) throw new TypeRuleError(p.message);
+        items.push({ name, node: p.node });
+        continue;
+      }
+      let t: Type;
       if ("typeOf" in nt) {
         t = nt.typeOf;
         for (const n of opaqueNamesIn(t)) if (!env.opaque.has(n)) throw new TypeRuleError(`${n} is not a declared opaque type`);
-      } else if ("type" in nt) {
-        const p = parseType(nt.type);
-        if (!p.ok) throw new TypeRuleError(p.message);
-        t = fromNode(p.node, { opaque: env.opaque, named: env.named });
       } else {
-        t = typeOfSchema(nt.schema, nt.options ?? []);
+        // f17 12.4 item 2: a recursive root takes the named type's name.
+        t = typeOfSchema(nt.schema, nt.options ?? [], name);
       }
       if (depth(t, 70) > 64) throw new TypeRuleError("a type deeper than 64");
       if (typeSize(t) > SIZE_LIMIT) throw new TypeRuleError("a type larger than 100,000");
+      items.push({ name, fixed: t });
     } catch (e) {
       if (!(e instanceof TypeRuleError) && !(e instanceof SchemaError)) throw e;
-      env.named.delete(name);
+      failedTypes.add(name);
       errs.push(diag("bad-type", `the named type ${name}: ${e.message}`));
-      continue;
     }
-    env.named.set(name, t);
+  }
+  {
+    // f17 12.2 item 1: a name names the environment's own named type of that name; any other names a type outside.
+    const index = new Map(items.map((it, i) => [it.name, i]));
+    const outer = { opaque: env.opaque, named: new Map(env.named) };
+    const r = resolveList(items, (name) => index.get(name) ?? (failedTypes.has(name) ? null : env.opaque.has(name) || env.named.has(name) ? -1 : null), outer);
+    for (let i = 0; i < items.length; i++) {
+      const name = items[i].name;
+      const t = r.types[i];
+      if (t === undefined) {
+        // f17 12.4: each error of 12.2 is bad-type, one for each named type it fails.
+        const why = r.diagnostics[i].length > 0 ? listMessage(r.diagnostics[i][0]) : "another named type it is resolved with fails";
+        env.named.delete(name);
+        errs.push(diag("bad-type", `the named type ${name}: ${why}`));
+        continue;
+      }
+      env.named.set(name, t);
+    }
   }
 
   // A child's inherited variables: their types were given when the parent was built.
@@ -277,7 +317,8 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     env.variables.set(name, { t: "word", word: "any" });
     schemaVars.add(name);
     try {
-      env.variableTypes.set(name, typeOfSchema(decl.schema, decl.options ?? []));
+      // f17 12.4 item 2: a recursive root takes the variable's name, its first letter upper-cased.
+      env.variableTypes.set(name, typeOfSchema(decl.schema, decl.options ?? [], variableRootName(name)));
     } catch (e) {
       if (!(e instanceof SchemaError)) throw e;
       errs.push(diag("bad-type", `the schema of ${name}: ${e.message}`));
@@ -416,6 +457,39 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     } catch (e) {
       if (!(e instanceof TypeRuleError)) throw e;
       errs.push(diag("bad-type", `the expected result: ${e.message}`));
+    }
+  }
+
+  // f17 12.4: the recursive types the declarations reach. Two of one name are one type, or name-clash.
+  {
+    const reached: Ref[] = [];
+    const seen = new Set<Ref>();
+    for (const t of [...env.named.values(), ...env.variableTypes.values()]) {
+      for (const r of refsReached(t)) if (!seen.has(r)) {
+        seen.add(r);
+        reached.push(r);
+      }
+    }
+    const same = (a: Ref, b: Ref): boolean => {
+      if (a === b) return true;
+      try {
+        return sameType(refType(a), refType(b));
+      } catch (e) {
+        if (e instanceof PairLimit) return false;
+        throw e;
+      }
+    };
+    for (const r of reached) {
+      if (r.def === undefined) continue;
+      const known = env.recursive.get(r.name);
+      if (known === undefined) env.recursive.set(r.name, r);
+      else if (!same(known, r)) errs.push(diag("name-clash", `two recursive types are named ${r.name}`));
+    }
+    for (const [name, r] of env.recursive) {
+      const t = env.named.get(name);
+      if (t === undefined) continue;
+      const s = soleRef(t);
+      if (s === null || s.name !== name || !same(s, r)) errs.push(diag("name-clash", `the recursive type ${name} has the name of a named type`));
     }
   }
 

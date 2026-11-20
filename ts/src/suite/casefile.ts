@@ -195,11 +195,15 @@ export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "
 /** The static codes of suite/entry-points/ (f16 3.1 item 11): Core's, the two of a program type, and `name-clash`. */
 export const ENTRY_POINTS_STATIC: ReadonlySet<string> = new Set([...CONVERSION_STATIC, "name-clash"]);
 
+/** The static codes of suite/recursion/ and suite/messages-recursion.json (f17 8 item 5): those of F16 and `circular-type`. */
+export const RECURSION_STATIC: ReadonlySet<string> = new Set([...ENTRY_POINTS_STATIC, "circular-type"]);
+
 /** The static codes of the case files in a directory of the suite. */
 export function staticCodesOf(dirName: string): ReadonlySet<string> | undefined {
   if (dirName === "conversion" || dirName === "unions" || dirName === "facts") return CONVERSION_STATIC;
   if (dirName === "config") return CONFIG_STATIC;
   if (dirName === "entry-points") return ENTRY_POINTS_STATIC;
+  if (dirName === "recursion") return RECURSION_STATIC;
   return undefined;
 }
 

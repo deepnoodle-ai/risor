@@ -8,6 +8,8 @@
 
 import { resolveProgramType } from "../types/resolve.ts";
 import type { TypeNames } from "../types/resolve.ts";
+import { resolveList } from "../types/list.ts";
+import type { ListItem, ListResult } from "../types/list.ts";
 import type { Type } from "../types/type.ts";
 import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
@@ -245,6 +247,8 @@ class Walker {
 
   program(p: A.Program): void {
     this.push();
+    // f17 12.3 item 2: the type lines are resolved together before the walk; each line's diagnostics are reported where the walk meets it.
+    this.resolveLines(p.types);
     // f16 3.1 item 1: the type lines and the const lines in the order of the text, then the result.
     let t = 0;
     for (const c of p.consts) {
@@ -259,14 +263,51 @@ class Walker {
   /** The names of the type lines walked so far (f16 3.1 item 4). */
   private readonly typeLineNames = new Set<string>();
 
-  /** Package F16: a type line (f16 3.1 items 2 to 6). */
+  /** The type lines resolved as one list (f17 12.2), and each line's index in it. */
+  private lines: ListResult = { types: [], diagnostics: [] };
+  private readonly lineIndex = new Map<A.TypeLine, number>();
+
+  /**
+   * Package F17 (f17 12.2, 12.3): the type lines of the program as one list. A
+   * name in line i's type names the line of that name at or before i, else
+   * the first after it. A name of the environment names its type, and a line
+   * of that name is `name-clash` and names nothing; nor does a line whose type
+   * the repair supplied (f16 7.3 item 5).
+   */
+  private resolveLines(lines: A.TypeLine[]): void {
+    if (lines.length === 0) return;
+    const env = this.env.typeNames ?? NO_TYPE_NAMES;
+    const byName = new Map<string, number[]>();
+    lines.forEach((l, i) => {
+      this.lineIndex.set(l, i);
+      if (l.supplied === true) return;
+      let xs = byName.get(l.name);
+      if (xs === undefined) byName.set(l.name, (xs = []));
+      xs.push(i);
+    });
+    const lookup = (name: string, at: number): number | null => {
+      if (env.named.has(name) || env.opaque.has(name)) return -1;
+      const xs = byName.get(name);
+      if (xs === undefined) return null;
+      let best = -1;
+      for (const k of xs) if (k <= at) best = k;
+      return best >= 0 ? best : xs[0];
+    };
+    const items: ListItem[] = lines.map((l) => ({ name: l.name, node: l.type.type, spans: l.type.spans, typeSpan: l.type.span, nameSpan: l.nameSpan }));
+    this.lines = resolveList(items, lookup, env);
+  }
+
+  /** Package F16: a type line (f16 3.1 items 2 to 6), resolved with the others (f17 12.3). */
   private typeLine(l: A.TypeLine): void {
     const env = this.env.typeNames ?? NO_TYPE_NAMES;
     const clash = env.named.has(l.name) || env.opaque.has(l.name);
     if (clash) this.diag("name-clash", l.nameSpan, "default", { name: l.name });
     else if (this.typeLineNames.has(l.name)) this.diag("duplicate-name", l.nameSpan, "default", { name: l.name });
     this.typeLineNames.add(l.name);
-    const t = this.annotation(l.type);
+    const i = this.lineIndex.get(l)!;
+    for (const d of this.lines.diagnostics[i]) this.diag(d.code, d.span, d.template, d.params);
+    const t = this.lines.types[i] ?? null;
+    this.res.annTypes.set(l.type, t);
     if (clash) return;
     // A line that stands replaces an earlier line of its name (f16 3.1 item 4, R240); one whose type has a
     // diagnostic declares nothing, nor one whose type the repair supplied (f16 7.3 item 5).

@@ -8,6 +8,7 @@
 //   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
 //   suite/messages-parse.json and messages-check.json join it too (package F8, f08 3.1)
 //   suite/messages-entry-points.json joins it as F7's file does, and adds a code (package F16, f16 9.1)
+//   suite/messages-recursion.json joins it the same way (package F17, f17 9)
 // Run with `npm run generate`. A test fails when the generated files are stale.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -39,15 +40,18 @@ export function generated(): Record<string, string> {
     Object.assign(c.templates, e.templates as object);
   }
   // f16 9.1: an entry of a code another file has adds templates to it, as F7's do; a new code is added whole.
-  for (const e of JSON.parse(readFileSync(join(suite, "messages-entry-points.json"), "utf8")) as Record<string, unknown>[]) {
-    const c = catalog.find((x) => x.code === e.code);
-    if (c === undefined) {
-      catalog.push({ code: e.code, phase: e.phase, caught: null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string> });
-      continue;
+  // f17 9: F17's catalog file joins it the same way.
+  for (const f of ["messages-entry-points.json", "messages-recursion.json"]) {
+    for (const e of JSON.parse(readFileSync(join(suite, f), "utf8")) as Record<string, unknown>[]) {
+      const c = catalog.find((x) => x.code === e.code);
+      if (c === undefined) {
+        catalog.push({ code: e.code, phase: e.phase, caught: null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string> });
+        continue;
+      }
+      for (const t of Object.keys(e.templates as object)) if (t in c.templates) throw new Error(`${f}: ${String(e.code)} has the template ${t} already`);
+      Object.assign(c.params, e.params as object);
+      Object.assign(c.templates, e.templates as object);
     }
-    for (const t of Object.keys(e.templates as object)) if (t in c.templates) throw new Error(`messages-entry-points.json: ${String(e.code)} has the template ${t} already`);
-    Object.assign(c.params, e.params as object);
-    Object.assign(c.templates, e.templates as object);
   }
   const library = JSON.parse(readFileSync(join(suite, "library.json"), "utf8")) as Record<string, unknown>[];
   const records = library.map((e) => {

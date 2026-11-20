@@ -299,8 +299,10 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
         }
         return {
           issues: fs.map((f) => ({
-            message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls),
-            path: f.path,
+            // f17 12.7 item 3: past the default depth limit, depth-exceeded with no path.
+            ...(f.template === "depth"
+              ? { message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls) }
+              : { message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls), path: f.path }),
           })),
         };
       },
@@ -445,18 +447,12 @@ export function join<A, B>(a: Type<A>, b: Type<B>): Type<A | B> {
 /** Internal: the opaque type names a type mentions. */
 export function opaqueNamesIn(t: T.Type): Set<string> {
   const out = new Set<string>();
-  const seen = new Set<object>();
-  const walk = (x: T.Type): void => {
-    if (T.isAny(x) || seen.has(x)) return;
-    seen.add(x);
-    for (const n of x.opaque ?? []) out.add(n);
-    if (x.list) walk(x.list);
-    const recs = x.union ? [...x.union.variants, x.map!] : x.map ? [x.map] : [];
-    for (const r of recs) {
-      for (const f of r.fields.values()) walk(f.type);
-      walk(r.rest);
+  // Every part, and the definitions of the references reached (f17 12.4), with an explicit stack.
+  T.someReachable(t, (x) => {
+    if (!T.isAny(x)) {
+      for (const n of x.opaque ?? []) out.add(n);
     }
-  };
-  walk(t);
+    return false;
+  });
   return out;
 }

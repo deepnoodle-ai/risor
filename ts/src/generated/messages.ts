@@ -1156,7 +1156,8 @@ export const CATALOG: CatalogEntry[] = [
       "nesting": "checking this use of {name} passes 100 levels of expanded nesting",
       "bodies": "the program checks more than 1000 lambda bodies",
       "depth": "the type here is more than 64 levels deep",
-      "size": "the type here has more than 100000 parts"
+      "size": "the type here has more than 100000 parts",
+      "pairs": "comparing the types here takes more than 4096 pairs of types"
     }
   },
   {
@@ -1272,6 +1273,18 @@ export const CATALOG: CatalogEntry[] = [
     },
     "templates": {
       "default": "{name} is a type of the environment, and a type line cannot declare it again"
+    }
+  },
+  {
+    "code": "circular-type",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "direct": "{name} refers to itself outside any list, map or record",
+      "union": "{name} shares a kind with another type of its union; give the union a type line of its own"
     }
   }
 ];
