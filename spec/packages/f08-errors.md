@@ -753,6 +753,7 @@ The parameters of each code, with their kinds:
 | `cannot-infer` | `name` (word) |
 | `check-limit` | `name` (word) |
 | `duplicate-case` | `text` (text) |
+| `recursion-needs-types` | `name` (word) |
 | `non-exhaustive` | `type` (type) |
 | `result-mismatch` | `expected` (type), `found` (type), `key` (string) |
 | `unchecked` | `text` (text) |

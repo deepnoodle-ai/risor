@@ -575,7 +575,7 @@ trimmed D54 to D56 and settled D57 and D58. These rulings record what follows.
 Each lands with the track of `14` 5.3 that it names. R214 to R221 record
 track B as built, R222 to R231 step E0 of track E, and R232 to R246 slice D1.
 R240 to R246 were made when the three implementations of slice D1 were
-compared.
+compared, and R258 and R259 when its pull request was reviewed.
 
 | # | Ruling |
 | --- | --- |
@@ -623,4 +623,6 @@ compared.
 | R244 | **Comments at an annotation.** A comment after the `:` stays there, since the `:` is a kept token. An annotation is part of its parameter, so the trailing comments of its last token go after the parameter's comma. A parameter of a function type is as a field of a program type: its trailing comments go after its comma (F16 7.1 items 1, 3 and 4; F12 2.12 item 5). Go broke the first two, TypeScript the third, and TypeScript also kept the comment before the comma of a record type's field, against F12 2.12 item 5; `suite/tools/format-comments.json` now has that case. |
 | R245 | **A hover on the name of a `const`-bound lambda that is not a call's name has the kind `lambda` and no type.** F12 3.13 had a row only for the name of a `Call`. As a lambda argument, `[1].map(f)`, and where a value is needed, `[f]`, the bindings gave three answers: `name`, `lambda` and no hover. A lambda is not a value, so the type is null; the declaration is the name in its `const` line. |
 | R246 | **The `outcome` command writes `description` for a case with `types` too.** F4 9.5 says so; `suite/README.md` named only `schemas`, and Rust followed the README. The README is corrected. |
+| R258 | **A predicate whose first parameter has a default narrows nothing** (`05-types.md` 13.8). A default takes the place of a null element, so the body tests the default and not the element: `xs.filter((x = 1) => x != null)` keeps a null, and its type is that of `xs`. 13.8 named only a pattern, `_` and no parameter, and read to the letter it narrowed here. Go did not narrow; TypeScript and Rust did, also for an annotated parameter, so a checked `xs.filter((x = 1) => x != null).map(y => y + 1)` failed with `null-operand` at no site. The pull request's review found it. The number follows R257, which step E1 took first. |
+| R259 | **A hover on the name of a `name-clash` type line gives the environment's type also when the repair supplied the line's type** (F16 7.3 items 2 and 5). Item 5 said only that such a line declares nothing and has no hover; its examples have no type of that name in the environment. Rust gave no hover. |
 

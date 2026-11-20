@@ -369,7 +369,7 @@ names. `cmd/risor-bind` is an optional follow-up. `05-host-api.md` B.4 to
 B.7 already say that Part E replaced them.
 
 **Track D1: annotations, `type` lines and the syntax of an `Fn` parameter**
-(F16, first slice; `17` 3.1, 3.2, 3.4). **Done (R232 to R246),** in all three
+(F16, first slice; `17` 3.1, 3.2, 3.4). **Done (R232 to R246, R258, R259),** in all three
 implementations.
 
 - The grammar of `17` 3.1: type lines with names of two characters or more;

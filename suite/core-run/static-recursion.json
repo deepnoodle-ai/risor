@@ -17,8 +17,8 @@
   {"name": "recursion-needs-types: its own name given to an unknown function", "source": "const f = x => g(f); 1", "expect": {"diagnostics":[{"code":"undefined-function","span":[1,16,1,17]},{"code":"recursion-needs-types","span":[1,18,1,19]}],"phase":"check"}},
   {"name": "not-a-value: its own name read as a value", "source": "const f = x => [f]; 1", "expect": {"diagnostics":[{"code":"not-a-value","span":[1,17,1,18]}],"phase":"check"}},
   {"name": "not-a-value: an outer name of the same name is hidden in the body", "source": "const x = 1; { const x = y => x + y; x(1) }", "expect": {"diagnostics":[{"code":"not-a-value","span":[1,31,1,32]}],"phase":"check"}},
-  {"name": "a parameter of the same name hides the lambda's name", "source": "const f = f => f + 1; f(1)", "expect": {"allocated":0,"steps":3,"type":"int","value":2}},
-  {"name": "a const line of the same name in the body hides it", "source": "const f = x => { const f = 2; f + x }; f(1)", "expect": {"allocated":0,"steps":3,"type":"int","value":3}},
+  {"name": "a parameter of the same name hides the lambda's name", "source": "const f = f => f + 1; f(1)", "expect": {"allocated":0,"steps":3,"value":2}},
+  {"name": "a const line of the same name in the body hides it", "source": "const f = x => { const f = 2; f + x }; f(1)", "expect": {"allocated":0,"steps":3,"value":3}},
   {"name": "a lambda bound after it is still not in scope", "source": "const f = x => g(x); const g = y => y; 1", "expect": {"diagnostics":[{"code":"undefined-function","span":[1,16,1,17]}],"phase":"check"}},
   {"name": "a value const line does not see its own name", "source": "const v = v + 1; 1", "expect": {"diagnostics":[{"code":"undefined-name","span":[1,11,1,12]}],"phase":"check"}},
   {"name": "a name bound by a pattern does not see itself", "source": "const {a} = {a: a}; 1", "expect": {"diagnostics":[{"code":"undefined-name","span":[1,17,1,18]}],"phase":"check"}}

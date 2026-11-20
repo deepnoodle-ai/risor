@@ -1135,7 +1135,7 @@ section that is about two entries by name: the list methods `T[].filter` and
 
 | Matter | Rule |
 | --- | --- |
-| When | The lambda argument's first parameter is a name, x. With a pattern there, or no parameter, nothing is narrowed. |
+| When | The lambda argument's first parameter is a name, x, with no default. With a pattern there, a default, or no parameter, nothing is narrowed (R258). |
 | The narrowed type N | The type an `Ident` x has under the true facts of the body (2.8), with x bound to the element type. It is the element type itself when no such fact is about x. |
 | The result | For `filter`, `N[]` in place of `T[]`. For `find`, `N \| null` in place of `T \| null`. |
 | Which facts reach x | A fact about the path x: not null, conforms, does not conform. A not-null fact about a longer path, such as `x?.note`, says that x is not null, by the prefix rule. |
