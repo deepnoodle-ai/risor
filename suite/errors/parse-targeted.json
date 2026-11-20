@@ -2470,6 +2470,63 @@
   }
  },
  {
+  "name": "unexpected-token: true is no name, so its : in parentheses is not type-annotation",
+  "source": "(true: int) => 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "unexpected :"
+    }
+   ]
+  }
+ },
+ {
+  "name": "unexpected-token: null and a : in parentheses",
+  "source": "(null: int) => 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "unexpected :"
+    }
+   ]
+  }
+ },
+ {
+  "name": "unexpected-token: false and a : at the end of the text",
+  "source": "(false:",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "unexpected :"
+    }
+   ]
+  }
+ },
+ {
   "name": "typeof-operator: after ==",
   "source": "typeof x == \"string\"",
   "expect": {
