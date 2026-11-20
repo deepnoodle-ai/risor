@@ -483,7 +483,7 @@ others' text:
 | Run codes and run templates | None: 19 codes, 64 templates |
 | Check codes | `recursion-needs-types` (Core: 27 become 28) and `bad-export` (F16). The catalog's 29 become 31 |
 | Static codes (`05-types.md` 16.1, 22.1) | The same two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation) |
-| Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`): 71 become 81. F17 adds 5 more (`spec/packages/f17-recursion.md` 13.5), and F16's `fn-value` retires |
+| Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`): 71 become 81. F17 adds 5 more (`spec/packages/f17-recursion.md` 13.5), and F16's `fn-value` retires. That row counts planned templates. As built with step E3, the catalogs hold 78: 72 in Core's, 1 in F16's and 5 in F17's (`14` 5.3 row E3) |
 | Parse codes | 2 (F19: `async-await`, `statement-sequence`), with 4 templates: 58 become 60, and 97 templates 101. `type-annotation`, `type-declaration` and `export-statement` narrow and change their text, by my reading with no change of count (`17` 3.1) |
 | Declare codes | 2 (F16: `no-result`, `no-input-record`), beside the 9 of Core |
 | Reserved namespaces | 1 (`regexp`) |

@@ -477,6 +477,7 @@ func (c *checker) callLambda(n syntax.Node, l *syntax.Lambda, args []syntax.Node
 func (c *checker) fitParam(p *syntax.Param, a syntax.Node, t *types.Type, name string) {
 	switch {
 	case p.Fn != nil:
+		// Nothing to fit: the static rules already report this argument.
 	case p.Type != nil:
 		want, ok := c.res.AnnTypes[p.Type]
 		if !ok {
