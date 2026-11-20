@@ -1037,13 +1037,20 @@ func (a *assist) typesContext(hole syntax.Span) []Candidate {
 		names[n] = true
 	}
 	if a.prog != nil {
+		// In the type of a type line, every type line is a candidate, its
+		// own and the later ones too: they are resolved as one list (F17
+		// 12.6).
+		inLine := false
 		for _, t := range a.prog.Types {
-			// A line that ends before the hole. The repair's tokens stand at
-			// the hole, so a line whose type is the hole, as in "type Pair
-			// = ‸", may end there too: it is not a candidate in its own type
-			// (F16 7.2 item 1).
-			inType := t.Type.Span.Start <= hole.Start && hole.End <= t.Type.Span.End
-			if t.Span.End <= hole.Start && !inType {
+			if t.Type.Span.Start <= hole.Start && hole.End <= t.Type.Span.End {
+				inLine = true
+			}
+		}
+		for _, t := range a.prog.Types {
+			// Elsewhere, a line that ends before the hole. The repair's
+			// tokens stand at the hole, so a line whose type is the hole
+			// may end there too (F16 7.2 item 1).
+			if inLine || t.Span.End <= hole.Start {
 				names[t.Name] = true
 			}
 		}
@@ -1313,16 +1320,16 @@ func (a *assist) hover(word syntax.Span) *Hover {
 	// A type name of a program type, or the name of a type line (F16 7.3).
 	for _, t := range a.prog.Types {
 		if t.NameSpan == word {
-			return a.typeHover(t.Name, t, word.Start, sp)
+			return a.typeHover(t.Name, t, nil, word.Start, sp)
 		}
-		if out = a.typeNameHover(t.Type, word, sp); out != nil {
+		if out = a.typeNameHover(t.Type, t, word, sp); out != nil {
 			return out
 		}
 	}
 	ptypes := func(pts ...*syntax.PType) {
 		for _, pt := range pts {
 			if out == nil {
-				out = a.typeNameHover(pt, word, sp)
+				out = a.typeNameHover(pt, nil, word, sp)
 			}
 		}
 	}
@@ -1424,8 +1431,9 @@ func (a *assist) hover(word syntax.Span) *Hover {
 }
 
 // typeNameHover is the hover record of a type name of a program type at
-// the word, or nil (F16 7.3).
-func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hover {
+// the word, or nil (F16 7.3). in is the type line whose type pt is part
+// of, or nil.
+func (a *assist) typeNameHover(pt *syntax.PType, in *syntax.TypeLine, word syntax.Span, sp Span) *Hover {
 	if pt == nil {
 		return nil
 	}
@@ -1434,19 +1442,19 @@ func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hov
 		switch p.Kind {
 		case syntax.PName:
 			if p.Span == word {
-				return a.typeHover(p.Text, nil, p.Span.Start, sp)
+				return a.typeHover(p.Text, nil, in, p.Span.Start, sp)
 			}
 		case syntax.PMap, syntax.PParen:
-			if h := a.typeNameHover(p.Elem, word, sp); h != nil {
+			if h := a.typeNameHover(p.Elem, in, word, sp); h != nil {
 				return h
 			}
 		case syntax.PRecord:
 			for _, f := range p.Fields {
-				if h := a.typeNameHover(f.Type, word, sp); h != nil {
+				if h := a.typeNameHover(f.Type, in, word, sp); h != nil {
 					return h
 				}
 			}
-			if h := a.typeNameHover(p.Rest, word, sp); h != nil {
+			if h := a.typeNameHover(p.Rest, in, word, sp); h != nil {
 				return h
 			}
 		}
@@ -1459,18 +1467,41 @@ func (a *assist) typeNameHover(pt *syntax.PType, word syntax.Span, sp Span) *Hov
 // the declaration; else the environment's named or opaque type, with no
 // declaration. own is the type line whose name the word is, or nil. A name
 // nothing declares has no hover, nor has a line whose type the repair
-// supplied (F16 7.3).
-func (a *assist) typeHover(name string, own *syntax.TypeLine, at int, sp Span) *Hover {
+// supplied (F16 7.3). In the type of a type line, in, a name is that of the
+// last line of the name at or before in, else the first after it (F17
+// 12.2). A recursive type's record has its unfolding (F17 12.6).
+func (a *assist) typeHover(name string, own, in *syntax.TypeLine, at int, sp Span) *Hover {
 	h := &Hover{Kind: "type", Span: sp}
 	line := own
-	if own == nil {
+	env := a.names.Types
+	clash := func(t *syntax.TypeLine) bool {
+		return env != nil && (env.Opaque[t.Name] || env.Named[t.Name] != nil)
+	}
+	switch {
+	case own != nil:
+	case in != nil:
+		after := false
+		for _, t := range a.prog.Types {
+			if t == in {
+				after = true
+			}
+			if t.Name != name || clash(t) {
+				continue
+			}
+			if !after || t == in {
+				line = t
+			} else if line == nil {
+				line = t
+				break
+			}
+		}
+	default:
 		for _, t := range a.prog.Types {
 			if t.Name == name && t.Span.End <= at {
 				line = t
 			}
 		}
 	}
-	env := a.names.Types
 	if line != nil {
 		if env != nil && (env.Opaque[name] || env.Named[name] != nil) {
 			line = nil // name-clash: the environment's type stands
@@ -1485,11 +1516,11 @@ func (a *assist) typeHover(name string, own *syntax.TypeLine, at int, sp Span) *
 		if !ok {
 			return nil
 		}
-		h.Type = printed(t)
+		h.Type = printed(types.Unfold(t))
 		d := a.span(line.NameSpan.Start, line.NameSpan.End)
 		h.Declaration = &d
 	case env != nil && env.Named[name] != nil:
-		h.Type = printed(env.Named[name])
+		h.Type = printed(types.Unfold(env.Named[name]))
 	case env != nil && env.Opaque[name]:
 		h.Type = printed(types.Opaque(name))
 	default:

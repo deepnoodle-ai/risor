@@ -519,7 +519,7 @@ func (e *Env) Describe() ([]byte, error) {
 		return fmt.Sprint(n)
 	}
 	top := []string{"functions", "limits", "opaque", "reject", "removed", "variables", "version"}
-	if len(e.namedTypes) > 0 { // F4 8: only when a named type exists
+	if len(e.namedTypes) > 0 || len(e.recTypes) > 0 { // F4 8: only when a named type exists; F17 12.4
 		top = []string{"functions", "limits", "opaque", "reject", "removed", "types", "variables", "version"}
 	}
 	if len(e.groups) > 0 { // F6 2.7: only when a group is on
@@ -564,11 +564,19 @@ func (e *Env) Describe() ([]byte, error) {
 		case "groups":
 			arr(e.groupList())
 		case "types":
+			// F17 12.4: a recursive type, a named type's or one a schema or
+			// TypeOf made, is listed by its name with its unfolding.
 			tn := map[string]bool{}
-			for n := range e.namedTypes {
+			text := map[string]string{}
+			for n, t := range e.namedTypes {
 				tn[n] = true
+				text[n] = t.String()
 			}
-			obj(sorted(tn), func(n string) { w(value.QuoteJSON(e.namedTypes[n].String())) })
+			for _, r := range e.recTypes {
+				tn[r.Name] = true
+				text[r.Name] = r.Def().String()
+			}
+			obj(sorted(tn), func(n string) { w(value.QuoteJSON(text[n])) })
 		case "version":
 			w(value.QuoteJSON(e.version))
 		}
@@ -792,7 +800,7 @@ func FromDescription(data []byte) (Decl, error) {
 		}
 		decls = append(decls, Groups(gl...))
 	}
-	if hasTypes { // F4 8 item 3: each by type text; no text names another
+	if hasTypes { // F4 8 item 3: each by type text; F17 12.4: a text may name another
 		tm, ok := strMap("types", d["types"])
 		if !ok {
 			return bad("types")

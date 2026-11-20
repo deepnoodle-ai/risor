@@ -368,3 +368,53 @@ func SetDefs(ns []*Named, defs []*Type) (*Named, bool) {
 	}
 	return nil, false
 }
+
+// RecNames are the recursive names that ts reach, at any depth and through
+// the definitions, each once, in the order met.
+func RecNames(ts ...*Type) []*Named {
+	var out []*Named
+	seen := visited{}
+	done := map[*Type]bool{}
+	var walk func(t *Type)
+	walk = func(t *Type) {
+		if t == nil || t.any || done[t] {
+			return
+		}
+		done[t] = true
+		for _, n := range t.refs {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, n)
+				if n.def != nil {
+					walk(n.def)
+				}
+			}
+		}
+		if t.list != nil {
+			walk(t.list)
+		}
+		for _, r := range ownVariants(t) {
+			for _, f := range r.Fields {
+				walk(f.Type)
+			}
+			walk(r.Rest)
+		}
+	}
+	for _, t := range ts {
+		walk(t)
+	}
+	return out
+}
+
+// SameDef reports whether two recursive names stand for one type: the
+// same structure, coinductively (12.4).
+func SameDef(a, b *Named) bool {
+	if a == b {
+		return true
+	}
+	ok := false
+	if Guard(func() { ok = Equal(Ref(a), Ref(b)) }) {
+		return false
+	}
+	return ok
+}

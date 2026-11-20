@@ -176,6 +176,72 @@ func (e *Env) typeEnv() {
 		}
 		e.methodSigs[tn] = ms
 	}
+	e.recNames()
+}
+
+// recNames collects the recursive types the environment's declarations
+// reach: those of its named types, variables and signatures (F17 12.4).
+// Two that are not one type may not share a name, and none may take the
+// name of a named type of another type: name-clash. The description lists
+// each in types.
+func (e *Env) recNames() {
+	var ts []*types.Type
+	for _, n := range sortedTypeKeys(e.namedTypes) {
+		ts = append(ts, e.namedTypes[n])
+	}
+	for _, n := range sortedTypeKeys(e.varTypes) {
+		ts = append(ts, e.varTypes[n])
+	}
+	sigTypes := func(s *types.Sig) {
+		for _, p := range s.Params {
+			ts = append(ts, p.Type)
+		}
+		ts = append(ts, s.Result)
+	}
+	for _, n := range sortedSigKeys(e.hostSigs) {
+		sigTypes(e.hostSigs[n])
+	}
+	for _, tn := range sortedSigMapKeys(e.methodSigs) {
+		for _, m := range sortedSigKeys(e.methodSigs[tn]) {
+			sigTypes(e.methodSigs[tn][m])
+		}
+	}
+	e.recTypes = nil
+	byName := map[string]*types.Named{}
+	for _, n := range types.RecNames(ts...) {
+		if m, ok := byName[n.Name]; ok {
+			if !types.SameDef(m, n) {
+				e.errf(diag.CodeNameClash, fmt.Sprintf("two recursive types are named %s", n.Name))
+			}
+			continue
+		}
+		byName[n.Name] = n
+		if t, ok := e.namedTypes[n.Name]; ok {
+			if r := t.Refs(); !(len(r) == 1 && types.Equal(t, types.Ref(r[0])) && types.SameDef(r[0], n)) {
+				e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s and the named type %s are not one type", n.Name, n.Name))
+				continue
+			}
+		}
+		e.recTypes = append(e.recTypes, n)
+	}
+}
+
+func sortedSigKeys(m map[string]*types.Sig) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedSigMapKeys(m map[string]map[string]*types.Sig) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // expected reads the expected result of the options.
@@ -397,6 +463,9 @@ type envTypes struct {
 	varTypes   map[string]*types.Type
 	hostSigs   map[string]*types.Sig
 	methodSigs map[string]map[string]*types.Sig
+	// recTypes are the recursive types the declarations reach, one for
+	// each name (F17 12.4).
+	recTypes []*types.Named
 }
 
 // staticNames are the names the static rules read (05-types.md 22.2),
