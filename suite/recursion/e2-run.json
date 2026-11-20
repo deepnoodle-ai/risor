@@ -1,0 +1,1355 @@
+[
+ {
+  "name": "use 1: a tree written in the program",
+  "source": "type Node = {name: string, size: int, children: Node[]}; const total = (n: Node): int => n.size + n.children.map(total).sum(); const tree: Node = {name: \"a\", size: 1, children: [{name: \"b\", size: 2, children: []}, {name: \"c\", size: 3, children: [{name: \"d\", size: 4, children: []}]}]}; total(tree)",
+  "expect": {
+   "type": "int",
+   "value": 10,
+   "steps": 31,
+   "allocated": 42
+  }
+ },
+ {
+  "name": "use 1: a tree of the environment",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{name: string, size: int, children: Node[]}"
+   }
+  ],
+  "env": "{tree: Node}",
+  "vars": {
+   "tree": {
+    "name": "a",
+    "size": 1,
+    "children": [
+     {
+      "name": "b",
+      "size": 2,
+      "children": []
+     },
+     {
+      "name": "c",
+      "size": 3,
+      "children": [
+       {
+        "name": "d",
+        "size": 4,
+        "children": []
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "source": "const total = (n: Node): int => n.size + n.children.map(total).sum(); total(tree)",
+  "expect": {
+   "type": "int",
+   "value": 10,
+   "steps": 31,
+   "allocated": 7
+  }
+ },
+ {
+  "name": "use 5: two types that name each other",
+  "source": "type Dir = {name: string, files: File[], dirs: Dir[]}; type File = {name: string, parent: Dir | null}; const count = (d: Dir): int => len(d.files) + d.dirs.map(count).sum(); const root: Dir = {name: \"r\", files: [{name: \"f\", parent: null}], dirs: [{name: \"s\", files: [{name: \"g\", parent: null}, {name: \"h\", parent: null}], dirs: []}]}; count(root)",
+  "expect": {
+   "type": "int",
+   "value": 3
+  }
+ },
+ {
+  "name": "a value of a recursive type",
+  "source": "type Tree = {kids: Tree[]}; const t: Tree = {kids: [{kids: []}]}; t",
+  "expect": {
+   "type": "Tree",
+   "value": {
+    "kids": [
+     {
+      "kids": []
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "Json",
+  "source": "type Json = null | bool | float | string | Json[] | map<Json>; const j: Json = {a: [1, \"x\", null, {b: true}]}; j",
+  "expect": {
+   "type": "Json",
+   "value": {
+    "a": [
+     1,
+     "x",
+     null,
+     {
+      "b": true
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a tagged union of expressions",
+  "source": "type Expr = {k: \"num\", v: float} | {k: \"add\", l: Expr, r: Expr}; const ev = (e: Expr): float => match e.k { \"num\" => e.v, \"add\" => ev(e.l) + ev(e.r) }; ev({k: \"add\", l: {k: \"num\", v: 1}, r: {k: \"add\", l: {k: \"num\", v: 2}, r: {k: \"num\", v: 3}}})",
+  "expect": {
+   "type": "float",
+   "value": 6
+  }
+ },
+ {
+  "name": "as follows the data",
+  "source": "type Tree = {kids: Tree[]}; (blob as Tree).kids",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kids": [
+         {
+          "kids": []
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "type": "Tree[]",
+   "value": [
+    {
+     "kids": [
+      {
+       "kids": [
+        {
+         "kids": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "steps": 9,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "as fails deep in the data",
+  "source": "type Node = {name: string, size: int, children: Node[]}; (blob as Node).name",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "name": "a",
+    "size": 1,
+    "children": [
+     {
+      "name": "b",
+      "size": 2,
+      "children": [
+       {
+        "name": 1,
+        "size": 3,
+        "children": []
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "not-conforming",
+     "path": [
+      "children",
+      0,
+      "children",
+      0,
+      "name"
+     ],
+     "message": "expected string, found 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failure prints a recursive type by its name",
+  "source": "type Tree = {kids: Tree[]}; (blob as Tree).kids",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "kids": [
+     5
+    ]
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "not-conforming",
+     "path": [
+      "kids",
+      0
+     ],
+     "message": "expected Tree, found 5"
+    }
+   ]
+  }
+ },
+ {
+  "name": "is follows the data",
+  "source": "type Tree = {kids: Tree[]}; [a is Tree, b is Tree]",
+  "env": "{a: any, b: any}",
+  "vars": {
+   "a": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kids": []
+       }
+      ]
+     }
+    ]
+   },
+   "b": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kid": []
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "type": "bool[]",
+   "value": [
+    true,
+    false
+   ],
+   "steps": 12,
+   "allocated": 3
+  }
+ },
+ {
+  "name": "as at the depth limit: 100 nodes, 200 levels",
+  "source": "type Tree = {kids: Tree[]}; len((blob as Tree).kids)",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kids": [
+         {
+          "kids": [
+           {
+            "kids": [
+             {
+              "kids": [
+               {
+                "kids": [
+                 {
+                  "kids": [
+                   {
+                    "kids": [
+                     {
+                      "kids": [
+                       {
+                        "kids": [
+                         {
+                          "kids": [
+                           {
+                            "kids": [
+                             {
+                              "kids": [
+                               {
+                                "kids": [
+                                 {
+                                  "kids": [
+                                   {
+                                    "kids": [
+                                     {
+                                      "kids": [
+                                       {
+                                        "kids": [
+                                         {
+                                          "kids": [
+                                           {
+                                            "kids": [
+                                             {
+                                              "kids": [
+                                               {
+                                                "kids": [
+                                                 {
+                                                  "kids": [
+                                                   {
+                                                    "kids": [
+                                                     {
+                                                      "kids": [
+                                                       {
+                                                        "kids": [
+                                                         {
+                                                          "kids": [
+                                                           {
+                                                            "kids": [
+                                                             {
+                                                              "kids": [
+                                                               {
+                                                                "kids": [
+                                                                 {
+                                                                  "kids": [
+                                                                   {
+                                                                    "kids": [
+                                                                     {
+                                                                      "kids": [
+                                                                       {
+                                                                        "kids": [
+                                                                         {
+                                                                          "kids": [
+                                                                           {
+                                                                            "kids": [
+                                                                             {
+                                                                              "kids": [
+                                                                               {
+                                                                                "kids": [
+                                                                                 {
+                                                                                  "kids": [
+                                                                                   {
+                                                                                    "kids": [
+                                                                                     {
+                                                                                      "kids": [
+                                                                                       {
+                                                                                        "kids": [
+                                                                                         {
+                                                                                          "kids": [
+                                                                                           {
+                                                                                            "kids": [
+                                                                                             {
+                                                                                              "kids": [
+                                                                                               {
+                                                                                                "kids": [
+                                                                                                 {
+                                                                                                  "kids": [
+                                                                                                   {
+                                                                                                    "kids": [
+                                                                                                     {
+                                                                                                      "kids": [
+                                                                                                       {
+                                                                                                        "kids": [
+                                                                                                         {
+                                                                                                          "kids": [
+                                                                                                           {
+                                                                                                            "kids": [
+                                                                                                             {
+                                                                                                              "kids": [
+                                                                                                               {
+                                                                                                                "kids": [
+                                                                                                                 {
+                                                                                                                  "kids": [
+                                                                                                                   {
+                                                                                                                    "kids": [
+                                                                                                                     {
+                                                                                                                      "kids": [
+                                                                                                                       {
+                                                                                                                        "kids": [
+                                                                                                                         {
+                                                                                                                          "kids": [
+                                                                                                                           {
+                                                                                                                            "kids": [
+                                                                                                                             {
+                                                                                                                              "kids": [
+                                                                                                                               {
+                                                                                                                                "kids": [
+                                                                                                                                 {
+                                                                                                                                  "kids": [
+                                                                                                                                   {
+                                                                                                                                    "kids": [
+                                                                                                                                     {
+                                                                                                                                      "kids": [
+                                                                                                                                       {
+                                                                                                                                        "kids": [
+                                                                                                                                         {
+                                                                                                                                          "kids": [
+                                                                                                                                           {
+                                                                                                                                            "kids": [
+                                                                                                                                             {
+                                                                                                                                              "kids": [
+                                                                                                                                               {
+                                                                                                                                                "kids": [
+                                                                                                                                                 {
+                                                                                                                                                  "kids": [
+                                                                                                                                                   {
+                                                                                                                                                    "kids": [
+                                                                                                                                                     {
+                                                                                                                                                      "kids": [
+                                                                                                                                                       {
+                                                                                                                                                        "kids": [
+                                                                                                                                                         {
+                                                                                                                                                          "kids": [
+                                                                                                                                                           {
+                                                                                                                                                            "kids": [
+                                                                                                                                                             {
+                                                                                                                                                              "kids": [
+                                                                                                                                                               {
+                                                                                                                                                                "kids": [
+                                                                                                                                                                 {
+                                                                                                                                                                  "kids": [
+                                                                                                                                                                   {
+                                                                                                                                                                    "kids": [
+                                                                                                                                                                     {
+                                                                                                                                                                      "kids": [
+                                                                                                                                                                       {
+                                                                                                                                                                        "kids": [
+                                                                                                                                                                         {
+                                                                                                                                                                          "kids": [
+                                                                                                                                                                           {
+                                                                                                                                                                            "kids": [
+                                                                                                                                                                             {
+                                                                                                                                                                              "kids": [
+                                                                                                                                                                               {
+                                                                                                                                                                                "kids": [
+                                                                                                                                                                                 {
+                                                                                                                                                                                  "kids": [
+                                                                                                                                                                                   {
+                                                                                                                                                                                    "kids": [
+                                                                                                                                                                                     {
+                                                                                                                                                                                      "kids": [
+                                                                                                                                                                                       {
+                                                                                                                                                                                        "kids": [
+                                                                                                                                                                                         {
+                                                                                                                                                                                          "kids": [
+                                                                                                                                                                                           {
+                                                                                                                                                                                            "kids": [
+                                                                                                                                                                                             {
+                                                                                                                                                                                              "kids": [
+                                                                                                                                                                                               {
+                                                                                                                                                                                                "kids": [
+                                                                                                                                                                                                 {
+                                                                                                                                                                                                  "kids": [
+                                                                                                                                                                                                   {
+                                                                                                                                                                                                    "kids": [
+                                                                                                                                                                                                     {
+                                                                                                                                                                                                      "kids": [
+                                                                                                                                                                                                       {
+                                                                                                                                                                                                        "kids": [
+                                                                                                                                                                                                         {
+                                                                                                                                                                                                          "kids": []
+                                                                                                                                                                                                         }
+                                                                                                                                                                                                        ]
+                                                                                                                                                                                                       }
+                                                                                                                                                                                                      ]
+                                                                                                                                                                                                     }
+                                                                                                                                                                                                    ]
+                                                                                                                                                                                                   }
+                                                                                                                                                                                                  ]
+                                                                                                                                                                                                 }
+                                                                                                                                                                                                ]
+                                                                                                                                                                                               }
+                                                                                                                                                                                              ]
+                                                                                                                                                                                             }
+                                                                                                                                                                                            ]
+                                                                                                                                                                                           }
+                                                                                                                                                                                          ]
+                                                                                                                                                                                         }
+                                                                                                                                                                                        ]
+                                                                                                                                                                                       }
+                                                                                                                                                                                      ]
+                                                                                                                                                                                     }
+                                                                                                                                                                                    ]
+                                                                                                                                                                                   }
+                                                                                                                                                                                  ]
+                                                                                                                                                                                 }
+                                                                                                                                                                                ]
+                                                                                                                                                                               }
+                                                                                                                                                                              ]
+                                                                                                                                                                             }
+                                                                                                                                                                            ]
+                                                                                                                                                                           }
+                                                                                                                                                                          ]
+                                                                                                                                                                         }
+                                                                                                                                                                        ]
+                                                                                                                                                                       }
+                                                                                                                                                                      ]
+                                                                                                                                                                     }
+                                                                                                                                                                    ]
+                                                                                                                                                                   }
+                                                                                                                                                                  ]
+                                                                                                                                                                 }
+                                                                                                                                                                ]
+                                                                                                                                                               }
+                                                                                                                                                              ]
+                                                                                                                                                             }
+                                                                                                                                                            ]
+                                                                                                                                                           }
+                                                                                                                                                          ]
+                                                                                                                                                         }
+                                                                                                                                                        ]
+                                                                                                                                                       }
+                                                                                                                                                      ]
+                                                                                                                                                     }
+                                                                                                                                                    ]
+                                                                                                                                                   }
+                                                                                                                                                  ]
+                                                                                                                                                 }
+                                                                                                                                                ]
+                                                                                                                                               }
+                                                                                                                                              ]
+                                                                                                                                             }
+                                                                                                                                            ]
+                                                                                                                                           }
+                                                                                                                                          ]
+                                                                                                                                         }
+                                                                                                                                        ]
+                                                                                                                                       }
+                                                                                                                                      ]
+                                                                                                                                     }
+                                                                                                                                    ]
+                                                                                                                                   }
+                                                                                                                                  ]
+                                                                                                                                 }
+                                                                                                                                ]
+                                                                                                                               }
+                                                                                                                              ]
+                                                                                                                             }
+                                                                                                                            ]
+                                                                                                                           }
+                                                                                                                          ]
+                                                                                                                         }
+                                                                                                                        ]
+                                                                                                                       }
+                                                                                                                      ]
+                                                                                                                     }
+                                                                                                                    ]
+                                                                                                                   }
+                                                                                                                  ]
+                                                                                                                 }
+                                                                                                                ]
+                                                                                                               }
+                                                                                                              ]
+                                                                                                             }
+                                                                                                            ]
+                                                                                                           }
+                                                                                                          ]
+                                                                                                         }
+                                                                                                        ]
+                                                                                                       }
+                                                                                                      ]
+                                                                                                     }
+                                                                                                    ]
+                                                                                                   }
+                                                                                                  ]
+                                                                                                 }
+                                                                                                ]
+                                                                                               }
+                                                                                              ]
+                                                                                             }
+                                                                                            ]
+                                                                                           }
+                                                                                          ]
+                                                                                         }
+                                                                                        ]
+                                                                                       }
+                                                                                      ]
+                                                                                     }
+                                                                                    ]
+                                                                                   }
+                                                                                  ]
+                                                                                 }
+                                                                                ]
+                                                                               }
+                                                                              ]
+                                                                             }
+                                                                            ]
+                                                                           }
+                                                                          ]
+                                                                         }
+                                                                        ]
+                                                                       }
+                                                                      ]
+                                                                     }
+                                                                    ]
+                                                                   }
+                                                                  ]
+                                                                 }
+                                                                ]
+                                                               }
+                                                              ]
+                                                             }
+                                                            ]
+                                                           }
+                                                          ]
+                                                         }
+                                                        ]
+                                                       }
+                                                      ]
+                                                     }
+                                                    ]
+                                                   }
+                                                  ]
+                                                 }
+                                                ]
+                                               }
+                                              ]
+                                             }
+                                            ]
+                                           }
+                                          ]
+                                         }
+                                        ]
+                                       }
+                                      ]
+                                     }
+                                    ]
+                                   }
+                                  ]
+                                 }
+                                ]
+                               }
+                              ]
+                             }
+                            ]
+                           }
+                          ]
+                         }
+                        ]
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "value": 1
+  }
+ },
+ {
+  "name": "as past the depth limit: 101 nodes, 202 levels",
+  "source": "type Tree = {kids: Tree[]}; len((blob as Tree).kids)",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kids": [
+         {
+          "kids": [
+           {
+            "kids": [
+             {
+              "kids": [
+               {
+                "kids": [
+                 {
+                  "kids": [
+                   {
+                    "kids": [
+                     {
+                      "kids": [
+                       {
+                        "kids": [
+                         {
+                          "kids": [
+                           {
+                            "kids": [
+                             {
+                              "kids": [
+                               {
+                                "kids": [
+                                 {
+                                  "kids": [
+                                   {
+                                    "kids": [
+                                     {
+                                      "kids": [
+                                       {
+                                        "kids": [
+                                         {
+                                          "kids": [
+                                           {
+                                            "kids": [
+                                             {
+                                              "kids": [
+                                               {
+                                                "kids": [
+                                                 {
+                                                  "kids": [
+                                                   {
+                                                    "kids": [
+                                                     {
+                                                      "kids": [
+                                                       {
+                                                        "kids": [
+                                                         {
+                                                          "kids": [
+                                                           {
+                                                            "kids": [
+                                                             {
+                                                              "kids": [
+                                                               {
+                                                                "kids": [
+                                                                 {
+                                                                  "kids": [
+                                                                   {
+                                                                    "kids": [
+                                                                     {
+                                                                      "kids": [
+                                                                       {
+                                                                        "kids": [
+                                                                         {
+                                                                          "kids": [
+                                                                           {
+                                                                            "kids": [
+                                                                             {
+                                                                              "kids": [
+                                                                               {
+                                                                                "kids": [
+                                                                                 {
+                                                                                  "kids": [
+                                                                                   {
+                                                                                    "kids": [
+                                                                                     {
+                                                                                      "kids": [
+                                                                                       {
+                                                                                        "kids": [
+                                                                                         {
+                                                                                          "kids": [
+                                                                                           {
+                                                                                            "kids": [
+                                                                                             {
+                                                                                              "kids": [
+                                                                                               {
+                                                                                                "kids": [
+                                                                                                 {
+                                                                                                  "kids": [
+                                                                                                   {
+                                                                                                    "kids": [
+                                                                                                     {
+                                                                                                      "kids": [
+                                                                                                       {
+                                                                                                        "kids": [
+                                                                                                         {
+                                                                                                          "kids": [
+                                                                                                           {
+                                                                                                            "kids": [
+                                                                                                             {
+                                                                                                              "kids": [
+                                                                                                               {
+                                                                                                                "kids": [
+                                                                                                                 {
+                                                                                                                  "kids": [
+                                                                                                                   {
+                                                                                                                    "kids": [
+                                                                                                                     {
+                                                                                                                      "kids": [
+                                                                                                                       {
+                                                                                                                        "kids": [
+                                                                                                                         {
+                                                                                                                          "kids": [
+                                                                                                                           {
+                                                                                                                            "kids": [
+                                                                                                                             {
+                                                                                                                              "kids": [
+                                                                                                                               {
+                                                                                                                                "kids": [
+                                                                                                                                 {
+                                                                                                                                  "kids": [
+                                                                                                                                   {
+                                                                                                                                    "kids": [
+                                                                                                                                     {
+                                                                                                                                      "kids": [
+                                                                                                                                       {
+                                                                                                                                        "kids": [
+                                                                                                                                         {
+                                                                                                                                          "kids": [
+                                                                                                                                           {
+                                                                                                                                            "kids": [
+                                                                                                                                             {
+                                                                                                                                              "kids": [
+                                                                                                                                               {
+                                                                                                                                                "kids": [
+                                                                                                                                                 {
+                                                                                                                                                  "kids": [
+                                                                                                                                                   {
+                                                                                                                                                    "kids": [
+                                                                                                                                                     {
+                                                                                                                                                      "kids": [
+                                                                                                                                                       {
+                                                                                                                                                        "kids": [
+                                                                                                                                                         {
+                                                                                                                                                          "kids": [
+                                                                                                                                                           {
+                                                                                                                                                            "kids": [
+                                                                                                                                                             {
+                                                                                                                                                              "kids": [
+                                                                                                                                                               {
+                                                                                                                                                                "kids": [
+                                                                                                                                                                 {
+                                                                                                                                                                  "kids": [
+                                                                                                                                                                   {
+                                                                                                                                                                    "kids": [
+                                                                                                                                                                     {
+                                                                                                                                                                      "kids": [
+                                                                                                                                                                       {
+                                                                                                                                                                        "kids": [
+                                                                                                                                                                         {
+                                                                                                                                                                          "kids": [
+                                                                                                                                                                           {
+                                                                                                                                                                            "kids": [
+                                                                                                                                                                             {
+                                                                                                                                                                              "kids": [
+                                                                                                                                                                               {
+                                                                                                                                                                                "kids": [
+                                                                                                                                                                                 {
+                                                                                                                                                                                  "kids": [
+                                                                                                                                                                                   {
+                                                                                                                                                                                    "kids": [
+                                                                                                                                                                                     {
+                                                                                                                                                                                      "kids": [
+                                                                                                                                                                                       {
+                                                                                                                                                                                        "kids": [
+                                                                                                                                                                                         {
+                                                                                                                                                                                          "kids": [
+                                                                                                                                                                                           {
+                                                                                                                                                                                            "kids": [
+                                                                                                                                                                                             {
+                                                                                                                                                                                              "kids": [
+                                                                                                                                                                                               {
+                                                                                                                                                                                                "kids": [
+                                                                                                                                                                                                 {
+                                                                                                                                                                                                  "kids": [
+                                                                                                                                                                                                   {
+                                                                                                                                                                                                    "kids": [
+                                                                                                                                                                                                     {
+                                                                                                                                                                                                      "kids": [
+                                                                                                                                                                                                       {
+                                                                                                                                                                                                        "kids": [
+                                                                                                                                                                                                         {
+                                                                                                                                                                                                          "kids": [
+                                                                                                                                                                                                           {
+                                                                                                                                                                                                            "kids": []
+                                                                                                                                                                                                           }
+                                                                                                                                                                                                          ]
+                                                                                                                                                                                                         }
+                                                                                                                                                                                                        ]
+                                                                                                                                                                                                       }
+                                                                                                                                                                                                      ]
+                                                                                                                                                                                                     }
+                                                                                                                                                                                                    ]
+                                                                                                                                                                                                   }
+                                                                                                                                                                                                  ]
+                                                                                                                                                                                                 }
+                                                                                                                                                                                                ]
+                                                                                                                                                                                               }
+                                                                                                                                                                                              ]
+                                                                                                                                                                                             }
+                                                                                                                                                                                            ]
+                                                                                                                                                                                           }
+                                                                                                                                                                                          ]
+                                                                                                                                                                                         }
+                                                                                                                                                                                        ]
+                                                                                                                                                                                       }
+                                                                                                                                                                                      ]
+                                                                                                                                                                                     }
+                                                                                                                                                                                    ]
+                                                                                                                                                                                   }
+                                                                                                                                                                                  ]
+                                                                                                                                                                                 }
+                                                                                                                                                                                ]
+                                                                                                                                                                               }
+                                                                                                                                                                              ]
+                                                                                                                                                                             }
+                                                                                                                                                                            ]
+                                                                                                                                                                           }
+                                                                                                                                                                          ]
+                                                                                                                                                                         }
+                                                                                                                                                                        ]
+                                                                                                                                                                       }
+                                                                                                                                                                      ]
+                                                                                                                                                                     }
+                                                                                                                                                                    ]
+                                                                                                                                                                   }
+                                                                                                                                                                  ]
+                                                                                                                                                                 }
+                                                                                                                                                                ]
+                                                                                                                                                               }
+                                                                                                                                                              ]
+                                                                                                                                                             }
+                                                                                                                                                            ]
+                                                                                                                                                           }
+                                                                                                                                                          ]
+                                                                                                                                                         }
+                                                                                                                                                        ]
+                                                                                                                                                       }
+                                                                                                                                                      ]
+                                                                                                                                                     }
+                                                                                                                                                    ]
+                                                                                                                                                   }
+                                                                                                                                                  ]
+                                                                                                                                                 }
+                                                                                                                                                ]
+                                                                                                                                               }
+                                                                                                                                              ]
+                                                                                                                                             }
+                                                                                                                                            ]
+                                                                                                                                           }
+                                                                                                                                          ]
+                                                                                                                                         }
+                                                                                                                                        ]
+                                                                                                                                       }
+                                                                                                                                      ]
+                                                                                                                                     }
+                                                                                                                                    ]
+                                                                                                                                   }
+                                                                                                                                  ]
+                                                                                                                                 }
+                                                                                                                                ]
+                                                                                                                               }
+                                                                                                                              ]
+                                                                                                                             }
+                                                                                                                            ]
+                                                                                                                           }
+                                                                                                                          ]
+                                                                                                                         }
+                                                                                                                        ]
+                                                                                                                       }
+                                                                                                                      ]
+                                                                                                                     }
+                                                                                                                    ]
+                                                                                                                   }
+                                                                                                                  ]
+                                                                                                                 }
+                                                                                                                ]
+                                                                                                               }
+                                                                                                              ]
+                                                                                                             }
+                                                                                                            ]
+                                                                                                           }
+                                                                                                          ]
+                                                                                                         }
+                                                                                                        ]
+                                                                                                       }
+                                                                                                      ]
+                                                                                                     }
+                                                                                                    ]
+                                                                                                   }
+                                                                                                  ]
+                                                                                                 }
+                                                                                                ]
+                                                                                               }
+                                                                                              ]
+                                                                                             }
+                                                                                            ]
+                                                                                           }
+                                                                                          ]
+                                                                                         }
+                                                                                        ]
+                                                                                       }
+                                                                                      ]
+                                                                                     }
+                                                                                    ]
+                                                                                   }
+                                                                                  ]
+                                                                                 }
+                                                                                ]
+                                                                               }
+                                                                              ]
+                                                                             }
+                                                                            ]
+                                                                           }
+                                                                          ]
+                                                                         }
+                                                                        ]
+                                                                       }
+                                                                      ]
+                                                                     }
+                                                                    ]
+                                                                   }
+                                                                  ]
+                                                                 }
+                                                                ]
+                                                               }
+                                                              ]
+                                                             }
+                                                            ]
+                                                           }
+                                                          ]
+                                                         }
+                                                        ]
+                                                       }
+                                                      ]
+                                                     }
+                                                    ]
+                                                   }
+                                                  ]
+                                                 }
+                                                ]
+                                               }
+                                              ]
+                                             }
+                                            ]
+                                           }
+                                          ]
+                                         }
+                                        ]
+                                       }
+                                      ]
+                                     }
+                                    ]
+                                   }
+                                  ]
+                                 }
+                                ]
+                               }
+                              ]
+                             }
+                            ]
+                           }
+                          ]
+                         }
+                        ]
+                       }
+                      ]
+                     }
+                    ]
+                   }
+                  ]
+                 }
+                ]
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "depth-exceeded"
+    }
+   ]
+  }
+ },
+ {
+  "name": "two names with one structure join as one",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: [{next: []}]}; [a, b]",
+  "expect": {
+   "type": "Right[]",
+   "value": [
+    {
+     "next": []
+    },
+    {
+     "next": [
+      {
+       "next": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a recursive lambda over a recursive type, to the depth limit",
+  "source": "type Cell = {head: int, tail: Cell | null}; const sum = (c: Cell | null): int => c == null ? 0 : c.head + sum(c.tail); sum(blob as Cell)",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "head": 1,
+    "tail": {
+     "head": 1,
+     "tail": {
+      "head": 1,
+      "tail": {
+       "head": 1,
+       "tail": {
+        "head": 1,
+        "tail": {
+         "head": 1,
+         "tail": {
+          "head": 1,
+          "tail": {
+           "head": 1,
+           "tail": {
+            "head": 1,
+            "tail": {
+             "head": 1,
+             "tail": {
+              "head": 1,
+              "tail": {
+               "head": 1,
+               "tail": {
+                "head": 1,
+                "tail": {
+                 "head": 1,
+                 "tail": {
+                  "head": 1,
+                  "tail": {
+                   "head": 1,
+                   "tail": {
+                    "head": 1,
+                    "tail": {
+                     "head": 1,
+                     "tail": {
+                      "head": 1,
+                      "tail": {
+                       "head": 1,
+                       "tail": {
+                        "head": 1,
+                        "tail": {
+                         "head": 1,
+                         "tail": {
+                          "head": 1,
+                          "tail": {
+                           "head": 1,
+                           "tail": {
+                            "head": 1,
+                            "tail": {
+                             "head": 1,
+                             "tail": {
+                              "head": 1,
+                              "tail": {
+                               "head": 1,
+                               "tail": {
+                                "head": 1,
+                                "tail": {
+                                 "head": 1,
+                                 "tail": {
+                                  "head": 1,
+                                  "tail": {
+                                   "head": 1,
+                                   "tail": {
+                                    "head": 1,
+                                    "tail": {
+                                     "head": 1,
+                                     "tail": {
+                                      "head": 1,
+                                      "tail": {
+                                       "head": 1,
+                                       "tail": {
+                                        "head": 1,
+                                        "tail": {
+                                         "head": 1,
+                                         "tail": {
+                                          "head": 1,
+                                          "tail": {
+                                           "head": 1,
+                                           "tail": {
+                                            "head": 1,
+                                            "tail": {
+                                             "head": 1,
+                                             "tail": {
+                                              "head": 1,
+                                              "tail": {
+                                               "head": 1,
+                                               "tail": {
+                                                "head": 1,
+                                                "tail": {
+                                                 "head": 1,
+                                                 "tail": {
+                                                  "head": 1,
+                                                  "tail": {
+                                                   "head": 1,
+                                                   "tail": {
+                                                    "head": 1,
+                                                    "tail": {
+                                                     "head": 1,
+                                                     "tail": null
+                                                    }
+                                                   }
+                                                  }
+                                                 }
+                                                }
+                                               }
+                                              }
+                                             }
+                                            }
+                                           }
+                                          }
+                                         }
+                                        }
+                                       }
+                                      }
+                                     }
+                                    }
+                                   }
+                                  }
+                                 }
+                                }
+                               }
+                              }
+                             }
+                            }
+                           }
+                          }
+                         }
+                        }
+                       }
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "expect": {
+   "type": "int",
+   "value": 50
+  }
+ },
+ {
+  "name": "conform: a recursive named type, the data conforms",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "conform": {
+   "type": "Tree",
+   "value": {
+    "kids": [
+     {
+      "kids": [
+       {
+        "kids": [
+         {
+          "kids": [
+           {
+            "kids": []
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "expect": {
+   "conforms": true,
+   "steps": 10
+  }
+ },
+ {
+  "name": "conform: a recursive named type, a failure deep in the data",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "conform": {
+   "type": "Tree[]",
+   "value": [
+    {
+     "kids": [
+      {
+       "kids": []
+      }
+     ]
+    },
+    {
+     "kids": [
+      {
+       "kids": 3
+      }
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1,
+    "kids",
+    0,
+    "kids"
+   ],
+   "message": "expected Tree[], found 3"
+  }
+ },
+ {
+  "name": "conform: two named types that name each other",
+  "types": [
+   {
+    "name": "Dir",
+    "type": "{files: File[], dirs: Dir[]}"
+   },
+   {
+    "name": "File",
+    "type": "{name: string, parent: Dir | null}"
+   }
+  ],
+  "conform": {
+   "type": "Dir",
+   "value": {
+    "files": [
+     {
+      "name": "a",
+      "parent": {
+       "files": [],
+       "dirs": []
+      }
+     }
+    ],
+    "dirs": []
+   }
+  },
+  "expect": {
+   "conforms": true
+  }
+ }
+]

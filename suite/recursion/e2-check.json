@@ -1,0 +1,1839 @@
+[
+ {
+  "name": "use 2: a wrong field names the type",
+  "source": "type Node = {name: string, kids: Node[]}; const f = (n: Node): int => len(n.kidz); 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "no-field",
+     "message": "Node has no field \"kidz\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "use 2: a wrong field of a child names the type",
+  "source": "type Node = {name: string, kids: Node[]}; const f = (n: Node): string => n.kids[0].nam; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "no-field",
+     "message": "Node has no field \"nam\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "maybe-absent names the type",
+  "source": "type Expr = {k: \"num\", v: float} | {k: \"add\", l: Expr, r: Expr}; const f = (e: Expr): float => e.v; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "maybe-absent",
+     "message": "field \"v\" may be absent from Expr"
+    }
+   ]
+  }
+ },
+ {
+  "name": "result-mismatch prints a recursive type by its name",
+  "source": "type Node = {name: string, kids: Node[]}; const f = (n: Node): string => n.kids; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "message": "expected string, found Node[]"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a value that does not fit, inside",
+  "source": "type Node = {name: string, kids: Node[]}; const n: Node = {name: \"a\", kids: [{name: 1, kids: []}]}; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a self-call with a value that does not fit",
+  "source": "type Node = {name: string, kids: Node[]}; const f = (n: Node): int => f(n.kids); 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "arg-mismatch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the type of a field of a recursive type",
+  "source": "type Node = {name: string, kids: Node[]}; const n: Node = {name: \"a\", kids: []}; n.kids",
+  "expect": {
+   "type": "Node[]"
+  }
+ },
+ {
+  "name": "the type of an element",
+  "source": "type Node = {name: string, kids: Node[]}; const n: Node = {name: \"a\", kids: []}; n.kids[0]",
+  "expect": {
+   "type": "Node"
+  }
+ },
+ {
+  "name": "the type of a chain into the tree",
+  "source": "type Node = {name: string, kids: Node[]}; const n: Node = {name: \"a\", kids: []}; n.kids[0].kids[0].name",
+  "expect": {
+   "type": "string"
+  }
+ },
+ {
+  "name": "two names with one structure: a fit",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: []}; const c: Right = a; c",
+  "expect": {
+   "type": "Right"
+  }
+ },
+ {
+  "name": "a join where the first fits the second gives the second",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: []}; [a, b]",
+  "expect": {
+   "type": "Right[]"
+  }
+ },
+ {
+  "name": "a join where the first fits the second gives the second, the other way",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: []}; [b, a]",
+  "expect": {
+   "type": "Left[]"
+  }
+ },
+ {
+  "name": "a join with null keeps the name",
+  "env": "{p: bool}",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: []}; p ? a : null",
+  "expect": {
+   "type": "Left | null"
+  }
+ },
+ {
+  "name": "a join of one name",
+  "env": "{p: bool}",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[]}; const a: Left = {next: []}; const b: Right = {next: []}; const a2: Left = {next: []}; p ? a : a2",
+  "expect": {
+   "type": "Left"
+  }
+ },
+ {
+  "name": "a join that meets a pair in progress gives any there",
+  "env": "{p: bool}",
+  "source": "type Left = {next: Left[]}; type Right = {next: Right[], x: int}; const a: Left = {next: []}; const b: Right = {next: [], x: 1}; p ? a : b",
+  "expect": {
+   "type": "{next: any[], x?: int}"
+  }
+ },
+ {
+  "name": "a field that may be null is narrowed",
+  "source": "type Cell = {head: int, tail: Cell | null}; const c: Cell = {head: 1, tail: null}; c.tail ? c.tail.head : 0",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "an optional read",
+  "source": "type Cell = {head: int, tail: Cell | null}; const c: Cell = {head: 1, tail: null}; c.tail?.tail?.head",
+  "expect": {
+   "type": "int | null"
+  }
+ },
+ {
+  "name": "a recursive record is always truthy",
+  "source": "type Cell = {head: int, tail: Cell | null}; const c: Cell = {head: 1, tail: null}; c ? 1 : 2",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "always-truthy"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a recursive type that may be empty may be falsy",
+  "source": "type Bag = {more?: Bag}; const g: Bag = {}; g ? 1 : 2",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "match on a tag narrows a recursive union",
+  "source": "type Expr = {k: \"num\", v: float} | {k: \"add\", l: Expr, r: Expr}; const ev = (e: Expr): float => match e.k { \"num\" => e.v, \"add\" => ev(e.l) + ev(e.r) }; ev",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "not-a-value"
+    }
+   ]
+  }
+ },
+ {
+  "name": "match on a tag narrows a recursive union, a value",
+  "source": "type Expr = {k: \"num\", v: float} | {k: \"add\", l: Expr, r: Expr}; const ev = (e: Expr): float => match e.k { \"num\" => e.v, \"add\" => ev(e.l) + ev(e.r) }; ev({k: \"num\", v: 2})",
+  "expect": {
+   "type": "float"
+  }
+ },
+ {
+  "name": "is narrows to a list of the type",
+  "source": "type Json = null | bool | float | string | Json[] | map<Json>; const j: Json = 1; j is Json[] ? j : []",
+  "expect": {
+   "type": "Json[]"
+  }
+ },
+ {
+  "name": "without unfolds a reference that shares a kind",
+  "source": "type Json = null | bool | float | string | Json[] | map<Json>; const j: Json = 1; j is string ? 0 : j",
+  "expect": {
+   "type": "bool | float | Json[] | map<Json> | null"
+  }
+ },
+ {
+  "name": "nonnull unfolds a reference whose definition has null",
+  "source": "type Json = null | bool | float | string | Json[] | map<Json>; const j: Json = 1; j ?? 0",
+  "expect": {
+   "type": "bool | float | string | Json[] | map<Json>"
+  }
+ },
+ {
+  "name": "a reference counts 0 for depth: 63 lists around it",
+  "source": "type Node = {name: string, kids: Node[]}; const x: Node[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] = []; 1",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "a reference counts 0 for depth: 65 lists around it",
+  "source": "type Node = {name: string, kids: Node[]}; const x: Node[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] = []; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "message": "the type here is more than 64 levels deep"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the bound: a fit that enters 4,096 pairs",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa}}",
+  "source": "const t: {x: T1, y: Qa} = s; 1",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "the bound: a fit that enters 4,097 pairs",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa, z: Pa}}",
+  "source": "const t: {x: T1, y: Qa, z: Qa} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      34,
+      1,
+      35
+     ],
+     "message": "comparing the types here takes more than 4096 pairs of types"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the bound: a join, on the node in progress",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa, z: Pa}, t: {x: T1, y: Qa, z: Qa}, p: bool}",
+  "source": "const u = p ? s : t; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      11,
+      1,
+      20
+     ],
+     "message": "comparing the types here takes more than 4096 pairs of types"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the bound: the check ends there; the static rules' diagnostics stand",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa, z: Pa}}",
+  "source": "const t: {x: T1, y: Qa, z: Qa} = s; nope",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      34,
+      1,
+      35
+     ]
+    },
+    {
+     "code": "undefined-name",
+     "span": [
+      1,
+      37,
+      1,
+      41
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the bound: the check ends there, with one diagnostic, after a type error",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa, z: Pa}}",
+  "source": "const k: int = \"a\"; const t: {x: T1, y: Qa, z: Qa} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      54,
+      1,
+      55
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the bound: an exact pair is not entered",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   }
+  ],
+  "env": "{s: S1}",
+  "source": "const t: S1 = s; 1",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "the order: fields in key order, the first fails before the second is entered",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   }
+  ],
+  "env": "{s: {a: int, b: S1}}",
+  "source": "const t: {a: string, b: T1} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      31,
+      1,
+      32
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the order: the field in key order that is entered first passes the bound",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   }
+  ],
+  "env": "{s: {a: S1, b: int}}",
+  "source": "const t: {a: T1, b: string} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      31,
+      1,
+      32
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the order: bool is tested before a map",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   }
+  ],
+  "env": "{s: bool | {b: S1}}",
+  "source": "const t: {b: T1} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the order: a map is tested before null",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   }
+  ],
+  "env": "{s: {b: S1} | null}",
+  "source": "const t: {b: T1} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a fit stops at the first failure",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S13, b: S13}"
+   },
+   {
+    "name": "S13",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T13, b: T13}"
+   },
+   {
+    "name": "T13",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Uu",
+    "type": "{a: Uu, b: Uu, c: int}"
+   }
+  ],
+  "env": "{s: S1}",
+  "source": "const t: Uu = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      15,
+      1,
+      16
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a pair that failed fails at once when met again",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Xx",
+    "type": "{m: S1, n: int, o?: Xx}"
+   },
+   {
+    "name": "Yy",
+    "type": "{m: T1, n: string, o?: Yy}"
+   }
+  ],
+  "env": "{s: {a: Xx, z: \"q\"}}",
+  "source": "const t: {a: Yy, z: \"p\"} | {a: Yy, z: \"q\"} | {a: Yy, z: \"r\"} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      64,
+      1,
+      65
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a pair that passed is entered again when met again",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Xx",
+    "type": "{m: S1, n: int, o?: Xx}"
+   },
+   {
+    "name": "Yy",
+    "type": "{m: T1, n: int, o?: Yy}"
+   }
+  ],
+  "env": "{s: {a: Xx, b: Xx, c: Xx}}",
+  "source": "const t: {a: Yy, b: Yy, c: Yy} = s; 1",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      34,
+      1,
+      35
+     ]
+    }
+   ]
+  }
+ }
+]

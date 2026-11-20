@@ -1,0 +1,647 @@
+[
+ {
+  "name": "a named type names itself",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "env": "{t: Tree}",
+  "vars": {
+   "t": {
+    "kids": []
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "Tree[]",
+   "value": []
+  }
+ },
+ {
+  "name": "two named types name each other",
+  "types": [
+   {
+    "name": "Dir",
+    "type": "{files: File[], dirs: Dir[]}"
+   },
+   {
+    "name": "File",
+    "type": "{name: string, parent: Dir | null}"
+   }
+  ],
+  "env": "{d: Dir}",
+  "vars": {
+   "d": {
+    "files": [
+     {
+      "name": "a",
+      "parent": null
+     }
+    ],
+    "dirs": []
+   }
+  },
+  "source": "d.files[0].parent",
+  "expect": {
+   "type": "Dir | null",
+   "value": null
+  }
+ },
+ {
+  "name": "a named type names a later one at its top",
+  "types": [
+   {
+    "name": "Maybe",
+    "type": "Cell | null"
+   },
+   {
+    "name": "Cell",
+    "type": "{head: int, tail: Maybe}"
+   }
+  ],
+  "env": "{m: Maybe}",
+  "vars": {
+   "m": {
+    "head": 1,
+    "tail": null
+   }
+  },
+  "source": "m?.tail",
+  "expect": {
+   "type": "Maybe | null",
+   "value": null
+  }
+ },
+ {
+  "name": "bad-type: a named type that is itself or null",
+  "types": [
+   {
+    "name": "Loop",
+    "type": "Loop | null"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a named type that is itself, beside a record that names it",
+  "types": [
+   {
+    "name": "Ping",
+    "type": "{p: Ping} | Ping"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a reference beside a type of its kind",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{next: Node | {end: bool}}"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's $ref cycle is a recursive type, named by the pointer's last token",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "Node[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "a schema's $ref to its root is named by the variable",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "kids": {
+       "type": "array",
+       "items": {
+        "$ref": "#"
+       }
+      }
+     },
+     "required": [
+      "kids"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "source": "tree",
+  "expect": {
+   "type": "Tree",
+   "sites": []
+  }
+ },
+ {
+  "name": "a schema's $ref to its root is named by the named type",
+  "types": [
+   {
+    "name": "Chain",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "next": {
+       "anyOf": [
+        {
+         "$ref": "#"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "required": [
+      "next"
+     ],
+     "additionalProperties": false
+    }
+   }
+  ],
+  "env": "{c: Chain}",
+  "source": "c.next",
+  "expect": {
+   "type": "Chain | null",
+   "sites": []
+  }
+ },
+ {
+  "name": "bad-type: a schema's cycle with no array item, property or map between",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "loop": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/loop"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "$ref": "#/$defs/loop"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: allOf on a schema being mapped",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "allOf": [
+          {
+           "$ref": "#/$defs/node"
+          },
+          {
+           "type": "object"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a schema's reference beside a record",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "anyOf": [
+          {
+           "$ref": "#/$defs/node"
+          },
+          {
+           "type": "object",
+           "properties": {
+            "end": {
+             "type": "boolean"
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a name that is no type name",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "tree-node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/tree-node"
+       }
+      }
+     },
+     "$ref": "#/$defs/tree-node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: two recursive types of one schema with one name",
+  "schemas": {
+   "v": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/a/node"
+      },
+      "b": {
+       "$ref": "#/$defs/b/node"
+      }
+     },
+     "$defs": {
+      "a": {
+       "node": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/a/node"
+        }
+       }
+      },
+      "b": {
+       "node": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "$ref": "#/$defs/b/node"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: two recursive types of the environment with one name",
+  "schemas": {
+   "a": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/node"
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "b": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "n": {
+         "$ref": "#/$defs/node"
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "two recursive types with one name and one structure are one type",
+  "schemas": {
+   "a": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "b": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "[a, b]",
+  "expect": {
+   "type": "Node[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "name-clash: a recursive type and a named type with one name",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{id: int}"
+   }
+  ],
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the description lists a recursive named type by its unfolding",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "env": "{t: Tree, ts: Tree[]}",
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "t": "Tree",
+     "ts": "Tree[]"
+    },
+    "types": {
+     "Tree": "{kids: Tree[]}"
+    }
+   }
+  }
+ },
+ {
+  "name": "the description lists a schema's recursive type",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "t": "Node"
+    },
+    "types": {
+     "Node": "{kids: Node[], name: string}"
+    }
+   }
+  }
+ }
+]
