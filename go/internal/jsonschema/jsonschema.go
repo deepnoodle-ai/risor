@@ -38,9 +38,12 @@ type mapper struct {
 	root  any
 	o     Options
 	cache map[string]result
-	// inprog holds each target being mapped, with the count of guards
-	// open when its mapping began (F17 12.4).
+	// inprog holds each place being mapped, with the count of guards open
+	// when its mapping began (F17 12.4). A place is the root "", or the
+	// tokens of its pointer, each after a zero byte; at is the place being
+	// mapped now.
 	inprog map[string]int
+	at     string
 	// guard counts the guards open: array items, properties and maps.
 	guard int
 	// rootName names the reference to the root (F17 12.4).
@@ -84,14 +87,7 @@ func Map(root any, o Options, rootName string) (t *types.Type, err error) {
 			}
 		}
 	}()
-	m.inprog[""] = 0
-	r := m.schema(root, true)
-	delete(m.inprog, "")
-	t = r.t
-	if n := m.named[""]; n != nil {
-		m.defs[""] = t
-		t = types.Ref(n)
-	}
+	t = m.schema(root, "").t
 	m.setDefs()
 	t = types.Close(t)
 	if types.Size(t) > types.MaxSize {
@@ -178,8 +174,41 @@ func isSchema(v any) bool {
 	return false
 }
 
-// schema is M(S) (3.1). It returns the type and the depth of S (3.10).
-func (m *mapper) schema(s any, root bool) result {
+// schema is M(S) (3.1) of the schema s at the place key. It returns the
+// type and the depth of S (3.10). A place is mapped once, and its type is
+// shared however the mapping reaches it: through a $ref, or as a part of
+// the schema that holds it, the root included. A place that a $ref meets
+// again while it is being mapped is a recursive type (F17 12.4).
+func (m *mapper) schema(s any, key string) result {
+	if r, ok := m.cache[key]; ok {
+		return r
+	}
+	saved := m.at
+	m.at = key
+	m.inprog[key] = m.guard
+	r := m.schemaAt(s, key == "")
+	delete(m.inprog, key)
+	m.at = saved
+	if n := m.named[key]; n != nil {
+		m.defs[key] = r.t
+		r.t = types.Ref(n)
+	}
+	m.cache[key] = r
+	return r
+}
+
+// child is the place of a schema inside the one being mapped: under the
+// keyword k, then at each member or index of tok.
+func (m *mapper) child(k string, tok ...string) string {
+	key := m.at + "\x00" + k
+	for _, t := range tok {
+		key += "\x00" + t
+	}
+	return key
+}
+
+// schemaAt is M(S) of the schema at the place being mapped.
+func (m *mapper) schemaAt(s any, root bool) result {
 	var res result
 	switch s := s.(type) {
 	case bool:
@@ -260,7 +289,7 @@ func (m *mapper) branches(k string, v any, add func(result) *types.Type) []*type
 	}
 	out := make([]*types.Type, len(arr))
 	for i, b := range arr {
-		out[i] = add(m.schema(b, false))
+		out[i] = add(m.schema(b, m.child(k, strconv.Itoa(i))))
 	}
 	return out
 }
@@ -434,11 +463,11 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 		if !ok {
 			m.fail("%s must be an array of schemas", k)
 		}
-		for _, x := range arr {
+		for i, x := range arr {
 			if !isSchema(x) {
 				m.fail("an element of %s is not a schema", k)
 			}
-			es = append(es, add(m.schema(x, false)))
+			es = append(es, add(m.schema(x, m.child(k, strconv.Itoa(i)))))
 		}
 	}
 	if v, ok := s["prefixItems"]; ok {
@@ -449,7 +478,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 	case !ok:
 		e = types.Join(e, types.Any)
 	case isSchema(v):
-		e = types.Join(e, add(m.schema(v, false)))
+		e = types.Join(e, add(m.schema(v, m.child("items"))))
 	default:
 		if _, isArr := v.([]any); !isArr {
 			m.fail("items must be a schema or an array of schemas")
@@ -459,7 +488,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 			if !isSchema(ai) {
 				m.fail("additionalItems must be a schema")
 			}
-			e = types.Join(e, add(m.schema(ai, false)))
+			e = types.Join(e, add(m.schema(ai, m.child("additionalItems"))))
 		} else {
 			e = types.Join(e, types.Any)
 		}
@@ -476,7 +505,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 	ap, hasAP := s["additionalProperties"]
 	_, hasPP := s["patternProperties"]
 	if hasAP {
-		r0 = add(m.schema(ap, false))
+		r0 = add(m.schema(ap, m.child("additionalProperties")))
 		if pp, ok := s["patternProperties"]; ok {
 			obj, ok := pp.(map[string]any)
 			if !ok {
@@ -486,7 +515,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 				if !isSchema(obj[k]) {
 					m.fail("a value of patternProperties is not a schema")
 				}
-				r0 = types.Join(r0, add(m.schema(obj[k], false)))
+				r0 = types.Join(r0, add(m.schema(obj[k], m.child("patternProperties", k))))
 			}
 		}
 	}
@@ -522,7 +551,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 			if !isSchema(ps) {
 				m.fail("the property %q is not a schema", k)
 			}
-			t := add(m.schema(ps, false))
+			t := add(m.schema(ps, m.child("properties", k)))
 			f := types.Field{Key: k, Type: t, Optional: !required[k]}
 			if f.Optional {
 				def, hasDef := any(nil), false
@@ -564,10 +593,10 @@ func sortedKeys(m map[string]any) []string {
 	return ks
 }
 
-// ref resolves and maps a $ref (3.7). A target is mapped once and shared.
-// A target met again while it is being mapped is a recursive type, named
-// by nameOf, when an array item, a property or a map stands between;
-// otherwise the cycle is an error (F17 12.4).
+// ref resolves and maps a $ref (3.7). A target met again while it is being
+// mapped is a recursive type, named by nameOf, when an array item, a
+// property or a map stands between; otherwise the cycle is an error (F17
+// 12.4).
 func (m *mapper) ref(v any) result {
 	s, ok := v.(string)
 	if !ok {
@@ -580,18 +609,7 @@ func (m *mapper) ref(v any) result {
 		}
 		return result{t: types.Ref(m.nameOf(key, s))}
 	}
-	if r, ok := m.cache[key]; ok {
-		return r
-	}
-	m.inprog[key] = m.guard
-	r := m.schema(target, false)
-	delete(m.inprog, key)
-	if n := m.named[key]; n != nil {
-		m.defs[key] = r.t
-		r.t = types.Ref(n)
-	}
-	m.cache[key] = r
-	return r
+	return m.schema(target, key)
 }
 
 // resolve reads a local JSON Pointer fragment (3.7 items 1 to 6).
