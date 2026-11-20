@@ -584,3 +584,226 @@ impl Ast {
         }
     }
 }
+
+impl Ast {
+    /// The arena of a program whose result is the node `top`: the nodes
+    /// under `top`, in their order here, under a `Program` node of its own,
+    /// with the spans of the whole text. An argument of a call in an
+    /// analysis (F2 3.6 item 5) and a part of a template (F2 2.5) are each
+    /// such a program.
+    ///
+    /// Only the nodes under `top` are copied, so the programs of many parts
+    /// of one tree cost the size of the parts, not the whole tree once
+    /// each. The arguments of a call are such parts. A node is copied once
+    /// for each call whose arguments hold it, and an argument list opens a
+    /// level (`01-language.md` 13.1), so no node is copied more than 100
+    /// times.
+    pub(crate) fn program_of(&self, top: NodeId) -> Ast {
+        // The nodes under `top`, found by an explicit stack.
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::from([top.0]);
+        let mut stack = vec![top];
+        let mut nodes: Vec<(NodeId, Node)> = Vec::new();
+        while let Some(id) = stack.pop() {
+            let mut node = self.node(id).clone();
+            node_ids(&mut node.kind, &mut |c| {
+                if seen.insert(c.0) {
+                    stack.push(*c);
+                }
+            });
+            nodes.push((id, node));
+        }
+        nodes.sort_by_key(|(id, _)| *id);
+        let new_id: std::collections::HashMap<u32, NodeId> = nodes
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _))| (id.0, NodeId(i as u32)))
+            .collect();
+        let mut ast = Ast::default();
+        for (old, mut node) in nodes {
+            node_ids(&mut node.kind, &mut |c| *c = new_id[&c.0]);
+            if let Some(&l) = self.lambda_levels.get(&old.0) {
+                ast.lambda_levels.insert(new_id[&old.0].0, l);
+            }
+            ast.nodes.push(node);
+        }
+        let root = ast.push(
+            NodeKind::Program {
+                consts: Vec::new(),
+                result: new_id[&top.0],
+                types: Vec::new(),
+            },
+            self.span(top),
+            0,
+        );
+        ast.root = root;
+        ast
+    }
+}
+
+/// Each node that a node holds. Every field is named, so a new field is
+/// a compile error here and not a node left out of [`Ast::program_of`].
+fn node_ids(kind: &mut NodeKind, f: &mut dyn FnMut(&mut NodeId)) {
+    match kind {
+        NodeKind::Program {
+            consts,
+            result,
+            types: _,
+        }
+        | NodeKind::Block { consts, result } => {
+            consts.iter_mut().for_each(&mut *f);
+            f(result);
+        }
+        NodeKind::Const {
+            pattern,
+            value,
+            ty: _,
+        } => {
+            f(pattern);
+            f(value);
+        }
+        NodeKind::Ident { name: _ }
+        | NodeKind::Number { value: _ }
+        | NodeKind::String { value: _, form: _ }
+        | NodeKind::Bool { value: _ }
+        | NodeKind::Null
+        | NodeKind::NamePat { name: _ }
+        | NodeKind::Bad
+        | NodeKind::Elem => {}
+        NodeKind::Template { parts } => {
+            for p in parts {
+                match p {
+                    TemplatePart::Expr(e) => f(e),
+                    TemplatePart::Text(_) => {}
+                }
+            }
+        }
+        NodeKind::List { items } => items.iter_mut().for_each(f),
+        NodeKind::Map { entries } => entries.iter_mut().for_each(f),
+        NodeKind::Entry {
+            key,
+            key_span: _,
+            value,
+            shorthand: _,
+        } => {
+            match key {
+                EntryKey::Computed(k) => f(k),
+                EntryKey::Word(_) | EntryKey::Str(_) => {}
+            }
+            f(value);
+        }
+        NodeKind::Spread { value } => f(value),
+        NodeKind::Unary { op: _, x } | NodeKind::OptChain { x } => f(x),
+        NodeKind::Binary { op: _, x, y } => {
+            f(x);
+            f(y);
+        }
+        NodeKind::Cond {
+            form: _,
+            test,
+            then,
+            else_,
+        } => {
+            f(test);
+            f(then);
+            f(else_);
+        }
+        NodeKind::Member {
+            x,
+            name: _,
+            name_span: _,
+            optional: _,
+        } => f(x),
+        NodeKind::Index {
+            x,
+            index,
+            optional: _,
+        } => {
+            f(x);
+            f(index);
+        }
+        NodeKind::Call {
+            namespace: _,
+            name: _,
+            args,
+        } => args.iter_mut().for_each(f),
+        NodeKind::MethodCall {
+            x,
+            name: _,
+            args,
+            optional: _,
+        } => {
+            f(x);
+            args.iter_mut().for_each(f);
+        }
+        NodeKind::Lambda {
+            params,
+            body,
+            result: _,
+        } => {
+            params.iter_mut().for_each(&mut *f);
+            f(body);
+        }
+        NodeKind::Param {
+            pattern,
+            default,
+            ty: _,
+            fn_: _,
+        } => {
+            f(pattern);
+            default.iter_mut().for_each(f);
+        }
+        NodeKind::Match { subject, arms } => {
+            f(subject);
+            arms.iter_mut().for_each(f);
+        }
+        NodeKind::Arm {
+            literals: _,
+            guard,
+            result,
+        } => {
+            guard.iter_mut().for_each(&mut *f);
+            f(result);
+        }
+        NodeKind::Try {
+            body,
+            name: _,
+            handler,
+        } => {
+            f(body);
+            f(handler);
+        }
+        NodeKind::MapPat { fields, rest: _ } => {
+            for PatField {
+                key: _,
+                key_span: _,
+                name: _,
+                default,
+                span: _,
+            } in fields
+            {
+                default.iter_mut().for_each(&mut *f);
+            }
+        }
+        NodeKind::ListPat { elems, rest: _ } => {
+            for PatElem {
+                pat,
+                default,
+                span: _,
+            } in elems
+            {
+                f(pat);
+                default.iter_mut().for_each(&mut *f);
+            }
+        }
+        NodeKind::As { form: _, x, ty: _ } => f(x),
+        NodeKind::Each {
+            x,
+            reads,
+            optional: _,
+            star: _,
+        } => {
+            x.iter_mut().for_each(&mut *f);
+            reads.iter_mut().for_each(f);
+        }
+    }
+}

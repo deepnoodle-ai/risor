@@ -268,6 +268,10 @@ These rows join the table of `01-language.md` 13.1.
 3. So in `x as int[]`, with `x` at level 0, `int` is at level 1 and the `[`
    opens level 2. With 98 suffixes the last `[` opens level 99; with 100, the
    100th `[` is `nesting-exceeded`.
+4. The left operand of `as` or `is` is not inside its level, as for every
+   binary operator. So `x as any as any` is flat, and the rule of
+   `01-language.md` 13.2 item 6 holds for it: a chain of 100,000 `as` parses,
+   is checked and runs, and its length costs an implementation no stack.
 
 ## 3. Named types
 

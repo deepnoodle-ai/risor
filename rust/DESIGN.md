@@ -9,14 +9,19 @@ specification, not here. This file records the crate's own choices.
 - No dependencies, in the library or the tests. JSON is read by `src/json.rs`,
   which also refuses a repeated key (`03-host.md` 3.10.10).
 - No `unsafe` (`#![forbid(unsafe_code)]`).
-- Offsets are counted in code points. `Source` holds the text as `Vec<char>`;
+- Offsets are counted in code points. `Source` holds the text as code
+  points (`Arc<[char]>`, shared, so a copy of a parsed program shares it);
   every `Range` (crate-private) is two indexes into it. The public `Span` is
   start and end as line and column (`03-host.md` 3.7.7, E.8); every span a
   host sees is one, converted at the boundary.
 - **No input overflows the stack.** Recursion is allowed only where it is
   bounded by a number of the specification: the 100 levels of source nesting
   (`01-language.md` 13), the 64 brackets of type text (`05-types.md` 20.5),
-  and, from S2, the depth limit. What opens no level is walked by a loop.
+  and, from S2, the depth limit. What opens no level is walked by a loop,
+  in every pass: the parser, the resolver, the checker, the evaluator, the
+  analysis, the formatter and completion and hover. `src/tests/flat.rs` runs
+  each flat form, 100,000 links long, through every entry point on a thread
+  with the stack stated below for the default depth limit.
 
 ## The public surface
 
@@ -239,10 +244,13 @@ that `02-evaluation.md` gives. A host function receives a handle with
 ### The evaluator
 
 A walk over the arena. What opens no level (a left-associative chain of
-operators, the steps of a chain, the `else` of `? :` and of `if`, `const`
-lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
-recursion is bounded by the source nesting times the call depth, which the
-depth limit bounds.
+operators, the value of an `as` or `is`, the steps of a chain with its
+projections, the `else` of `? :` and of `if`, `const` lines, `match` arms) is
+evaluated by a loop over its spine, so the evaluator's recursion is bounded
+by the source nesting times the call depth, which the depth limit bounds.
+The left operands of operators and the values of `as` and `is` are one
+spine (`Run::spine`): `a < b as any < c` alternates the two kinds of node,
+and one loop goes down both.
 
 **Coalesced reads.** `Ast::coalesced_reads` marks, once per program, the
 last step of each coalesced read under `??` (`01-language.md` 6.6): every
@@ -422,6 +430,16 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
   of 20.2 and 20.3: the parser records the
   greatest level open inside each lambda. A lambda that F16 checks once is
   the exception (below).
+- **Spines.** The left operands of operators and the values of `as` and
+  `is` open no level (`01-language.md` 13.1, F4 2.8), and they alternate on
+  one spine. The resolver (`Resolver::walk`) and the checker
+  (`Checker::spine`) each go down that spine in one loop and do their work
+  on the way back up, in the order a recursion would. The checker's loop
+  tests the probe of F12 3.12 at the nodes `synth` would reach: the value
+  of an `as` or `is`, and an `as` or `is` that is a left operand. The
+  resolver's `chain` counts a projection on a subject as a step (F7 2.5).
+  The checker's `chain` grows the path of a chain in place: a copy at each
+  step made a chain of `n` members cost `n` squared.
 - **A lambda's own name** (`01-language.md` 5 rule 6, `05-types.md` 22.5).
   The resolver binds the name of a `const`-bound lambda before it walks the
   lambda, and keeps a stack of the lambdas whose text it is in. A call of
@@ -566,6 +584,10 @@ A plain text error has no cause: its text is already the message.
 - **The walk** (`src/conform.rs`) is one function over a `WalkMeter`: the run
   charges steps and counts depth through it, and the conformance function
   (`Env::ty(text)?.conform(&data)`) uses one that counts nothing.
+- **No level** (2.8): `as` and `is` open a level only for their type. The
+  resolver, the checker, the evaluator and the formatter go down the value
+  of an `as` or `is` in the loop that goes down the left operands of
+  operators (The checker, Spines).
 - **Facts of `is`** (`check/mod.rs`): a fact is a path with a kind,
   `NonNull`, `Is(T)` or `IsNot(T)`; `||` joins one `Is` fact per side about
   one path into one.
@@ -615,6 +637,8 @@ A plain text error has no cause: its text is already the message.
 - **Evaluation** treats an `Each` as a step of its chain: one loop per
   level, recursion once per later star, a scratch list charged once at the
   end. The checker walks a projection with *skipped-element* and *failed*.
+  The resolver and the checker treat an `Each` on a subject as a step too,
+  so projections that alternate with method calls cost no stack (2.5).
 - **Library** (`library.rs`): `suite/library-queries.json` loads after the
   others; `sortBy` replaces the Core record and keeps its cases, and the
   six new entries are methods. The three templates of
@@ -832,10 +856,16 @@ A plain text error has no cause: its text is already the message.
   the forced-break flag of each part computed when it is made. A document
   may be shared: the arguments of a call with a hugged last argument are
   built once and used by all three alternatives, so nesting costs no more.
-  The layout and the test of fits use explicit stacks. Which tokens are kept
-  is known only after the document is built, so the builder runs twice;
-  comments are attached between the runs. Tokens are found from the spans of
-  the nodes around them; a template with its interpolations is one token.
+  The layout and the test of fits use explicit stacks. The document of an
+  operator, an `as` or an `is` is built by a loop over its spine
+  (`B::spine`), innermost first, as a recursion would build it. Such
+  documents nest as deep as the spine is long, so `Docs` also keeps the
+  flat width of each document that is not forced, computed when it is made:
+  the test of fits reads it and does not go down the document. Which tokens
+  are kept is known only after the document is built, so the builder runs
+  twice; comments are attached between the runs. Tokens are found from the
+  spans of the nodes around them; a template with its interpolations is one
+  token.
 - **Assist** (`src/assist.rs`): the lexer has a cut mode that stops where the
   text ends inside an interpolation and reports which are open; the repair
   appends a closing tail for each after the inserted tokens. The hole is the

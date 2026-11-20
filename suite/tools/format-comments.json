@@ -292,5 +292,12 @@
   "expect": {
    "formatted": "x as {a: int, /* c */ b: int}\n"
   }
+ },
+ {
+  "name": "a break before any text fits on a line that is already too long",
+  "format": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.m\n/* lead */([1])",
+  "expect": {
+   "formatted": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.m\n/* lead */ ([1])\n"
+  }
  }
 ]

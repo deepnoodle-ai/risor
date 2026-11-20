@@ -121,6 +121,10 @@ function paramTest(e: Entry, p: Param): ParamTest {
  * call has failed before (04 2.2).
  */
 export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: string, lambdas: readonly number[]): void {
+  // The kind of the first argument of each `ordered` variable: of the first variable, and of the others.
+  let var0: string | null = null;
+  let kind0 = "";
+  let others: Map<string, string> | null = null;
   for (let i = 0; i < args.length; i++) {
     const p = paramAt(e, i);
     if (p.fn !== null) {
@@ -137,13 +141,21 @@ export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: 
     if (bound === "ordered") {
       // Every failure of kind at an `ordered` parameter is `unordered` (04 2.6):
       // the arguments bound to the variable are one ordered set, tested left to right.
-      const set = args.slice(0, i + 1).filter((_, j) => {
-        const q = paramAt(e, j);
-        const qt = q.rest && q.type !== null && q.type.t === "list" ? q.type.elem : q.type;
-        return qt !== null && qt.t === "var" && qt.name === (t as { name: string }).name;
-      });
-      const f = orderedFailure(set.map((x) => run.kind(x)));
-      if (f !== null) throw new RunFailure("wrong-kind", span, "unordered", { name, kind: f.kind });
+      // The arguments before this one have passed, so they are of one kind, number or
+      // string (04 3.6 rule 4, `orderedFailure`): this one fails when it is the first and
+      // of another kind than those two, or not of the kind of the first. That is one test
+      // for each argument; a test of the whole set at each argument costs the square of
+      // the count, and the next argument opens no level (01 13.1).
+      const v0 = (t as { name: string }).name;
+      const k = run.kind(v);
+      const first = var0 === null ? undefined : var0 === v0 ? kind0 : others?.get(v0);
+      if (first === undefined) {
+        if (k !== "number" && k !== "string") throw new RunFailure("wrong-kind", span, "unordered", { name, kind: k });
+        if (var0 === null) {
+          var0 = v0;
+          kind0 = k;
+        } else (others ??= new Map()).set(v0, k);
+      } else if (k !== first) throw new RunFailure("wrong-kind", span, "unordered", { name, kind: k });
       continue;
     }
     if (bound === "number") {

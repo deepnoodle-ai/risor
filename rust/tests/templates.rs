@@ -2,7 +2,8 @@
 //! does not reach.
 
 use risor::{
-    parse, parse_template, CompileOptions, Data, Env, Expected, Segment, Step, TemplateMode, Value,
+    parse, parse_template, CompileOptions, Data, Env, Expected, Pos, Segment, Span, Step,
+    TemplateMode, Value,
 };
 use std::collections::BTreeMap;
 
@@ -143,6 +144,53 @@ fn analysis_of_a_template() {
     assert!(Env::default()
         .compile(&arg, CompileOptions::default())
         .is_err());
+}
+
+/// 3.6 item 5 for a call of 100,000 arguments. Each argument's program holds
+/// the nodes of that argument and shares the text, so the arguments together
+/// cost the size of the program. Analysis once copied the whole program for
+/// each argument, which grows as the square of the arguments: 3.4 GB at
+/// 5,000 (measured, optimized), and beyond any memory at 100,000.
+#[test]
+fn a_call_of_many_arguments() {
+    let n = 100_000;
+    let args: Vec<String> = (0..n - 1).map(|i| i.to_string()).collect();
+    let src = format!("max({}, z)", args.join(", "));
+    let r = parse(&src).unwrap().analyze();
+    assert_eq!(r.names, ["z"]);
+    let c = &r.calls[0];
+    assert_eq!(
+        (c.name.as_str(), c.args.len(), c.arg_spans.len()),
+        ("max", n, n)
+    );
+    for i in [0, n / 2, n - 2] {
+        let arg = c.args[i].clone().unwrap();
+        assert_eq!(arg.analyze().literal, Some(Data::Int(i as i64)));
+        let prog = Env::default()
+            .compile(&arg, CompileOptions::default())
+            .unwrap();
+        let out = prog.run(&risor::NoVars).unwrap();
+        assert_eq!(format!("{out:?}"), format!("{:?}", Value::Num(i as f64)));
+    }
+    // The last argument reads a name no environment declares: its
+    // diagnostic is at its span in the whole text, the `z` of `z)`.
+    let column = src.chars().count() as u32 - 1;
+    let z = Span {
+        start: Pos { line: 1, column },
+        end: Pos {
+            line: 1,
+            column: column + 1,
+        },
+    };
+    assert_eq!(c.arg_spans[n - 1], z);
+    let last = c.args[n - 1].clone().unwrap();
+    let Err(e) = Env::default().compile(&last, CompileOptions::default()) else {
+        panic!("z compiles");
+    };
+    assert_eq!(
+        (e.diagnostics[0].code, e.diagnostics[0].span),
+        ("undefined-name", Some(z))
+    );
 }
 
 /// 3.1 item 5: what does not open a level costs no stack. A long chain and a

@@ -5,6 +5,7 @@ mod conversion;
 mod describe;
 mod env;
 mod facts;
+mod flat;
 mod format;
 mod host;
 mod runner;
