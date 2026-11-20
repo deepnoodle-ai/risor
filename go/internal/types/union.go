@@ -19,7 +19,11 @@ func (t *Type) Union() *Union { return t.uni }
 
 // variants are the variants of t's map alternative: of a union its
 // variants, of a record that record alone.
-func variants(t *Type) []*Record {
+func variants(t *Type) []*Record { return ownVariants(t.u()) }
+
+// ownVariants are the variants of t's own map alternative, not those of
+// its references.
+func ownVariants(t *Type) []*Record {
 	if t.uni != nil {
 		return t.uni.Variants
 	}
@@ -35,7 +39,7 @@ func Variants(t *Type) []*Record { return variants(t) }
 // litOnly reports whether a type is a literal set and nothing else: a tag
 // set (2.1 item 1.2).
 func litOnly(t *Type) bool {
-	return !t.any && t.str == strLits && !t.null && !t.boolean && t.num == numNone &&
+	return !t.any && len(t.refs) == 0 && t.str == strLits && !t.null && !t.boolean && t.num == numNone &&
 		t.list == nil && t.rec == nil && len(t.opaque) == 0 && len(t.vars) == 0
 }
 
@@ -146,6 +150,7 @@ func WithMap(t, m *Type) *Type {
 
 // WithoutMap is t with no map alternative.
 func WithoutMap(t *Type) *Type {
+	t = t.u()
 	if t.rec == nil {
 		return t
 	}
@@ -154,22 +159,32 @@ func WithoutMap(t *Type) *Type {
 	return c
 }
 
-// sameRec reports whether two records are the same by structure (2.5).
-func sameRec(a, b *Record) bool {
-	if len(a.Fields) != len(b.Fields) || !Equal(a.Rest, b.Rest) {
+// sameRec reports whether two records are the same by structure (2.5): the
+// keys and marks, then the field types in key order, then the rests.
+func sameRec(a, b *Record) bool { return (&rctx{}).sameRec(a, b) }
+
+func (c *rctx) sameRec(a, b *Record) bool {
+	if len(a.Fields) != len(b.Fields) {
 		return false
 	}
 	for i, f := range a.Fields {
 		g := b.Fields[i]
-		if f.Key != g.Key || f.Optional != g.Optional || !Equal(f.Type, g.Type) {
+		if f.Key != g.Key || f.Optional != g.Optional {
 			return false
 		}
 	}
-	return true
+	for i, f := range a.Fields {
+		if !c.equal(f.Type, b.Fields[i].Type) {
+			return false
+		}
+	}
+	return c.equal(a.Rest, b.Rest)
 }
 
 // sameUnion compares two unions as sets of records.
-func sameUnion(a, b *Union) bool {
+func sameUnion(a, b *Union) bool { return (&rctx{}).sameUnion(a, b) }
+
+func (c *rctx) sameUnion(a, b *Union) bool {
 	if a == b {
 		return true
 	}
@@ -180,7 +195,7 @@ func sameUnion(a, b *Union) bool {
 	for _, v := range a.Variants {
 		found := false
 		for j, w := range b.Variants {
-			if !used[j] && sameRec(v, w) {
+			if !used[j] && c.sameRec(v, w) {
 				used[j], found = true, true
 				break
 			}
@@ -196,6 +211,9 @@ func sameUnion(a, b *Union) bool {
 // form a union when they can (4.5).
 func Unite(a, b *Type) *Type {
 	j := Join(a, b)
+	if len(a.refs) > 0 || len(b.refs) > 0 {
+		return j
+	}
 	if a.any || b.any || a.rec == nil || b.rec == nil {
 		return j
 	}

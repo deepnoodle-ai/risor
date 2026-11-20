@@ -220,23 +220,10 @@ func (e *Env) putVarType(name string, t *types.Type) {
 
 // undeclaredOpaque reports the first opaque name in t that is not declared.
 func undeclaredOpaque(t *types.Type, declared map[string]bool) (string, bool) {
-	for _, n := range t.OpaqueNames() {
+	for _, n := range types.OpaqueIn(t) {
 		if !declared[n] {
 			return n, false
 		}
-	}
-	if el := t.Elem(); el != nil {
-		if n, ok := undeclaredOpaque(el, declared); !ok {
-			return n, false
-		}
-	}
-	if r := t.Record(); r != nil {
-		for _, f := range r.Fields {
-			if n, ok := undeclaredOpaque(f.Type, declared); !ok {
-				return n, false
-			}
-		}
-		return undeclaredOpaque(r.Rest, declared)
 	}
 	return "", true
 }

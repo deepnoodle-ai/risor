@@ -12,6 +12,7 @@ func (t *Type) IsFloat() bool { return t.num == numFloat }
 // list, the map alternative (a record or a tagged union), each opaque type
 // and each type variable. any is its own one alternative; never has none.
 func Alternatives(t *Type) []*Type {
+	t = t.u()
 	if t.any {
 		return []*Type{Any}
 	}
@@ -56,6 +57,7 @@ func UnionOf(ts []*Type) (*Type, error) {
 	xs := make([]*Type, 0, len(ts))
 	var recs []*Record
 	for _, x := range ts {
+		x = x.u()
 		if x.rec != nil {
 			recs = append(recs, variants(x)...)
 			x = WithoutMap(x)

@@ -15,7 +15,13 @@ type PDiag struct {
 // undefined name; else every PType with two records; else one check-limit
 // for depth and size.
 func FromPType(pt *syntax.PType, sc *Scope) (*Type, []PDiag) {
-	var ds []PDiag
+	return FromPTypeList(pt, sc, nil)
+}
+
+// FromPTypeList resolves the program type of a type line of a list being
+// resolved (F17 12.2): look resolves the names of the list, with whether
+// each stands at a guarded place.
+func FromPTypeList(pt *syntax.PType, sc *Scope, look func(name string, guarded bool) (*Type, bool)) (t *Type, ds []PDiag) {
 	var names func(t *syntax.PType)
 	names = func(t *syntax.PType) {
 		for _, a := range t.Alts {
@@ -37,12 +43,16 @@ func FromPType(pt *syntax.PType, sc *Scope) (*Type, []PDiag) {
 			}
 		}
 	}
-	names(pt)
+	if look == nil { // the names of a list are tested by its resolver
+		names(pt)
+	}
 	if len(ds) > 0 {
 		return nil, ds
 	}
-	r := &presolver{sc: sc}
-	t := r.typ(pt)
+	r := &presolver{sc: sc, look: look}
+	if Guard(func() { t = r.typ(pt) }) {
+		return nil, []PDiag{{Code: "check-limit", Span: pt.Span, Tmpl: "pairs"}}
+	}
 	if len(r.ds) > 0 {
 		return nil, r.ds
 	}
@@ -56,8 +66,10 @@ func FromPType(pt *syntax.PType, sc *Scope) (*Type, []PDiag) {
 }
 
 type presolver struct {
-	sc *Scope
-	ds []PDiag
+	sc    *Scope
+	ds    []PDiag
+	look  func(name string, guarded bool) (*Type, bool)
+	guard int
 }
 
 // typ resolves a PType. A PType whose own alternatives, with parentheses
@@ -68,11 +80,27 @@ func (r *presolver) typ(t *syntax.PType) *Type {
 	// F5 3.1, 3.2: the records of a PType, a union and a parenthesized PType
 	// contributing their variants (one that reported, none); two or more
 	// must form a tagged union, else untagged-union here.
+	alts := make([]*Type, len(t.Alts))
+	counts := make([]int, len(t.Alts))
+	for i, a := range t.Alts {
+		alts[i], counts[i] = r.alt(a)
+	}
+	// F17 12.3: a reference that shares a kind with another alternative
+	// counts as its definition, whose records then count.
+	shared := unfoldShared(alts)
+	for i := range alts {
+		if shared[i] != alts[i] && shared[i].rec != nil && t.Alts[i].Lists == 0 {
+			counts[i] = 1
+		}
+	}
 	xs := make([]*Type, 0, len(t.Alts))
+	var refs []*Named
 	var recs []*Record
-	for _, a := range t.Alts {
-		x, n := r.alt(a)
-		if x.rec != nil && n > 0 {
+	for i, a := range t.Alts {
+		x := shared[i]
+		refs = append(refs, x.refs...)
+		x = x.plain()
+		if x.rec != nil && counts[i] > 0 {
 			recs = append(recs, variants(x)...)
 		}
 		if x.rec != nil && a.Lists == 0 {
@@ -80,7 +108,7 @@ func (r *presolver) typ(t *syntax.PType) *Type {
 		}
 		xs = append(xs, x)
 	}
-	out := JoinAll(xs)
+	out := withRefs(JoinAll(xs), refs)
 	if len(recs) > 0 {
 		m, ok := FormUnion(recs)
 		if !ok {
@@ -97,6 +125,10 @@ func (r *presolver) alt(a *syntax.PAlt) (*Type, int) {
 	p := a.Prim
 	var t *Type
 	recs := 0
+	if a.Lists > 0 {
+		r.guard++
+		defer func() { r.guard-- }()
+	}
 	switch p.Kind {
 	case syntax.PWord:
 		switch p.Text {
@@ -118,16 +150,24 @@ func (r *presolver) alt(a *syntax.PAlt) (*Type, int) {
 	case syntax.PString:
 		t = Lit(p.Text)
 	case syntax.PName:
-		if n, ok := r.sc.Named[p.Text]; ok {
-			t = n
-		} else {
-			t = Opaque(p.Text)
+		found := false
+		if r.look != nil {
+			t, found = r.look(p.Text, r.guard > 0)
+		}
+		if !found {
+			if n, ok := r.sc.Named[p.Text]; ok {
+				t = n
+			} else {
+				t = Opaque(p.Text)
+			}
 		}
 		if t.rec != nil {
 			recs = 1
 		}
 	case syntax.PMap:
+		r.guard++
 		t = MapOf(r.typ(p.Elem))
+		r.guard--
 		recs = 1
 	case syntax.PParen:
 		before := len(r.ds)
@@ -136,6 +176,8 @@ func (r *presolver) alt(a *syntax.PAlt) (*Type, int) {
 			recs = 1
 		}
 	case syntax.PRecord:
+		r.guard++
+		defer func() { r.guard-- }()
 		fs := make([]Field, 0, len(p.Fields))
 		for _, f := range p.Fields {
 			fs = append(fs, Field{Key: f.Key, Type: r.typ(f.Type), Optional: f.Optional})
@@ -157,4 +199,32 @@ func (r *presolver) alt(a *syntax.PAlt) (*Type, int) {
 		}
 	}
 	return t, recs
+}
+
+// PTypeUses lists the names in a program type, in text order, each with its
+// span and whether it stands at a guarded place (F17 12.2).
+func PTypeUses(pt *syntax.PType, add func(name string, sp syntax.Span, guarded bool)) {
+	var typ func(t *syntax.PType, g bool)
+	typ = func(t *syntax.PType, g bool) {
+		for _, a := range t.Alts {
+			ga := g || a.Lists > 0
+			p := a.Prim
+			switch p.Kind {
+			case syntax.PName:
+				add(p.Text, p.Span, ga)
+			case syntax.PMap:
+				typ(p.Elem, true)
+			case syntax.PParen:
+				typ(p.Elem, ga)
+			case syntax.PRecord:
+				for _, f := range p.Fields {
+					typ(f.Type, true)
+				}
+				if p.Rest != nil {
+					typ(p.Rest, true)
+				}
+			}
+		}
+	}
+	typ(pt, false)
 }

@@ -56,8 +56,23 @@ func alts(t *Type) []*Type {
 // WithoutType is without(X, T): the type left of X when a value of type X
 // is known not to conform to T.
 func WithoutType(x, t *Type) *Type {
-	if x.any {
+	if x.IsAny() {
 		return Any
+	}
+	// F17 12.4: a reference that shares a kind with T, null included, is
+	// unfolded; one that shares none is an alternative T does not take.
+	var kept []*Named
+	if len(x.refs) > 0 {
+		p := x.plain()
+		for _, n := range x.refs {
+			r := Ref(n)
+			if SharesKind(r, t) || (n.def.null && t.HasNull()) {
+				p = mergeKinds(p, n.def)
+			} else {
+				kept = append(kept, n)
+			}
+		}
+		x = p
 	}
 	out := Never
 	var left []*Record // the variants left, which may form a smaller union
@@ -86,7 +101,7 @@ func WithoutType(x, t *Type) *Type {
 	if len(left) > 0 {
 		out = WithMap(out, MapOfVariants(left))
 	}
-	return out
+	return withRefs(out, kept)
 }
 
 func hasString(xs []string, s string) bool {
@@ -99,10 +114,26 @@ func hasString(xs []string, s string) bool {
 }
 
 // Disjoint reports whether no value conforms to both a and b, as far as
-// the rule of F4 6.2 can show. It is sound and not complete.
-func Disjoint(a, b *Type) bool {
+// the rule of F4 6.2 can show. It is sound and not complete. With
+// references it is one computation of F17 12.5: a pair met again while in
+// progress is not shown disjoint.
+func Disjoint(a, b *Type) bool { return (&rctx{}).disjoint(a, b) }
+
+func (c *rctx) disjoint(a, b *Type) bool {
 	if a.IsNever() || b.IsNever() {
 		return true
+	}
+	if len(a.refs) > 0 || len(b.refs) > 0 {
+		if c.find(c.disjt, a, b) {
+			return false
+		}
+		c.enter()
+		c.disjt = append(c.disjt, pairT{a, b})
+		defer func() { c.disjt = c.disjt[:len(c.disjt)-1] }()
+		a, b = a.u(), b.u()
+		if a.IsNever() || b.IsNever() {
+			return true
+		}
 	}
 	if a.any || b.any {
 		return false
@@ -132,7 +163,7 @@ func Disjoint(a, b *Type) bool {
 		// F5 4.5: unless every variant of a is disjoint from every one of b.
 		for _, va := range variants(a) {
 			for _, vb := range variants(b) {
-				if !disjointRec(va, vb) {
+				if !c.disjointRec(va, vb) {
 					return false
 				}
 			}
@@ -143,7 +174,7 @@ func Disjoint(a, b *Type) bool {
 
 // disjointRec: two records share a value unless some key required in
 // either has disjoint types in the two.
-func disjointRec(a, b *Record) bool {
+func (c *rctx) disjointRec(a, b *Record) bool {
 	typeOf := func(r *Record, k string) *Type {
 		if f, ok := r.field(k); ok {
 			return f.Type
@@ -152,7 +183,7 @@ func disjointRec(a, b *Record) bool {
 	}
 	test := func(r, other *Record) bool {
 		for _, f := range r.Fields {
-			if !f.Optional && Disjoint(f.Type, typeOf(other, f.Key)) {
+			if !f.Optional && c.disjoint(f.Type, typeOf(other, f.Key)) {
 				return true
 			}
 		}

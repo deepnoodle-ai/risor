@@ -157,6 +157,9 @@ type walker struct {
 	types *types.Scope
 	// lineNames holds the name of each type line walked (F16 3.1).
 	lineNames map[string]bool
+	// lines holds what the type lines resolved together give (F17 12.2):
+	// each line's diagnostics and the type it declares, or nil.
+	lines map[*syntax.TypeLine]*lineResult
 	// self holds, for each const-bound lambda that refers to its own name,
 	// its first reference in the text (05-types.md 22.5).
 	self map[*syntax.Lambda]selfRef
@@ -191,6 +194,7 @@ func Check(prog *syntax.Program, names *Names) *Result {
 	}
 	outer := &scope{names: map[string]*Binding{}, vars: names.Vars}
 	s := &scope{parent: outer, names: map[string]*Binding{}}
+	w.resolveTypeLines(prog.Types)
 	// The const lines and the type lines, in the order of the text.
 	ci, ti := 0, 0
 	for ci < len(prog.Consts) || ti < len(prog.Types) {
@@ -299,14 +303,147 @@ func (w *walker) typeLine(tl *syntax.TypeLine) {
 		w.lineNames = map[string]bool{}
 	}
 	w.lineNames[tl.Name] = true
-	t := w.resolve(tl.Type)
+	lr := w.lines[tl]
+	for _, d := range lr.diags {
+		w.diagm(d.Code, d.Span, d.Tmpl, d.Params...)
+	}
+	if lr.t != nil {
+		w.res.AnnTypes[tl.Type] = lr.t
+	}
 	if clash {
 		return
 	}
-	if t != nil {
-		w.types.Named[tl.Name] = t
+	if lr.t != nil {
+		w.types.Named[tl.Name] = lr.t
 	} else {
 		delete(w.types.Named, tl.Name)
+	}
+}
+
+// lineResult is what the resolution of the type lines gives one line.
+type lineResult struct {
+	diags []Diag
+	t     *types.Type
+}
+
+// resolveTypeLines resolves the type lines of a program together, as one
+// list (F17 12.2). A name in a line names the line of that name in force
+// there: the last at or before it, else the first after it; a line that is
+// name-clash names nothing, and its name stays the environment's type.
+func (w *walker) resolveTypeLines(lines []*syntax.TypeLine) {
+	w.lines = map[*syntax.TypeLine]*lineResult{}
+	env := &types.Scope{Opaque: map[string]bool{}, Named: map[string]*types.Type{}}
+	for k, v := range w.types.Opaque {
+		env.Opaque[k] = v
+	}
+	for k, v := range w.types.Named {
+		env.Named[k] = v
+	}
+	n := len(lines)
+	clash := make([]bool, n)
+	names := make([]string, n)
+	for i, tl := range lines {
+		names[i] = tl.Name
+		_, named := env.Named[tl.Name]
+		clash[i] = named || env.Opaque[tl.Name]
+		w.lines[tl] = &lineResult{}
+	}
+	target := func(i int, name string) int {
+		at := -1
+		for j := 0; j < n; j++ {
+			if clash[j] || names[j] != name {
+				continue
+			}
+			if j <= i {
+				at = j
+			} else if at < 0 {
+				return j
+			}
+		}
+		return at
+	}
+	res := make([]*lineResult, n)
+	uses := make([][]types.Use, n)
+	useSpans := make([][]syntax.Span, n)
+	useNames := make([][]string, n)
+	own := make([]bool, n) // the line's own text has a diagnostic
+	for i, tl := range lines {
+		res[i] = w.lines[tl]
+		types.PTypeUses(tl.Type, func(name string, sp syntax.Span, guarded bool) {
+			j := target(i, name)
+			if j < 0 {
+				if _, ok := env.Named[name]; !ok && !env.Opaque[name] {
+					res[i].diags = append(res[i].diags, Diag{Code: "undefined-name", Span: sp, Tmpl: "type", Params: []messages.Param{nameP(name)}})
+					own[i] = true
+				}
+			}
+			uses[i] = append(uses[i], types.Use{Target: j, Guarded: guarded})
+			useSpans[i] = append(useSpans[i], sp)
+			useNames[i] = append(useNames[i], name)
+		})
+	}
+	info := types.AnalyzeList(uses)
+	b := types.NewListBuild(info, names)
+	b.BuildFn = func(i int) (*types.Type, bool) {
+		t, ds := types.FromPTypeList(lines[i].Type, env,
+			func(name string, guarded bool) (*types.Type, bool) {
+				j := target(i, name)
+				if j < 0 {
+					return nil, false
+				}
+				return b.Look(i, j, guarded), true
+			})
+		for _, d := range ds {
+			switch d.Code {
+			case "check-limit":
+				res[i].diags = append(res[i].diags, Diag{Code: d.Code, Span: d.Span, Tmpl: d.Tmpl})
+			default:
+				res[i].diags = append(res[i].diags, Diag{Code: d.Code, Span: d.Span})
+			}
+		}
+		return t, t != nil && len(ds) == 0
+	}
+	for _, c := range info.Order {
+		ok := true
+		for _, i := range c {
+			if info.Direct[i] {
+				res[i].diags = append(res[i].diags, Diag{Code: "circular-type", Span: lines[i].NameSpan, Tmpl: "direct", Params: []messages.Param{nameP(names[i])}})
+				own[i] = true
+			}
+			if own[i] {
+				ok = false
+			}
+			// A line named from another component that failed: undefined-name
+			// at the name (F16 3.1 item 5).
+			for k, u := range uses[i] {
+				if u.Target >= 0 && info.Comp[u.Target] != info.Comp[i] && b.Failed[u.Target] {
+					res[i].diags = append(res[i].diags, Diag{Code: "undefined-name", Span: useSpans[i][k], Tmpl: "type", Params: []messages.Param{nameP(useNames[i][k])}})
+					ok = false
+				}
+			}
+		}
+		if ok && b.Comp(c) {
+			// 12.2 item 6: a reference of the component beside a type of its
+			// kind, once for each line, at its name.
+			for _, i := range c {
+				if nm, bad := b.SharedIn(i); bad {
+					res[i].diags = append(res[i].diags, Diag{Code: "circular-type", Span: lines[i].NameSpan, Tmpl: "union", Params: []messages.Param{nameP(nm.Name)}})
+					ok = false
+				}
+			}
+		} else {
+			ok = false
+		}
+		if !ok {
+			for _, i := range c {
+				b.Failed[i] = true
+			}
+		}
+	}
+	for i := range lines {
+		if !b.Failed[i] {
+			res[i].t = b.TypeOf(i)
+		}
 	}
 }
 

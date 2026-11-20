@@ -314,7 +314,7 @@
    }
   },
   {
-   "name": "a named type cannot name itself",
+   "name": "a named type names itself (F17 12.2)",
    "source": "1",
    "types": [
     {
@@ -323,16 +323,12 @@
     }
    ],
    "expect": {
-    "phase": "declare",
-    "diagnostics": [
-     {
-      "code": "bad-type"
-     }
-    ]
+    "type": "int",
+    "value": 1
    }
   },
   {
-   "name": "a named type cannot name a later one",
+   "name": "a named type names a later one (F17 12.2)",
    "source": "1",
    "types": [
     {
@@ -345,12 +341,8 @@
     }
    ],
    "expect": {
-    "phase": "declare",
-    "diagnostics": [
-     {
-      "code": "bad-type"
-     }
-    ]
+    "type": "int",
+    "value": 1
    }
   },
   {

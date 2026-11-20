@@ -9,9 +9,25 @@ import (
 
 // synth checks a node and gives its type (1.1).
 func (c *checker) synth(n syntax.Node, fs facts) *types.Type {
+	defer c.catchPairs(n)
 	t := c.synth0(n, fs)
 	c.setTy(n, t)
 	return t
+}
+
+// pairStop ends a check whose computation passed the pair bound of F17
+// 12.5, at the innermost node whose check was in progress.
+type pairStop struct{ sp syntax.Span }
+
+// catchPairs turns a computation past the pair bound into the end of the
+// check, at node n.
+func (c *checker) catchPairs(n syntax.Node) {
+	if r := recover(); r != nil {
+		if _, ok := r.(*types.PairLimit); ok {
+			panic(pairStop{n.Span()})
+		}
+		panic(r)
+	}
 }
 
 func (c *checker) synth0(n syntax.Node, fs facts) *types.Type {
@@ -740,6 +756,9 @@ func (c *checker) try(n *syntax.Try, fs facts) *types.Type {
 
 // constLine checks a const line (12.1).
 func (c *checker) constLine(k *syntax.Const, fs facts) {
+	// A fit or a pattern after the value is checked is on the value
+	// (F17 12.5).
+	defer c.catchPairs(k.Value)
 	if lam, ok := k.Value.(*syntax.Lambda); ok && k.Type == nil {
 		if np, ok := k.Pattern.(*syntax.NamePat); ok && !np.Discard {
 			info := &lamInfo{facts: fs, base: c.base, lamDepth: c.lamDepth, maxRel: maxRel(lam)}

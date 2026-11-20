@@ -19,6 +19,10 @@ type conv struct {
 	opaque    map[string]bool
 	named     map[string]*Type
 	allowVars bool
+	// look resolves a name of a list being resolved (F17 12.2), with
+	// whether it stands at a guarded place; false for a name outside it.
+	look  func(name string, guarded bool) (*Type, bool)
+	guard int
 }
 
 // Scope is what type text may name: the opaque types and the named types of
@@ -68,12 +72,31 @@ func FromTextIn(t *typetext.Type, sc *Scope, allowVars bool) (out *Type, err err
 }
 
 func (c *conv) typ(t *typetext.Type) *Type {
-	// F5 3.1: the records of a Type, a union contributing its variants; two
-	// or more must form a tagged union.
-	xs := make([]*Type, 0, len(t.Alts))
+	alts := make([]*Type, len(t.Alts))
+	for i, a := range t.Alts {
+		alts[i] = c.alt(a)
+	}
+	out, ok := Alternatives3(alts)
+	if !ok {
+		c.fail("two or more records that form no tagged union in one type")
+	}
+	return out
+}
+
+// Alternatives3 joins the alternatives of one Type of type text
+// (05-types.md 3.4; F5 3.1; F17 12.3). A reference whose definition is
+// known and that shares a kind other than null with another alternative
+// counts as its definition; any other reference stands as it is, beside the
+// rest. The records, a union contributing its variants, must form a tagged
+// union when they are two or more: false otherwise.
+func Alternatives3(alts []*Type) (*Type, bool) {
+	alts = unfoldShared(alts)
+	xs := make([]*Type, 0, len(alts))
+	var refs []*Named
 	var recs []*Record
-	for _, a := range t.Alts {
-		x := c.alt(a)
+	for _, x := range alts {
+		refs = append(refs, x.refs...)
+		x = x.plain()
 		if x.rec != nil {
 			recs = append(recs, variants(x)...)
 			x = WithoutMap(x)
@@ -84,14 +107,77 @@ func (c *conv) typ(t *typetext.Type) *Type {
 	if len(recs) > 0 {
 		m, ok := FormUnion(recs)
 		if !ok {
-			c.fail("two or more records that form no tagged union in one type")
+			return nil, false
 		}
 		out = WithMap(out, m)
+	}
+	return withRefs(out, refs), true
+}
+
+// unfoldShared unfolds each reference whose definition is known and that
+// shares a kind other than null with another alternative.
+func unfoldShared(alts []*Type) []*Type {
+	any := false
+	for _, x := range alts {
+		if len(x.refs) > 0 {
+			any = true
+		}
+	}
+	if !any {
+		return alts
+	}
+	out := append([]*Type(nil), alts...)
+	for changed := true; changed; {
+		changed = false
+		for i, x := range out {
+			if len(x.refs) == 0 {
+				continue
+			}
+			p := x.plain()
+			var kept []*Named
+			for _, n := range x.refs {
+				if n.def != nil && sharesKnown(Ref(n), out, i, n) {
+					p = mergeKinds(p, n.def)
+					changed = true
+				} else {
+					kept = append(kept, n)
+				}
+			}
+			if len(kept) != len(x.refs) {
+				out[i] = withRefs(p, kept)
+			}
+		}
 	}
 	return out
 }
 
+// sharesKnown reports whether r shares a kind other than null with an
+// alternative of alts other than the reference n at i, looking only at
+// what is known: a reference whose definition is not known has no kind
+// yet.
+func sharesKnown(r *Type, alts []*Type, at int, n *Named) bool {
+	for j, y := range alts {
+		parts := []*Type{y.plain()}
+		for _, m := range y.refs {
+			if (j == at && m == n) || m.def == nil {
+				continue
+			}
+			parts = append(parts, Ref(m))
+		}
+		for _, p := range parts {
+			if !p.IsNever() && SharesKind(r, p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (c *conv) alt(a *typetext.Alt) *Type {
+	if a.Lists > 0 {
+		c.guard++
+		defer func() { c.guard-- }()
+	}
 	t := c.prim(a.Prim)
 	for i := 0; i < a.Lists; i++ {
 		t = List(t)
@@ -120,10 +206,17 @@ func (c *conv) prim(p *typetext.Prim) *Type {
 	case typetext.PrimString:
 		return Lit(p.Text)
 	case typetext.PrimMap:
+		c.guard++
+		defer func() { c.guard-- }()
 		return MapOf(c.typ(p.Elem))
 	case typetext.PrimParen:
 		return c.typ(p.Elem)
 	case typetext.PrimName:
+		if c.look != nil {
+			if t, ok := c.look(p.Text, c.guard > 0); ok {
+				return t
+			}
+		}
 		if t, ok := c.named[p.Text]; ok {
 			return t
 		}
@@ -137,6 +230,8 @@ func (c *conv) prim(p *typetext.Prim) *Type {
 		}
 		return Var(p.Text)
 	}
+	c.guard++
+	defer func() { c.guard-- }()
 	seen := map[string]bool{}
 	var fs []Field
 	for _, f := range p.Record.Fields {
@@ -259,5 +354,42 @@ func FromSigIn(recv *typetext.Alt, s *typetext.Sig, sc *Scope) (out *Sig, err er
 		}
 		out.Params = append(out.Params, q)
 	}
+	return out, nil
+}
+
+// TextUses lists the names in type text, in text order, each with whether
+// it stands at a guarded place (F17 12.2).
+func TextUses(t *typetext.Type, add func(name string, guarded bool)) {
+	var typ func(t *typetext.Type, g bool)
+	typ = func(t *typetext.Type, g bool) {
+		for _, a := range t.Alts {
+			ga := g || a.Lists > 0
+			p := a.Prim
+			switch p.Kind {
+			case typetext.PrimName:
+				add(p.Text, ga)
+			case typetext.PrimMap:
+				typ(p.Elem, true)
+			case typetext.PrimParen:
+				typ(p.Elem, ga)
+			case typetext.PrimRecord:
+				for _, f := range p.Record.Fields {
+					typ(f.Type, true)
+				}
+				if p.Record.Rest != nil {
+					typ(p.Record.Rest, true)
+				}
+			}
+		}
+	}
+	typ(t, false)
+}
+
+// FromTextList converts the type text of an item of a list being resolved:
+// look resolves the names of the list.
+func FromTextList(t *typetext.Type, sc *Scope, look func(name string, guarded bool) (*Type, bool)) (out *Type, err error) {
+	defer catch(&err)
+	c := &conv{opaque: sc.Opaque, named: sc.Named, look: look}
+	out = c.check(c.typ(t))
 	return out, nil
 }

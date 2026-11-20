@@ -44,6 +44,12 @@ type Type struct {
 	tested bool
 	opaque []string // sorted and unique
 	vars   []string // type variables of a signature, sorted
+	// refs are the references to recursive names among the alternatives
+	// (F17 12), sorted by name. Their kinds are disjoint from those of the
+	// other alternatives but null.
+	refs []*Named
+	// unf caches the unfolding of a type with references.
+	unf atomic.Pointer[Type]
 
 	// size and depth cache Size and Depth (0: not yet known; depth is
 	// stored plus one). A type is immutable once built, so each is
@@ -135,39 +141,41 @@ func uniq(s []string) []string {
 
 func (t *Type) clone() *Type {
 	c := &Type{any: t.any, null: t.null, boolean: t.boolean, num: t.num, str: t.str, lits: t.lits,
-		list: t.list, rec: t.rec, uni: t.uni, opaque: t.opaque, vars: t.vars, tested: t.tested}
+		list: t.list, rec: t.rec, uni: t.uni, opaque: t.opaque, vars: t.vars, tested: t.tested, refs: t.refs}
 	return c
 }
 
-// IsAny reports whether t is any.
-func (t *Type) IsAny() bool { return t.any }
+// IsAny reports whether t is any. A reference whose definition is any is.
+func (t *Type) IsAny() bool { return t.any || (len(t.refs) > 0 && !t.incomplete() && t.u().any) }
 
 // IsNever reports whether t is the empty set.
 func (t *Type) IsNever() bool {
 	return !t.any && !t.null && !t.boolean && t.num == numNone && t.str == strNone &&
-		t.list == nil && t.rec == nil && len(t.opaque) == 0 && len(t.vars) == 0
+		t.list == nil && t.rec == nil && len(t.opaque) == 0 && len(t.vars) == 0 && len(t.refs) == 0
 }
 
-// HasNull reports whether t has the null alternative.
-func (t *Type) HasNull() bool { return t.null }
+// HasNull reports whether t has the null alternative, in its unfolding.
+func (t *Type) HasNull() bool { return t.null || (len(t.refs) > 0 && t.u().null) }
 
 // IsExactlyNull reports whether t is the type null and nothing else.
-func (t *Type) IsExactlyNull() bool { return t.null && t.withoutNull().IsNever() }
+func (t *Type) IsExactlyNull() bool { return isNullOnly(t) }
 
-// Elem is the element type of t's list alternative, or nil.
-func (t *Type) Elem() *Type { return t.list }
+// Elem is the element type of t's list alternative, or nil. A reference is
+// unfolded.
+func (t *Type) Elem() *Type { return t.u().list }
 
-// Record is t's record alternative, or nil.
-func (t *Type) Record() *Record { return t.rec }
+// Record is t's record alternative, or nil. A reference is unfolded.
+func (t *Type) Record() *Record { return t.u().rec }
 
 // OpaqueNames are t's opaque alternatives.
-func (t *Type) OpaqueNames() []string { return t.opaque }
+func (t *Type) OpaqueNames() []string { return t.u().opaque }
 
 // Vars are the type variables in t, at the top only.
 func (t *Type) Vars() []string { return t.vars }
 
 // Lits are the strings of a literal set, or nil.
 func (t *Type) Lits() []string {
+	t = t.u()
 	if t.str == strLits {
 		return t.lits
 	}
@@ -175,23 +183,24 @@ func (t *Type) Lits() []string {
 }
 
 // IsStringAll reports whether t has the alternative string.
-func (t *Type) IsStringAll() bool { return t.str == strAll }
+func (t *Type) IsStringAll() bool { return t.u().str == strAll }
 
 // HasString reports whether t has a string or a literal set.
-func (t *Type) HasString() bool { return t.str != strNone }
+func (t *Type) HasString() bool { return t.u().str != strNone }
 
 // HasBool reports whether t has bool.
-func (t *Type) HasBool() bool { return t.boolean }
+func (t *Type) HasBool() bool { return t.u().boolean }
 
 // IsInt reports whether t's number alternative is int.
-func (t *Type) IsInt() bool { return t.num == numInt }
+func (t *Type) IsInt() bool { return t.u().num == numInt }
 
 // HasNumber reports whether t has a number alternative.
-func (t *Type) HasNumber() bool { return t.num != numNone }
+func (t *Type) HasNumber() bool { return t.u().num != numNone }
 
 // Kinds returns the number of kinds of t (each opaque name is a kind).
 // Null counts. any and never have none.
 func (t *Type) Kinds() int {
+	t = t.u()
 	if t.any {
 		return 0
 	}
@@ -205,6 +214,14 @@ func (t *Type) Kinds() int {
 }
 
 func (t *Type) withoutNull() *Type {
+	if len(t.refs) > 0 {
+		// A reference whose definition has null is unfolded (F17 12.4).
+		for _, n := range t.refs {
+			if n.def != nil && n.def.null {
+				return t.u().withoutNull()
+			}
+		}
+	}
 	if !t.null {
 		return t
 	}
@@ -216,7 +233,8 @@ func (t *Type) withoutNull() *Type {
 // Nonnull is t without null; nonnull(any) is any (4.5).
 func Nonnull(t *Type) *Type { return t.withoutNull() }
 
-// WithNull is t with the null alternative added.
+// WithNull is t with the null alternative added. Beside a reference null is
+// kept as written, whatever its definition holds (F17 12.4).
 func WithNull(t *Type) *Type {
 	if t.any || t.null {
 		return t
@@ -258,6 +276,17 @@ func unionStrings(a, b []string) []string {
 // sets are gathered and sorted once, and the rest is joined as a balanced
 // tree, so no set is copied once for each type joined.
 func JoinAll(ts []*Type) *Type {
+	for _, t := range ts {
+		if len(t.refs) > 0 {
+			// With a reference the types are joined from the left, in order
+			// (F17 12.4): a Join of references is not associative as written.
+			r := Never
+			for _, t := range ts {
+				r = Join(r, t)
+			}
+			return r
+		}
+	}
 	var lits []string
 	all := false
 	rest := make([]*Type, 0, len(ts))
@@ -302,13 +331,34 @@ func joinTree(ts []*Type) *Type {
 	return Join(joinTree(ts[:m]), joinTree(ts[m:]))
 }
 
-// Join is the type of a value of type a or b (4.1).
-func Join(a, b *Type) *Type {
+// Join is the type of a value of type a or b (4.1). With references it is
+// one computation of F17 12.5.
+func Join(a, b *Type) *Type { return (&rctx{}).join(a, b) }
+
+func (c *rctx) join(a, b *Type) *Type {
 	if a.any || b.any {
 		return Any
 	}
 	if a == b {
 		return a
+	}
+	if a.IsNever() {
+		return b
+	}
+	if b.IsNever() {
+		return a
+	}
+	if len(a.refs) > 0 || len(b.refs) > 0 {
+		return c.joinRefs(a, b)
+	}
+	return c.joinPlain(a, b)
+}
+
+// joinPlain is the Join of Core by kind, for types with no reference at the
+// top. Their parts are joined in the computation c.
+func (c *rctx) joinPlain(a, b *Type) *Type {
+	if a.any || b.any {
+		return Any
 	}
 	if a.IsNever() {
 		return b
@@ -330,7 +380,7 @@ func Join(a, b *Type) *Type {
 	}
 	switch {
 	case a.list != nil && b.list != nil:
-		r.list = Join(a.list, b.list)
+		r.list = c.join(a.list, b.list)
 	case a.list != nil:
 		r.list = a.list
 	default:
@@ -340,10 +390,10 @@ func Join(a, b *Type) *Type {
 	case a.rec != nil && b.rec != nil:
 		// F5 4.1: a union survives only beside the same union; otherwise the
 		// Join of the flats. A Join never makes a union.
-		if a.uni != nil && b.uni != nil && sameUnion(a.uni, b.uni) {
+		if a.uni != nil && b.uni != nil && c.sameUnion(a.uni, b.uni) {
 			r.rec, r.uni = a.rec, a.uni
 		} else {
-			r.rec = joinRec(a.rec, b.rec)
+			r.rec = c.joinRec(a.rec, b.rec)
 		}
 	case a.rec != nil:
 		r.rec, r.uni = a.rec, a.uni
@@ -372,7 +422,9 @@ func (r *Record) field(k string) (Field, bool) {
 // Field returns the field of key k.
 func (r *Record) Field(k string) (Field, bool) { return r.field(k) }
 
-func joinRec(a, b *Record) *Record {
+func joinRec(a, b *Record) *Record { return (&rctx{}).joinRec(a, b) }
+
+func (c *rctx) joinRec(a, b *Record) *Record {
 	// A fill is kept apart through a Join (F1 4.4 item 3): a key in both has
 	// the Join of the bases and of the fills; a key in one only has its base
 	// joined with the other's rest, and keeps its fill. A field with a fill
@@ -381,39 +433,54 @@ func joinRec(a, b *Record) *Record {
 		if fill == nil {
 			return Field{Key: k, Type: base, Optional: optional}
 		}
-		return Field{Key: k, Type: Join(base, fill), Base: base, Fill: fill}
+		return Field{Key: k, Type: c.join(base, fill), Base: base, Fill: fill}
 	}
+	// The keys in code point order (F17 12.5): each key of either record,
+	// then the rests.
 	var fs []Field
-	for _, f := range a.Fields {
-		if g, ok := b.field(f.Key); ok {
+	keyOf := func(k string) {
+		f, inA := a.field(k)
+		g, inB := b.field(k)
+		switch {
+		case inA && inB:
 			var fill *Type
 			if f.Fill != nil || g.Fill != nil {
-				fill = Join(orNever(f.Fill), orNever(g.Fill))
+				fill = c.join(orNever(f.Fill), orNever(g.Fill))
 			}
-			fs = append(fs, field(f.Key, Join(f.BaseOf(), g.BaseOf()), fill, f.Optional || g.Optional))
-		} else {
+			fs = append(fs, field(k, c.join(f.BaseOf(), g.BaseOf()), fill, f.Optional || g.Optional))
+		case inA:
 			t := f.BaseOf()
 			if !b.Rest.IsNever() {
-				t = Join(t, b.Rest)
+				t = c.join(t, b.Rest)
 			}
-			fs = append(fs, field(f.Key, t, f.Fill, true))
-		}
-	}
-	for _, g := range b.Fields {
-		if _, ok := a.field(g.Key); !ok {
+			fs = append(fs, field(k, t, f.Fill, true))
+		default:
 			t := g.BaseOf()
 			if !a.Rest.IsNever() {
-				t = Join(t, a.Rest)
+				t = c.join(t, a.Rest)
 			}
-			fs = append(fs, field(g.Key, t, g.Fill, true))
+			fs = append(fs, field(k, t, g.Fill, true))
 		}
 	}
-	sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
+	i, j := 0, 0
+	for i < len(a.Fields) || j < len(b.Fields) {
+		switch {
+		case j >= len(b.Fields) || (i < len(a.Fields) && a.Fields[i].Key < b.Fields[j].Key):
+			keyOf(a.Fields[i].Key)
+			i++
+		case i >= len(a.Fields) || b.Fields[j].Key < a.Fields[i].Key:
+			keyOf(b.Fields[j].Key)
+			j++
+		default:
+			keyOf(a.Fields[i].Key)
+			i, j = i+1, j+1
+		}
+	}
 	// F1 3.6 item 8: closable when one is closable and the other is closable
 	// or exact.
 	exact := func(r *Record) bool { return r.Rest.IsNever() && !r.Closable }
 	cl := (a.Closable && (b.Closable || exact(b))) || (b.Closable && exact(a))
-	return &Record{Fields: fs, Rest: Join(a.Rest, b.Rest), Closable: cl}
+	return &Record{Fields: fs, Rest: c.join(a.Rest, b.Rest), Closable: cl}
 }
 
 func orNever(t *Type) *Type {
@@ -426,12 +493,15 @@ func orNever(t *Type) *Type {
 // Fits is the assignability relation (4.2). It also reports whether the
 // fit used any.
 func Fits(s, t *Type) (ok, usedAny bool) {
-	f := &fitter{}
+	f := &fitter{c: &rctx{}}
 	ok = f.fits(s, t)
 	return ok, f.used
 }
 
-type fitter struct{ used bool }
+type fitter struct {
+	used bool
+	c    *rctx
+}
 
 func (f *fitter) fits(s, t *Type) bool {
 	if s.IsNever() || t.any {
@@ -441,8 +511,44 @@ func (f *fitter) fits(s, t *Type) bool {
 		f.used = true
 		return true
 	}
-	if s.null && !t.null {
+	if len(s.refs) == 0 && len(t.refs) == 0 {
+		return f.plain(s, t)
+	}
+	// F17 12.4: a reference that both sides hold fits at once; otherwise the
+	// pair is entered, unless it is in progress, and both are unfolded.
+	s2 := dropShared(s, t)
+	if s2.IsNever() {
+		return true
+	}
+	if s2.incomplete() || t.incomplete() {
+		panic(&Incomplete{})
+	}
+	if f.c.find(f.c.fit, s2, t) {
+		return true
+	}
+	if f.c.find(f.c.fitFail, s2, t) {
 		return false
+	}
+	f.c.enter()
+	f.c.fit = append(f.c.fit, pairT{s2, t})
+	ok := f.plain(s2.u(), t.u())
+	f.c.fit = f.c.fit[:len(f.c.fit)-1]
+	if !ok {
+		f.c.fitFail = append(f.c.fitFail, pairT{s2, t})
+	}
+	return ok
+}
+
+// plain is the fit of Core, alternative by alternative, in the order of
+// printing (F17 12.5): bool, number, string, list, map, opaque names, null.
+// It stops at the first that does not fit.
+func (f *fitter) plain(s, t *Type) bool {
+	if s.IsNever() || t.any {
+		return true
+	}
+	if s.any {
+		f.used = true
+		return true
 	}
 	if s.boolean && !t.boolean {
 		return false
@@ -477,12 +583,15 @@ func (f *fitter) fits(s, t *Type) bool {
 	if s.list != nil && (t.list == nil || !f.fits(s.list, t.list)) {
 		return false
 	}
+	if s.rec != nil && (t.rec == nil || !f.fitsMap(s, t)) {
+		return false
+	}
 	for _, o := range s.opaque {
 		if !contains(t.opaque, o) {
 			return false
 		}
 	}
-	if s.rec != nil && (t.rec == nil || !f.fitsMap(s, t)) {
+	if s.null && !t.null {
 		return false
 	}
 	return true
@@ -498,7 +607,7 @@ func (f *fitter) fitsMap(s, t *Type) bool {
 	for _, sv := range variants(s) {
 		found, clean := false, false
 		for _, tv := range variants(t) {
-			sub := &fitter{}
+			sub := &fitter{c: f.c}
 			if sub.fitsRec(sv, tv) {
 				found = true
 				if !sub.used {
@@ -520,7 +629,8 @@ func (f *fitter) fitsMap(s, t *Type) bool {
 func (f *fitter) fitsRec(s, t *Record) bool {
 	for _, tf := range t.Fields {
 		if sf, ok := s.field(tf.Key); ok {
-			if !f.fits(sf.Type, tf.Type) || (sf.Optional && !tf.Optional) {
+			// The mark first, then the type (F17 12.5).
+			if (sf.Optional && !tf.Optional) || !f.fits(sf.Type, tf.Type) {
 				return false
 			}
 		} else if !tf.Optional || !f.fits(s.Rest, tf.Type) {
@@ -543,6 +653,7 @@ func contains(s []string, x string) bool {
 // Merge writes the entries of a map of record type m over a map of record
 // type r (4.3). m may be any.
 func Merge(r *Record, m *Type) *Record {
+	m = m.u()
 	if m.any {
 		fs := make([]Field, len(r.Fields))
 		for i, f := range r.Fields {
@@ -605,8 +716,19 @@ func Without(r *Record, keys map[string]bool) *Record {
 	return &Record{Fields: fs, Rest: r.Rest}
 }
 
-// Truthy is the type of the truthy values of t (4.4).
+// Truthy is the type of the truthy values of t (4.4). A reference stays
+// when Truthy keeps its definition whole (F17 12.4).
 func Truthy(t *Type) *Type {
+	if len(t.refs) > 0 {
+		for _, n := range t.refs {
+			if !truthyWhole(n.def) {
+				return Truthy(t.u())
+			}
+		}
+		r := Truthy(t.plain()).clone()
+		r.refs = t.refs
+		return r
+	}
 	if t.any || t.IsNever() {
 		return t
 	}
@@ -634,8 +756,19 @@ func Truthy(t *Type) *Type {
 	return r
 }
 
+// truthyWhole reports whether Truthy keeps every alternative of a
+// definition whole: it has no null, no literal set with "", no never[] and
+// no {}.
+func truthyWhole(d *Type) bool {
+	if d.any || d.null || (d.str == strLits && contains(d.lits, "")) || (d.list != nil && d.list.IsNever()) {
+		return false
+	}
+	return d.rec == nil || d.uni != nil || len(d.rec.Fields) > 0 || !d.rec.Rest.IsNever()
+}
+
 // Falsy is the type of the falsy values of t (4.4).
 func Falsy(t *Type) *Type {
+	t = t.u()
 	if t.any || t.IsNever() {
 		return t
 	}
@@ -665,6 +798,7 @@ func Falsy(t *Type) *Type {
 
 // Overlap is overlap(a, b) of 4.5.
 func Overlap(a, b *Type) bool {
+	a, b = a.u(), b.u()
 	if a.IsNever() || b.IsNever() {
 		return false
 	}
@@ -694,51 +828,76 @@ func Overlap(a, b *Type) bool {
 	return false
 }
 
-// HasOpaque is has-opaque(t) of 4.5.
-func HasOpaque(t *Type) bool {
+// HasOpaque is has-opaque(t) of 4.5. A definition is looked at once.
+func HasOpaque(t *Type) bool { return hasOpaque(t, visited{}) }
+
+func hasOpaque(t *Type, seen visited) bool {
 	if t.any {
 		return false
 	}
 	if len(t.opaque) > 0 {
 		return true
 	}
-	if t.list != nil && HasOpaque(t.list) {
-		return true
-	}
-	if t.rec != nil {
-		for _, f := range t.rec.Fields {
-			if HasOpaque(f.Type) {
+	for _, n := range t.refs {
+		if !seen[n] {
+			seen[n] = true
+			if hasOpaque(n.def, seen) {
 				return true
 			}
 		}
-		return HasOpaque(t.rec.Rest)
+	}
+	if t.list != nil && hasOpaque(t.list, seen) {
+		return true
+	}
+	for _, r := range variants(t.plain()) {
+		for _, f := range r.Fields {
+			if hasOpaque(f.Type, seen) {
+				return true
+			}
+		}
+		if hasOpaque(r.Rest, seen) {
+			return true
+		}
 	}
 	return false
 }
 
 // HasAny is has-any(t) of 05-types.md 4.5: t is any, or an element, field or
-// rest type of t has any, at any depth.
-func HasAny(t *Type) bool {
+// rest type of t has any, at any depth. A definition is looked at once.
+func HasAny(t *Type) bool { return hasAny(t, visited{}) }
+
+func hasAny(t *Type, seen visited) bool {
 	if t.any {
 		return true
 	}
-	if t.list != nil && HasAny(t.list) {
-		return true
-	}
-	if t.rec != nil {
-		for _, f := range t.rec.Fields {
-			if HasAny(f.Type) {
+	for _, n := range t.refs {
+		if !seen[n] {
+			seen[n] = true
+			if hasAny(n.def, seen) {
 				return true
 			}
 		}
-		return HasAny(t.rec.Rest)
+	}
+	if t.list != nil && hasAny(t.list, seen) {
+		return true
+	}
+	for _, r := range variants(t.plain()) {
+		for _, f := range r.Fields {
+			if hasAny(f.Type, seen) {
+				return true
+			}
+		}
+		if hasAny(r.Rest, seen) {
+			return true
+		}
 	}
 	return false
 }
 
-// Finite reports whether t is finite (4.5).
+// Finite reports whether t is finite (4.5). A reference is not: its
+// definition has a list or a record.
 func Finite(t *Type) bool {
-	return !t.any && t.num == numNone && t.str != strAll && t.list == nil && t.rec == nil &&
+	return !t.any && len(t.refs) == 0 && t.num == numNone && t.str != strAll && t.list == nil && t.rec == nil &&
 		len(t.opaque) == 0 && len(t.vars) == 0
 }
 
@@ -806,7 +965,7 @@ func Size(t *Type) int {
 		}
 		if t.rec != nil {
 			// F5 2.6: a union is the sum of its variants; flat is not counted.
-			for _, r := range variants(t) {
+			for _, r := range ownVariants(t) {
 				add(1)
 				for _, f := range r.Fields {
 					add(Size(f.Type))
@@ -816,7 +975,8 @@ func Size(t *Type) int {
 				}
 			}
 		}
-		add(len(t.opaque) + len(t.vars))
+		// A reference counts 1 (F17 12.6).
+		add(len(t.opaque) + len(t.vars) + len(t.refs))
 		if n == 0 {
 			n = 1 // never
 		}
@@ -825,33 +985,28 @@ func Size(t *Type) int {
 	return n
 }
 
-// Equal reports whether two types are the same type.
-func Equal(a, b *Type) bool {
+// Equal reports whether two types are the same type: the same by structure
+// (F5 2.5), coinductive over references (F17 12.4). One computation.
+func Equal(a, b *Type) bool { return (&rctx{}).equal(a, b) }
+
+func (c *rctx) equalPlain(a, b *Type) bool {
 	if a.any != b.any || a.null != b.null || a.boolean != b.boolean || a.num != b.num || a.str != b.str {
 		return false
 	}
 	if !eqStrings(a.lits, b.lits) || !eqStrings(a.opaque, b.opaque) || !eqStrings(a.vars, b.vars) {
 		return false
 	}
-	if (a.list == nil) != (b.list == nil) || (a.list != nil && !Equal(a.list, b.list)) {
+	if (a.list == nil) != (b.list == nil) || (a.list != nil && !c.equal(a.list, b.list)) {
 		return false
 	}
 	if (a.rec == nil) != (b.rec == nil) || (a.uni == nil) != (b.uni == nil) {
 		return false
 	}
 	if a.uni != nil {
-		return sameUnion(a.uni, b.uni)
+		return c.sameUnion(a.uni, b.uni)
 	}
 	if a.rec != nil {
-		if len(a.rec.Fields) != len(b.rec.Fields) || !Equal(a.rec.Rest, b.rec.Rest) {
-			return false
-		}
-		for i, f := range a.rec.Fields {
-			g := b.rec.Fields[i]
-			if f.Key != g.Key || f.Optional != g.Optional || !Equal(f.Type, g.Type) {
-				return false
-			}
-		}
+		return c.sameRec(a.rec, b.rec)
 	}
 	return true
 }
@@ -976,6 +1131,10 @@ func (t *Type) String() string {
 		parts = append(parts, t.rec.String())
 	}
 	parts = append(parts, t.opaque...)
+	// F17 12.7: a reference prints by its name, after the opaque names.
+	for _, n := range t.refs {
+		parts = append(parts, n.Name)
+	}
 	parts = append(parts, t.vars...)
 	if t.null {
 		parts = append(parts, "null")
@@ -1105,26 +1264,49 @@ func quote(s string) string {
 }
 
 // Close makes the rest of each closable record of t never and drops its
-// mark, at every depth (package F1 4.1 item 3).
-func Close(t *Type) *Type { return closeT(t, map[*Type]*Type{}) }
+// mark, at every depth (package F1 4.1 item 3). A recursive name gets a
+// closed name of its own, with the same name.
+func Close(t *Type) *Type { return (&closer{memo: map[*Type]*Type{}, names: map[*Named]*Named{}}).closeT(t) }
 
-func closeT(t *Type, memo map[*Type]*Type) *Type {
-	if t.any || (t.list == nil && t.rec == nil) {
+type closer struct {
+	memo  map[*Type]*Type
+	names map[*Named]*Named
+}
+
+func (k *closer) name(n *Named) *Named {
+	if m, ok := k.names[n]; ok {
+		return m
+	}
+	m := &Named{Name: n.Name, seq: n.seq}
+	k.names[n] = m
+	m.def = k.closeT(n.def)
+	return m
+}
+
+func (k *closer) closeT(t *Type) *Type {
+	if t.any || (t.list == nil && t.rec == nil && len(t.refs) == 0) {
 		return t
 	}
-	if c, ok := memo[t]; ok {
+	if c, ok := k.memo[t]; ok {
 		return c
 	}
 	c := t.clone()
+	if len(t.refs) > 0 {
+		rs := make([]*Named, len(t.refs))
+		for i, n := range t.refs {
+			rs[i] = k.name(n)
+		}
+		c.refs = rs
+	}
 	if c.list != nil {
-		c.list = closeT(c.list, memo)
+		c.list = k.closeT(c.list)
 	}
 	closeRec := func(r *Record) *Record {
 		fs := make([]Field, len(r.Fields))
 		for i, f := range r.Fields {
-			fs[i] = Field{Key: f.Key, Type: closeT(f.Type, memo), Optional: f.Optional}
+			fs[i] = Field{Key: f.Key, Type: k.closeT(f.Type), Optional: f.Optional}
 		}
-		rest := closeT(r.Rest, memo)
+		rest := k.closeT(r.Rest)
 		if r.Closable {
 			rest = Never
 		}
@@ -1141,6 +1323,6 @@ func closeT(t *Type, memo map[*Type]*Type) *Type {
 	case c.rec != nil:
 		c.rec = closeRec(c.rec)
 	}
-	memo[t] = c
+	k.memo[t] = c
 	return c
 }

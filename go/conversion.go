@@ -85,16 +85,17 @@ func (e *Env) putNamed(d *namedDecl) {
 	e.named = append(e.named, d)
 }
 
-// namedEnv resolves the named types in their order (F4 3.1, 3.2). An
-// inherited named type keeps its type; this environment's own are resolved
-// against the opaque types and the named types before them.
+// namedEnv resolves the named types (F4 3.1, 3.2). An inherited named type
+// keeps its type. This environment's own are one list (F17 12.2): each may
+// name itself and every other of the list, and the names on a cycle are
+// recursive. A type given by schema or by Type names none of them.
 func (e *Env) namedEnv() {
 	opaque := map[string]bool{}
 	for n := range e.opaque {
 		opaque[n] = true
 	}
 	e.namedTypes = map[string]*types.Type{}
-	kept := e.named[:0:0]
+	var own []*namedDecl
 	for _, d := range e.named {
 		if opaque[d.name] {
 			e.errf(diag.CodeNameClash, fmt.Sprintf("%s is a named type and an opaque type", d.name))
@@ -102,33 +103,127 @@ func (e *Env) namedEnv() {
 		}
 		if !d.own {
 			e.namedTypes[d.name] = d.ty
-			kept = append(kept, d)
 			continue
 		}
-		t, err := e.resolveNamed(d, opaque)
-		if err != "" {
-			e.errf(diag.CodeBadType, fmt.Sprintf("named type %s: %s", d.name, err))
-			continue
+		own = append(own, d)
+	}
+	index := map[string]int{}
+	names := make([]string, len(own))
+	for i, d := range own {
+		index[d.name] = i
+		names[i] = d.name
+	}
+	// The uses of each item, and the errors of its own text.
+	uses := make([][]types.Use, len(own))
+	errs := make([]string, len(own))
+	for i, d := range own {
+		switch {
+		case d.err != "":
+			errs[i] = d.err
+		case d.text != nil:
+			types.TextUses(d.text, func(name string, guarded bool) {
+				j, ok := index[name]
+				if !ok {
+					j = -1
+					if _, inh := e.namedTypes[name]; !inh && !opaque[name] && errs[i] == "" {
+						errs[i] = name + " is not a declared opaque type or named type"
+					}
+				}
+				uses[i] = append(uses[i], types.Use{Target: j, Guarded: guarded})
+			})
 		}
-		nd := &namedDecl{name: d.name, ty: t}
-		e.namedTypes[d.name] = t
-		kept = append(kept, nd)
+	}
+	info := types.AnalyzeList(uses)
+	b := types.NewListBuild(info, names)
+	b.BuildFn = func(i int) (*types.Type, bool) {
+		d := own[i]
+		if d.text == nil {
+			t, err := e.checkGiven(d, opaque)
+			if err != "" {
+				errs[i] = err
+				return nil, false
+			}
+			return t, true
+		}
+		var t *types.Type
+		var err error
+		limit := types.Guard(func() {
+			t, err = types.FromTextList(d.text, &types.Scope{Opaque: opaque, Named: e.namedTypes},
+				func(name string, guarded bool) (*types.Type, bool) {
+					j, ok := index[name]
+					if !ok {
+						return nil, false
+					}
+					return b.Look(i, j, guarded), true
+				})
+		})
+		switch {
+		case limit:
+			errs[i] = fmt.Sprintf("the type needs more than %d pairs of types to compare", types.MaxPairs)
+			return nil, false
+		case err != nil:
+			errs[i] = err.Error()
+			return nil, false
+		}
+		return t, true
+	}
+	for _, c := range info.Order {
+		ok := true
+		for _, i := range c {
+			if info.Direct[i] && errs[i] == "" {
+				errs[i] = "it refers to itself with no list, record field or map in between"
+			}
+			if errs[i] != "" {
+				ok = false
+			}
+			for _, u := range uses[i] {
+				if u.Target >= 0 && info.Comp[u.Target] != info.Comp[i] && b.Failed[u.Target] {
+					ok = false
+				}
+			}
+		}
+		if ok && b.Comp(c) {
+			// 12.2 item 6: a reference of the component beside a type of
+			// its kind.
+			for _, i := range c {
+				if n, bad := b.SharedIn(i); bad && errs[i] == "" {
+					errs[i] = fmt.Sprintf("%s shares a kind with another type of its union; give the union a named type of its own", n.Name)
+				}
+			}
+			for _, i := range c {
+				if errs[i] != "" {
+					ok = false
+				}
+			}
+		} else {
+			ok = false
+		}
+		if !ok {
+			for _, i := range c {
+				b.Failed[i] = true
+			}
+		}
+	}
+	for i, d := range own {
+		if errs[i] != "" {
+			e.errf(diag.CodeBadType, fmt.Sprintf("named type %s: %s", d.name, errs[i]))
+		}
+		if t := b.TypeOf(i); t != nil && !b.Failed[i] {
+			e.namedTypes[d.name] = t
+		}
 	}
 	// The child sees its resolved declarations as inherited ones.
+	kept := e.named[:0:0]
+	for _, d := range e.named {
+		if t, ok := e.namedTypes[d.name]; ok && !opaque[d.name] {
+			kept = append(kept, &namedDecl{name: d.name, ty: t})
+		}
+	}
 	e.named = kept
 }
 
-func (e *Env) resolveNamed(d *namedDecl, opaque map[string]bool) (*types.Type, string) {
-	if d.err != "" {
-		return nil, d.err
-	}
-	if d.text != nil {
-		t, err := types.FromTextIn(d.text, &types.Scope{Opaque: opaque, Named: e.namedTypes}, false)
-		if err != nil {
-			return nil, err.Error()
-		}
-		return t, ""
-	}
+// checkGiven tests a named type given by schema or by Type.
+func (e *Env) checkGiven(d *namedDecl, opaque map[string]bool) (*types.Type, string) {
 	if name, ok := undeclaredOpaque(d.ty, opaque); !ok {
 		return nil, name + " is not a declared opaque type"
 	}
