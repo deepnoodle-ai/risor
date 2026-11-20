@@ -11,7 +11,8 @@
 use super::host::stated_stack;
 use crate::{
     format, format_template, json_text, load_value, parse, parse_template, CompileOptions, Data,
-    Env, Expected, HostList, HostMap, LoadOptions, Pos, TemplateMode, Vars, View,
+    Env, Expected, Expr, HostList, HostMap, Hover, LoadOptions, Pos, Span, TemplateMode, Vars,
+    View,
 };
 use std::collections::BTreeMap;
 
@@ -180,6 +181,37 @@ fn end(text: &str) -> Pos {
     }
 }
 
+/// The last word of a text: a position on it, and its span. Hover there
+/// reads the word's token (F12 3.13).
+fn last_word(text: &str) -> (Pos, Span) {
+    let cs: Vec<char> = text.chars().collect();
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut i = cs.len() - 1;
+    while i > 0 && !word(cs[i]) {
+        i -= 1;
+    }
+    let mut j = i;
+    while j > 0 && word(cs[j - 1]) {
+        j -= 1;
+    }
+    let line_start = cs[..i]
+        .iter()
+        .rposition(|&c| c == '\n')
+        .map_or(0, |k| k + 1);
+    let line = cs[..line_start].iter().filter(|&&c| c == '\n').count() as u32 + 1;
+    let at = |k: usize| Pos {
+        line,
+        column: (k - line_start) as u32 + 1,
+    };
+    (
+        at(i),
+        Span {
+            start: at(j),
+            end: at(i + 1),
+        },
+    )
+}
+
 /// The value and the usage of a run, or the code of its failure.
 fn run(
     env: &Env,
@@ -187,12 +219,21 @@ fn run(
     check: bool,
 ) -> Result<(Result<String, &'static str>, u64, u64), String> {
     let x = parse(src).map_err(|e| e.first().code.to_string())?;
+    run_expr(env, &x, check)
+}
+
+/// The same for a program that is parsed.
+fn run_expr(
+    env: &Env,
+    x: &Expr,
+    check: bool,
+) -> Result<(Result<String, &'static str>, u64, u64), String> {
     let options = CompileOptions {
         check,
         expected: Expected::None,
     };
     let p = env
-        .compile(&x, options)
+        .compile(x, options)
         .map_err(|e| e.first().code.to_string())?;
     let vars = host();
     let (r, usage) = p.measure(&vars);
@@ -247,18 +288,26 @@ fn through_every_entry_point(form: &Form) {
     assert!(parse(&text).is_ok(), "{name}");
 
     // Completion after the last link and in the middle of the text; hover
-    // on the first token and on the last.
+    // on the first token and on the last word. On the last word, hover
+    // gives the record it gives for 100 links, with the span of the word.
     let dot = format!("{src}.");
     env.complete(&dot, end(&dot), &Expected::None);
     let half: String = src.chars().take(src.chars().count() / 2).collect();
     env.complete(&src, end(&half), &Expected::None);
     env.hover(&src, Pos { line: 1, column: 1 }, &Expected::None);
-    let last = end(&src);
-    let before = Pos {
-        column: last.column.saturating_sub(2).max(1),
-        ..last
-    };
-    env.hover(&src, before, &Expected::None);
+    let (at, span) = last_word(&src);
+    let got = env.hover(&src, at, &Expected::None);
+    let small = (form.src)(100);
+    let want = env.hover(&small, last_word(&small).0, &Expected::None);
+    match (got, want) {
+        (None, None) => {}
+        (Some(got), Some(want)) => {
+            assert_eq!(got.span, span, "{name}: hover on the last word");
+            let record = |h: Hover| (h.kind, h.ty, h.signature, h.doc);
+            assert_eq!(record(got), record(want), "{name}: hover on the last word");
+        }
+        (got, want) => panic!("{name}: hover on the last word: {got:?}, not {want:?}"),
+    }
 
     // A template with the form in a part, and its formatter.
     if form.expression {
@@ -275,6 +324,20 @@ fn through_every_entry_point(form: &Form) {
         }
         let text = format!("a ${{{{ {short} }}}} b");
         assert!(format_template(&text).is_ok(), "{name}");
+
+        // A template whose one part is the form gives the form's value,
+        // with the same usage (F2), and fails the check as the form does.
+        let one =
+            parse_template(&format!("${{{{ {src} }}}}")).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let want = match form.ty {
+            Ok(_) => Ok((form.value.clone(), form.steps, form.units)),
+            Err(code) => Err(code.to_string()),
+        };
+        assert_eq!(
+            run_expr(&env, &one.program(TemplateMode::Value), true),
+            want,
+            "{name}: a template"
+        );
     }
 
     // A load: the check, the run and the conformance of the value.
