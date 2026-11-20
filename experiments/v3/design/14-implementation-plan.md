@@ -290,12 +290,13 @@ A track with no syntax, such as track C, says which parts do not apply.
 **The slices and the order of offering (R261).** `03-host.md` 3.11 item 2
 offers each package only with all before it. Tracks D1, E, D2 and D3 build
 F17 between the first and second slices of F16, so a runner that offered
-packages whole could not run F17's cases when track E is done. So 3.11 item 2
-names the slices in the order they are built, `..., F14, F16 D1, F17, F16 D2,
-F16 D3, F19, F12`, and each slice's cases stand in files of their own in
-F16's directory. F17 keeps one place: a later step extends it, and every
-implementation offers the step in the change that adds it. As built, the
-order ends `F14, F16 slice D1, F17, F12`.
+packages whole could not run F17's cases when track E is done. So each slice
+takes a place of its own, in the order the slices are built: `..., F14, F16
+D1, F17, F16 D2, F16 D3, F19, F12`. Each slice's cases stand in files of
+their own in F16's directory. F17 keeps one place: a later step extends it,
+and every implementation offers the step in the change that adds it. 3.11
+item 2 names a slice when it is built. Today its order ends `F14, F16 slice
+D1, F17, F12`.
 
 **Track A: unblock PR #642 and reconcile PR #643.**
 
