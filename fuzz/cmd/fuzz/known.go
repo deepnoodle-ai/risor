@@ -22,7 +22,7 @@ var knownNames = []string{"e2"}
 // e2Lacking are the implementations that do not offer F17's step E2 yet:
 // recursive type lines (spec/packages/f17-recursion.md 12). Remove a name
 // when its implementation offers the step, and the entry when none is left.
-var e2Lacking = map[string]bool{"ts": true, "rust": true}
+var e2Lacking = map[string]bool{"ts": true}
 
 // known names the known difference a disagreement is, or gives "". A case
 // with a recursive type line is the known difference "e2" when no two
