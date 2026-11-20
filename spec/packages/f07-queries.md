@@ -184,6 +184,11 @@ This row joins the table of `01-language.md` 13.1.
 4. The token that would open level 101 is `nesting-exceeded` (`01-language.md`
    13.2), a star's `[` or `?.[` among them. So a projection may have 100 stars
    at the top of a program, and the `[` of the 101st is `nesting-exceeded`.
+5. A chain of projections, each ended by a method call, is flat by item 3:
+   `xs[*].map(x => x)[*].map(x => x)` holds one level at each star, and none
+   at its end. So the rule of `01-language.md` 13.2 item 6 holds for it: a
+   chain of 100,000 such links parses, is checked and runs, and its length
+   costs an implementation no stack.
 
 | Text | Levels open at `x` |
 | --- | --- |
