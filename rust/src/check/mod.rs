@@ -1133,7 +1133,10 @@ impl<'a> Checker<'a> {
                 // parameter `any`. Its sites are dropped. F16 3.4: an
                 // annotated parameter is bound to its annotation, and its
                 // default and the result annotation are fitted by Fits.
+                // The sites of the defaults are dropped too, so a dropped
+                // site there leaves its node's type (18.3).
                 let n = self.sites.len();
+                self.dropping += 1;
                 for &p in params {
                     if let NodeKind::Param {
                         pattern, default, ..
@@ -1159,7 +1162,6 @@ impl<'a> Checker<'a> {
                         self.bind_pattern(*pattern, t, s);
                     }
                 }
-                self.dropping += 1;
                 self.synth(*body);
                 if let Some(r) = result.as_deref().and_then(|r| self.annot(r)) {
                     self.fit_form(*body, &r, Fit::Result);
