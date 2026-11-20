@@ -192,3 +192,32 @@ fn the_conformance_function_stops_past_200_levels() {
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].code, "depth-exceeded");
 }
+
+/// A key a recursive record type does not allow: the message prints the
+/// type by its name (F17 12.6), as a written record would print whole.
+#[test]
+fn an_extra_key_prints_the_record_type_by_its_name() {
+    let env = Env::default();
+    let messages = |src: &str| -> Vec<String> {
+        let e = env
+            .check(&parse(src).unwrap(), &Expected::None)
+            .err()
+            .unwrap();
+        e.diagnostics.into_iter().map(|d| d.message).collect()
+    };
+    let lines = "type Rt0 = {name: string, files: Rt1[], dirs: Rt0[]}; \
+                 type Rt1 = {name: string, parent: Rt0 | null};";
+    assert_eq!(
+        messages(&format!("{lines} const v: Rt0 = {{x_1: 1}}; 0")),
+        [
+            r#"required field "dirs" has no entry"#,
+            r#"Rt0 does not allow key "x_1""#
+        ]
+    );
+    assert_eq!(
+        messages(&format!(
+            "{lines} const v: Rt0 | null = {{name: \"a\", files: [], dirs: [], x: 1}}; 0"
+        )),
+        [r#"Rt0 does not allow key "x""#]
+    );
+}

@@ -3718,7 +3718,20 @@ impl<'a> Checker<'a> {
                     Some(f) => self.fit_form(*value, &f.ty, mode),
                     None if r.rest.is_never() => {
                         let vt = self.types[value.index()].clone();
-                        let why = Why::Extra(key.clone(), Ty::rec(r.clone()));
+                        // F17 12.6: a record a reference stands for prints by
+                        // the reference's name; a variant chosen prints whole.
+                        let shown = match t
+                            .refs
+                            .iter()
+                            .find(|x| x.unfolding().is_some_and(|u| u.map.is_some()))
+                        {
+                            Some(x) if t.map.is_none() && tv.variants.is_none() => Ty {
+                                refs: [x.clone()].into(),
+                                ..Ty::default()
+                            },
+                            _ => Ty::rec(r.clone()),
+                        };
+                        let why = Why::Extra(key.clone(), shown);
                         self.report(*key_span, &vt, &Ty::never(), mode, why);
                     }
                     None => self.fit_form(*value, &r.rest, mode),
