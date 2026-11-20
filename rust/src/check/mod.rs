@@ -9,6 +9,7 @@
 //! Recursion follows the source nesting, and through the
 //! uses of `const`-bound lambdas, which the limits of 20.2 and 20.3 bound.
 
+pub mod list;
 pub mod ty;
 
 use crate::compile::{resolve, sort_diagnostics, Program, Res};
@@ -80,8 +81,33 @@ pub fn expected_schema(
 /// Check a program against an environment (`03-host.md` 3.2.1).
 pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     let r = resolve(env, parsed);
+    let w = watch();
     let mut c = Checker::new(env, parsed, &r.res, &r.annots);
     let t = c.program(expected);
+    // F17 12.5 item 7: past the bound of pairs the check ends, with one
+    // `check-limit` on the innermost node in progress; the diagnostics of
+    // the static rules stand.
+    if w.passed() {
+        let span = c
+            .limit_at
+            .unwrap_or_else(|| parsed.ast.span(parsed.ast.root));
+        let msg = crate::messages::build("check-limit", "pairs", &[]);
+        let mut diags = r.diags;
+        diags.push(Diagnostic::at(
+            Phase::Check,
+            "check-limit",
+            &parsed.source,
+            span,
+            msg,
+        ));
+        sort_diagnostics(&mut diags);
+        return Checked {
+            ty: None,
+            sites: Vec::new(),
+            diagnostics: diags,
+        };
+    }
+    drop(w);
     let mut diags = r.diags;
     diags.append(&mut c.diags);
     let mut sites = Vec::new();
@@ -105,7 +131,8 @@ pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     sites.dedup();
     if diags.is_empty() {
         Checked {
-            ty: Some(t),
+            // F17 12: the type outlives the program's tables.
+            ty: Some(strengthen(&t)),
             sites,
             diagnostics: diags,
         }
@@ -130,12 +157,17 @@ pub struct Probe {
     pub res: Vec<Res>,
     /// F16 7.3: the type names that resolved.
     pub type_refs: Vec<crate::compile::TypeRef>,
+    /// F17 12: the tables of the program's recursive types, which the types
+    /// above reach. Held, not read.
+    #[allow(dead_code)]
+    pub tables: Vec<std::sync::Arc<Table>>,
 }
 
 /// Check a program for assist, recording the types of the slots where the
 /// node `probe` is checked.
 pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
+    let _w = watch();
     let mut c = Checker::new(env, parsed, &r.res, &r.annots);
     c.probe = probe;
     c.program(expected);
@@ -145,6 +177,7 @@ pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<Node
         at: c.probe_slots.take(),
         res: r.res.clone(),
         type_refs: r.type_refs.clone(),
+        tables: r.tables.clone(),
     }
 }
 
@@ -241,6 +274,9 @@ struct Checker<'a> {
     strict: bool,
     /// F16 3.4: the result type of each lambda checked once.
     once_result: HashMap<u32, Ty>,
+    /// F17 12.5 item 7: the innermost node in progress when a computation
+    /// passed the bound of pairs.
+    limit_at: Option<Range>,
 }
 
 fn whole(v: f64) -> bool {
@@ -335,6 +371,15 @@ impl<'a> Checker<'a> {
             annots,
             strict: false,
             once_result: HashMap::new(),
+            limit_at: None,
+        }
+    }
+
+    /// F17 12.5 item 7: a computation passed the bound while the check of
+    /// the node at `span` was in progress, and no inner node took it.
+    fn mark(&mut self, span: Range) {
+        if self.limit_at.is_none() && passed() {
+            self.limit_at = Some(span);
         }
     }
 
@@ -624,10 +669,10 @@ impl<'a> Checker<'a> {
                 };
                 let mut tf = vec![fact(FactKind::Is(t.clone(), false))];
                 let mut ff = vec![fact(FactKind::IsNot(t.clone(), false))];
-                if !t.null && !t.any {
+                if !t.nullable() && !t.any {
                     tf.push(fact(FactKind::NonNull));
                 }
-                if t.null {
+                if t.nullable() {
                     ff.push(fact(FactKind::NonNull));
                 }
                 // F14 4.2: `p is null` gives null(p) beside them.
@@ -852,7 +897,7 @@ impl<'a> Checker<'a> {
         let Some((_, p, f)) = self.field_step(q) else {
             return (vec![], vec![]);
         };
-        let t = t.clone();
+        let t = t.view().into_owned();
         let narrowed = self.has_field_fact(&p)
             || self
                 .field_step(q)
@@ -926,6 +971,8 @@ impl<'a> Checker<'a> {
             Want::Type(e) => self.fit_form(*result, e, Fit::Result),
             Want::Condition => self.tested(*result, &t),
         }
+        let rs = self.span(*result);
+        self.mark(rs);
         t
     }
 
@@ -937,8 +984,14 @@ impl<'a> Checker<'a> {
     }
 
     fn synth(&mut self, id: NodeId) -> Ty {
+        // F17 12.5 item 7: past the bound of pairs the check ends.
+        if passed() {
+            return Ty::never();
+        }
         self.reach(id);
         let t = self.synth_inner(id);
+        let s = self.span(id);
+        self.mark(s);
         self.types[id.index()] = t.clone();
         t
     }
@@ -985,7 +1038,7 @@ impl<'a> Checker<'a> {
                     UnaryOp::Neg => {
                         let xs = self.span(*x);
                         let mut t = t;
-                        if t.null {
+                        if t.nullable() {
                             self.null_at(xs, &t);
                             t = t.nonnull();
                         }
@@ -1172,6 +1225,8 @@ impl<'a> Checker<'a> {
                 self.dropping -= 1;
                 self.sites.truncate(n);
             }
+            let vs = self.span(*value);
+            self.mark(vs);
             return;
         }
         let v = self.synth(*value);
@@ -1189,6 +1244,7 @@ impl<'a> Checker<'a> {
             None => v,
         };
         self.bind_pattern(*pattern, v, s);
+        self.mark(s);
     }
 
     // ---- annotations (F16) ----------------------------------------------------------
@@ -1426,7 +1482,7 @@ impl<'a> Checker<'a> {
     fn operand(&mut self, id: NodeId, t: Ty, target: &Ty, template: &str) -> Option<Ty> {
         let s = self.span(id);
         let mut t = t;
-        if t.null {
+        if t.nullable() {
             self.null_at(s, &t);
             t = t.nonnull();
         }
@@ -1473,16 +1529,17 @@ impl<'a> Checker<'a> {
             if let NodeKind::Spread { value } = self.kind(item) {
                 let mut t = self.synth(*value);
                 let vs = self.span(*value);
-                if t.null {
+                if t.nullable() {
                     self.null_at(vs, &t);
                     t = t.nonnull();
                 }
+                let tv = t.view().into_owned();
                 if t.any {
                     if !self.dyn_site(vs) {
                         j = join(&j, &Ty::any());
                     }
                 } else if t.is_never() {
-                } else if let (1, Some(e)) = (t.kinds(), &t.list) {
+                } else if let (1, Some(e)) = (tv.kinds(), &tv.list) {
                     j = join(&j, e);
                 } else {
                     self.kind_at(vs, "spread-list", &t);
@@ -1527,17 +1584,18 @@ impl<'a> Checker<'a> {
                 NodeKind::Spread { value } => {
                     let mut t = self.synth(*value);
                     let vs = self.span(*value);
-                    if t.null {
+                    if t.nullable() {
                         self.null_at(vs, &t);
                         t = t.nonnull();
                     }
+                    let tv = t.view().into_owned();
                     if t.any {
                         if !self.dyn_site(vs) {
                             rec = merge(&rec, None);
                         }
                     } else if t.is_never() {
-                    } else if t.kinds() == 1 && t.map.is_some() {
-                        rec = merge(&rec, t.record());
+                    } else if tv.kinds() == 1 && tv.map.is_some() {
+                        rec = merge(&rec, tv.record());
                     } else {
                         self.kind_at(vs, "spread-map", &t);
                     }
@@ -1591,6 +1649,8 @@ impl<'a> Checker<'a> {
                     // `as` or `is`: the operator above it reads the facts
                     // of its left operand anew.
                     cur = self.as_step(b, *form, cur);
+                    let bs = self.span(b);
+                    self.mark(bs);
                     self.types[b.index()] = cur.clone();
                     nleft.clear();
                     carried = None;
@@ -1665,8 +1725,9 @@ impl<'a> Checker<'a> {
                 nleft.clear();
             }
             // 20.7: `??`, `&&` and `||` join their operands.
+            let bs = self.span(b);
+            self.mark(bs);
             if matches!(op, BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce) {
-                let bs = self.span(b);
                 cur = self.size_check(bs, cur);
             }
             self.types[b.index()] = cur.clone();
@@ -1684,11 +1745,11 @@ impl<'a> Checker<'a> {
     fn arith(&mut self, op: BinaryOp, node: NodeId, x: NodeId, a: Ty, y: NodeId, b: Ty) -> Ty {
         let (xs, ys, ns) = (self.span(x), self.span(y), self.span(node));
         let (mut a, mut b) = (a, b);
-        if a.null {
+        if a.nullable() {
             self.null_at(xs, &a);
             a = a.nonnull();
         }
-        if b.null {
+        if b.nullable() {
             self.null_at(ys, &b);
             b = b.nonnull();
         }
@@ -1817,7 +1878,7 @@ impl<'a> Checker<'a> {
             _ => BinaryOp::In,
         };
         let mut b = b;
-        if b.null {
+        if b.nullable() {
             self.null_at(ys, &b);
             b = b.nonnull();
         }
@@ -1828,7 +1889,8 @@ impl<'a> Checker<'a> {
         if b.is_never() {
             return Ty::boolean();
         }
-        if let (1, Some(e)) = (b.kinds(), &b.list) {
+        let bv = b.view().into_owned();
+        if let (1, Some(e)) = (bv.kinds(), &bv.list) {
             if !overlap(&a, e)
                 && !a.is_never()
                 && !e.is_never()
@@ -1841,9 +1903,9 @@ impl<'a> Checker<'a> {
             }
             return Ty::boolean();
         }
-        if b.kinds() == 1 && (b.str.is_some() || b.map.is_some()) {
+        if bv.kinds() == 1 && (bv.str.is_some() || bv.map.is_some()) {
             let mut a = a;
-            if a.null {
+            if a.nullable() {
                 self.null_at(xs, &a);
                 a = a.nonnull();
             }
@@ -1893,6 +1955,7 @@ impl<'a> Checker<'a> {
             // 20.7: each `Cond` is tested; the innermost over the limit is
             // reported, and the ones around it see `never`.
             let cs = self.span(c);
+            self.mark(cs);
             below = self.size_check(cs, below);
             self.types[c.index()] = below.clone();
         }
@@ -2070,7 +2133,7 @@ impl<'a> Checker<'a> {
             NodeKind::NamePat { .. } => self.set_names(pat, &v),
             NodeKind::MapPat { fields, rest } => {
                 let mut v = v;
-                if v.null {
+                if v.nullable() {
                     self.null_at(bound, &v);
                     v = v.nonnull();
                 }
@@ -2088,7 +2151,8 @@ impl<'a> Checker<'a> {
                     }
                     return;
                 }
-                if v.is_never() || !(v.kinds() == 1 && v.map.is_some()) {
+                let vv = v.view().into_owned();
+                if v.is_never() || !(vv.kinds() == 1 && vv.map.is_some()) {
                     if !v.is_never() {
                         self.kind_at(bound, "pattern-map", &v);
                     }
@@ -2101,9 +2165,16 @@ impl<'a> Checker<'a> {
                     }
                     return;
                 }
-                let rec = v.map.as_ref().unwrap().as_ref().clone();
-                // The record read: flat(U) for a union (F5 2.3).
-                let flat_v = Ty::rec(rec.clone());
+                let Some(rec) = vv.map.as_deref().cloned() else {
+                    return;
+                };
+                // The record read: flat(U) for a union (F5 2.3); a
+                // reference prints by its name (F17 12.6 item 4).
+                let flat_v = if v.is_one_ref() {
+                    v.clone()
+                } else {
+                    Ty::rec(rec.clone())
+                };
                 let slots = match &self.res[pat.index()] {
                     Res::PatSlots { fields, rest } => (fields.clone(), *rest),
                     _ => (Vec::new(), None),
@@ -2166,7 +2237,7 @@ impl<'a> Checker<'a> {
             }
             NodeKind::ListPat { elems, rest } => {
                 let mut v = v;
-                if v.null {
+                if v.nullable() {
                     self.null_at(bound, &v);
                     v = v.nonnull();
                 }
@@ -2191,7 +2262,8 @@ impl<'a> Checker<'a> {
                     }
                     return;
                 }
-                if v.is_never() || !(v.kinds() == 1 && v.list.is_some()) {
+                let vv = v.view().into_owned();
+                if v.is_never() || !(vv.kinds() == 1 && vv.list.is_some()) {
                     if !v.is_never() {
                         self.kind_at(bound, "pattern-list", &v);
                     }
@@ -2204,7 +2276,9 @@ impl<'a> Checker<'a> {
                     }
                     return;
                 }
-                let e = v.list.as_ref().unwrap().as_ref().clone();
+                let Some(e) = vv.list.as_deref().cloned() else {
+                    return;
+                };
                 for el in elems {
                     let t = match el.default {
                         Some(d) => {
@@ -2275,7 +2349,7 @@ impl<'a> Checker<'a> {
                 | NodeKind::Each { optional, .. } => *optional,
                 _ => false,
             };
-            if cur.null {
+            if cur.nullable() {
                 if optional {
                     skipped = true;
                 } else {
@@ -2293,7 +2367,7 @@ impl<'a> Checker<'a> {
                 recv = s;
                 continue;
             }
-            if !(cur.any || cur.is_never() || cur.kinds() == 1) {
+            if !(cur.any || cur.is_never() || cur.view().kinds() == 1) {
                 self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
@@ -2305,7 +2379,7 @@ impl<'a> Checker<'a> {
                     // A `String` key reads a field of a record (9.2). On any
                     // other receiver it is an index like any other.
                     NodeKind::String { value, .. }
-                        if cur.map.is_some() || cur.any || cur.is_never() =>
+                        if cur.view().map.is_some() || cur.any || cur.is_never() =>
                     {
                         Some((value.clone(), self.span(*index)))
                     }
@@ -2402,6 +2476,8 @@ impl<'a> Checker<'a> {
                 }
             };
             path = next_path;
+            let ss = self.span(s);
+            self.mark(ss);
             if path.as_ref().is_some_and(|p| self.covered(p)) {
                 cur = cur.nonnull();
             }
@@ -2440,11 +2516,15 @@ impl<'a> Checker<'a> {
         } else if cur.is_never() {
             self.synth_indexes(reads);
             return (Ty::never(), false);
-        } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
+        } else if let (1, Some(e)) = (cur.view().kinds(), &cur.view().list) {
             e.as_ref().clone()
         } else {
             // A receiver of two kinds or more takes the rule of 9.1 step 4.
-            let t = if cur.kinds() > 1 { "receiver" } else { "star" };
+            let t = if cur.view().kinds() > 1 {
+                "receiver"
+            } else {
+                "star"
+            };
             self.kind_at(rs, t, &cur);
             self.synth_indexes(reads);
             return (Ty::never(), false);
@@ -2488,7 +2568,7 @@ impl<'a> Checker<'a> {
                 ..
             } = self.kind(r)
             {
-                if cur.null {
+                if cur.nullable() {
                     if *optional {
                         *skipped_elem = true;
                     } else {
@@ -2507,10 +2587,14 @@ impl<'a> Checker<'a> {
                     Ty::any()
                 } else if cur.is_never() {
                     Ty::never()
-                } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
+                } else if let (1, Some(e)) = (cur.view().kinds(), &cur.view().list) {
                     e.as_ref().clone()
                 } else {
-                    let t = if cur.kinds() > 1 { "receiver" } else { "star" };
+                    let t = if cur.view().kinds() > 1 {
+                        "receiver"
+                    } else {
+                        "star"
+                    };
                     self.kind_at(rs, t, &cur);
                     *failed = true;
                     self.synth_indexes(inner);
@@ -2524,7 +2608,7 @@ impl<'a> Checker<'a> {
                 NodeKind::Member { optional, .. } | NodeKind::Index { optional, .. } => *optional,
                 _ => false,
             };
-            if cur.null {
+            if cur.nullable() {
                 if optional {
                     *skipped_elem = true;
                 } else {
@@ -2533,7 +2617,7 @@ impl<'a> Checker<'a> {
                 cur = cur.nonnull();
             }
             let before = self.diags.len();
-            if !(cur.any || cur.is_never() || cur.kinds() == 1) {
+            if !(cur.any || cur.is_never() || cur.view().kinds() == 1) {
                 self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
@@ -2563,7 +2647,7 @@ impl<'a> Checker<'a> {
                         name, name_span, ..
                     } => self.read_field(&cur, name, *name_span, rs, optional, false),
                     NodeKind::Index { index, .. } => match self.kind(*index) {
-                        NodeKind::String { value, .. } if cur.map.is_some() => {
+                        NodeKind::String { value, .. } if cur.view().map.is_some() => {
                             let is = self.span(*index);
                             self.types[index.index()] = Ty::lit(value);
                             self.read_field(&cur, value, is, rs, optional, false)
@@ -2606,12 +2690,18 @@ impl<'a> Checker<'a> {
         optional: bool,
         present: bool,
     ) -> Ty {
-        let Some(rec) = cur.record() else {
+        let view = cur.view();
+        let Some(rec) = view.record() else {
             self.kind_at(rs, "field-read", cur);
             return Ty::never();
         };
-        // The record read: flat(U) for a union (F5 2.3).
-        let flat = Ty::rec(rec.clone());
+        // The record read: flat(U) for a union (F5 2.3). A receiver that is
+        // a reference prints by its name (F17 12.6 item 4).
+        let flat = if cur.is_one_ref() {
+            cur.clone()
+        } else {
+            Ty::rec(rec.clone())
+        };
         let cur = &flat;
         match rec.fields.get(key) {
             Some(f) if !f.optional || present => f.ty.clone(),
@@ -2651,7 +2741,8 @@ impl<'a> Checker<'a> {
     fn index(&mut self, s: NodeId, rs: Range, cur: Ty, index: NodeId, optional: bool) -> Ty {
         let it = self.synth(index);
         let ss = self.span(s);
-        if let Some(rec) = cur.record() {
+        let view = cur.view().into_owned();
+        if let Some(rec) = view.record() {
             let v = join_all(
                 rec.fields
                     .values()
@@ -2676,9 +2767,9 @@ impl<'a> Checker<'a> {
             }
             return v;
         }
-        let elem = if let Some(e) = &cur.list {
+        let elem = if let Some(e) = &view.list {
             e.as_ref().clone()
-        } else if cur.str.is_some() {
+        } else if view.str.is_some() {
             Ty::string()
         } else {
             self.kind_at(rs, "index-read", &cur);
@@ -2748,11 +2839,12 @@ impl<'a> Checker<'a> {
         // The receiver, as argument zero, is fitted with its type after the
         // null step of 9.1, not as the chain before it gave it.
         self.types[x.index()] = cur.clone();
-        let kind = if cur.str.is_some() {
+        let view = cur.view().into_owned();
+        let kind = if view.str.is_some() {
             Some(crate::value::Kind::String)
-        } else if cur.list.is_some() {
+        } else if view.list.is_some() {
             Some(crate::value::Kind::List)
-        } else if cur.map.is_some() {
+        } else if view.map.is_some() {
             Some(crate::value::Kind::Map)
         } else {
             None
@@ -2762,7 +2854,7 @@ impl<'a> Checker<'a> {
                 let rec = &library::records()[i];
                 return self.call(Callee::Lib(rec), Some((x, cur)), args, s, true);
             }
-        } else if let Some(t) = cur.opaque.iter().next() {
+        } else if let Some(t) = view.opaque.iter().next() {
             if let Some(mi) = self.env.method(t, name) {
                 let sig = &self.env.data().methods[mi].sig;
                 return self.call(Callee::Host(sig, sig.fails), None, args, s, true);
@@ -3298,7 +3390,7 @@ impl<'a> Checker<'a> {
                     Some(used) => !(self.strict && used),
                     None => false,
                 };
-                if mode == Fit::Arg && at.null && but_null {
+                if mode == Fit::Arg && at.nullable() && but_null {
                     self.null_at(span, at);
                 } else {
                     let template = match mode {
@@ -3328,9 +3420,12 @@ impl<'a> Checker<'a> {
                 }
                 None => {}
             }
+            let tv = t.view();
             match self.kind(e) {
-                NodeKind::List { items } if t.list.is_some() => {
-                    let elem = t.list.as_ref().unwrap().as_ref().clone();
+                NodeKind::List { items } if tv.list.is_some() => {
+                    let Some(elem) = tv.list.as_deref().cloned() else {
+                        return;
+                    };
                     for &item in items {
                         if let NodeKind::Spread { value } = self.kind(item) {
                             let vt = self.types[value.index()].clone();
@@ -3356,9 +3451,12 @@ impl<'a> Checker<'a> {
                     }
                     return;
                 }
-                NodeKind::Map { entries } if t.map.is_some() && self.plain_map(entries) => {
-                    let r = t.map.as_ref().unwrap().as_ref().clone();
-                    self.fit_map(e, &et, entries, &r, t, mode);
+                NodeKind::Map { entries } if tv.map.is_some() && self.plain_map(entries) => {
+                    let Some(r) = tv.map.as_deref().cloned() else {
+                        return;
+                    };
+                    let tv = tv.into_owned();
+                    self.fit_map(e, &et, entries, &r, t, &tv, mode);
                     return;
                 }
                 NodeKind::Cond { then, else_, .. } => {
@@ -3398,7 +3496,18 @@ impl<'a> Checker<'a> {
     /// 15.1, "A map literal against a record": each key's contributors are
     /// the last entry that surely gives it and every later entry that may
     /// give it; each contributor is fitted.
-    fn fit_map(&mut self, e: NodeId, et: &Ty, entries: &'a [NodeId], r: &Rec, t: &Ty, mode: Fit) {
+    /// `t` is the type fitted to, and `tv` its unfolding (F17 12.5).
+    #[allow(clippy::too_many_arguments)]
+    fn fit_map(
+        &mut self,
+        e: NodeId,
+        et: &Ty,
+        entries: &'a [NodeId],
+        r: &Rec,
+        t: &Ty,
+        tv: &Ty,
+        mode: Fit,
+    ) {
         enum Ent<'b> {
             Written {
                 key: String,
@@ -3415,7 +3524,9 @@ impl<'a> Checker<'a> {
         let tys: Vec<Ty> = entries
             .iter()
             .map(|&en| match self.kind(en) {
-                NodeKind::Spread { value } => self.types[value.index()].nonnull(),
+                NodeKind::Spread { value } => {
+                    self.types[value.index()].nonnull().view().into_owned()
+                }
                 _ => Ty::never(),
             })
             .collect();
@@ -3475,8 +3586,8 @@ impl<'a> Checker<'a> {
         // F5 6: against a union, the variant is chosen by the contributors of
         // its tag; the map is then fitted to that variant.
         let chosen: Rec;
-        let r: &Rec = if t.variants.is_some() {
-            let tag = t.tag().unwrap_or_default();
+        let r: &Rec = if tv.variants.is_some() {
+            let tag = tv.tag().unwrap_or_default();
             let g: Vec<Option<(Ty, bool)>> = ents.iter().map(|en| gives(en, Some(&tag))).collect();
             let Some(start) = g
                 .iter()
@@ -3495,7 +3606,7 @@ impl<'a> Checker<'a> {
                 }
             }
             let var = match (&joined.str, joined.kinds()) {
-                (Some(Strs::Lits(l)), 1) => t.variants().into_iter().find(|v| {
+                (Some(Strs::Lits(l)), 1) => tv.variants().into_iter().find(|v| {
                     matches!(v.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(vs)) if l.is_subset(vs))
                 }),
                 _ => None,
@@ -3607,7 +3718,20 @@ impl<'a> Checker<'a> {
                     Some(f) => self.fit_form(*value, &f.ty, mode),
                     None if r.rest.is_never() => {
                         let vt = self.types[value.index()].clone();
-                        let why = Why::Extra(key.clone(), Ty::rec(r.clone()));
+                        // F17 12.6: a record a reference stands for prints by
+                        // the reference's name; a variant chosen prints whole.
+                        let shown = match t
+                            .refs
+                            .iter()
+                            .find(|x| x.unfolding().is_some_and(|u| u.map.is_some()))
+                        {
+                            Some(x) if t.map.is_none() && tv.variants.is_none() => Ty {
+                                refs: [x.clone()].into(),
+                                ..Ty::default()
+                            },
+                            _ => Ty::rec(r.clone()),
+                        };
+                        let why = Why::Extra(key.clone(), shown);
                         self.report(*key_span, &vt, &Ty::never(), mode, why);
                     }
                     None => self.fit_form(*value, &r.rest, mode),
@@ -3726,6 +3850,13 @@ fn gain(sol: &mut Solutions, c: char, t: &Ty) {
 
 /// bind(P, A) (13.4).
 fn bind(p: &text::Type, a: &Ty, sol: &mut Solutions) {
+    if let text::Type::Var(c) = p {
+        if !a.any {
+            gain(sol, *c, a);
+            return;
+        }
+    }
+    let a = &*a.view();
     if a.any {
         for v in vars(p) {
             gain(sol, v, &Ty::any());

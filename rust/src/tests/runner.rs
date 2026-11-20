@@ -246,19 +246,22 @@ fn static_codes_by_directory() {
         ("suite/conversion", Statics::ProgramTypes),
         ("suite/unions", Statics::ProgramTypes),
         ("suite/entry-points", Statics::EntryPoints),
+        ("suite/recursion", Statics::Recursion),
     ] {
         assert_eq!(Statics::of_dir(Path::new(dir)), want, "{dir}");
     }
-    for (code, core, types, entry) in [
-        ("arity", true, true, true),
-        ("untagged-union", false, true, true),
-        ("check-limit", false, true, true),
-        ("name-clash", false, false, true),
-        ("kind", false, false, false),
+    for (code, core, types, entry, rec) in [
+        ("arity", true, true, true, true),
+        ("untagged-union", false, true, true, true),
+        ("check-limit", false, true, true, true),
+        ("name-clash", false, false, true, true),
+        ("circular-type", false, false, false, true),
+        ("kind", false, false, false, false),
     ] {
         assert_eq!(is_static(code, Statics::Core), core, "{code}");
         assert_eq!(is_static(code, Statics::ProgramTypes), types, "{code}");
         assert_eq!(is_static(code, Statics::EntryPoints), entry, "{code}");
+        assert_eq!(is_static(code, Statics::Recursion), rec, "{code}");
     }
 
     // Validation, 3.10.10 item 17: a case with "check": false expects

@@ -786,6 +786,68 @@ A plain text error has no cause: its text is already the message.
   its frame is pushed; nothing else is new. Each call's own names are the
   frames of "Scopes and lambdas" above.
 
+### Step E2: recursive named types
+
+- **References** (`check/ty/refs.rs`): `Ty.refs` is the set of references
+  among a type's alternatives (F17 12.1). A `Ref` is a table, an index in it
+  and the name, and is equal by the three. A `Table` is one recursive
+  component: its definitions, set once when the component has resolved,
+  each with its `top`, the definition with each other component's reference
+  at its top replaced by that reference's own `top`. A reference's unfolding
+  is its table's `top`, so following references at the top of a type takes
+  one step, whatever the chain of lines (`view`). An atom is a reference with
+  no table: the runner's case `type` compares by it (12.6).
+- **No cycles of `Arc`** (`Table::set`): a definition holds the references
+  of its own table as `Weak`, so a table owns no strong path back to itself,
+  and components form no cycle among themselves. What keeps a table alive is
+  what holds its types: `Resolution`, `Program` and the checker's probe keep
+  the tables of the program's type lines, an environment's types hold the
+  tables of its named types, and every type that leaves the crate (`Type`,
+  `CheckResult`) is `strengthen`ed first, so that each reference it
+  reaches is strong. `a_recursive_type_leaks_nothing`
+  (`src/tests/recursive.rs`) tests that a table dies with the last of them.
+- **The list** (`check/list.rs`): type lines, an environment's named types
+  and a schema's `$ref` targets are each one list. Tarjan's algorithm, with
+  an explicit stack, finds the components and orders them so that each
+  comes after those it names; `plan` marks the recursive ones, the lines in a
+  cycle with no guard (`direct`), and in a recursive component the order in
+  which the lines resolve, each after the lines it names at its top. The
+  resolver (`compile.rs`, `type_lines_list`), the environment (`env.rs`,
+  `named_list`) and the schema reader (`schema.rs`, `set_definitions`)
+  share it. Each looks names up through maps, so a list resolves in time
+  linear in its lines.
+- **The computations** (`check/ty/pairs.rs`): Fits, Join, Equal and
+  disjoint follow references by pairs (12.5). A computation is a `Cx`: the
+  pairs in progress as a stack of frames, the pairs failed, and the count of
+  pairs entered. A rule that meets a pair to enter stops with `Need`; the
+  machine pushes a frame for the pair and runs its rule, then runs the rule
+  that met it again from its start, replaying from its log each outcome it
+  met before. So native recursion is that of one pair's rule, which the
+  depth of its two types bounds, not the 4,096 pairs the bound allows in
+  progress. Pairs in progress and failed are indexed by a key of the top of
+  their two types, so a computation takes time linear in the pairs it
+  enters, not their square.
+- **The bound** (`pairs::watch`): a computation that passes 4,096 pairs
+  ends with its fallback and sets a flag that the innermost `Watch` sees.
+  `check` watches from the end of resolution; when the flag is set, the
+  check ends with the static diagnostics and one `check-limit`, template
+  `pairs`, on the last node the checker marked (12.5 item 7, 12.6 item 4).
+  The type API's `fits`, `equal` and `join` watch their own computation:
+  past the bound they give false, false and an invalid type.
+- **Conformance** (`conform.rs`): a recursive type has no depth, so the test
+  counts the levels it enters (`Free`) and fails past 200 with
+  `depth-exceeded`, class `limit`, no path (12.7 item 3); `ConformAll` ends
+  with it.
+- **The stack test.** `a_comparison_that_reaches_the_bound_runs_within_the_stated_stack`
+  (`src/tests/recursive.rs`) runs, on a thread of the stack stated for depth
+  limit 200: two chains of 4,100 type lines, `Ai = {n: Ai+1}`, and a fit of
+  `A0` to `B0`, which enters 4,096 pairs each inside the last and passes the
+  bound; the same one link short of it; hover and completion on it; and an
+  environment with the two chains as named types, its description, and the
+  type API's `fits`, `equal` and `join` past the bound. Measured (rustc
+  1.100.0, aarch64 macOS) as for "Stack" above: unoptimized it needs 36 KiB;
+  optimized it passes on the least thread the platform gives (16 KiB).
+
 ## Package F16, slice D1: annotations and type lines
 
 - **Nodes** (`syntax/ast.rs`): no node kind is added. `Program.types` holds

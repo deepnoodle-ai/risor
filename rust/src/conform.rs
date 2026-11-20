@@ -3,8 +3,10 @@
 //!
 //! The walk tests a value against a resolved type in a fixed order, with
 //! exact charges, and gives the first failure with its path and message. It
-//! recurses only where the type has a level, so its depth is at most the
-//! type's, 64, whatever the data.
+//! recurses only where the type and the value both have a level. With a
+//! recursive type (F17 12.7) the type no longer bounds that: a run's walk is
+//! bounded by the run's depth limit, and the conformance function's by the
+//! default depth limit, 200.
 
 use crate::check::ty::{print, Num, Strs, Ty};
 use crate::diag::{Diagnostic, PathStep, Phase};
@@ -21,17 +23,44 @@ pub trait WalkMeter {
     fn leave(&mut self);
 }
 
-/// No limit and no count: the conformance function (7.1 item 1).
-pub struct Free;
+/// The default depth limit (`03-host.md` 3.6.1), past which the
+/// conformance function fails (F17 12.7 item 3).
+pub const FREE_DEPTH: u32 = 200;
+
+/// No limit of a run and no count of steps: the conformance function (7.1
+/// item 1). It counts the levels it enters, and fails past 200 (F17 12.7
+/// item 3).
+#[derive(Default)]
+pub struct Free(u32);
 
 impl WalkMeter for Free {
     fn charge(&mut self, _: u64) -> Result<(), &'static str> {
         Ok(())
     }
     fn enter(&mut self) -> Result<(), &'static str> {
+        self.0 += 1;
+        if self.0 > FREE_DEPTH {
+            return Err("depth-exceeded");
+        }
         Ok(())
     }
-    fn leave(&mut self) {}
+    fn leave(&mut self) {
+        self.0 -= 1;
+    }
+}
+
+/// The failure of the conformance function past the default depth limit
+/// (F17 12.7 item 3): phase `run`, code `depth-exceeded`, class `limit`, no
+/// path and no span.
+pub fn too_deep() -> Diagnostic {
+    let msg = crate::messages::build(
+        "depth-exceeded",
+        "default",
+        &[("limit", FREE_DEPTH.to_string())],
+    );
+    let mut d = Diagnostic::bare(Phase::Run, "depth-exceeded", msg);
+    d.class = Some("limit");
+    d
 }
 
 /// Counts steps and nothing else, for tests.
@@ -66,14 +95,23 @@ impl Failure {
     }
 
     /// The diagnostic the conformance function gives (7.1): phase `run`,
-    /// class `value`, the path and message, no span.
+    /// class `value`, the path and message, no span. The walk of every
+    /// failure that went past the default depth limit ends with
+    /// [`too_deep`].
     pub fn diagnostic(&self) -> Diagnostic {
+        if self.template == DEEP {
+            return too_deep();
+        }
         let mut d = Diagnostic::bare(Phase::Run, "not-conforming", self.message());
         d.class = Some("value");
         d.path = Some(Box::new(self.path.clone()));
         d
     }
 }
+
+/// The template of the last entry of [`all`] when the walk went past the
+/// default depth limit.
+const DEEP: &str = "depth-exceeded";
 
 /// Test(v, T, []) (4.2). `Ok(None)` is pass; `Err` is a limit's code.
 pub fn test<M: WalkMeter>(
@@ -122,13 +160,19 @@ impl<M: WalkMeter> Walk<'_, M> {
         if t.any {
             return Ok(None);
         }
+        // F17 12.7 item 1: a type with references is tested by its
+        // unfolding; a failure prints it by its name.
+        let u = t.view();
+        if u.any {
+            return Ok(None);
+        }
         // 2.
-        let enters = matches!(v.kind(), Kind::List) && t.list.is_some()
-            || matches!(v.kind(), Kind::Map) && t.map.is_some();
+        let enters = matches!(v.kind(), Kind::List) && u.list.is_some()
+            || matches!(v.kind(), Kind::Map) && u.map.is_some();
         if enters {
             self.m.enter()?;
         }
-        let r = self.body(v, t, looked_up);
+        let r = self.body(v, t, &u, looked_up);
         // 9.
         if enters {
             self.m.leave();
@@ -136,10 +180,12 @@ impl<M: WalkMeter> Walk<'_, M> {
         r
     }
 
+    /// `t` is the type as written, `u` its unfolding.
     fn body(
         &mut self,
         v: &Value<'_>,
         t: &Ty,
+        u: &Ty,
         looked_up: bool,
     ) -> Result<Option<Failure>, &'static str> {
         // 3.
@@ -149,14 +195,14 @@ impl<M: WalkMeter> Walk<'_, M> {
         // 4, 5, 6.
         match v {
             Value::BadNum => Ok(Some(wrong(&self.path, t, v))),
-            Value::Null if t.null => Ok(None),
-            Value::Bool(_) if t.boolean => Ok(None),
-            Value::Num(n) => match t.num {
+            Value::Null if u.null => Ok(None),
+            Value::Bool(_) if u.boolean => Ok(None),
+            Value::Num(n) => match u.num {
                 Some(Num::Float) => Ok(None),
                 Some(Num::Int) if is_whole(*n) => Ok(None),
                 _ => Ok(Some(wrong(&self.path, t, v))),
             },
-            Value::Str(s) => match &t.str {
+            Value::Str(s) => match &u.str {
                 Some(Strs::All) => Ok(None),
                 Some(Strs::Lits(l)) => {
                     self.m.charge(size(s.as_str()))?;
@@ -168,10 +214,12 @@ impl<M: WalkMeter> Walk<'_, M> {
                 }
                 None => Ok(Some(wrong(&self.path, t, v))),
             },
-            Value::Opaque(o) if t.opaque.contains(o.type_name.as_ref()) => Ok(None),
-            Value::List(_) | Value::HList(_) if t.list.is_some() => {
+            Value::Opaque(o) if u.opaque.contains(o.type_name.as_ref()) => Ok(None),
+            Value::List(_) | Value::HList(_) if u.list.is_some() => {
                 // 7.
-                let e = t.list.as_deref().expect("a list alternative");
+                let Some(e) = u.list.as_deref() else {
+                    return Ok(None);
+                };
                 let n = v.len().unwrap_or(0);
                 for i in 0..n {
                     self.path.push(PathStep::Index(i));
@@ -183,11 +231,11 @@ impl<M: WalkMeter> Walk<'_, M> {
                 }
                 Ok(None)
             }
-            Value::Map(_) | Value::HMap(_) if t.variants.is_some() => self.union(v, t),
-            Value::Map(_) | Value::HMap(_) if t.map.is_some() => {
-                let r = t.map.as_deref().expect("a map alternative");
-                self.record(v, r, None)
-            }
+            Value::Map(_) | Value::HMap(_) if u.variants.is_some() => self.union(v, u),
+            Value::Map(_) | Value::HMap(_) if u.map.is_some() => match u.map.as_deref() {
+                Some(r) => self.record(v, r, None),
+                None => Ok(None),
+            },
             _ => Ok(Some(wrong(&self.path, t, v))),
         }
     }
@@ -195,7 +243,9 @@ impl<M: WalkMeter> Walk<'_, M> {
     /// F5 7.2: a map against a tagged union. The tag is read first, then the
     /// variant its value selects is tested by 4.3, the tag passed over.
     fn union(&mut self, v: &Value<'_>, t: &Ty) -> Result<Option<Failure>, &'static str> {
-        let flat = t.map.as_deref().expect("a map alternative");
+        let Some(flat) = t.map.as_deref() else {
+            return Ok(None);
+        };
         let tag = t.tag().unwrap_or_default();
         self.m.charge(1 + size(&tag))?;
         let Some(x) = v.field(&tag) else {
@@ -219,7 +269,7 @@ impl<M: WalkMeter> Walk<'_, M> {
             return Ok(r);
         }
         let s = x.as_str().unwrap_or_default();
-        let vs = t.variants.as_deref().expect("variants");
+        let vs: &[crate::check::ty::Rec] = t.variants.as_deref().map_or(&[], |v| v.as_slice());
         let Some(var) = vs.iter().find(|r| {
             matches!(r.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(l)) if l.contains(s))
         }) else {
@@ -306,28 +356,42 @@ impl<M: WalkMeter> Walk<'_, M> {
     }
 }
 
-/// All(v, T, []) of `f08-errors.md` 6.2: every failure, up to `max`.
+/// All(v, T, []) of `f08-errors.md` 6.2: every failure, up to `max`. Past
+/// the default depth limit it ends with a failure whose diagnostic is
+/// [`too_deep`] (F17 12.7 item 3).
 pub fn all(v: &Value<'_>, t: &Ty, max: usize) -> Vec<Failure> {
     let mut a = All {
         path: Vec::new(),
         out: Vec::new(),
         max,
+        depth: 0,
+        deep: false,
     };
     a.walk(v, t);
+    if a.deep {
+        a.out.push(Failure {
+            path: Vec::new(),
+            template: DEEP,
+            params: Vec::new(),
+        });
+    }
     a.out
 }
 
-/// The walk of every failure. It recurses only where the type has a level,
-/// so its depth is the type's, at most 64.
+/// The walk of every failure. It recurses only where the type and the value
+/// both have a level, and no deeper than the default depth limit.
 struct All {
     path: Vec<PathStep>,
     out: Vec<Failure>,
     max: usize,
+    depth: u32,
+    /// The walk went past the default depth limit: it ends.
+    deep: bool,
 }
 
 impl All {
     fn full(&self) -> bool {
-        self.out.len() >= self.max
+        self.deep || self.out.len() >= self.max
     }
 
     fn add(&mut self, f: Failure) {
@@ -347,25 +411,48 @@ impl All {
         if self.full() || t.any {
             return;
         }
+        let u = t.view();
+        if u.any {
+            return;
+        }
+        let enters = matches!(v.kind(), Kind::List) && u.list.is_some()
+            || matches!(v.kind(), Kind::Map) && u.map.is_some();
+        if enters {
+            self.depth += 1;
+            if self.depth > FREE_DEPTH {
+                self.deep = true;
+                self.depth -= 1;
+                return;
+            }
+        }
+        self.walk_body(v, t, &u);
+        if enters {
+            self.depth -= 1;
+        }
+    }
+
+    fn walk_body(&mut self, v: &Value<'_>, t: &Ty, u: &Ty) {
         match v {
             // 2, 3, 4.
             Value::BadNum => self.add(wrong(&self.path, t, v)),
-            Value::Null if t.null => {}
-            Value::Bool(_) if t.boolean => {}
-            Value::Num(n) => match t.num {
+            Value::Null if u.null => {}
+            Value::Bool(_) if u.boolean => {}
+            Value::Num(n) => match u.num {
                 Some(Num::Float) => {}
                 Some(Num::Int) if is_whole(*n) => {}
                 _ => self.add(wrong(&self.path, t, v)),
             },
-            Value::Str(s) => match &t.str {
+            Value::Str(s) => match &u.str {
                 Some(Strs::All) => {}
                 Some(Strs::Lits(l)) if l.contains(s.as_str()) => {}
                 _ => self.add(wrong(&self.path, t, v)),
             },
-            Value::Opaque(o) if t.opaque.contains(o.type_name.as_ref()) => {}
+            Value::Opaque(o) if u.opaque.contains(o.type_name.as_ref()) => {}
             // 5.
-            Value::List(_) | Value::HList(_) if t.list.is_some() => {
-                let e = t.list.as_deref().expect("a list alternative");
+            Value::List(_) | Value::HList(_) if u.list.is_some() => {
+                let Some(e) = u.list.as_deref() else {
+                    return;
+                };
                 for i in 0..v.len().unwrap_or(0) {
                     self.path.push(PathStep::Index(i));
                     self.walk(&v.elem(i), e);
@@ -376,11 +463,12 @@ impl All {
                 }
             }
             // 7.
-            Value::Map(_) | Value::HMap(_) if t.variants.is_some() => self.union(v, t),
+            Value::Map(_) | Value::HMap(_) if u.variants.is_some() => self.union(v, u),
             // 6.
-            Value::Map(_) | Value::HMap(_) if t.map.is_some() => {
-                let r = t.map.as_deref().expect("a map alternative");
-                self.record(v, r, None);
+            Value::Map(_) | Value::HMap(_) if u.map.is_some() => {
+                if let Some(r) = u.map.as_deref() {
+                    self.record(v, r, None);
+                }
             }
             _ => self.add(wrong(&self.path, t, v)),
         }
@@ -389,7 +477,9 @@ impl All {
     /// Step 7: the tag first; a missing or unknown tag is one failure and
     /// ends the walk of that value.
     fn union(&mut self, v: &Value<'_>, t: &Ty) {
-        let flat = t.map.as_deref().expect("a map alternative");
+        let Some(flat) = t.map.as_deref() else {
+            return;
+        };
         let tag = t.tag().unwrap_or_default();
         let Some(x) = v.field(&tag) else {
             self.add(Failure {
@@ -405,7 +495,7 @@ impl All {
             .map(|f| f.ty.clone())
             .unwrap_or_default();
         let s = x.as_str().unwrap_or_default();
-        let vs = t.variants.as_deref().expect("variants");
+        let vs: &[crate::check::ty::Rec] = t.variants.as_deref().map_or(&[], |v| v.as_slice());
         let var = match &x {
             Value::Str(_) => vs.iter().find(|r| {
                 matches!(r.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(l)) if l.contains(s))

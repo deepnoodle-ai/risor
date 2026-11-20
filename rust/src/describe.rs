@@ -133,17 +133,36 @@ impl Env {
                 Json::Arr(d.groups.iter().cloned().map(Json::Str).collect()),
             ));
         }
-        // F4 8: the named types, present only when there is one.
-        if !d.names.named.is_empty() {
-            entries.push((
-                "types".to_string(),
-                obj(d
-                    .names
-                    .named
-                    .iter()
-                    .map(|(n, t)| (n.clone(), Json::Str(print(t))))
-                    .collect()),
-            ));
+        // F4 8, F17 12.4 item 3: the named types and the recursive types,
+        // present only when there is one. A recursive type prints by its
+        // unfolding, in which its own name stands for itself.
+        let mut types: Vec<(String, Json)> = Vec::new();
+        for (n, t) in &d.names.named {
+            let shown = match t.refs.iter().next() {
+                Some(r) if t.is_one_ref() && r.name() == n => t.view().into_owned(),
+                _ => t.clone(),
+            };
+            types.push((n.clone(), Json::Str(print(&shown))));
+        }
+        let reached = crate::check::ty::reach(
+            d.names
+                .named
+                .iter()
+                .map(|(_, t)| t)
+                .chain(d.var_types.iter()),
+        );
+        let mut shown: std::collections::HashSet<String> =
+            types.iter().map(|(n, _)| n.clone()).collect();
+        for r in reached {
+            if !shown.insert(r.name().to_string()) {
+                continue;
+            }
+            if let Some(u) = r.unfolding() {
+                types.push((r.name().to_string(), Json::Str(print(&u))));
+            }
+        }
+        if !types.is_empty() {
+            entries.push(("types".to_string(), obj(types)));
         }
         entries.extend(vec![
             ("version".into(), Json::Str("3.0".into())),
