@@ -8,6 +8,7 @@ mod facts;
 mod flat;
 mod format;
 mod host;
+mod recursive;
 mod runner;
 mod suite;
 mod syntax;
