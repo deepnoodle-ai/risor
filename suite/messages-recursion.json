@@ -10,7 +10,7 @@
       "fn-hint": "{name} is a parameter; to call it, give it a function type, as {name}: (x: int) => int"
     },
     "when": {
-      "fn-hint": "A call of a parameter written as a name with no function type and no default (f17-recursion.md 13.5). name is the parameter's name"
+      "fn-hint": "A call of a parameter of a const-bound lambda written as a name with no function type and no default (f17-recursion.md 13.2 item 4). name is the parameter's name"
     },
     "cases": [
       {
@@ -45,7 +45,7 @@
       "parameter-at-fn": "{name} is a value; to pass it as a function, give it a function type"
     },
     "when": {
-      "parameter-at-fn": "A plain argument at an Fn parameter that is an identifier whose innermost binding is a parameter written as a name with no function type and no default (f17-recursion.md 13.5). name is the parameter's name"
+      "parameter-at-fn": "A plain argument at an Fn parameter that is an identifier whose innermost binding is a parameter of a const-bound lambda written as a name with no function type and no default (f17-recursion.md 13.2 item 4). name is the parameter's name"
     },
     "cases": [
       {
@@ -77,10 +77,12 @@
       "name": "word"
     },
     "templates": {
-      "higher-order": "a function that takes a function cannot be passed to {name}"
+      "higher-order": "a function that takes a function cannot be passed to {name}",
+      "fn-hint": "{name} is a parameter; to pass a function to it, give it a function type, as {name}: (x: int) => int"
     },
     "when": {
-      "higher-order": "A lambda argument that is a lambda with a parameter of a function type, or the name of such a const-bound lambda, of any call (f17-recursion.md 13.2 rule 8). name is the callee as written: the function, the method or the lambda the argument is given to"
+      "higher-order": "A lambda argument that is a lambda with a parameter of a function type, or the name of such a const-bound lambda, of any call (f17-recursion.md 13.2 rule 8). name is the callee as written: the function, the method or the lambda the argument is given to",
+      "fn-hint": "A lambda argument in a call of a const-bound lambda, at a parameter written as a name with no function type and no default (f17-recursion.md 13.2 rule 2). name is that parameter's name"
     },
     "cases": [
       {
@@ -98,6 +100,60 @@
                 63
               ],
               "message": "a function that takes a function cannot be passed to walk"
+            }
+          ]
+        }
+      },
+      {
+        "name": "lambda-to-lambda, fn-hint",
+        "source": "const inc = n => n + 1; const ap = (v) => v; ap(inc)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "lambda-to-lambda",
+              "span": [
+                1,
+                49,
+                1,
+                52
+              ],
+              "message": "v is a parameter; to pass a function to it, give it a function type, as v: (x: int) => int"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "not-a-value",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "higher-order": "{name} is a const-bound lambda, not a value; it takes a function, so it can only be called"
+    },
+    "when": {
+      "higher-order": "An identifier whose innermost binding is a const-bound lambda with a parameter of a function type (f17-recursion.md 13.5). name is the identifier"
+    },
+    "cases": [
+      {
+        "name": "not-a-value, higher-order",
+        "source": "const apply = (f: (x: int) => int, x: int): int => f(x); const k = apply; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                68,
+                1,
+                73
+              ],
+              "message": "apply is a const-bound lambda, not a value; it takes a function, so it can only be called"
             }
           ]
         }

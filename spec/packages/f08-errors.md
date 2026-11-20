@@ -432,8 +432,8 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
    templates. `messages-check.json` has one entry for each of the 30 check codes
    (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
    and a template in a file of its own (`spec/packages/f16-entry-points.md`
-   9.1), and package F17 three templates of existing codes in another
-   (`spec/packages/f17-recursion.md` 13.5): 76 check templates in all.
+   9.1), and package F17 five templates of existing codes in another
+   (`spec/packages/f17-recursion.md` 13.5): 78 check templates in all.
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -679,7 +679,7 @@ is the type the checker gives at that place, as named.
 |  | `lambda` | `{name} is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function` | An identifier whose innermost binding is a const-bound lambda |
 |  | `argument` | `a function cannot stand at parameter {param} of {name}, which takes a value` | A lambda argument at a parameter that is not an Fn. name is the callee; param is the parameter's name in the signature |
 | `call-of-parameter` | `default` | `{name} is a value, not a function, and cannot be called` |  |
-| `lambda-to-lambda` | `default` | `a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead` |  |
+| `lambda-to-lambda` | `default` | `a function cannot be passed to {name} at a parameter that takes a value` |  |
 | `duplicate-name` | `default` | `{name} is already bound here` |  |
 | `shadows-namespace` | `default` | `{name} is a namespace and cannot be bound` |  |
 | `duplicate-key` | `default` | `key {key} is written twice in this map` |  |
@@ -746,8 +746,11 @@ is the type the checker gives at that place, as named.
 
 Packages F16 and F17 add templates in catalog files of their own:
 `name-clash` `default` (`spec/packages/f16-entry-points.md` 9.1), and
-`call-of-parameter` `fn-hint`, `arg-mismatch` `parameter-at-fn` and
-`lambda-to-lambda` `higher-order` (`spec/packages/f17-recursion.md` 13.5).
+`call-of-parameter` `fn-hint`, `arg-mismatch` `parameter-at-fn`,
+`lambda-to-lambda` `higher-order` and `fn-hint`, and `not-a-value`
+`higher-order` (`spec/packages/f17-recursion.md` 13.5). The texts of
+`recursion-needs-types` and `lambda-to-lambda` above are F17's
+(`spec/packages/f17-recursion.md` 9).
 
 The parameters of each code, with their kinds:
 

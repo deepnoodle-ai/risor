@@ -273,12 +273,12 @@
       "name": "word"
     },
     "templates": {
-      "default": "a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead"
+      "default": "a function cannot be passed to {name} at a parameter that takes a value"
     },
     "cases": [
       {
         "name": "lambda-to-lambda",
-        "source": "const inc = n => n + 1; const ap = (v) => v; ap(inc)",
+        "source": "const inc = n => n + 1; const ap = (v = 0) => v; ap(inc)",
         "expect": {
           "phase": "check",
           "diagnostics": [
@@ -286,11 +286,11 @@
               "code": "lambda-to-lambda",
               "span": [
                 1,
-                49,
+                53,
                 1,
-                52
+                56
               ],
-              "message": "a function cannot be passed to ap, which is a const-bound lambda; pass the data instead"
+              "message": "a function cannot be passed to ap at a parameter that takes a value"
             }
           ]
         }

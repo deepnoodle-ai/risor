@@ -67,13 +67,17 @@ type Binding struct {
 	// Param is the parameter that binds the name, for a parameter written as
 	// a name, and for FnParam (f17-recursion.md 13.2).
 	Param *syntax.Param
+	// Bound reports, for a parameter, that its lambda is a const-bound
+	// lambda: the only lambda that may have a parameter with a function type.
+	Bound bool
 }
 
-// HintParam reports whether a value binding is a parameter written as a
-// name with no default: the form a parameter with a function type takes.
-// Its call and its use as a function name the fix (f17-recursion.md 13.5).
+// HintParam reports whether a value binding is a parameter of a const-bound
+// lambda written as a name with no default: the form a parameter with a
+// function type takes, where one may stand. Its call and its use as a
+// function name the fix (f17-recursion.md 13.2 item 4).
 func (b *Binding) HintParam() bool {
-	return b != nil && b.Kind == Value && b.Param != nil && b.Param.Default == nil
+	return b != nil && b.Kind == Value && b.Param != nil && b.Param.Default == nil && b.Bound
 }
 
 // CalleeKind is what a call calls.
@@ -289,7 +293,7 @@ func (w *walker) constLine(c *syntax.Const, s *scope) {
 			// The name is bound first: it is in scope in the lambda's body
 			// and defaults (01-language.md 5 rule 6; 22.7).
 			w.bind(np.Name, np.Span(), s, ConstLambda, lam)
-			w.lambda(lam, s)
+			w.lambda(lam, s, true)
 			return
 		}
 	}
@@ -409,7 +413,8 @@ func (w *walker) pattern(p syntax.Pattern, s *scope) {
 	}
 }
 
-func (w *walker) lambda(l *syntax.Lambda, s *scope) {
+// lambda walks a lambda. bound reports that it is a const-bound lambda.
+func (w *walker) lambda(l *syntax.Lambda, s *scope, bound bool) {
 	ls := &scope{parent: s, names: map[string]*Binding{}}
 	for _, p := range l.Params {
 		w.annotation(p.Type)
@@ -430,6 +435,7 @@ func (w *walker) lambda(l *syntax.Lambda, s *scope) {
 			if slot := w.bind(np.Name, np.Span(), ls, FnParam, nil); slot >= 0 {
 				w.res.Slots[np] = slot
 				w.last.Param = p
+				w.last.Bound = bound
 			}
 			continue
 		}
@@ -437,6 +443,7 @@ func (w *walker) lambda(l *syntax.Lambda, s *scope) {
 		w.pattern(p.Pattern, ls)
 		if isName && w.last != nil {
 			w.last.Param = p
+			w.last.Bound = bound
 		}
 	}
 	w.annotation(l.Result)
@@ -519,7 +526,7 @@ func (w *walker) args(name string, args []syntax.Node, s *scope) {
 				w.diagm("lambda-to-lambda", a.Span(), "higher-order", messages.Word("name", name))
 			}
 			if l, isL := a.(*syntax.Lambda); isL {
-				w.lambda(l, s)
+				w.lambda(l, s, false)
 			}
 			continue
 		}
@@ -617,7 +624,15 @@ func (w *walker) argTest(callee *Callee, full string, i int, a syntax.Node, s *s
 		p := callee.Lambda.Params[i]
 		switch {
 		case p.Fn == nil:
-			if ok {
+			if !ok {
+				break
+			}
+			// Rule 2: a parameter written as a name with no default may take
+			// a function type, and the message says so (f17-recursion.md
+			// 13.2 item 4); a pattern or a default shows a value.
+			if np, isName := p.Pattern.(*syntax.NamePat); isName && !np.Discard && p.Default == nil {
+				w.diagm("lambda-to-lambda", a.Span(), "fn-hint", messages.Word("name", np.Name))
+			} else {
 				w.diagm("lambda-to-lambda", a.Span(), "", messages.Word("name", full))
 			}
 		case !ok:
@@ -677,7 +692,13 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		switch {
 		case b != nil && b.Kind == ConstLambda:
 			w.res.Idents[n] = b
-			w.diagm("not-a-value", n.Span(), "lambda", nameP(n.Name))
+			tmpl := "lambda"
+			if HigherOrder(b.Lambda) {
+				// It takes a function, so it may only be called
+				// (f17-recursion.md 13.5).
+				tmpl = "higher-order"
+			}
+			w.diagm("not-a-value", n.Span(), tmpl, nameP(n.Name))
 		case b != nil && b.Kind == FnParam:
 			// A parameter with a function type is not a value
 			// (f17-recursion.md 13.2 rule 4).
@@ -749,7 +770,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		}
 	case *syntax.Lambda:
 		// A lambda where no argument may stand cannot parse; walk it anyway.
-		w.lambda(n, s)
+		w.lambda(n, s, false)
 	case *syntax.Map:
 		keys := map[string]bool{}
 		for _, e := range n.Entries {

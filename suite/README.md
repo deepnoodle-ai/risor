@@ -27,7 +27,7 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `library-math.json`, `math/` | Package F13: the correctly rounded functions of `math` | `spec/packages/f13-math.md` |
 | `facts/` | Package F14: host facts, the fact "is null" and its effect | `spec/packages/f14-host-facts.md` |
 | `messages-entry-points.json`, `entry-points/` | Package F16, slice D1: type lines and annotations; the check code `name-clash`; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f16-entry-points.md` |
-| `library-recursion.json`, `messages-recursion.json`, `recursion/` | Package F17, steps E0, E1 and E3: the record of `walk` with its cases; guards on `match` arms; typed self-recursion, in files named `e1-`; function parameters, in files named `e3-`, and their three message templates; their analysis; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f17-recursion.md` |
+| `library-recursion.json`, `messages-recursion.json`, `recursion/` | Package F17, steps E0, E1 and E3: the record of `walk` with its cases; guards on `match` arms; typed self-recursion, in files named `e1-`; function parameters, in files named `e3-`, and their five message templates; their analysis; in files named `tools-`, their formatter, completion and hover, which need F12 | `spec/packages/f17-recursion.md` |
 | `tools/` | Package F12: the formatter's output, completion and hover | `spec/packages/f12-tools.md` |
 
 A runner runs the Core paths and the directories of the packages its
