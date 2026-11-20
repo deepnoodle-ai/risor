@@ -1050,7 +1050,9 @@ evaluated where it stands, in the call that holds the argument.
    parameter it fails test 4. Test 5 counts its listed count, not the count of
    its bound lambda. So in a run without the type rules `[1].map(f)`, with `f` a
    function parameter that lists three parameters, is `wrong-kind`, and
-   `"ab".repeat(f)` is `wrong-kind`.
+   `"ab".repeat(f)` is `wrong-kind`. A method of an opaque type takes no
+   callback, so `tok.put(f)`, with `tok` an opaque value, fails test 4 and is
+   `wrong-kind` too; checked, it is `not-a-value` `argument` (13.3).
 2. **Each call's own names.** The rules of 11.5 hold for every program with a
    function parameter, as for one with a self-reference. A bound lambda reads
    its outer names from the call in which it was evaluated, whichever call of
@@ -1188,8 +1190,8 @@ F2's analysis reads the amended scope (F2 3.2):
 | Path | Holds |
 | --- | --- |
 | `suite/recursion/e3-static.json` | Each static rule of 13.2, with its templates, and the rules of Core beside a function parameter |
-| `suite/recursion/e3-run.json` | Values, steps, units, depth and its limit, the two forms of the stack test at 200 and 400 (13.4 item 6), traces, `catch`, each call's own names (the `apply` example of 13.4 item 3), runs without the type rules and the shape test |
-| `suite/recursion/e3-check.json` | The checker of 13.3: types, sites, fits, each lambda argument, the library entries, `any` |
+| `suite/recursion/e3-run.json` | Values, steps, units, depth and its limit, the two forms of the stack test at 200 and 400 (13.4 item 6), traces, `catch`, each call's own names (the `apply` example of 13.4 item 3), runs without the type rules and the shape test, also at a method of an opaque type |
+| `suite/recursion/e3-check.json` | The checker of 13.3: types, sites, fits, each lambda argument, the library entries, `any`, a method of an opaque type |
 | `suite/recursion/e3-earlier.json` | The eight texts of 13.9, with this step's outcome |
 | `suite/recursion/e3-analysis.json` | Analysis of 13.6 (F2) |
 | `suite/recursion/tools-e3-format.json` | The formatter on function parameters (F12) |
