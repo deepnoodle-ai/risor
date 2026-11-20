@@ -161,17 +161,39 @@ function repair(tokens: Token[], src: Source): A.Program | null {
 
 // ---- walking the tree ---------------------------------------------------------
 
-type Visit = (n: A.Node, parents: A.Node[]) => boolean | void;
+type Visit = (n: A.Node, parents: () => A.Node[]) => boolean | void;
 
-/** Every node of a tree, with its parents. */
+/**
+ * Every node of a tree, a parent before its children and the children in
+ * order. `parents` gives the parents of the node, the outermost first. A visit
+ * that gives false leaves the node's children out.
+ *
+ * The walk keeps its own stack: a chain of steps or of operators is as deep in
+ * the tree as it is long, and it opens no level (01 13.1).
+ */
 function walk(root: A.Node, visit: Visit): void {
-  const go = (n: A.Node | null | undefined, ps: A.Node[]): void => {
+  const path: A.Node[] = [];
+  const kids: (A.Node | null | undefined)[][] = [];
+  const at: number[] = [];
+  const parents = (): A.Node[] => path.slice();
+  const enter = (n: A.Node | null | undefined): void => {
     if (n === null || n === undefined) return;
-    if (visit(n, ps) === false) return;
-    const q = [...ps, n];
-    for (const c of children(n)) go(c, q);
+    if (visit(n, parents) === false) return;
+    path.push(n);
+    kids.push(children(n));
+    at.push(0);
   };
-  go(root, []);
+  enter(root);
+  while (path.length > 0) {
+    const top = path.length - 1;
+    const ks = kids[top];
+    if (at[top] < ks.length) enter(ks[at[top]++]);
+    else {
+      path.pop();
+      kids.pop();
+      at.pop();
+    }
+  }
 }
 
 function children(n: A.Node): A.Node[] {
@@ -258,74 +280,106 @@ function patternNames(p: A.Pattern): Bound[] {
   }
 }
 
+/**
+ * A scope while it is searched: the first `len` names of `scope`, then `own`.
+ * The copy is made only for the scopes of the target, so a block of many
+ * `const` lines costs one copy, not one for each line.
+ */
+interface Open {
+  scope: Bound[];
+  len: number;
+  own: Bound[];
+}
+
+const NO_OWN: Bound[] = [];
+
 /** The scopes in force at a target node: from the innermost out, each in binding order. */
 function scopesAt(root: A.Program, target: object): Bound[][] | null {
   let found: Bound[][] | null = null;
-  const visit = (n: A.Node | null, scopes: Bound[][]): void => {
-    if (found !== null || n === null) return;
-    if (n === target) {
-      found = scopes;
-      return;
+  const find = (scopes: Open[]): void => {
+    found = scopes.map((o) => (o.len === o.scope.length && o.own.length === 0 ? o.scope : [...o.scope.slice(0, o.len), ...o.own]));
+  };
+  /** The scope as it is now: a later name is not in it. */
+  const now = (scope: Bound[], own: Bound[] = NO_OWN): Open => ({ scope, len: scope.length, own });
+  const lines = (consts: A.Const[], result: A.Expr, scopes: Open[]): void => {
+    const scope: Bound[] = [];
+    for (const c of consts) {
+      // A const name is not in scope in its own value; a pattern's name is in the defaults to its right.
+      // With the Core amendment, a const-bound lambda's name is in scope in its body (f16 7.2 item 5).
+      visitPattern(c.pattern, [now(scope), ...scopes]);
+      const own = c.value.kind === "Lambda" && c.pattern.kind === "NamePat" ? patternNames(c.pattern).map((b) => ({ ...b, lambda: true })) : NO_OWN;
+      visit(c.value as A.Node, [now(scope, own), ...scopes]);
+      if (found !== null) return;
+      for (const b of patternNames(c.pattern)) scope.push({ ...b, lambda: c.value.kind === "Lambda" && c.pattern.kind === "NamePat" });
     }
-    const lines = (consts: A.Const[], result: A.Expr) => {
-      const scope: Bound[] = [];
-      const inner = [scope, ...scopes];
-      for (const c of consts) {
-        // A const name is not in scope in its own value; a pattern's name is in the defaults to its right.
-        // With the Core amendment, a const-bound lambda's name is in scope in its body (f16 7.2 item 5).
-        visitPattern(c.pattern, [[...scope], ...scopes]);
-        const own = c.value.kind === "Lambda" && c.pattern.kind === "NamePat" ? patternNames(c.pattern).map((b) => ({ ...b, lambda: true })) : [];
-        visit(c.value as A.Node, [[...scope, ...own], ...scopes]);
+    visit(result, [now(scope), ...scopes]);
+  };
+  const visitPattern = (p: A.Pattern, scopes2: Open[]): void => {
+    if (p.kind === "MapPat") {
+      const left: Bound[] = [];
+      for (const f of p.fields) {
+        if (f.default !== null) visit(f.default, [now(left), ...scopes2]);
         if (found !== null) return;
-        for (const b of patternNames(c.pattern)) scope.push({ ...b, lambda: c.value.kind === "Lambda" && c.pattern.kind === "NamePat" });
+        left.push({ name: f.name, node: f, span: f.nameSpan, lambda: false });
       }
-      visit(result, inner);
-    };
-    const visitPattern = (p: A.Pattern, scopes2: Bound[][]) => {
-      if (p.kind === "MapPat") {
-        const left: Bound[] = [];
-        for (const f of p.fields) {
-          if (f.default !== null) visit(f.default, [[...left], ...scopes2]);
-          if (found !== null) return;
-          left.push({ name: f.name, node: f, span: f.nameSpan, lambda: false });
-        }
-      } else if (p.kind === "ListPat") {
-        const left: Bound[] = [];
-        for (const e of p.elems) {
-          if (e.default !== null) visit(e.default, [[...left], ...scopes2]);
-          if (found !== null) return;
-          if (e.pat.name !== null) left.push({ name: e.pat.name, node: e.pat, span: e.pat.span, lambda: false });
-        }
-      } else if (p === target) found = scopes2;
-    };
-    switch (n.kind) {
-      case "Program":
-      case "Block":
-        lines(n.consts, n.result);
+    } else if (p.kind === "ListPat") {
+      const left: Bound[] = [];
+      for (const e of p.elems) {
+        if (e.default !== null) visit(e.default, [now(left), ...scopes2]);
+        if (found !== null) return;
+        if (e.pat.name !== null) left.push({ name: e.pat.name, node: e.pat, span: e.pat.span, lambda: false });
+      }
+    } else if (p === target) find(scopes2);
+  };
+  // The nodes that bind no name are searched by a loop with its own stack: a
+  // chain of steps or of operators is as deep in the tree as it is long, and
+  // it opens no level (01 13.1). A program, a block, a lambda and a `try` call
+  // `visit` again; each is inside a bracket, so they nest at most 100 deep.
+  const visit = (start: A.Node | null, scopes: Open[]): void => {
+    const stack: (A.Node | null)[] = [start];
+    while (stack.length > 0) {
+      const n = stack.pop()!;
+      if (found !== null) return;
+      if (n === null) continue;
+      if (n === target) {
+        find(scopes);
         return;
-      case "Lambda": {
-        const scope: Bound[] = [];
-        for (const p of n.params) {
-          if (p.pattern === target) {
-            found = [scope, ...scopes];
-            return;
+      }
+      switch (n.kind) {
+        case "Program":
+        case "Block":
+          lines(n.consts, n.result, scopes);
+          break;
+        case "Lambda": {
+          const scope: Bound[] = [];
+          let done = false;
+          for (const p of n.params) {
+            if (p.pattern === target) {
+              find([now(scope), ...scopes]);
+              return;
+            }
+            visitPattern(p.pattern, [now(scope), ...scopes]);
+            if (p.default !== null) visit(p.default, [now(scope), ...scopes]);
+            if (found !== null) {
+              done = true;
+              break;
+            }
+            for (const b of patternNames(p.pattern)) scope.push(b);
           }
-          visitPattern(p.pattern, [[...scope], ...scopes]);
-          if (p.default !== null) visit(p.default, [[...scope], ...scopes]);
-          if (found !== null) return;
-          scope.push(...patternNames(p.pattern));
+          if (!done) visit(n.body, [now(scope), ...scopes]);
+          break;
         }
-        visit(n.body, [scope, ...scopes]);
-        return;
+        case "Try": {
+          visit(n.body, scopes);
+          const scope: Bound[] = n.name !== null && n.nameSpan !== null ? [{ name: n.name, node: n, span: n.nameSpan, lambda: false }] : [];
+          visit(n.handler, [now(scope), ...scopes]);
+          break;
+        }
+        default: {
+          const cs = children(n);
+          for (let i = cs.length - 1; i >= 0; i--) stack.push(cs[i]);
+        }
       }
-      case "Try": {
-        visit(n.body, scopes);
-        const scope: Bound[] = n.name !== null && n.nameSpan !== null ? [{ name: n.name, node: n, span: n.nameSpan, lambda: false }] : [];
-        visit(n.handler, [scope, ...scopes]);
-        return;
-      }
-      default:
-        for (const c of children(n)) visit(c, scopes);
     }
   };
   visit(root, []);
@@ -509,25 +563,25 @@ class Context {
       const at = (s: Span) => s.start === hole.start && s.end === hole.end;
       switch (n.kind) {
         case "Ident":
-          if (n.name === HOLE && at(n.span)) out = { node: n, parents: ps, where: "ident" };
+          if (n.name === HOLE && at(n.span)) out = { node: n, parents: ps(), where: "ident" };
           break;
         case "Member":
         case "MethodCall":
-          if (n.name === HOLE) out = { node: n, parents: ps, where: "member" };
+          if (n.name === HOLE) out = { node: n, parents: ps(), where: "member" };
           break;
         case "Entry":
-          if (n.shorthand && n.key.kind === "word" && n.key.text === HOLE) out = { node: n, parents: ps, where: "shorthand" };
+          if (n.shorthand && n.key.kind === "word" && n.key.text === HOLE) out = { node: n, parents: ps(), where: "shorthand" };
           break;
         case "String":
-          if (at(n.span) && hole.kind === "string") out = { node: n, parents: ps, where: "string" };
+          if (at(n.span) && hole.kind === "string") out = { node: n, parents: ps(), where: "string" };
           break;
         case "As":
-          if (typeHasHole(n.type)) out = { node: n, parents: ps, where: "type" };
+          if (typeHasHole(n.type)) out = { node: n, parents: ps(), where: "type" };
           break;
         case "Const":
         case "Param":
         case "Lambda":
-          if (annotationsOf(n).some((a) => typeHasHole(a.type))) out = { node: n, parents: ps, where: "type" };
+          if (annotationsOf(n).some((a) => typeHasHole(a.type))) out = { node: n, parents: ps(), where: "type" };
           break;
       }
       return undefined;
@@ -670,44 +724,52 @@ class Context {
 
   /** The expected type of a node (f12 3.9), from the outside in. */
   private expectedOf(target: A.Node): Type | null {
-    let out: Type | null = null;
     const ret = this.returns !== undefined && this.returns !== "condition" ? safeType(this.env, this.returns) : null;
-    const visit = (n: A.Node, exp: Type | null): void => {
-      if (out !== null) return;
-      if (n === target) {
-        out = exp;
-        return;
-      }
+    // The search keeps its own stack: an `else` branch, a receiver and a left
+    // operand are as deep in the tree as the program is long (01 13.1).
+    const nodes: A.Node[] = [this.prog];
+    const exps: (Type | null)[] = [ret];
+    while (nodes.length > 0) {
+      const n = nodes.pop()!;
+      const exp = exps.pop()!;
+      if (n === target) return exp;
+      // The children, each with its expected type, in order.
+      const cs: A.Node[] = [];
+      const es: (Type | null)[] = [];
+      const visit = (c: A.Node, e: Type | null): void => {
+        cs.push(c);
+        es.push(e);
+      };
       switch (n.kind) {
         case "Program":
         case "Block":
           for (const c of n.consts) visit(c, null);
           visit(n.result, exp);
-          return;
+          break;
         case "Cond":
           visit(n.test, null);
           visit(n.then, exp);
           visit(n.else, exp);
-          return;
+          break;
         case "Match":
           visit(n.subject, null);
           for (const arm of n.arms) visit(arm, exp);
-          return;
+          break;
         case "Arm":
           for (const l of n.literals) visit(l, null);
           // f17 7.2 item 2: a guard has no expected type.
           if (n.guard !== null) visit(n.guard, null);
           visit(n.result, exp);
-          return;
+          break;
         case "Try":
           visit(n.body, exp);
           visit(n.handler, exp);
-          return;
+          break;
         case "List": {
           const els = exp === null ? [] : listElems(exp);
           const e2 = els.length > 0 ? joinAll(els) : null;
           for (const it of n.items) visit(it, it.kind === "Spread" ? null : e2);
-          return;
+          break;
         }
         case "Map": {
           const recs = exp === null ? [] : records(exp);
@@ -730,7 +792,7 @@ class Context {
             if (en.key.kind === "expr") visit(en.key.expr, null);
             visit(en.value, ft);
           }
-          return;
+          break;
         }
         case "Call": {
           const f = this.env.environment.functions.get(n.namespace === null ? n.name : `${n.namespace}.${n.name}`);
@@ -746,14 +808,18 @@ class Context {
             }
             visit(a, pt);
           });
-          return;
+          break;
         }
         default:
           for (const c of children(n)) visit(c, null);
       }
-    };
-    visit(this.prog, ret);
-    return out;
+      for (let i = cs.length - 1; i >= 0; i--) {
+        nodes.push(cs[i]);
+        exps.push(es[i]);
+      }
+    }
+    return null;
+
   }
 }
 

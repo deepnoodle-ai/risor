@@ -20,7 +20,7 @@ import {
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
   truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType, unite, hitVariants, allVariants, variantsType, tagSetOf,
 } from "./type.ts";
-import type { Alts, Fit, Rec, Type, Union } from "./type.ts";
+import type { Alts, Field, Fit, Rec, Type, Union } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
 
 /** A signature the checker calls (13.1). */
@@ -540,9 +540,8 @@ class Checker {
     return t;
   }
 
-  /** `x as T`, `x is T` (f04 6.3). */
-  private asNode(e: A.As, f: Facts): Type {
-    const s = this.synth(e.x, f);
+  /** `x as T`, `x is T` (f04 6.3), given the type of its subject. */
+  private asOp(e: A.As, s: Type): Type {
     const t = this.res.asTypes.get(e);
     const isForm = e.form === "is";
     if (t === undefined || t === null) return isForm ? BOOL : NEVER;
@@ -749,11 +748,8 @@ class Checker {
       case "Bad":
         return NEVER;
       case "As":
-        return this.asNode(e, f);
-      case "Each": {
-        const r = this.eachType(e, f);
-        return r.skipped ? withNull(r.type) : r.type;
-      }
+      case "Binary":
+        return this.operators(e, f);
       case "Ident":
         return this.ident(e, f);
       case "Template":
@@ -768,8 +764,6 @@ class Checker {
         return this.map(e, f);
       case "Unary":
         return this.unary(e, f);
-      case "Binary":
-        return this.binary(e, f);
       case "Cond":
         return this.cond(e, f);
       case "Block":
@@ -784,6 +778,7 @@ class Checker {
       case "Member":
       case "Index":
       case "MethodCall":
+      case "Each":
         return this.chain(e, f);
     }
   }
@@ -884,8 +879,12 @@ class Checker {
 
   private map(e: A.MapLit, f: Facts): Type {
     let r: Rec = { fields: new Map(), rest: NEVER };
+    // The fields of *r* are a map made here, which no other type holds: an entry is written into
+    // it. Without this each entry copies the fields before it, and the work is the square of the count.
+    let own: Map<string, Field> | null = r.fields as Map<string, Field>;
     for (const en of e.entries) {
       if (en.kind === "Spread") {
+        own = null;
         let t = this.synth(en.value, f);
         if (hasNull(t)) {
           this.maybeNull(en.value.span, t);
@@ -910,13 +909,16 @@ class Checker {
         if (fit === 0) this.kind(en.key.expr.span, "key", { type: k });
         else if (fit === 2) this.site("dynamic", en.key.expr.span, en.span);
         r = merge(r, { fields: new Map(), rest: v });
+        own = null;
         continue;
       }
       const key = en.key.kind === "word" ? en.key.text : en.key.value;
       const v = this.synth(en.value, f);
-      const fields = new Map(r.fields);
-      fields.set(key, { type: v, optional: false });
-      r = { fields, rest: r.rest };
+      if (own === null) {
+        own = new Map(r.fields);
+        r = { fields: own, rest: r.rest };
+      }
+      own.set(key, { type: v, optional: false });
     }
     return this.sizeLimit(this.depthLimit({ map: r }, e.span), e.span);
   }
@@ -941,19 +943,23 @@ class Checker {
 
   // ---- binary operators (8) -----------------------------------------------------
 
-  private binary(e: A.Binary, f: Facts): Type {
-    // The left spine, checked by a loop (20.6).
-    const spine: A.Binary[] = [];
+  /**
+   * A binary operator, `as` or `is`. The left operand of each opens no level
+   * (01 13.1, f04 2.8), so a run of them is a left spine, checked by a loop
+   * (20.6): the innermost left operand, then each operator outward.
+   */
+  private operators(e: A.Binary | A.As, f: Facts): Type {
+    const spine: (A.Binary | A.As)[] = [];
     let x: A.Expr = e;
-    while (x.kind === "Binary" && x.op !== "**") {
+    while (x.kind === "Binary" || x.kind === "As") {
       spine.push(x);
       x = x.x;
     }
-    if (spine.length === 0) return this.binaryOp(e, this.synth(e.x, f), f);
     let t = this.synth(x, f);
     for (let i = spine.length - 1; i >= 0; i--) {
-      t = this.binaryOp(spine[i], t, f);
-      this.setType(spine[i], t);
+      const n = spine[i];
+      t = n.kind === "As" ? this.asOp(n, t) : this.binaryOp(n, t, f);
+      this.setType(n, t);
     }
     return t;
   }
@@ -1231,76 +1237,111 @@ class Checker {
     return r.skipped ? withNull(r.type) : r.type;
   }
 
-  /** A chain's type before the null of its optional steps is added, and whether one may skip (05 9.1). */
+  /**
+   * The type of a chain, or of a projection, before the null of its optional
+   * steps is added, and whether one may skip (05 9.1, f07 5.1).
+   *
+   * The receiver of a step, of a method call and of a projection opens no
+   * level (01 13.1, f07 2.5), so chains and projections may alternate without
+   * end: `xs[*].a.map(f)[*].b.map(g)...`. They are checked by a loop, from the
+   * innermost receiver outward. A frame is the steps of one chain over their
+   * base, or one projection over its receiver.
+   */
   private chainRaw(e: A.Expr, f: Facts): { type: Type; skipped: boolean } {
-    const steps: A.Expr[] = [];
-    let x: A.Expr = e.kind === "OptChain" ? e.x : e;
+    type Frame = { steps: A.Expr[]; base: A.Expr; each: null } | { steps: null; base: null; each: A.Each };
+    const frames: Frame[] = [];
+    let r: { type: Type; skipped: boolean };
+    // The chain whose steps are gathered next, or the projection that is entered next.
+    let node: A.Expr | null = e.kind === "Each" ? null : e;
+    let each: A.Each | null = e.kind === "Each" ? e : null;
     for (;;) {
-      if (x.kind === "Member" && this.res.constants.has(x)) break; // the read of a constant (f06 10 item 2)
-      if (x.kind === "Member" || x.kind === "Index") {
-        steps.push(x);
-        x = x.x;
-      } else if (x.kind === "MethodCall") {
-        if (this.res.targets.has(x)) break; // a call of a namespace
-        steps.push(x);
-        x = x.x;
-      } else break;
-    }
-    steps.reverse();
-    let skipped = false;
-    let cur: Type;
-    if (x.kind === "Each") {
-      // A projection (f07 5.1): a first star `?.[*]` sets the chain's skipped.
-      const r = this.eachType(x, f);
-      cur = r.type;
-      skipped = r.skipped;
-    } else {
-      // Both constants of the groups have type float (f06 8.2).
-      cur = x.kind === "Member" && this.res.constants.has(x) ? FLOAT : x.kind === "MethodCall" ? this.call(x, f) : this.synth(x, f);
-    }
-    if (x.kind === "MethodCall" || x.kind === "Member" || x.kind === "Each") this.setType(x, cur);
-    let path: string | null = x.kind === "Ident" ? this.pathOf(x) : null;
-    let recvSpan: Span = x.span;
-    for (const s of steps) {
-      const optional = (s as A.Member | A.Index | A.MethodCall).optional;
-      if (hasNull(cur)) {
-        if (optional) skipped = true;
-        else this.maybeNull(recvSpan, cur);
-        cur = nonnull(cur);
+      if (node !== null) {
+        const steps: A.Expr[] = [];
+        let x: A.Expr = node.kind === "OptChain" ? node.x : node;
+        for (;;) {
+          if (x.kind === "Member" && this.res.constants.has(x)) break; // the read of a constant (f06 10 item 2)
+          if (x.kind === "Member" || x.kind === "Index") {
+            steps.push(x);
+            x = x.x;
+          } else if (x.kind === "MethodCall") {
+            if (this.res.targets.has(x)) break; // a call of a namespace
+            steps.push(x);
+            x = x.x;
+          } else break;
+        }
+        steps.reverse();
+        frames.push({ steps, base: x, each: null });
+        if (x.kind !== "Each") {
+          // Both constants of the groups have type float (f06 8.2).
+          r = { type: x.kind === "Member" && this.res.constants.has(x) ? FLOAT : x.kind === "MethodCall" ? this.call(x, f) : this.synth(x, f), skipped: false };
+          break;
+        }
+        // A projection (f07 5.1): a first star `?.[*]` sets the chain's skipped.
+        each = x;
       }
-      if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
-        this.kind(recvSpan, "receiver", { type: cur });
-        cur = NEVER;
+      frames.push({ steps: null, base: null, each: each! });
+      const ex: A.Expr = each!.x!;
+      // The chain before the first star is one chain with the projection: its optional steps skip the whole.
+      if (ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall") {
+        node = ex;
+        continue;
       }
-      // The field this step reads, when the step is a field read.
-      const key = s.kind === "Member" ? s.name : s.kind === "Index" && s.index.kind === "String" ? s.index.value : null;
-      const nextPath = path !== null && key !== null ? path + SEP + key : null;
-      const present = nextPath !== null && f.has(nextPath);
-      cur = this.step(s, cur, recvSpan, f, present);
-      if (nextPath !== null && f.has(nextPath)) cur = nonnull(cur);
-      if (nextPath !== null) cur = this.applyTypeFacts(cur, nextPath, f);
-      path = nextPath;
-      recvSpan = s.span;
-      this.setType(s, cur);
+      r = { type: this.synth(ex, f), skipped: false };
+      break;
     }
-    return { type: cur, skipped };
+    for (let i = frames.length - 1; i >= 0; i--) {
+      const fr = frames[i];
+      if (fr.each !== null) {
+        const ex = fr.each.x!;
+        if (ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall") this.setType(ex, r.skipped ? withNull(r.type) : r.type);
+        r = this.eachType(fr.each, r.type, r.skipped, f);
+        continue;
+      }
+      const x = fr.base;
+      let cur = r.type;
+      let skipped = r.skipped;
+      if (x.kind === "MethodCall" || x.kind === "Member" || x.kind === "Each") this.setType(x, cur);
+      let path: string | null = x.kind === "Ident" ? this.pathOf(x) : null;
+      let recvSpan: Span = x.span;
+      for (const s of fr.steps) {
+        const optional = (s as A.Member | A.Index | A.MethodCall).optional;
+        if (hasNull(cur)) {
+          if (optional) skipped = true;
+          else this.maybeNull(recvSpan, cur);
+          cur = nonnull(cur);
+        }
+        if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
+          this.kind(recvSpan, "receiver", { type: cur });
+          cur = NEVER;
+        }
+        // The field this step reads, when the step is a field read.
+        const key = s.kind === "Member" ? s.name : s.kind === "Index" && s.index.kind === "String" ? s.index.value : null;
+        const nextPath = path !== null && key !== null ? path + SEP + key : null;
+        const present = nextPath !== null && f.has(nextPath);
+        cur = this.step(s, cur, recvSpan, f, present);
+        if (nextPath !== null && f.has(nextPath)) cur = nonnull(cur);
+        if (nextPath !== null) cur = this.applyTypeFacts(cur, nextPath, f);
+        path = nextPath;
+        recvSpan = s.span;
+        this.setType(s, cur);
+      }
+      r = { type: cur, skipped };
+    }
+    return r;
   }
 
-  /** The walk of a projection (f07 5.1) and its type (5.2). `skipped`: a first star `?.[*]` may find null. */
-  private eachType(e: A.Each, f: Facts): { type: Type; skipped: boolean } {
-    let skipped = false;
+  /**
+   * The walk of a projection (f07 5.1) and its type (5.2), given the type of
+   * its receiver before the null of the optional steps of the receiver's chain,
+   * and whether one of those may skip. `skipped`: one of them, or a first star
+   * `?.[*]`, may find null.
+   */
+  private eachType(e: A.Each, recv: Type, recvSkipped: boolean, f: Facts): { type: Type; skipped: boolean } {
+    let skipped = recvSkipped;
     let skippedElement = false;
     let failed = false;
     let neverRecv = false;
-    const ex = e.x!;
-    let cur: Type;
-    // The chain before the first star is one chain with the projection: its optional steps skip the whole.
-    if (ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall") {
-      const r = this.chainRaw(ex, f);
-      this.setType(ex, r.skipped ? withNull(r.type) : r.type);
-      cur = r.type;
-      skipped = r.skipped;
-    } else cur = this.synth(ex, f);
+    let cur: Type = recv;
     // A star on *cur*: the element type, or null when the projection fails or meets never.
     const star = (p: A.Each, first: boolean): Type | null => {
       if (hasNull(cur)) {

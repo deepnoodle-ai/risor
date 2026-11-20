@@ -59,6 +59,16 @@
 // stack overflow, should a host run with less, is reported as
 // `internal-error`, never thrown to the host.
 //
+// What holds for the evaluator holds for every pass (01 13.2 rule 6). A form
+// that opens no level (01 13.1, f04 2.8, f07 2.5) makes a tree as deep as the
+// form is long: a receiver is inside its step, a left operand inside its
+// operator, an `else` branch inside its conditional. The parser, the static
+// rules, the checker, the compiler, the analysis, the formatter with its
+// document and its layout, completion and hover each walk such a form in a
+// loop with a stack of its own, and call themselves only where the text opens
+// a level. test/flat.test.ts runs each form of test/fixtures/flat-forms.ts
+// with 100,000 links through each of them.
+//
 // MEMORY (02 8.5 item 2). On 64-bit V8 (pointer-compressed JS values), the heap
 // memory a run creates as values of the language is bounded by 256 bytes per
 // allocation unit charged plus 16 bytes per step charged. The bound is derived
