@@ -207,10 +207,15 @@ func (e *Env) recNames() {
 		}
 	}
 	e.recTypes = nil
+	// F17 12.4: a name whose recursive types, and named type, are not all
+	// one type is name-clash, once for the name, however many types bear
+	// it. An Equal past the bound of pairs counts as not equal.
 	byName := map[string]*types.Named{}
+	clashed := map[string]bool{}
 	for _, n := range types.RecNames(ts...) {
 		if m, ok := byName[n.Name]; ok {
-			if !types.SameDef(m, n) {
+			if !clashed[n.Name] && !types.SameDef(m, n) {
+				clashed[n.Name] = true
 				e.errf(diag.CodeNameClash, fmt.Sprintf("two recursive types are named %s", n.Name))
 			}
 			continue
@@ -218,6 +223,7 @@ func (e *Env) recNames() {
 		byName[n.Name] = n
 		if t, ok := e.namedTypes[n.Name]; ok {
 			if r := t.Refs(); !(len(r) == 1 && types.Equal(t, types.Ref(r[0])) && types.SameDef(r[0], n)) {
+				clashed[n.Name] = true
 				e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s and the named type %s are not one type", n.Name, n.Name))
 				continue
 			}
