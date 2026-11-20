@@ -578,8 +578,9 @@ R247 to R257 step E1. R240 to R246 were made when the three implementations
 of slice D1 were compared, and R255 to R257 when those of step E1 were. R258
 and R259 were made when the pull request of slice D1 was reviewed. R260 and
 R261 close the two questions that tracks B and D1 left for the owner; they
-were made on 2026-11-19, when the plan's status was brought up to date, under
-the owner's standing delegation of design calls.
+were made on 2026-11-19, when the plan's status was brought up to date. The
+owner was shown both questions that day and answered that the work proceeds
+as intended.
 
 | # | Ruling |
 | --- | --- |
