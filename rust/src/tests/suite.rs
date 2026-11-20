@@ -527,7 +527,8 @@ fn catalog_recursion_cases() {
     let mut failed = Vec::new();
     let dir = suite_dir().join("recursion");
     for (entry, cases) in crate::messages::catalog().recursion_cases.clone() {
-        // 13.8 item 2: the static codes are those of `suite/recursion/`.
+        // 8 item 5 and 13.8 item 2: the static codes are those of
+        // `suite/recursion/`.
         let cases = load_doc(&cases, &dir).expect("the cases are valid");
         for c in &cases {
             let v = crate::testing::run_case_in(c, true);
@@ -544,7 +545,7 @@ fn catalog_recursion_cases() {
     println!("suite/messages-recursion.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
-    assert_eq!(total.pass, 3);
+    assert_eq!(total.pass, 5);
 }
 
 /// Package F17: the record of `suite/library-recursion.json`, run as those
