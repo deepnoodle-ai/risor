@@ -3,8 +3,9 @@
 //! A walk over the syntax tree with the resolution of `compile`. Each form
 //! charges as the tables of sections 5 and 6 say, in the order of section 2.
 //! What opens no level runs in a loop: a left-associative chain of operators,
-//! the steps of a chain, the `else` of `? :` and of `if`, `const` lines and
-//! `match` arms. So the evaluator's recursion follows the source nesting and
+//! the value of an `as` or `is`, the steps of a chain with its projections,
+//! the `else` of `? :` and of `if`, `const` lines and `match` arms. So the
+//! evaluator's recursion follows the source nesting and
 //! the calls in progress, which the depth limit bounds (8.5 item 3).
 
 pub(crate) mod code;
@@ -622,7 +623,7 @@ impl<'h> Run<'h> {
                 NodeKind::Call { args, .. } => return self.call(id, args),
                 NodeKind::Match { subject, arms } => self.match_arm(node.span, *subject, arms),
                 NodeKind::Try { body, handler, .. } => return self.try_(id, *body, *handler),
-                NodeKind::As { form, x, .. } => return self.as_test(id, *form, *x, node.span),
+                NodeKind::As { form, x, .. } => return self.as_test(id, *form, *x),
                 _ => return self.leaf(id),
             };
             id = next?;
@@ -674,8 +675,20 @@ impl<'h> Run<'h> {
     }
 
     /// F4 5.1 and 5.2: `x as T` and `x is T`, by the walk of 4.
-    fn as_test(&mut self, id: NodeId, form: AsForm, x: NodeId, span: Range) -> R<'h, Value<'h>> {
+    fn as_test(&mut self, id: NodeId, form: AsForm, x: NodeId) -> R<'h, Value<'h>> {
+        // A value that is itself an `as`, an `is` or an operator opens no
+        // level (F4 2.8): the loop of the spine evaluates it.
+        if self.on_spine(x) {
+            return self.spine(id);
+        }
         let v = self.eval(x)?;
+        self.as_step(id, form, v)
+    }
+
+    /// One `as` or `is` of a spine, its value evaluated.
+    #[inline(never)]
+    fn as_step(&mut self, id: NodeId, form: AsForm, v: Value<'h>) -> R<'h, Value<'h>> {
+        let span = self.ast.span(id);
         let Res::As(Some(t)) = self.res(id) else {
             return Err(self.internal(span));
         };
@@ -1180,25 +1193,63 @@ impl<'h> Run<'h> {
         }
     }
 
-    /// A chain of binary operators along its left operands, by a loop.
+    /// A binary operator and its operands.
     fn binary(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let NodeKind::Binary { x, .. } = self.ast.kind(id) else {
             unreachable!()
         };
-        // The common case: a left operand that is not itself an operator.
-        if !matches!(self.ast.kind(*x), NodeKind::Binary { .. }) {
+        // The common case: a left operand that is not itself an operator,
+        // an `as` or an `is`.
+        if !matches!(
+            self.ast.kind(*x),
+            NodeKind::Binary { .. } | NodeKind::As { .. }
+        ) {
             let v = self.eval(*x)?;
             return self.binary_step(id, v);
         }
+        self.spine(id)
+    }
+
+    /// Whether the value of an `as` or `is` goes on with its spine: an
+    /// operator, an `as` or an `is` that has no closure of its own.
+    #[inline]
+    fn on_spine(&self, x: NodeId) -> bool {
+        matches!(
+            self.ast.kind(x),
+            NodeKind::Binary { .. } | NodeKind::As { .. }
+        ) && !matches!(self.p.code.get(x.index()), Some(Some(_)))
+    }
+
+    /// A spine: the left operands of operators and the values of `as` and
+    /// `is`, from the node `id` down. They open no level (13.1, F4 2.8), so
+    /// a loop goes down the spine and comes back up, and a long one costs
+    /// no stack.
+    #[inline(never)]
+    fn spine(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let mut stack = Spine::new();
         let mut n = id;
-        while let NodeKind::Binary { x, .. } = self.ast.kind(n) {
-            stack.push(n);
-            n = *x;
+        loop {
+            match self.ast.kind(n) {
+                NodeKind::Binary { x, .. } => {
+                    stack.push(n);
+                    n = *x;
+                }
+                NodeKind::As { x, .. } => {
+                    stack.push(n);
+                    n = *x;
+                    if !self.on_spine(n) {
+                        break;
+                    }
+                }
+                _ => break,
+            }
         }
         let mut v = self.eval(n)?;
         while let Some(b) = stack.pop() {
-            v = self.binary_step(b, v)?;
+            v = match self.ast.kind(b) {
+                NodeKind::As { form, .. } => self.as_step(b, *form, v)?,
+                _ => self.binary_step(b, v)?,
+            };
         }
         Ok(v)
     }

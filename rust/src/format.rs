@@ -60,6 +60,29 @@ enum D {
 struct Docs {
     d: Vec<D>,
     forced: Vec<bool>,
+    /// The flat width of each document that is not forced: the code points
+    /// it takes laid out flat, up to its end or to where a text has a line
+    /// feed. `fits` reads it, so that it does not go down a document to
+    /// measure it: the documents of a spine nest as deep as the spine is
+    /// long.
+    flat: Vec<Flat>,
+}
+
+/// A flat width. It saturates: a width this large fits nowhere.
+#[derive(Clone, Copy, Default)]
+struct Flat {
+    width: u32,
+    /// A text with a line feed, or a text block, ends the measure.
+    stop: bool,
+}
+
+impl Flat {
+    fn of(n: usize) -> Flat {
+        Flat {
+            width: u32::try_from(n).unwrap_or(u32::MAX),
+            stop: false,
+        }
+    }
 }
 
 impl Docs {
@@ -77,8 +100,41 @@ impl Docs {
             D::Choice(a, _) => self.f(a[0]),
             D::List(xs) => xs.iter().any(|x| self.f(*x)),
         };
+        // The measure of `fits` on a flat document. A forced document has
+        // none: `fits` walks it.
+        let w = match &d {
+            _ if f => Flat::default(),
+            D::Text(s) => match s.find('\n') {
+                Some(p) => Flat {
+                    stop: true,
+                    ..Flat::of(s[..p].chars().count())
+                },
+                None => Flat::of(s.chars().count()),
+            },
+            D::Space | D::Line => Flat::of(1),
+            D::Soft | D::Hard | D::Blank | D::After => Flat::default(),
+            D::Indent(x) | D::Group(x, _) | D::IfBroken(_, x) => self.flat[x.0 as usize],
+            D::Choice(a, _) => self.flat[a[0].0 as usize],
+            D::Block(tb) => Flat {
+                stop: true,
+                ..Flat::of(tb.open.chars().count())
+            },
+            D::List(xs) => {
+                let mut w = Flat::default();
+                for x in xs {
+                    let y = self.flat[x.0 as usize];
+                    w.width = w.width.saturating_add(y.width);
+                    if y.stop {
+                        w.stop = true;
+                        break;
+                    }
+                }
+                w
+            }
+        };
         self.d.push(d);
         self.forced.push(f);
+        self.flat.push(w);
         DocId(self.d.len() as u32 - 1)
     }
 
@@ -266,7 +322,21 @@ fn fits(
         return true;
     };
     let mut r = w - col;
-    let mut st: Vec<(DocId, bool)> = vec![(d, true)];
+    let mut st: Vec<(DocId, bool)> = Vec::new();
+    if docs.f(d) {
+        st.push((d, true));
+    } else {
+        // A document that is not forced is flat all through, so its
+        // measure is the one made when it was built.
+        let m = docs.flat[d.0 as usize];
+        r -= i64::from(m.width);
+        if r < 0 {
+            return false;
+        }
+        if m.stop {
+            return true;
+        }
+    }
     let mut ri = rest.len();
     loop {
         let (x, flat) = match st.pop() {
@@ -390,6 +460,19 @@ fn norm(ch: &[char], span: Range) -> String {
 enum Role {
     Left,
     Right,
+}
+
+/// A node of a spine whose document waits for the one below it.
+enum SpineFrame {
+    /// An `as` or `is`.
+    As(NodeId),
+    /// A run of operators of one level: its operators and operands, and
+    /// whether its tail is indented.
+    Run {
+        ops: Vec<NodeId>,
+        xs: Vec<NodeId>,
+        indent: bool,
+    },
 }
 
 enum El {
@@ -1318,7 +1401,7 @@ impl<'a> B<'a> {
                 v.push(self.sub(*x, paren));
                 self.list(v)
             }
-            NodeKind::Binary { .. } => self.binary(id, indent),
+            NodeKind::Binary { .. } | NodeKind::As { .. } => self.spine(id, indent),
             NodeKind::Cond {
                 form: CondForm::If, ..
             } => self.if_chain(id),
@@ -1415,21 +1498,6 @@ impl<'a> B<'a> {
             }
             NodeKind::NamePat { .. } | NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
                 self.pattern(id)
-            }
-            NodeKind::As { x, .. } => {
-                let paren = self.level(*x) < 6
-                    || self.bin_op(*x) == Some(BinaryOp::Coalesce)
-                    || self.is_not(*x);
-                let a = self.sub(*x, paren);
-                let s1 = self.sp();
-                let w = self.ti(self.outer(*x).end);
-                let k = self.tk(w);
-                let s2 = self.sp();
-                let NodeKind::As { ty, .. } = self.kind(id) else {
-                    unreachable!()
-                };
-                let t = self.ptype(ty.span);
-                self.list(vec![a, s1, k, s2, t])
             }
             NodeKind::Arm { .. } | NodeKind::Bad | NodeKind::Elem => self.empty(),
         }
@@ -1579,11 +1647,70 @@ impl<'a> B<'a> {
         below
     }
 
-    fn binary(&mut self, id: NodeId, indent: bool) -> DocId {
-        let Some(op) = self.bin_op(id) else {
-            return self.empty();
-        };
-        let p = op_level(op);
+    /// Parentheses around the value of an `as` or `is` (F4 7).
+    fn paren_as(&self, x: NodeId) -> bool {
+        self.level(x) < 6 || self.bin_op(x) == Some(BinaryOp::Coalesce) || self.is_not(x)
+    }
+
+    /// The document of a binary operator, an `as` or an `is`.
+    ///
+    /// The first operand of a run of operators and the value of an `as` or
+    /// `is` open no level (13.1, F4 2.8), so a loop goes down them and
+    /// builds the documents on the way back up. The documents are made in
+    /// the order a recursion would make them: the innermost first.
+    fn spine(&mut self, id: NodeId, indent: bool) -> DocId {
+        let mut frames: Vec<(SpineFrame, bool)> = Vec::new();
+        let mut n = id;
+        let mut indent = indent;
+        // Whether the document of `n` stands in parentheses.
+        let mut paren = false;
+        loop {
+            match self.kind(n) {
+                NodeKind::As { x, .. } => {
+                    frames.push((SpineFrame::As(n), paren));
+                    paren = self.paren_as(*x);
+                    n = *x;
+                }
+                NodeKind::Binary { .. } => {
+                    let (ops, xs) = self.run(n);
+                    let first = xs[0];
+                    let op0 = self.bin_op(ops[0]).expect("a binary");
+                    frames.push((SpineFrame::Run { ops, xs, indent }, paren));
+                    paren = self.paren_bin(op0, first, Role::Left);
+                    n = first;
+                }
+                _ => break,
+            }
+            indent = true;
+        }
+        let mut d = self.sub(n, paren);
+        while let Some((f, paren)) = frames.pop() {
+            d = match f {
+                SpineFrame::As(a) => {
+                    let NodeKind::As { x, ty, .. } = self.kind(a) else {
+                        unreachable!()
+                    };
+                    let s1 = self.sp();
+                    let w = self.ti(self.outer(*x).end);
+                    let k = self.tk(w);
+                    let s2 = self.sp();
+                    let t = self.ptype(ty.span);
+                    self.list(vec![d, s1, k, s2, t])
+                }
+                SpineFrame::Run { ops, xs, indent } => self.run_doc(&ops, &xs, indent, d),
+            };
+            if paren {
+                d = self.parens(d);
+            }
+        }
+        d
+    }
+
+    /// A run of operators of one level along the left operands of the
+    /// operator `id` (2.8 item 4): its operators, and its operands, both in
+    /// the order of the text.
+    fn run(&self, id: NodeId) -> (Vec<NodeId>, Vec<NodeId>) {
+        let p = self.bin_op(id).map(op_level);
         let mut ops: Vec<NodeId> = Vec::new();
         let mut xs: Vec<NodeId> = Vec::new();
         let mut n = id;
@@ -1591,7 +1718,10 @@ impl<'a> B<'a> {
             xs.push(*y);
             ops.push(n);
             if let Some(xo) = self.bin_op(*x) {
-                if op_level(xo) == p && xo != BinaryOp::Pow && !self.paren_bin(*o, *x, Role::Left) {
+                if Some(op_level(xo)) == p
+                    && xo != BinaryOp::Pow
+                    && !self.paren_bin(*o, *x, Role::Left)
+                {
                     n = *x;
                     continue;
                 }
@@ -1601,9 +1731,11 @@ impl<'a> B<'a> {
         }
         ops.reverse();
         xs.reverse();
-        let op0 = self.bin_op(ops[0]).expect("a binary");
-        let pl = self.paren_bin(op0, xs[0], Role::Left);
-        let d0 = self.sub(xs[0], pl);
+        (ops, xs)
+    }
+
+    /// The document of a run, given the document `d0` of its first operand.
+    fn run_doc(&mut self, ops: &[NodeId], xs: &[NodeId], indent: bool, d0: DocId) -> DocId {
         let mut rest = Vec::new();
         let mut opdocs = Vec::new();
         for (i, &o) in ops.iter().enumerate() {
