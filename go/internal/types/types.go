@@ -759,14 +759,23 @@ func Truthy(t *Type) *Type {
 	return r
 }
 
-// truthyWhole reports whether Truthy keeps every alternative of a
-// definition whole: it has no null, no literal set with "", no never[] and
-// no {}.
+// truthyWhole reports whether a reference stays whole under Truthy (F17
+// 12.5 item 8): its definition has no null, no literal set with "", no
+// never[] and no record that can be empty, one with no required field. A
+// union cannot be empty: each variant requires its tag.
 func truthyWhole(d *Type) bool {
 	if d.any || d.null || (d.str == strLits && contains(d.lits, "")) || (d.list != nil && d.list.IsNever()) {
 		return false
 	}
-	return d.rec == nil || d.uni != nil || len(d.rec.Fields) > 0 || !d.rec.Rest.IsNever()
+	if d.rec == nil || d.uni != nil {
+		return true
+	}
+	for _, f := range d.rec.Fields {
+		if !f.Optional {
+			return true
+		}
+	}
+	return false
 }
 
 // Falsy is the type of the falsy values of t (4.4).
