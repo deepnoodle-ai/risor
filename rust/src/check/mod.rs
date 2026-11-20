@@ -80,9 +80,9 @@ pub fn expected_schema(
 /// Check a program against an environment (`03-host.md` 3.2.1).
 pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     let r = resolve(env, parsed);
-    let mut c = Checker::new(env, parsed, &r.res, &r.annots);
+    let mut c = Checker::new(env, parsed, &r);
     let t = c.program(expected);
-    let mut diags = r.diags;
+    let mut diags = r.diags.clone();
     diags.append(&mut c.diags);
     let mut sites = Vec::new();
     for s in std::mem::take(&mut c.sites) {
@@ -130,13 +130,15 @@ pub struct Probe {
     pub res: Vec<Res>,
     /// F16 7.3: the type names that resolved.
     pub type_refs: Vec<crate::compile::TypeRef>,
+    /// F17 13.7: each annotation's type, for the printed function type.
+    pub annots: HashMap<u32, Option<Ty>>,
 }
 
 /// Check a program for assist, recording the types of the slots where the
 /// node `probe` is checked.
 pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
-    let mut c = Checker::new(env, parsed, &r.res, &r.annots);
+    let mut c = Checker::new(env, parsed, &r);
     c.probe = probe;
     c.program(expected);
     Probe {
@@ -145,6 +147,7 @@ pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<Node
         at: c.probe_slots.take(),
         res: r.res.clone(),
         type_refs: r.type_refs.clone(),
+        annots: r.annots.clone(),
     }
 }
 
@@ -241,6 +244,25 @@ struct Checker<'a> {
     strict: bool,
     /// F16 3.4: the result type of each lambda checked once.
     once_result: HashMap<u32, Ty>,
+    /// F17 13.2 item 4: the slots of the parameters written as a name with
+    /// no default and no function type.
+    plain_params: &'a std::collections::HashSet<u32>,
+}
+
+/// What step 3 of 13.5 checks at an `Fn`: a lambda, written there (`false`)
+/// or named (`true`), or, with F17 (13.3), a function parameter given on, by
+/// its `Param`.
+#[derive(Clone, Copy)]
+enum Cb {
+    Lambda(NodeId, bool),
+    Fn(NodeId),
+}
+
+/// F17 13.3: the result of a function type, `unknown` or a program type.
+enum FnResult {
+    Unknown,
+    /// A program type; `None` when a static rule refused it.
+    Type(Option<Ty>),
 }
 
 fn whole(v: f64) -> bool {
@@ -248,12 +270,8 @@ fn whole(v: f64) -> bool {
 }
 
 impl<'a> Checker<'a> {
-    fn new(
-        env: &'a Env,
-        parsed: &'a Expr,
-        res: &'a [Res],
-        annots: &'a HashMap<u32, Option<Ty>>,
-    ) -> Checker<'a> {
+    fn new(env: &'a Env, parsed: &'a Expr, r: &'a crate::compile::Resolution) -> Checker<'a> {
+        let (res, annots) = (&r.res[..], &r.annots);
         let mut uses = HashMap::new();
         let mut slots_n = 0;
         for r in res {
@@ -335,6 +353,7 @@ impl<'a> Checker<'a> {
             annots,
             strict: false,
             once_result: HashMap::new(),
+            plain_params: &r.plain_params,
         }
     }
 
@@ -1031,6 +1050,7 @@ impl<'a> Checker<'a> {
             },
             NodeKind::Call { args, .. } => match self.res[id.index()] {
                 Res::CallLambda(l) => self.use_lambda(l, args, id),
+                Res::CallFn(_, p) => self.call_fn(p, args),
                 Res::CallLib(i) => self.call(
                     Callee::Lib(&library::records()[i as usize]),
                     None,
@@ -1319,59 +1339,216 @@ impl<'a> Checker<'a> {
     }
 
     /// 3.3: the plain arguments of a call by name, each fitted to its
-    /// parameter's annotation.
-    fn fit_args(&mut self, params: &[NodeId], args: &'a [NodeId], call: NodeId) {
+    /// parameter's annotation. A value at a function parameter is a static
+    /// rule (F17 13.2 rule 3).
+    fn fit_args(&mut self, params: &[NodeId], args: &'a [NodeId]) {
         for (&a, &p) in args.iter().zip(params) {
-            if self.lambda_of(a).is_some() {
+            if self.is_lambda_arg(a) {
                 continue;
             }
-            match self.kind(p) {
-                NodeKind::Param {
-                    ty: Some(_),
-                    default,
-                    ..
-                } => {
-                    if let Some(t) = self.param_type(p) {
-                        let t = if default.is_some() { t.with_null() } else { t };
-                        self.fit_strict(a, &t, Fit::Arg);
-                    }
+            if let NodeKind::Param {
+                ty: Some(_),
+                default,
+                ..
+            } = self.kind(p)
+            {
+                if let Some(t) = self.param_type(p) {
+                    let t = if default.is_some() { t.with_null() } else { t };
+                    self.fit_strict(a, &t, Fit::Arg);
                 }
-                NodeKind::Param {
-                    fn_: Some(_),
-                    pattern,
-                    ..
-                } => {
-                    let param = match self.kind(*pattern) {
-                        NodeKind::NamePat { name: Some(n) } => n.clone(),
-                        _ => String::new(),
-                    };
-                    let s = self.span(a);
-                    let pa = [("param", param), ("name", self.call_name(call))];
-                    self.diag("arg-mismatch", s, "function", &pa);
-                }
-                _ => {}
             }
         }
     }
 
     /// 3.3: a value Q the library passes to an annotated parameter must
-    /// surely fit the annotation; at a function type it is `fn-value`.
-    fn fit_passed(&mut self, p: NodeId, q: &Ty, fname: &str) {
+    /// surely fit the annotation. No lambda with a function parameter is
+    /// passed (F17 13.2 rule 8).
+    fn fit_passed(&mut self, p: NodeId, q: &Ty) {
+        if let NodeKind::Param { ty: Some(pt), .. } = self.kind(p) {
+            self.fit_listed(q, pt);
+        }
+    }
+
+    /// A type passed, which must surely fit a program type written in the
+    /// text, else `arg-mismatch` `argument` there. A type with a static
+    /// diagnostic is fitted by nothing (F16 3.3 item 2).
+    fn fit_listed(&mut self, q: &Ty, pt: &PType) {
+        if let Some(t) = self.annot(pt) {
+            if fits(q, &t) != Some(false) {
+                let pa = [("expected", print(&t)), ("found", print(q))];
+                self.diag("arg-mismatch", pt.span, "argument", &pa);
+            }
+        }
+    }
+
+    // ---- function parameters (F17 13) -------------------------------------------
+
+    /// The function type of a function parameter's `Param`.
+    fn pfn(&self, p: NodeId) -> Option<&'a crate::syntax::ast::PFn> {
         match self.kind(p) {
-            NodeKind::Param { ty: Some(pt), .. } => {
-                if let Some(t) = self.annot(pt) {
-                    if fits(q, &t) != Some(false) {
-                        let pa = [("expected", print(&t)), ("found", print(q))];
-                        self.diag("arg-mismatch", pt.span, "argument", &pa);
-                    }
+            NodeKind::Param { fn_: Some(f), .. } => Some(f),
+            _ => None,
+        }
+    }
+
+    /// The type a function type lists at a position: `never` for a type
+    /// with a static diagnostic (13.3).
+    fn listed(&self, f: &crate::syntax::ast::PFn, i: usize) -> Ty {
+        f.params
+            .get(i)
+            .and_then(|(_, _, t)| self.annot(t))
+            .unwrap_or_else(Ty::never)
+    }
+
+    fn fn_result(&self, f: &crate::syntax::ast::PFn) -> FnResult {
+        match &f.result {
+            None => FnResult::Unknown,
+            Some(r) => FnResult::Type(self.annot(r)),
+        }
+    }
+
+    /// The type of a call of a function type, and B where a function
+    /// parameter is given on: the result, `any` for `unknown`, `never` for a
+    /// result with a static diagnostic (13.3).
+    fn result_ty(&self, f: &crate::syntax::ast::PFn) -> Ty {
+        match self.fn_result(f) {
+            FnResult::Unknown => Ty::any(),
+            FnResult::Type(t) => t.unwrap_or_else(Ty::never),
+        }
+    }
+
+    /// The `Param` of a function parameter given as an argument.
+    fn fn_ref(&self, a: NodeId) -> Option<NodeId> {
+        match self.res[a.index()] {
+            Res::FnRef(_, p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// A lambda argument (22.4, F17 13.1), a function parameter's name
+    /// among them.
+    fn is_lambda_arg(&self, a: NodeId) -> bool {
+        self.lambda_of(a).is_some() || self.fn_ref(a).is_some()
+    }
+
+    /// 13.2 rule 8: a lambda argument that is a higher-order lambda, which
+    /// the static rules report and nothing checks.
+    fn is_higher_order(&self, a: NodeId) -> bool {
+        self.lambda_of(a)
+            .is_some_and(|(l, _)| crate::compile::is_higher_order(self.ast, l))
+    }
+
+    /// 13.3: a call of a function parameter. Each plain argument is fitted
+    /// to the type listed at its position by F16 3.3; the call has the
+    /// result's type and records no site of its own.
+    fn call_fn(&mut self, p: NodeId, args: &'a [NodeId]) -> Ty {
+        let Some(f) = self.pfn(p) else {
+            self.plain_args(args);
+            return Ty::never();
+        };
+        if args.len() != f.params.len() {
+            self.plain_args(args);
+            return Ty::never();
+        }
+        for (i, &a) in args.iter().enumerate() {
+            // A lambda argument there is `not-a-value` (rule 7).
+            if self.is_lambda_arg(a) {
+                continue;
+            }
+            self.synth(a);
+            if let Some(t) = self.annot(&f.params[i].2) {
+                self.fit_strict(a, &t, Fit::Arg);
+            }
+        }
+        self.result_ty(f)
+    }
+
+    /// 13.3: a lambda argument at a function parameter of a `const`-bound
+    /// lambda, checked against its function type `f`. A lambda argument
+    /// that a static rule reports (rules 2, 8 and 9), and a reference of a
+    /// lambda to its own name that is not typed (`05-types.md` 13.9), are
+    /// not checked.
+    fn lambda_at_fn(&mut self, a: NodeId, f: &'a crate::syntax::ast::PFn, call: NodeId) {
+        let n = f.params.len();
+        let qs: Vec<Ty> = (0..n).map(|i| self.listed(f, i)).collect();
+        let name = self.call_name(call);
+        let want = self.fn_result(f);
+        // A function parameter given on: fitted, with no body to check.
+        if let Some(g) = self.fn_ref(a).and_then(|p| self.pfn(p)) {
+            if g.params.len() > n {
+                return;
+            }
+            for (i, (_, _, pt)) in g.params.iter().enumerate() {
+                self.fit_listed(&qs[i], pt);
+            }
+            if let FnResult::Type(Some(r)) = want {
+                let b = self.result_ty(g);
+                if fits(&b, &r) != Some(false) {
+                    let s = self.span(a);
+                    let p = [
+                        ("name", name),
+                        ("found", print(&b)),
+                        ("expected", print(&r)),
+                    ];
+                    self.diag("arg-mismatch", s, "body", &p);
                 }
             }
-            NodeKind::Param { fn_: Some(f), .. } => {
-                let pa = [("name", fname.to_string()), ("found", print(q))];
-                self.diag("arg-mismatch", f.span, "fn-value", &pa);
-            }
-            _ => {}
+            return;
         }
+        let Some((l, named)) = self.lambda_of(a) else {
+            return;
+        };
+        if matches!(self.res[a.index()], Res::SelfRef(_))
+            || crate::compile::is_higher_order(self.ast, l)
+        {
+            return;
+        }
+        let NodeKind::Lambda { params, body, .. } = self.kind(l) else {
+            return;
+        };
+        if params.len() > n {
+            return;
+        }
+        let b = self.check_lambda(l, named, a, &qs);
+        match want {
+            // 13.7: a predicate's body is a tested position.
+            FnResult::Unknown => self.tested(*body, &b),
+            FnResult::Type(None) => {}
+            FnResult::Type(Some(r)) => {
+                if fits(&b, &r) != Some(false) {
+                    let s = self.span(*body);
+                    let p = [
+                        ("name", name),
+                        ("found", print(&b)),
+                        ("expected", print(&r)),
+                    ];
+                    self.diag("arg-mismatch", s, "body", &p);
+                }
+            }
+        }
+    }
+
+    /// Step 3's check of what stands at an `Fn`: a lambda's body, or a
+    /// function parameter's listed types (13.3). Returns B.
+    fn check_cb(&mut self, cb: Cb, at: NodeId, qs: &[Ty]) -> Ty {
+        match cb {
+            Cb::Lambda(l, named) => self.check_lambda(l, named, at, qs),
+            Cb::Fn(p) => self.check_fn(p, qs),
+        }
+    }
+
+    /// 13.3: a function parameter given to a library entry, checked as step
+    /// 3 checks a lambda: each Q must surely fit the type listed at its
+    /// position. B is the function type's result.
+    fn check_fn(&mut self, p: NodeId, qs: &[Ty]) -> Ty {
+        let Some(g) = self.pfn(p) else {
+            return Ty::never();
+        };
+        for (i, (_, _, pt)) in g.params.iter().enumerate() {
+            let q = qs.get(i).cloned().unwrap_or_default();
+            self.fit_listed(&q, pt);
+        }
+        self.result_ty(g)
     }
 
     fn ident(&mut self, id: NodeId) -> Ty {
@@ -2337,7 +2514,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     NodeKind::MethodCall { args, name, .. } => {
-                        self.any_args(args, &name.name);
+                        self.any_args(args);
                         // 13.3: the call may fail as a library
                         // method marked `!` (not a removed one, `03-host.md` 3.3.1) or an
                         // opaque type's method marked `!` would.
@@ -2710,7 +2887,7 @@ impl<'a> Checker<'a> {
 
     fn plain_args(&mut self, args: &'a [NodeId]) {
         for &a in args {
-            if self.lambda_of(a).is_none() {
+            if !self.is_lambda_arg(a) {
                 self.synth(a);
             }
         }
@@ -2718,19 +2895,29 @@ impl<'a> Checker<'a> {
 
     /// The arguments of a method call on `any` (13.3): plain arguments are
     /// synthesized, and each lambda is checked with `any` parameters.
-    fn any_args(&mut self, args: &'a [NodeId], fname: &str) {
+    fn any_args(&mut self, args: &'a [NodeId]) {
         for &a in args {
+            // F17 13.3: each value passed to a function parameter is `any`,
+            // which surely fits only `any`.
+            if let Some(g) = self.fn_ref(a).and_then(|p| self.pfn(p)) {
+                for (_, _, pt) in &g.params {
+                    self.fit_listed(&Ty::any(), pt);
+                }
+                continue;
+            }
             match self.lambda_of(a) {
                 None => {
                     self.synth(a);
                 }
                 Some(_) if matches!(self.res[a.index()], Res::SelfRef(_)) => {}
+                // 13.2 rule 8: not checked.
+                Some(_) if self.is_higher_order(a) => {}
                 Some((l, named)) => {
                     let n = match self.kind(l) {
                         NodeKind::Lambda { params, .. } => params.len(),
                         _ => 0,
                     };
-                    self.check_lambda(l, named, a, &vec![Ty::any(); n], fname);
+                    self.check_lambda(l, named, a, &vec![Ty::any(); n]);
                 }
             }
         }
@@ -2833,15 +3020,44 @@ impl<'a> Checker<'a> {
             bind(rt, rty, &mut sol);
         }
         let mut plain: Vec<(NodeId, text::Type)> = Vec::new();
-        let mut lambdas: Vec<(NodeId, NodeId, bool, text::FnType)> = Vec::new();
+        let mut lambdas: Vec<(NodeId, Cb, text::FnType)> = Vec::new();
         for (i, &a) in args.iter().enumerate() {
             let Some(p) = sig.param_at(i) else { continue };
+            // F17 13.2 rule 8: a higher-order lambda is reported by the
+            // static rules alone, and not checked.
+            if self.is_higher_order(a) {
+                continue;
+            }
+            // F17 13.3: a function parameter given on stands for a lambda.
+            if let Some(fp) = self.fn_ref(a) {
+                match &p.ty {
+                    ParamType::Fn(f) => lambdas.push((a, Cb::Fn(fp), f.clone())),
+                    ParamType::Type(_) => {
+                        if method {
+                            let s = self.span(a);
+                            let pa = [("param", p.name.clone()), ("name", name.clone())];
+                            self.diag("not-a-value", s, "argument", &pa);
+                        }
+                    }
+                }
+                continue;
+            }
             match (&p.ty, self.lambda_of(a)) {
                 (ParamType::Fn(_), None) => {
                     self.synth(a);
                     let s = self.span(a);
-                    let pa = [("param", p.name.clone()), ("name", name.clone())];
-                    self.diag("arg-mismatch", s, "function", &pa);
+                    // F17 13.3: the hint for a parameter written as a name.
+                    let plain_param = matches!(
+                        (self.kind(a), &self.res[a.index()]),
+                        (NodeKind::Ident { .. }, Res::Slot(s)) if self.plain_params.contains(s)
+                    );
+                    if plain_param {
+                        let pa = [("name", self.text(s))];
+                        self.diag("arg-mismatch", s, "parameter-at-fn", &pa);
+                    } else {
+                        let pa = [("param", p.name.clone()), ("name", name.clone())];
+                        self.diag("arg-mismatch", s, "function", &pa);
+                    }
                 }
                 (ParamType::Type(_), Some(_)) => {
                     if method {
@@ -2868,7 +3084,9 @@ impl<'a> Checker<'a> {
                 // 13.9: a reference of a lambda to its own name is not
                 // checked.
                 (ParamType::Fn(_), Some(_)) if matches!(self.res[a.index()], Res::SelfRef(_)) => {}
-                (ParamType::Fn(f), Some((l, named))) => lambdas.push((a, l, named, f.clone())),
+                (ParamType::Fn(f), Some((l, named))) => {
+                    lambdas.push((a, Cb::Lambda(l, named), f.clone()))
+                }
             }
         }
         // 20.7: each solution is tested when it is made; over the limit, the
@@ -2879,13 +3097,18 @@ impl<'a> Checker<'a> {
         }
         // 3. Lambda arguments.
         let mut narrowed: Option<Ty> = None;
-        for (a, l, named, f) in lambdas {
+        for (a, cb, f) in lambdas {
             let as_ = self.span(a);
-            let lparams = match self.kind(l) {
-                NodeKind::Lambda { params, .. } => params.clone(),
-                _ => continue,
+            // The parameters the lambda declares; for a function parameter,
+            // its listed count (F17 13.3).
+            let declared = match cb {
+                Cb::Lambda(l, _) => match self.kind(l) {
+                    NodeKind::Lambda { params, .. } => params.len(),
+                    _ => continue,
+                },
+                Cb::Fn(p) => crate::compile::listed_count(self.ast, p),
             };
-            if lparams.len() > f.params.len() {
+            if declared > f.params.len() {
                 if method {
                     let p = [("name", name.clone()), ("most", f.params.len().to_string())];
                     self.diag("arity", as_, "parameters", &p);
@@ -2895,7 +3118,7 @@ impl<'a> Checker<'a> {
             // 13.5 step 3: only the parameters the lambda declares.
             if f.params
                 .iter()
-                .take(lparams.len())
+                .take(declared)
                 .any(|(_, q)| vars(q).iter().any(|v| !sol.contains_key(v)))
             {
                 self.diag("cannot-infer", as_, "default", &[("name", name.clone())]);
@@ -2908,17 +3131,25 @@ impl<'a> Checker<'a> {
                 .collect();
             let (dn, sn) = (self.diags.len(), self.sites.len());
             let before = sol.clone();
-            let b = self.check_lambda(l, named, a, &qs, &name);
-            let body = match self.kind(l) {
-                NodeKind::Lambda { body, .. } => *body,
-                _ => l,
+            let b = self.check_cb(cb, a, &qs);
+            // The body; for a function parameter, the argument (F17 13.3).
+            let body = match cb {
+                Cb::Lambda(l, _) => match self.kind(l) {
+                    NodeKind::Lambda { body, .. } => *body,
+                    _ => l,
+                },
+                Cb::Fn(_) => a,
             };
             let bs = self.span(body);
             match &f.result {
+                // F17 13.3: with R `unknown`, nothing more is done for a
+                // function parameter: there is no body to test, and it
+                // narrows nothing.
+                None if matches!(cb, Cb::Fn(_)) => {}
                 None => {
                     // 13.7: a predicate.
                     self.tested(body, &b);
-                    if narrows {
+                    if let (true, Cb::Lambda(l, _)) = (narrows, cb) {
                         narrowed = Some(self.narrow(l, &qs));
                     }
                 }
@@ -2959,7 +3190,7 @@ impl<'a> Checker<'a> {
                             .iter()
                             .map(|(_, q)| substitute(q, self.opaque(), &sol))
                             .collect();
-                        let b2 = self.check_lambda(l, named, a, &qs, &name);
+                        let b2 = self.check_cb(cb, a, &qs);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b2, &rt) {
                             None => {
@@ -3138,8 +3369,7 @@ impl<'a> Checker<'a> {
 
     /// Check a lambda against parameter types (13.5 step 3), written in place
     /// or named. Returns the body's type.
-    /// `fname` names the function or method that passes the values.
-    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty], fname: &str) -> Ty {
+    fn check_lambda(&mut self, l: NodeId, named: bool, at: NodeId, qs: &[Ty]) -> Ty {
         let NodeKind::Lambda {
             params,
             body,
@@ -3153,7 +3383,7 @@ impl<'a> Checker<'a> {
         if named && self.checked_once(l) {
             for (i, &p) in params.iter().enumerate() {
                 let q = qs.get(i).cloned().unwrap_or_default();
-                self.fit_passed(p, &q, fname);
+                self.fit_passed(p, &q);
             }
             return self.once_result.get(&l.0).cloned().unwrap_or_default();
         }
@@ -3174,7 +3404,7 @@ impl<'a> Checker<'a> {
                 let t = if let Some(x) = self.param_annot(p) {
                     // F16 3.4: the value passed must surely fit the
                     // annotation, and the parameter is bound to it.
-                    self.fit_passed(p, &a, fname);
+                    self.fit_passed(p, &a);
                     self.fit_default(p);
                     x
                 } else {
@@ -3223,14 +3453,21 @@ impl<'a> Checker<'a> {
         }
         let mut ats = Vec::new();
         for &a in args {
-            ats.push(if self.lambda_of(a).is_some() {
+            ats.push(if self.is_lambda_arg(a) {
                 Ty::never()
             } else {
                 self.synth(a)
             });
         }
         // F16 3.3: each plain argument at an annotated parameter.
-        self.fit_args(params, args, call);
+        self.fit_args(params, args);
+        // F17 13.3: each lambda argument at a function parameter, checked
+        // against its function type where the call stands.
+        for (&a, &p) in args.iter().zip(params) {
+            if let Some(f) = self.pfn(p) {
+                self.lambda_at_fn(a, f, call);
+            }
+        }
         // F16 3.4: the body of a lambda checked once is not checked again.
         if self.checked_once(l) {
             return self.once_result.get(&l.0).cloned().unwrap_or_default();

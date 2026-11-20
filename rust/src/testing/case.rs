@@ -119,6 +119,9 @@ pub enum Statics {
     /// `suite/entry-points/`: those of `ProgramTypes`, and `name-clash`
     /// (`f16-entry-points.md` 3.1 item 11).
     EntryPoints,
+    /// `suite/recursion/`: Core's twelve and `arg-mismatch`, which F17 step
+    /// E3 makes static at one place (`f17-recursion.md` 8 item 5, 13.8).
+    Recursion,
 }
 
 impl Statics {
@@ -127,6 +130,7 @@ impl Statics {
         match dir.file_name().and_then(|d| d.to_str()) {
             Some("conversion" | "unions") => Statics::ProgramTypes,
             Some("entry-points") => Statics::EntryPoints,
+            Some("recursion") => Statics::Recursion,
             _ => Statics::Core,
         }
     }
@@ -141,6 +145,7 @@ pub fn is_static(code: &str, statics: Statics) -> bool {
             Statics::EntryPoints => {
                 matches!(code, "untagged-union" | "check-limit" | "name-clash")
             }
+            Statics::Recursion => code == "arg-mismatch",
         }
 }
 

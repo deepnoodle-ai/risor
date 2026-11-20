@@ -483,7 +483,7 @@ fn node(
             let i = i as usize;
             if args.iter().any(|a| {
                 matches!(ast.kind(*a), NodeKind::Lambda { .. })
-                    || matches!(res[a.index()], Res::LambdaRef(_))
+                    || matches!(res[a.index()], Res::LambdaRef(_) | Res::FnRef(..))
             }) {
                 return None;
             }
