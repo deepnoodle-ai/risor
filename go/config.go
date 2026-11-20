@@ -13,7 +13,6 @@ import (
 
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/messages"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
 )
 
@@ -204,7 +203,7 @@ func Decode(v any, dst any) error {
 	if _, err := typeOfReflect(rv.Elem().Type()); err != nil {
 		return err
 	}
-	d := &decoder{deriver: &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}}}
+	d := &decoder{deriver: newDeriver()}
 	d.decode(v, rv.Elem(), []any{}, 0)
 	if len(d.fails) > 0 {
 		return &Error{Diagnostics: d.fails}
@@ -258,7 +257,7 @@ func (d *decoder) fail(path []any, code, msg string) {
 // wrong is the template wrong of F4 4.4 against the type derived from rt.
 func (d *decoder) wrong(path []any, rt reflect.Type, v any) {
 	if d.deriver == nil {
-		d.deriver = &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}}
+		d.deriver = newDeriver()
 	}
 	t, err := d.deriver.nested(rt)
 	expected := rt.String()

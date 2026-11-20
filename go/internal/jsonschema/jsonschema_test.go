@@ -74,7 +74,7 @@ func mapJSON(t *testing.T, text string, o Options) (*types.Type, error) {
 	t.Helper()
 	var v any
 	assert.Nil(t, json.Unmarshal([]byte(text), &v))
-	return Map(v, o)
+	return Map(v, o, "")
 }
 
 func TestSharedRefTargets(t *testing.T) {
@@ -105,10 +105,33 @@ func TestSharedRefTargets(t *testing.T) {
 }
 
 func TestRefCycle(t *testing.T) {
-	_, err := mapJSON(t, `{"$ref": "#/$defs/a", "$defs": {"a": {"type": "array", "items": {"$ref": "#/$defs/a"}}}}`, Options{})
+	// F17 12.4: a cycle through an array item is a recursive type, named by
+	// the last token of the pointer.
+	ty, err := mapJSON(t, `{"$ref": "#/$defs/tree", "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Tree")
+	assert.Equal(t, types.Unfold(ty).String(), "Tree[]")
+	// A one-letter name is a type variable: bad-type.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/a", "$defs": {"a": {"type": "array", "items": {"$ref": "#/$defs/a"}}}}`, Options{})
 	assert.NotNil(t, err)
+	// The root, named Root with no other name.
+	ty, err = mapJSON(t, `{"type": "object", "properties": {"next": {"anyOf": [{"$ref": "#"}, {"type": "null"}]}}, "additionalProperties": false}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Root")
+	assert.Equal(t, types.Unfold(ty).String(), "{next?: Root | null}")
+	// With no guard between: bad-type.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/aa", "$defs": {"aa": {"anyOf": [{"$ref": "#/$defs/aa"}, {"type": "null"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	// allOf on a schema in progress: bad-type.
+	_, err = mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [{"$ref": "#"}, {"type": "object"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	// Mutual recursion: only the target met again is named.
+	ty, err = mapJSON(t, `{"$ref": "#/$defs/dir", "$defs": {"dir": {"type": "object", "properties": {"files": {"type": "array", "items": {"$ref": "#/$defs/file"}}}, "required": ["files"], "additionalProperties": false}, "file": {"type": "object", "properties": {"parent": {"$ref": "#/$defs/dir"}}, "additionalProperties": false}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Dir")
+	assert.Equal(t, types.Unfold(ty).String(), "{files: {parent?: Dir}[]}")
 	// One target used twice side by side is no cycle.
-	ty, err := mapJSON(t, `{"type": "object", "properties": {"x": {"$ref": "#/$defs/a"}, "y": {"$ref": "#/$defs/a"}}, "$defs": {"a": {"type": "boolean"}}}`, Options{})
+	ty, err = mapJSON(t, `{"type": "object", "properties": {"x": {"$ref": "#/$defs/a"}, "y": {"$ref": "#/$defs/a"}}, "$defs": {"a": {"type": "boolean"}}}`, Options{})
 	assert.Nil(t, err)
 	assert.Equal(t, ty.String(), "{x?: bool, y?: bool, ...}")
 }
@@ -172,7 +195,7 @@ func TestEnumIsNLogN(t *testing.T) {
 		best := time.Duration(1 << 62)
 		for k := 0; k < 3; k++ {
 			start := time.Now()
-			_, _ = Map(schema, Options{})
+			_, _ = Map(schema, Options{}, "")
 			if d := time.Since(start); d < best {
 				best = d
 			}
@@ -188,6 +211,6 @@ func TestEnumIsNLogN(t *testing.T) {
 	for i := range vals {
 		vals[i] = fmt.Sprint(i)
 	}
-	_, err := Map(map[string]any{"enum": vals}, Options{})
+	_, err := Map(map[string]any{"enum": vals}, Options{}, "")
 	assert.NotNil(t, err)
 }

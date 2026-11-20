@@ -158,14 +158,17 @@ func schemaData(v reflect.Value, depth int) (any, error) {
 // map[string]map[string]any for properties), at any depth. An error is an
 // *Error of phase declare with the code bad-type.
 func TypeFromSchema(schema any, opts ...SchemaOption) (Type, error) {
-	t, err := mapSchema(schema, opts)
+	t, err := mapSchema(schema, opts, "")
 	if err != nil {
 		return Type{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
 	}
 	return Type{t: t}, nil
 }
 
-func mapSchema(schema any, opts []SchemaOption) (*types.Type, error) {
+// mapSchema maps a schema. rootName names a reference to the root (F17
+// 12.4): the named type's name, or the variable's with its first letter
+// upper-cased; "Root" when empty.
+func mapSchema(schema any, opts []SchemaOption, rootName string) (*types.Type, error) {
 	o, err := schemaOptions(opts)
 	if err != nil {
 		return nil, err
@@ -174,14 +177,14 @@ func mapSchema(schema any, opts []SchemaOption) (*types.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	return jsonschema.Map(s, o)
+	return jsonschema.Map(s, o, rootName)
 }
 
 // VarSchema declares a variable whose type is given by a JSON Schema, with
 // options (F1 2.1). An error of the schema is the declare error bad-type.
 func VarSchema(name string, schema any, opts ...SchemaOption) Decl {
 	return declFunc(func(e *Env) {
-		t, err := mapSchema(schema, opts)
+		t, err := mapSchema(schema, opts, upperFirst(name))
 		if err != nil {
 			e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: %v", name, err))
 			return
@@ -234,15 +237,21 @@ func undeclaredOpaque(t *types.Type, declared map[string]bool) (string, bool) {
 // bool, string, the integer and float types, slices and arrays, maps with
 // string keys, pointers (T or null), every interface type (any), and
 // structs (an exact record of the fields encoding/json would write).
-// Anything else, a type that contains itself, and a type deeper than 64
-// are errors with the code bad-type.
+// A struct that contains itself through a slice, an array, a map or a
+// pointer gives a recursive type, named by the Go type's name with its
+// first letter upper-cased (F17 12.4). Anything else, a type that contains
+// itself with no struct field, element or map value between, and a type
+// deeper than 64 are errors with the code bad-type.
 func TypeOf[T any]() (Type, error) {
 	return typeOfReflect(reflect.TypeFor[T]())
 }
 
 func typeOfReflect(rt reflect.Type) (Type, error) {
-	d := &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}}
-	t, err := d.derive(rt)
+	d := newDeriver()
+	t, err := d.nested(rt)
+	if err == nil {
+		err = d.setDefs()
+	}
 	if err == nil && types.Depth(t) > types.MaxDepth {
 		err = errors.New("the type is deeper than 64")
 	}
@@ -261,8 +270,22 @@ var (
 	textIface   = reflect.TypeFor[interface{ MarshalText() ([]byte, error) }]()
 )
 
+func newDeriver() *deriver {
+	return &deriver{inprog: map[reflect.Type]int{}, done: map[reflect.Type]*types.Type{},
+		named: map[reflect.Type]*types.Named{}, refNames: map[string]bool{}}
+}
+
 type deriver struct {
-	inprog map[reflect.Type]bool
+	// inprog holds each type being derived, with the count of guards open
+	// when it began: struct fields, elements and map values (F17 12.4).
+	inprog map[reflect.Type]int
+	guard  int
+	// named holds the reference of each type met while it was being
+	// derived, in the order of order; defs their derived types.
+	named    map[reflect.Type]*types.Named
+	refNames map[string]bool
+	order    []*types.Named
+	defs     []*types.Type
 	// done shares the type of a Go type met twice, so a type that uses one
 	// struct in many places is built once (05-types.md 20.7).
 	done map[reflect.Type]*types.Type
@@ -303,6 +326,8 @@ func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 	case reflect.Float32, reflect.Float64:
 		return types.Float, nil
 	case reflect.Slice, reflect.Array:
+		d.guard++
+		defer func() { d.guard-- }()
 		el, err := d.nested(rt.Elem())
 		if err != nil {
 			return nil, err
@@ -312,6 +337,8 @@ func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 		if rt.Key().Kind() != reflect.String {
 			return nil, fmt.Errorf("a map key must be a string, found %v", rt.Key())
 		}
+		d.guard++
+		defer func() { d.guard-- }()
 		el, err := d.nested(rt.Elem())
 		if err != nil {
 			return nil, err
@@ -324,6 +351,8 @@ func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 		}
 		return types.WithNull(el), nil
 	case reflect.Struct:
+		d.guard++
+		defer func() { d.guard-- }()
 		var fs []types.Field
 		for _, f := range value.StructFields(rt) {
 			ft, err := d.nested(f.Type)
@@ -337,28 +366,91 @@ func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 	return nil, fmt.Errorf("no rule of the binding covers %v", rt)
 }
 
-// nested derives a type inside another, refusing a type that contains
-// itself (F1 6.1).
+// nested derives a type inside another. A type met again while it is
+// being derived is a recursive type when a struct field, an element or a
+// map value stands between; otherwise it is an error (F17 12.4).
 func (d *deriver) nested(rt reflect.Type) (*types.Type, error) {
-	if d.inprog[rt] {
-		return nil, fmt.Errorf("%v contains itself", rt)
+	if g, ok := d.inprog[rt]; ok {
+		if d.guard == g {
+			return nil, fmt.Errorf("%v contains itself with no struct field, element or map value between", rt)
+		}
+		n, err := d.nameOf(rt)
+		if err != nil {
+			return nil, err
+		}
+		return types.Ref(n), nil
 	}
 	if t, ok := d.done[rt]; ok {
 		return t, nil
 	}
+	// Only a type with a name can contain itself in Go, so only such a
+	// type is a place where a cycle is found.
 	switch rt.Kind() {
 	case reflect.Struct, reflect.Slice, reflect.Array, reflect.Map, reflect.Pointer:
-		d.inprog[rt] = true
-		defer delete(d.inprog, rt)
+		if rt.Name() != "" {
+			d.inprog[rt] = d.guard
+			defer delete(d.inprog, rt)
+		}
 	}
 	t, err := d.derive(rt)
 	if err == nil && types.Size(t) > types.MaxSize {
 		err = fmt.Errorf("the type is larger than %d", types.MaxSize)
 	}
 	if err == nil {
+		if n := d.named[rt]; n != nil {
+			d.defs = append(d.defs, t)
+			d.order = append(d.order, n)
+			t = types.Ref(n)
+		}
 		d.done[rt] = t
 	}
 	return t, err
+}
+
+// nameOf is the reference to a Go type that contains itself: named by the
+// Go type's name with its first letter upper-cased (F17 12.4).
+func (d *deriver) nameOf(rt reflect.Type) (*types.Named, error) {
+	if n := d.named[rt]; n != nil {
+		return n, nil
+	}
+	name := upperFirst(rt.Name())
+	if !isTypeName(name) {
+		return nil, fmt.Errorf("%v contains itself, and %q is not a type name", rt, name)
+	}
+	if d.refNames[name] {
+		return nil, fmt.Errorf("two Go types that contain themselves are named %s", name)
+	}
+	n := types.NewNamed(name)
+	d.named[rt], d.refNames[name] = n, true
+	return n, nil
+}
+
+// setDefs sets the definitions of the recursive types derived (F17 12.4).
+func (d *deriver) setDefs() error {
+	if n, bad := types.SetDefs(d.order, d.defs); bad {
+		return fmt.Errorf("%s shares a kind with another type where it stands", n.Name)
+	}
+	for _, n := range d.order {
+		if types.Depth(n.Def()) > types.MaxDepth {
+			return fmt.Errorf("the type of %s is deeper than 64", n.Name)
+		}
+	}
+	return nil
+}
+
+// isTypeName reports an upper-case letter followed by one or more of
+// [A-Za-z0-9_] (F4 3.2).
+func isTypeName(s string) bool {
+	if len(s) < 2 || s[0] < 'A' || s[0] > 'Z' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // Describe gives the description of the environment (F1 5.3): a JSON
@@ -739,4 +831,13 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// upperFirst is s with its first letter upper-cased, when it is an ASCII
+// lower-case letter.
+func upperFirst(s string) string {
+	if s != "" && s[0] >= 'a' && s[0] <= 'z' {
+		return string(s[0]-'a'+'A') + s[1:]
+	}
+	return s
 }

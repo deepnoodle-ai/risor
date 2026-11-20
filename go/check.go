@@ -63,7 +63,7 @@ func resultSchemaType(schema any, opts []SchemaOption) (*types.Type, error) {
 			return nil, fmt.Errorf("the option %s does not apply to an expected result", string(o))
 		}
 	}
-	return mapSchema(schema, opts)
+	return mapSchema(schema, opts, "")
 }
 
 // Condition states that the result will be tested by truthiness (15.3).

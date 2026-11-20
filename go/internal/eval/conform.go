@@ -17,7 +17,7 @@ import (
 // parameters. The message is built only when it is asked for.
 type cfail struct {
 	path     []any
-	template string // wrong, missing or extra
+	template string // wrong, missing or extra; depth for depth-exceeded
 	expected *types.Type
 	found    any
 	number   bool // found is a host number that cannot enter
@@ -37,6 +37,9 @@ func (f *cfail) params() []messages.Param {
 }
 
 func (f *cfail) message() string {
+	if f.template == "depth" {
+		return messages.Build("depth-exceeded", "", messages.Word("limit", strconv.Itoa(DefaultLimits.Depth)))
+	}
 	return messages.Build("not-conforming", f.template, f.params()...)
 }
 
@@ -47,7 +50,14 @@ type walker struct {
 	r *run
 	// noPath is set for is, which builds no path (5.2 item 3).
 	noPath bool
+	// level counts the levels the conformance function has entered: past
+	// the default depth limit it fails with depth-exceeded (F17 12.7).
+	level int
 }
+
+// errDepth is the failure of the conformance function past the default
+// depth limit: no path.
+var errDepth = &cfail{template: "depth"}
 
 func (w *walker) step(n int64) {
 	if w.r != nil && n > 0 {
@@ -81,6 +91,13 @@ func (w *walker) test(v any, t *types.Type, path []any, looked bool) *cfail {
 	if entered && w.r != nil {
 		w.r.enterWalk()
 		defer func() { w.r.walk-- }()
+	}
+	if entered && w.r == nil {
+		if w.level+1 > DefaultLimits.Depth {
+			return errDepth
+		}
+		w.level++
+		defer func() { w.level-- }()
 	}
 	if !looked {
 		w.step(1)
@@ -243,13 +260,26 @@ func (w *walker) union(v any, u *types.Union, path []any) *cfail {
 // Conform is the conformance function of F4 7: nil when v conforms to t,
 // else the failure's path and message. It charges nothing and is bounded by
 // the value and the type.
+//
+// Its depth is bounded by the default depth limit: a value it would enter
+// past it is the failure depth-exceeded, with no path (F17 12.7).
 func Conform(v any, t *types.Type) (path []any, msg string, ok bool) {
+	path, _, msg, ok = ConformCode(v, t)
+	return path, msg, ok
+}
+
+// ConformCode is Conform with the failure's code: not-conforming, or
+// depth-exceeded.
+func ConformCode(v any, t *types.Type) (path []any, code, msg string, ok bool) {
 	w := &walker{}
 	f := w.test(v, t, []any{}, false)
 	if f == nil {
-		return nil, "", true
+		return nil, "", "", true
 	}
-	return f.path, f.message(), false
+	if f == errDepth {
+		return nil, "depth-exceeded", f.message(), false
+	}
+	return f.path, "not-conforming", f.message(), false
 }
 
 // as compiles an As node (F4 5.1, 5.2).

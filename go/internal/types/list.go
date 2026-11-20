@@ -269,7 +269,10 @@ func Shared(t *Type) (*Named, bool) {
 // parts in the order printed: the list's element, then each record by
 // the order of its variants, its fields in key order and then its rest.
 // A reference is not followed.
-func (b *ListBuild) SharedIn(i int) (*Named, bool) {
+func (b *ListBuild) SharedIn(i int) (*Named, bool) { return SharedDeep(b.Built[i]) }
+
+// SharedDeep is SharedIn of a type.
+func SharedDeep(t *Type) (*Named, bool) {
 	var walk func(t *Type) (*Named, bool)
 	walk = func(t *Type) (*Named, bool) {
 		if t == nil || t.any {
@@ -295,5 +298,73 @@ func (b *ListBuild) SharedIn(i int) (*Named, bool) {
 		}
 		return nil, false
 	}
-	return walk(b.Built[i])
+	return walk(t)
+}
+
+// Shown is the type a message prints for a receiver whose map alternative
+// is read: t without null when t is a recursive name and null alone, so
+// that the message names it (12.6); else nil.
+func Shown(t *Type) *Type {
+	if len(t.refs) != 1 || !t.plain().withoutNullPlain().IsNever() {
+		return nil
+	}
+	return Ref(t.refs[0])
+}
+
+// SetDefs sets the definitions of the references ns that one mapping made,
+// a schema's or a Go type's (12.4): defs[i] is ns[i]'s type, whose top may
+// hold references of ns, each replaced by its own definition. It reports
+// the first reference that shares a kind other than null with another
+// alternative where it stands, at the top or below.
+func SetDefs(ns []*Named, defs []*Type) (*Named, bool) {
+	idx := make(map[*Named]int, len(ns))
+	for i, n := range ns {
+		idx[n] = i
+	}
+	out := make([]*Type, len(ns))
+	state := make([]uint8, len(ns))
+	var bad *Named
+	var get func(i int) *Type
+	get = func(i int) *Type {
+		if state[i] == 2 || state[i] == 1 {
+			return out[i] // a cycle of tops cannot be: the mapping refused it
+		}
+		state[i] = 1
+		t := defs[i]
+		p := t.plain()
+		var kept []*Named
+		for _, r := range t.refs {
+			j, ok := idx[r]
+			if !ok {
+				kept = append(kept, r)
+				continue
+			}
+			d := get(j)
+			if d == nil {
+				continue
+			}
+			if SharesKind(d, p) && bad == nil {
+				bad = r
+			}
+			p = mergeKinds(p, d)
+		}
+		out[i] = withRefs(p, kept)
+		state[i] = 2
+		return out[i]
+	}
+	for i := range ns {
+		get(i)
+	}
+	if bad != nil {
+		return bad, true
+	}
+	for i, n := range ns {
+		n.SetDef(out[i])
+	}
+	for _, n := range ns {
+		if m, ok := SharedDeep(n.def); ok {
+			return m, true
+		}
+	}
+	return nil, false
 }

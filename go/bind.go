@@ -4,6 +4,7 @@ package risor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -458,7 +459,8 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 			i++
 		}
 	}
-	d := &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}, strict: true}
+	d := newDeriver()
+	d.strict = true
 	var params []string
 	for ; i < n; i++ {
 		t := ft.In(i)
@@ -571,6 +573,11 @@ func deriveIn(d *deriver, t reflect.Type) (text string, err error) {
 		}
 	}()
 	ty, err := d.nested(t)
+	if err == nil && len(d.named) > 0 {
+		// F17 12.4: a signature is text, and a recursive type has no text
+		// of its own here.
+		err = errors.New("it contains itself; declare it with NamedTypeOf and write the signature in Type")
+	}
 	if err == nil && types.Depth(ty) > types.MaxDepth {
 		err = fmt.Errorf("the type is deeper than %d", types.MaxDepth)
 	}

@@ -43,7 +43,7 @@ func NamedType(name, text string) Decl {
 // with the options of F1 4.
 func NamedTypeSchema(name string, schema any, opts ...SchemaOption) Decl {
 	return declFunc(func(e *Env) {
-		t, err := mapSchema(schema, opts)
+		t, err := mapSchema(schema, opts, name)
 		d := &namedDecl{name: name, ty: t}
 		if err != nil {
 			d.err = err.Error()
@@ -267,17 +267,21 @@ func (e *Env) ParseType(text string) (Type, error) {
 // test x is T and x as T make. It returns nil when v conforms, else an
 // *Error with one diagnostic: phase run, code not-conforming, class value,
 // the path and the message of the first failure, and no span. It is not a
-// run: it charges nothing and has no limits, and its work is bounded by the
-// value and the type. It changes nothing.
+// run: it charges nothing, and its work is bounded by the value and the
+// type. A value nested past the default depth limit is depth-exceeded, of
+// class limit, with no path (F17 12.7). It changes nothing.
 func Conform(v any, t Type) error {
 	if p := t.problem(); p != "" {
 		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}}
 	}
-	path, msg, ok := eval.Conform(v, t.t)
+	path, code, msg, ok := eval.ConformCode(v, t.t)
 	if ok {
 		return nil
 	}
-	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "not-conforming", Class: "value",
+	if code == "depth-exceeded" { // F17 12.7: no path
+		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "limit", Message: msg, Trace: []diag.TraceEntry{}}}}
+	}
+	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "value",
 		Message: msg, Path: path, Trace: []diag.TraceEntry{}}}}
 }
 
@@ -293,7 +297,11 @@ func ConformAll(v any, t Type, max int) []Diagnostic {
 	fs := eval.ConformAll(v, t.t, max)
 	out := make([]Diagnostic, len(fs))
 	for i, f := range fs {
-		out[i] = Diagnostic{Phase: PhaseRun, Code: "not-conforming", Class: "value", Message: f.Message,
+		if f.Code == "depth-exceeded" {
+			out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "limit", Message: f.Message, Trace: []diag.TraceEntry{}}
+			continue
+		}
+		out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "value", Message: f.Message,
 			Path: f.Path, Trace: []diag.TraceEntry{}}
 	}
 	return out

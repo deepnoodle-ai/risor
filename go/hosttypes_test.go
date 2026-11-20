@@ -128,10 +128,12 @@ func TestTypeOfRows(t *testing.T) {
 		"func":        func() (risor.Type, error) { return risor.TypeOf[func()]() },
 		"int key":     func() (risor.Type, error) { return risor.TypeOf[map[int]string]() },
 		"complex":     func() (risor.Type, error) { return risor.TypeOf[complex128]() },
-		"cycle":       func() (risor.Type, error) { return risor.TypeOf[node]() },
-		"too deep":    func() (risor.Type, error) { return risor.TypeOf[deep]() },
-		"inner chan":  func() (risor.Type, error) { return risor.TypeOf[struct{ C chan int }]() },
-		"slice cycle": func() (risor.Type, error) { return risor.TypeOf[[]node]() },
+		"too deep":   func() (risor.Type, error) { return risor.TypeOf[deep]() },
+		"inner chan": func() (risor.Type, error) { return risor.TypeOf[struct{ C chan int }]() },
+		// F17 12.4: a cycle with no struct field, element or map value.
+		"bare cycle": func() (risor.Type, error) { return risor.TypeOf[selfPtr]() },
+		// A one-letter name is a type variable.
+		"one letter": func() (risor.Type, error) { return risor.TypeOf[x]() },
 	} {
 		_, err := f()
 		var e *risor.Error
@@ -140,6 +142,17 @@ func TestTypeOfRows(t *testing.T) {
 	}
 	// 64 levels is allowed.
 	assert.Equal(t, typeOf[[1][1][1][1][1][1][1][1]int](t), "int[][][][][][][][]")
+	// F17 12.4: a struct that contains itself is a recursive type, named
+	// by the Go type's name with its first letter upper-cased.
+	assert.Equal(t, typeOf[node](t), "Node")
+	assert.Equal(t, typeOf[[]node](t), "Node[]")
+	assert.Equal(t, typeOf[*node](t), "Node | null")
+}
+
+type selfPtr *selfPtr
+
+type x struct {
+	Kids []x `json:"kids"`
 }
 
 func TestTypeOfDominance(t *testing.T) {

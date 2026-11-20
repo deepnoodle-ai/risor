@@ -5,7 +5,7 @@ import "fmt"
 // Helpers of the binding's structural type API.
 
 // IsFloat reports whether t's number alternative is float.
-func (t *Type) IsFloat() bool { return t.num == numFloat }
+func (t *Type) IsFloat() bool { return t.u().num == numFloat }
 
 // Alternatives splits t into its alternatives, one for each kind it has:
 // null, bool, the number (int or float), the string or literal set, the

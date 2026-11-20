@@ -870,7 +870,14 @@ func (c *checker) bindParam(p *syntax.Param, a *types.Type, given bool, fs facts
 
 // read is the read of a field of a record by 9.2. It returns the type and
 // whether the read is of an unlisted key of an open record.
-func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan syntax.Span, optional, present bool) *types.Type {
+//
+// shown is the type a message prints for the receiver: the receiver's own
+// type when it is a recursive name, so that the message names it (F17
+// 12.6); else nil, and the message prints the record.
+func (c *checker) readField(r *types.Record, shown *types.Type, key string, keySpan, recvSpan syntax.Span, optional, present bool) *types.Type {
+	if shown == nil {
+		shown = types.RecType(r)
+	}
 	if f, ok := r.Field(key); ok {
 		if !f.Optional || present {
 			return f.Type
@@ -878,7 +885,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		if optional {
 			return types.WithNull(f.Type)
 		}
-		c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
+		c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 		return f.Type
 	}
 	if present && !r.Rest.IsNever() {
@@ -894,7 +901,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		}
 		return types.Any
 	case r.Rest.IsNever():
-		c.m("", ty("type", types.RecType(r)), keyP(key)).diag("no-field", keySpan)
+		c.m("", ty("type", shown), keyP(key)).diag("no-field", keySpan)
 		return types.Never
 	}
 	if present {
@@ -903,7 +910,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 	if optional {
 		return types.WithNull(r.Rest)
 	}
-	c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
+	c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 	return r.Rest
 }
 
@@ -957,11 +964,11 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 		// A site of an unlisted key of an open record is on the field's key
 		// (12.2).
 		if f.Default != nil {
-			rt := c.readField(r, f.Key, f.KeySpan, f.KeySpan, true, false)
+			rt := c.readField(r, types.Shown(v), f.Key, f.KeySpan, f.KeySpan, true, false)
 			d := c.synth(f.Default, fs)
 			t = c.limitAt(bound, types.Join(types.Nonnull(rt), d))
 		} else {
-			t = c.readField(r, f.Key, f.KeySpan, f.KeySpan, false, false)
+			t = c.readField(r, types.Shown(v), f.Key, f.KeySpan, f.KeySpan, false, false)
 		}
 		c.setSlot(f, t)
 	}

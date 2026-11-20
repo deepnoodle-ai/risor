@@ -520,8 +520,11 @@ func (f *fitter) fits(s, t *Type) bool {
 	if s2.IsNever() {
 		return true
 	}
-	if s2.incomplete() || t.incomplete() {
-		panic(&Incomplete{})
+	if s2.incomplete() {
+		s2.u() // panics Incomplete with the name
+	}
+	if t.incomplete() {
+		t.u()
 	}
 	if f.c.find(f.c.fit, s2, t) {
 		return true
@@ -1266,7 +1269,9 @@ func quote(s string) string {
 // Close makes the rest of each closable record of t never and drops its
 // mark, at every depth (package F1 4.1 item 3). A recursive name gets a
 // closed name of its own, with the same name.
-func Close(t *Type) *Type { return (&closer{memo: map[*Type]*Type{}, names: map[*Named]*Named{}}).closeT(t) }
+func Close(t *Type) *Type {
+	return (&closer{memo: map[*Type]*Type{}, names: map[*Named]*Named{}}).closeT(t)
+}
 
 type closer struct {
 	memo  map[*Type]*Type

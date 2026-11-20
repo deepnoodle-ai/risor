@@ -15,7 +15,7 @@ type Union struct {
 }
 
 // Union returns the tagged union of t's map alternative, or nil.
-func (t *Type) Union() *Union { return t.uni }
+func (t *Type) Union() *Union { return t.u().uni }
 
 // variants are the variants of t's map alternative: of a union its
 // variants, of a record that record alone.
