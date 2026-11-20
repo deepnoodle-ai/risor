@@ -128,6 +128,7 @@ function everyEntryPoint(f: FlatForm): void {
   const word = lastWord(source);
   const atEnd = through("hover on the last word", () => env.hover(source, word.at));
   const want = env.hover(small, lastWord(small).at);
+  if (f.hover !== undefined) assert.deepEqual({ kind: atEnd?.kind, type: atEnd?.type }, f.hover, "hover on the last word: the record");
   if (want === null) assert.equal(atEnd, null, "hover on the last word");
   else {
     assert.ok(atEnd !== null, "hover on the last word");

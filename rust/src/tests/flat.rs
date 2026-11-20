@@ -119,6 +119,9 @@ struct Form {
     /// Whether a compile without the check fails too, with the code of
     /// `ty`: a static rule (F4 6.1).
     static_rule: bool,
+    /// The kind and the type of hover's record on the last word, where the
+    /// form states them.
+    hover: Option<(&'static str, &'static str)>,
 }
 
 impl Form {
@@ -138,6 +141,7 @@ impl Form {
             format: N,
             expression: true,
             static_rule: false,
+            hover: None,
         }
     }
 
@@ -299,6 +303,14 @@ fn through_every_entry_point(form: &Form) {
     let got = env.hover(&src, at, &Expected::None);
     let small = (form.src)(100);
     let want = env.hover(&small, last_word(&small).0, &Expected::None);
+    if let Some((kind, ty)) = form.hover {
+        let record = got.as_ref().map(|h| (h.kind, h.ty.as_deref()));
+        assert_eq!(
+            record,
+            Some((kind, Some(ty))),
+            "{name}: hover on the last word"
+        );
+    }
     match (got, want) {
         (None, None) => {}
         (Some(got), Some(want)) => {
@@ -472,20 +484,26 @@ fn chains_of_one_step() {
         let n = N as u64;
         vec![
             // The chain of issue 649, with the result it states.
-            Form::new(
-                |n| format!("y{}", ".trim()".repeat(n)),
-                "string",
-                "\"a\"",
-                n,
-                n,
-            ),
-            Form::new(
-                |n| format!("f(y){}", ".trim()".repeat(n)),
-                "string",
-                "\"a\"",
-                n + 1,
-                n,
-            ),
+            Form {
+                hover: Some(("method", "string")),
+                ..Form::new(
+                    |n| format!("y{}", ".trim()".repeat(n)),
+                    "string",
+                    "\"a\"",
+                    n,
+                    n,
+                )
+            },
+            Form {
+                hover: Some(("method", "string")),
+                ..Form::new(
+                    |n| format!("f(y){}", ".trim()".repeat(n)),
+                    "string",
+                    "\"a\"",
+                    n + 1,
+                    n,
+                )
+            },
             Form::new(|n| format!("r{}.k", ".a".repeat(n)), "any", "7", n + 1, 0),
             Form::new(|n| format!("r{}?.k", "?.a".repeat(n)), "any", "7", n + 1, 0),
             Form::new(|n| format!("y{}", "[0]".repeat(n)), "string", "\"a\"", n, n),

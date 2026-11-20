@@ -54,6 +54,8 @@ export interface FlatForm {
    * grows with the square of the length and is not made at this length.
    */
   format: "text" | "nested" | "quadratic";
+  /** The kind and the type of hover's record on the last word, where the form states them. */
+  hover?: { kind: string; type: string };
 }
 
 const same = (want: unknown) => (value: unknown) => JSON.stringify(value) === JSON.stringify(want);
@@ -113,6 +115,7 @@ export const FORMS: FlatForm[] = [
     steps: (n) => n,
     units: (n) => n,
     format: "text",
+    hover: { kind: "method", type: "string" },
   },
   {
     name: "optional method call",
