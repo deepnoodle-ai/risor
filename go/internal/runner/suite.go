@@ -50,13 +50,17 @@ var SuiteCatalogs = []SuiteCatalog{
 	{"messages.json", "code"},
 }
 
-// RunSuiteDir runs the case files of one directory of the suite.
+// RunSuiteDir runs the case files of one directory of the suite, or one case
+// file with the settings of the directory that holds it.
 func RunSuiteDir(dir string) ([]Result, error) {
 	files, err := Files(dir)
 	if err != nil {
 		return nil, err
 	}
 	b := filepath.Base(dir)
+	if st, err := os.Stat(dir); err == nil && !st.IsDir() {
+		b = filepath.Base(filepath.Dir(dir))
+	}
 	// core-check, and host-types, run with the checker only (3.10.13).
 	CheckedOnly = b == "core-check" || b == "host-types"
 	if b == "conversion" || b == "unions" || b == "config" { // F4 6.1 item 4, F5 11.2 item 3, F10 10.3 item 3

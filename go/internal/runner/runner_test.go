@@ -75,3 +75,21 @@ func TestOutcomeDescriptionWithEmptyFacts(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, strings.HasPrefix(Outcome(f.Cases[0]), `{"name":"from the header","description":`), Outcome(f.Cases[0]))
 }
+
+func TestSuiteFileTakesItsDirectory(t *testing.T) {
+	// A case file named alone runs with the settings of its directory: in
+	// suite/recursion/, arg-mismatch is a static code (F17 13.8 item 2).
+	dir := filepath.Join(t.TempDir(), "recursion")
+	assert.NoError(t, os.Mkdir(dir, 0o755))
+	path := filepath.Join(dir, "e3-static.json")
+	assert.NoError(t, os.WriteFile(path, []byte(`[
+		{"name": "static arg-mismatch", "check": false,
+		 "source": "const apply = (f: (x: int) => int, x: int): int => f(x); apply(5, 1)",
+		 "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 64, 1, 65]}]}}
+	]`), 0o644))
+	for _, p := range []string{dir, path} {
+		rs, err := RunSuiteDir(p)
+		assert.NoError(t, err)
+		assert.Equal(t, Counts(rs), map[Verdict]int{Pass: 1, Fail: 0, Skip: 0, Invalid: 0}, p)
+	}
+}
