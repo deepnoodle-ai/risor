@@ -13,7 +13,7 @@ import type { Diagnostic } from "./diagnostic.ts";
 import { lex } from "./lexer.ts";
 import { Source } from "./source.ts";
 import type { Span } from "./source.ts";
-import { HOLE, isReserved } from "./token.ts";
+import { HOLE, isName, isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
 import type { TypeNode } from "../types/typetext.ts";
 import { END, parseMessage } from "./messages.ts";
@@ -266,8 +266,8 @@ class Parser {
     if (below <= 8) return;
     // E8: `:` in the expression of an index step.
     if (this.isP(t, ":") && top?.kind === "index") this.fail("slice-syntax", t);
-    // E9: `:` after a name in parentheses.
-    if (this.isP(t, ":") && top?.kind === "paren" && prev !== undefined && prev.kind === "word" && this.i >= 2 && this.toks[this.i - 2] === top.at) this.fail("type-annotation", t);
+    // E9: `:` after a Name in parentheses; `true`, `false` and `null` are no Name.
+    if (this.isP(t, ":") && top?.kind === "paren" && prev !== undefined && prev.kind === "word" && isName(prev.text) && this.i >= 2 && this.toks[this.i - 2] === top.at) this.fail("type-annotation", t);
     if (below <= 10) return;
     // E10
     if (this.isP(t, "|")) this.fail("bitwise-operator", t, "or");
