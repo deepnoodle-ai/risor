@@ -5,8 +5,9 @@
 // largest, 400, calls by name, a walk of nested data, a call of the library
 // function `walk` whose nodes reach the limit (f17 5.3, 5.4), the forms of
 // fixtures/deep-forms.ts, whose calls go through a library entry that calls a
-// lambda, and a typed lambda that calls itself by name, through `map` and
-// through `flatMap` (f17 11.6).
+// lambda, a typed lambda that calls itself by name, through `map` and
+// through `flatMap` (f17 11.6), and recursions through a function parameter
+// (f17 13.4).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -22,8 +23,8 @@ test("the deepest programs run with a 656 KB stack", () => {
     out.trim(),
     [
       "nesting 100 ok",
-      "calls 200 ok walk 200 ok walk() 200 ok map 200 ok flatMap 200 ok heaviest 200 ok self 200 ok self-map 200 ok self-flatMap 200 ok",
-      "calls 400 ok walk 400 ok walk() 400 ok map 400 ok flatMap 400 ok heaviest 400 ok self 400 ok self-map 400 ok self-flatMap 400 ok",
+      "calls 200 ok walk 200 ok walk() 200 ok map 200 ok flatMap 200 ok heaviest 200 ok self 200 ok self-map 200 ok self-flatMap 200 ok fn-bottom 200 ok fn-apply 200 ok fn-map 200 ok",
+      "calls 400 ok walk 400 ok walk() 400 ok map 400 ok flatMap 400 ok heaviest 400 ok self 400 ok self-map 400 ok self-flatMap 400 ok fn-bottom 400 ok fn-apply 400 ok fn-map 400 ok",
     ].join(" "),
   );
 });

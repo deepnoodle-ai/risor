@@ -13,7 +13,10 @@
 // the run's slots, which every call reaches with no link. The calls a library
 // entry makes of one lambda never overlap, so they share one frame, made with
 // the lambda's callback. There is one path for every program: with no
-// self-reference, the frames hold what fixed slots would.
+// self-reference, the frames hold what fixed slots would. A function
+// parameter (f17 13.4) holds a BoundLambda, a lambda with the frame its calls
+// link to, so a lambda given to a call reads the names of the call where it
+// was evaluated, whichever call of whichever lambda calls it.
 //
 // Long flat forms (a chain of binary operators, a chain of steps, an `else`
 // chain, `const` lines) are compiled and run by loops, so no host stack is
