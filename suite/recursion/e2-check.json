@@ -2861,5 +2861,26 @@
   "expect": {
    "type": "int | \"b\""
   }
+ },
+ {
+  "name": "is with a reference whose definition takes any gives no fact that rules out null",
+  "reject": [],
+  "source": "type Top = any | Top[]; const f = (x: string | null): string => x is Top ? x + \"\" : \"\"; f(null)",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "maybe-null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a map's rest that is a reference to any reads as any",
+  "reject": [],
+  "source": "type Top = any | Top[]; const m: map<Top> = {}; m.foo",
+  "expect": {
+   "type": "any"
+  }
  }
 ]

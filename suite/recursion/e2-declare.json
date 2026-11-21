@@ -3192,5 +3192,28 @@
     }
    ]
   }
+ },
+ {
+  "name": "a target met again through a part of the schema that holds it, reached first by its own $ref",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "$ref": "#/$defs/node/items",
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/node"
+       }
+      }
+     }
+    }
+   }
+  },
+  "source": "tree",
+  "expect": {
+   "type": "Items",
+   "sites": []
+  }
  }
 ]
