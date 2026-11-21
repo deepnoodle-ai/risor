@@ -22,6 +22,14 @@ func ConformAll(v any, t *types.Type, max int) []ConformFailure {
 	if max < 1 {
 		max = 1
 	}
+	// Its first failure is Conform's (F8 6.1). When the walk of Conform
+	// passes the default depth limit, that failure ends it, and ConformAll
+	// ends with it (F17 12.7 item 3): the list is that failure alone. All
+	// alone could find an ordinary failure first, at a key of a rest that
+	// Conform also tests, and then the depth.
+	if _, code, msg, ok := ConformCode(v, t); !ok && code == "depth-exceeded" {
+		return []ConformFailure{{Message: msg, Code: code}}
+	}
 	a := &allWalker{max: max}
 	a.all(v, t, []any{})
 	out := make([]ConformFailure, len(a.out))

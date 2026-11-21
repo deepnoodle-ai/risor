@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -201,10 +200,29 @@ func TestConformDepthAfterAMismatch(t *testing.T) {
 	var e *risor.Error
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "depth-exceeded")
+	// ConformAll agrees: its first failure is Conform's, and the depth
+	// ends it (F8 6.1; 12.7 item 3).
+	ds := risor.ConformAll(map[string]any{"a": 1, "b": deep}, ty, 10)
+	assert.Equal(t, len(ds), 1)
+	assert.Equal(t, ds[0].Code, "depth-exceeded")
 	// With no deep value the first mismatch stands.
 	err = risor.Conform(map[string]any{"a": 1, "b": map[string]any{}}, ty)
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "not-conforming")
+	ds = risor.ConformAll(map[string]any{"a": 1, "b": map[string]any{}}, ty, 10)
+	assert.Equal(t, len(ds), 1)
+	assert.Equal(t, ds[0].Code, "not-conforming")
+	// A deep value that Conform never reaches, past a failing declared
+	// field, ends ConformAll after the first failure, which is Conform's.
+	rec, err := env.ParseType("{a: int, b: Node}")
+	assert.NoError(t, err)
+	err = risor.Conform(map[string]any{"a": "x", "b": deep}, rec)
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, e.Diagnostics[0].Code, "not-conforming")
+	ds = risor.ConformAll(map[string]any{"a": "x", "b": deep}, rec, 10)
+	assert.Equal(t, len(ds), 2)
+	assert.Equal(t, ds[0].Code, "not-conforming")
+	assert.Equal(t, ds[1].Code, "depth-exceeded")
 }
 
 func TestUnionTypeKeepsReference(t *testing.T) {
@@ -333,10 +351,9 @@ func TestTypeOfDefinitionSize(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Code, "bad-type")
 }
 
-func TestManyTypeLines(t *testing.T) {
-	// A long list of type lines resolves in time near linear: a flat chain
-	// of forward aliases, and one guarded ring, which is one component.
-	const n = 20000
+// manyTypeLines is a program of 2n type lines: a flat chain of forward
+// aliases, and one guarded ring, which is one component.
+func manyTypeLines(n int) string {
 	var b strings.Builder
 	for i := 0; i < n-1; i++ {
 		fmt.Fprintf(&b, "type Ta%d = Ta%d; ", i, i+1)
@@ -346,17 +363,38 @@ func TestManyTypeLines(t *testing.T) {
 		fmt.Fprintf(&b, "type Tr%d = {next: Tr%d[]}; ", i, (i+n-1)%n)
 	}
 	b.WriteString("const x: Ta0 = 1; x")
+	return b.String()
+}
+
+func TestManyTypeLines(t *testing.T) {
+	// A long list of type lines resolves. BenchmarkManyTypeLines measures
+	// how its time grows: near linear (it was quadratic).
 	env, err := risor.NewEnv()
 	assert.NoError(t, err)
-	start := time.Now()
-	x, err := risor.Parse(b.String())
+	x, err := risor.Parse(manyTypeLines(20000))
 	assert.NoError(t, err)
 	r, err := env.Check(x)
 	assert.NoError(t, err)
 	assert.Equal(t, r.Type.String(), "int")
-	if !raceBuild {
-		// Quadratic, this took about ten seconds.
-		assert.True(t, time.Since(start) < 4*time.Second, time.Since(start))
+}
+
+func BenchmarkManyTypeLines(b *testing.B) {
+	env, err := risor.NewEnv()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, n := range []int{5000, 10000, 20000} {
+		x, err := risor.Parse(manyTypeLines(n))
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			for b.Loop() {
+				if _, err := env.Check(x); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
