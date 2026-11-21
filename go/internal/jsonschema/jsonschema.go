@@ -190,6 +190,16 @@ func (m *mapper) schema(s any, key string) result {
 	if r, ok := m.cache[key]; ok {
 		return r
 	}
+	if g, ok := m.inprog[key]; ok {
+		// Met again while it is being mapped, as a part of the schema that
+		// holds it: the place a $ref reached first is the recursive type
+		// (F17 12.4 item 1).
+		ptr := pointerOf(key)
+		if m.guard == g {
+			m.fail("the schema at %q holds itself with no array item, property or map between", ptr)
+		}
+		return result{t: types.Ref(m.nameOf(key, ptr))}
+	}
 	saved := m.at
 	m.at = key
 	m.inprog[key] = m.guard
@@ -221,6 +231,21 @@ func keyTok(t string) string {
 		t = strings.NewReplacer("\x01", "\x01\x01", "\x00", "\x01\x02").Replace(t)
 	}
 	return "\x00" + t
+}
+
+// pointerOf is the JSON Pointer fragment of a place's key, for messages.
+func pointerOf(key string) string {
+	if key == "" {
+		return "#"
+	}
+	var b strings.Builder
+	b.WriteByte('#')
+	for _, t := range strings.Split(key[1:], "\x00") {
+		t = lastTok("\x00" + t)
+		b.WriteByte('/')
+		b.WriteString(strings.NewReplacer("~", "~0", "/", "~1").Replace(t))
+	}
+	return b.String()
 }
 
 // lastTok is the last token of a place's key, unescaped.

@@ -242,3 +242,16 @@ func TestPickReadsEveryKind(t *testing.T) {
 	_, err = mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [{"$ref": "#"}, false]}}}`, Options{})
 	assert.NotNil(t, err)
 }
+
+func TestPartMetAgain(t *testing.T) {
+	// F17 12.4 item 1: a place a $ref reaches first, met again as a part
+	// of the schema that holds it, is the recursive type.
+	ty, err := mapJSON(t, `{"$ref": "#/$defs/node/items", "$defs": {"node": {"type": "array", "items": {"$ref": "#/$defs/node"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Items")
+	n, _ := ty.RefOnly()
+	assert.Equal(t, n.Def().String(), "Items[]")
+	// With no array item, property or map between, it is an error.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/node/allOf/0", "$defs": {"node": {"allOf": [{"$ref": "#/$defs/node"}]}}}`, Options{})
+	assert.NotNil(t, err)
+}
