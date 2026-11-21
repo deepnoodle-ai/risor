@@ -386,9 +386,11 @@ impl<'a> Mapper<'a> {
         // F17 12.4: a schema met again while it was mapped is a recursive
         // type; what it maps to is its definition, and it stands as its
         // reference.
+        // Its depth is the one measured: a place met again has depth 0
+        // only where it is met again (R318).
         if let Some(&i) = self.recursive.get(&at) {
             self.defs[i as usize] = Some(t);
-            let x = (self.ref_ty(i), 0);
+            let x = (self.ref_ty(i), d);
             self.targets.insert(at, x.clone());
             return Ok(x);
         }
@@ -1464,6 +1466,49 @@ mod tests {
         assert_eq!(t.map(|t| print(&t)), Ok("int[]".to_string()));
         assert!(ty_schema_text("{\"type\": ", SchemaOptions::default()).is_err());
         assert!(ty_schema_text(r#"{"a": 1, "a": 2}"#, SchemaOptions::default()).is_err());
+    }
+
+    /// R318: a recursive target that finishes mapping keeps the depth it
+    /// measured; only where it is met again does it have depth 0. `node` is
+    /// n one-branch `allOf` around an array whose items refer to `node`.
+    /// Reached first at `a`, it is mapped there; at `b`, under k more
+    /// `allOf`, its depth is the one it measured, which the walk of `b` does
+    /// not enter again.
+    #[test]
+    fn a_recursive_target_keeps_its_depth() {
+        let wrap = |mut s: String, n: usize| {
+            for _ in 0..n {
+                s = format!(r#"{{"allOf": [{s}]}}"#);
+            }
+            s
+        };
+        let schema = |n: usize, k: usize| {
+            let node = wrap(
+                r##"{"type": "array", "items": {"$ref": "#/$defs/node"}}"##.into(),
+                n,
+            );
+            let b = wrap(r##"{"$ref": "#/$defs/node"}"##.into(), k);
+            format!(
+                r##"{{"type": "object", "properties": {{"a": {{"$ref": "#/$defs/node"}},
+                "b": {b}}}, "required": ["a", "b"], "additionalProperties": false,
+                "$defs": {{"node": {node}}}}}"##
+            )
+        };
+        let t = ty_schema_text(&schema(40, 10), SchemaOptions::default()).unwrap();
+        assert_eq!(print(&t), "{a: Node, b: Node}");
+        let e = ty_schema_text(&schema(40, 30), SchemaOptions::default()).unwrap_err();
+        assert!(e.contains("deeper than 64"), "{e}");
+        let schema = |n: usize| {
+            let mut node = r##"{"type": "array", "items": {"$ref": "#/$defs/node"}}"##.to_string();
+            for _ in 0..n {
+                node = format!(r#"{{"allOf": [{node}]}}"#);
+            }
+            format!(r##"{{"$ref": "#/$defs/node", "$defs": {{"node": {node}}}}}"##)
+        };
+        let t = ty_schema_text(&schema(61), SchemaOptions::default()).unwrap();
+        assert_eq!(print(&t), "Node");
+        let e = ty_schema_text(&schema(62), SchemaOptions::default()).unwrap_err();
+        assert!(e.contains("deeper than 64"), "{e}");
     }
 
     #[test]

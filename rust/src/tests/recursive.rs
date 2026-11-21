@@ -277,35 +277,13 @@ fn equal_compares_a_key_before_a_later_key_that_differs() {
 
 /// A union the type API builds holds the tables of the recursive types its
 /// variants read through a reference, and outlives the types it came from.
+/// Each constructor is tested alone, with a fresh table: the input dropped,
+/// conformance with only the union alive, then the table released with it.
 #[test]
 fn a_built_union_holds_its_recursive_tables() {
     use crate::typ::{
-        literal_type, record_type, tagged_union_type, type_from_schema, FieldType, Type,
+        literal_type, record_type, tagged_union_type, type_from_schema, union_type, FieldType, Type,
     };
-    let a = type_from_schema(
-        r##"{"$defs": {"node": {"type": "object", "properties": {"kind": {"const": "a"},
-            "next": {"$ref": "#/$defs/node"}}, "required": ["kind"],
-            "additionalProperties": false}}, "$ref": "#/$defs/node"}"##,
-        Default::default(),
-    )
-    .unwrap();
-    assert_eq!(a.to_string(), "Node");
-    let b = record_type(
-        &[FieldType {
-            key: "kind".into(),
-            ty: literal_type(&["b"]),
-            optional: false,
-        }],
-        &Type::NEVER,
-    );
-    let tagged = tagged_union_type(&[a.clone(), b.clone()]);
-    let union = crate::typ::union_type(&[a.clone(), b]);
-    let weak = std::sync::Arc::downgrade(
-        &crate::check::ty::reach(std::iter::once(a.ty().unwrap()))[0]
-            .table()
-            .unwrap(),
-    );
-    drop(a);
     let node = |next: Option<Data>| {
         let mut m = std::collections::BTreeMap::new();
         m.insert("kind".to_string(), Data::Str("a".into()));
@@ -315,13 +293,47 @@ fn a_built_union_holds_its_recursive_tables() {
         Data::Map(m)
     };
     let data = node(Some(node(Some(node(None)))));
-    for u in [&tagged, &union] {
-        assert_eq!(u.to_string(), r#"{kind: "a", next?: Node} | {kind: "b"}"#);
-        assert!(crate::conform(&crate::Value::from_data(&data), u).is_ok());
+    type Make = fn(&[Type]) -> Type;
+    let build: [(&str, Make); 2] = [
+        ("tagged_union_type", tagged_union_type),
+        ("union_type", union_type),
+    ];
+    for (name, make) in build {
+        let a = type_from_schema(
+            r##"{"$defs": {"node": {"type": "object", "properties": {"kind": {"const": "a"},
+                "next": {"$ref": "#/$defs/node"}}, "required": ["kind"],
+                "additionalProperties": false}}, "$ref": "#/$defs/node"}"##,
+            Default::default(),
+        )
+        .unwrap();
+        assert_eq!(a.to_string(), "Node");
+        let b = record_type(
+            &[FieldType {
+                key: "kind".into(),
+                ty: literal_type(&["b"]),
+                optional: false,
+            }],
+            &Type::NEVER,
+        );
+        let weak = std::sync::Arc::downgrade(
+            &crate::check::ty::reach(std::iter::once(a.ty().unwrap()))[0]
+                .table()
+                .unwrap(),
+        );
+        let u = make(&[a, b]);
+        assert_eq!(
+            u.to_string(),
+            r#"{kind: "a", next?: Node} | {kind: "b"}"#,
+            "{name}"
+        );
+        assert!(
+            crate::conform(&crate::Value::from_data(&data), &u).is_ok(),
+            "{name}"
+        );
+        assert!(weak.upgrade().is_some(), "{name}: the table was let go");
+        drop(u);
+        assert!(weak.upgrade().is_none(), "{name}: the table was kept");
     }
-    assert!(weak.upgrade().is_some());
-    drop((tagged, union));
-    assert!(weak.upgrade().is_none(), "the table was kept");
 }
 
 /// has-opaque reads each variant of a tagged union: the flat record joins
@@ -556,4 +568,33 @@ fn depth_is_tested_before_size() {
             e.diagnostics[0].message
         );
     }
+}
+
+/// F5 6 (R319): a map literal with no entry that surely gives the tag of a
+/// union is `missing`, with the tag as its key, at a result and at an
+/// argument alike.
+#[test]
+fn a_literal_with_no_tag_names_the_missing_tag() {
+    let messages = |src: &str| -> Vec<(&'static str, String)> {
+        let e = Env::default()
+            .check(&parse(src).unwrap(), &Expected::None)
+            .err()
+            .unwrap();
+        e.diagnostics
+            .into_iter()
+            .map(|d| (d.code, d.message))
+            .collect()
+    };
+    let line = r#"type Rt0 = {k: "num", v: float} | {k: "add", l: int, r: int};"#;
+    let want = r#"required field "k" has no entry"#.to_string();
+    assert_eq!(
+        messages(&format!("{line} const v: Rt0 = {{}}; 0")),
+        [("result-mismatch", want.clone())]
+    );
+    assert_eq!(
+        messages(&format!(
+            "{line} const f = (x: Rt0): int => 0; f({{v: 1.5}})"
+        )),
+        [("arg-mismatch", want)]
+    );
 }

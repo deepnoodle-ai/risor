@@ -3835,8 +3835,10 @@ impl<'a> Checker<'a> {
                 .iter()
                 .rposition(|x| x.as_ref().is_some_and(|(_, sure)| *sure))
             else {
+                // F5 6 (R319): no entry surely gives the tag; `missing`, the
+                // tag as its key.
                 let es = self.span(e);
-                self.report(es, et, t, mode, Why::Fit);
+                self.report(es, et, t, mode, Why::Missing(tag));
                 return;
             };
             let mut joined = Ty::never();
