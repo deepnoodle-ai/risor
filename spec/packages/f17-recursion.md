@@ -1067,6 +1067,9 @@ its component failed is `bad-type` too.
    mapping meets it: with `#/$defs/tree` holding `{"properties": {"kids":
    {"type": "array", "items": {"$ref": "#/$defs/tree/properties/kids"}}}}`, the
    place `kids` is met again inside itself, and `tree` is `{kids: Kids}`.
+   For the depth of a schema (F1 3.10), a target met again walks no
+   subschema, so it has depth 0, and the `$ref` that meets it has depth 1
+   (R318): `{"type": "array", "items": {"$ref": "#"}}` has depth 2.
 2. **Its name** is the last token of the target's pointer, with its first
    letter upper-cased when it is an ASCII lower-case letter: `#/$defs/node`
    gives `Node`. Two pointers name one target only when they decode to the

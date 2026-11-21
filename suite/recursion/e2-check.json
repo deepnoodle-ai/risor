@@ -2840,5 +2840,26 @@
   "expect": {
    "type": "int | {k: Tree[]}"
   }
+ },
+ {
+  "name": "Truthy unfolds only the references that need it",
+  "source": "type Link = {next?: Link} | null; type Tree = Tree[]; const f = (x: Link | Tree) => if (x) { x } else { 1 }; f(null)",
+  "expect": {
+   "type": "int | {next?: Link} | Tree"
+  }
+ },
+ {
+  "name": "nonnull unfolds only the references whose definition has null",
+  "source": "type Link = {next?: Link} | null; type Tree = Tree[]; const f = (x: Link | Tree) => x ?? 1; f(null)",
+  "expect": {
+   "type": "int | {next?: Link} | Tree"
+  }
+ },
+ {
+  "name": "without removes the strings the target takes through a reference",
+  "source": "type Node = {next?: Node} | \"a\"; const f = (x: \"a\" | \"b\") => if (x is Node) { 1 } else { x }; f(\"b\")",
+  "expect": {
+   "type": "int | \"b\""
+  }
  }
 ]
