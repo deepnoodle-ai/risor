@@ -2917,5 +2917,59 @@
   "expect": {
    "type": "map<any>"
   }
+ },
+ {
+  "name": "a ? : chain joins from its end: of two names with one structure it prints the last's",
+  "env": "{p: bool, q: bool, a: Left, b: Right}",
+  "source": "p ? a : q ? null : b",
+  "expect": {
+   "type": "Right | null"
+  },
+  "types": [
+   {
+    "name": "Left",
+    "type": "{next: Left[]}"
+   },
+   {
+    "name": "Right",
+    "type": "{next: Right[]}"
+   }
+  ]
+ },
+ {
+  "name": "a list literal joins its elements from the left: of two names with one structure it prints the first's",
+  "env": "{p: bool, q: bool, a: Left, b: Right}",
+  "source": "[a, null, b]",
+  "expect": {
+   "type": "(Left | null)[]"
+  },
+  "types": [
+   {
+    "name": "Left",
+    "type": "{next: Left[]}"
+   },
+   {
+    "name": "Right",
+    "type": "{next: Right[]}"
+   }
+  ]
+ },
+ {
+  "name": "a list literal joins from the left also where the names stand inside lists",
+  "env": "{p: bool, q: bool, a: Left, b: Right}",
+  "source": "[[a], [null], [b]]",
+  "expect": {
+   "type": "(Left | null)[][]"
+  },
+  "types": [
+   {
+    "name": "Left",
+    "type": "{next: Left[]}"
+   },
+   {
+    "name": "Right",
+    "type": "{next: Right[]}"
+   }
+  ]
  }
 ]
