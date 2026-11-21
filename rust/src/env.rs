@@ -1168,15 +1168,16 @@ fn named_list(items: &[(String, Item)], outside: &Names) -> Vec<Result<Ty, Strin
     let failed = |out: &Vec<Option<Result<Ty, String>>>, j: usize| matches!(out[j], Some(Err(_)));
     // The limits a definition is tested against where it is declared (F17
     // 12.6 item 1).
+    // F4 3.5: depth (step 5) before size (step 6).
     let limits = |t: &Ty| -> Result<(), String> {
+        if t.depth() > 64 {
+            return Err("the type is deeper than 64".into());
+        }
         if t.too_big() {
             return Err(format!(
                 "the type is larger than {}",
                 crate::check::ty::SIZE_LIMIT
             ));
-        }
-        if t.depth() > 64 {
-            return Err("the type is deeper than 64".into());
         }
         Ok(())
     };

@@ -544,12 +544,13 @@ impl Resolver<'_> {
             self.diag("check-limit", pt.span, "pairs", &[]);
             return None;
         }
-        if t.too_big() {
-            self.diag("check-limit", pt.span, "size", &[]);
-            return None;
-        }
+        // F4 3.5: depth (step 5) before size (step 6).
         if t.depth() > 64 {
             self.diag("check-limit", pt.span, "depth", &[]);
+            return None;
+        }
+        if t.too_big() {
+            self.diag("check-limit", pt.span, "size", &[]);
             return None;
         }
         Some(t)
@@ -763,10 +764,11 @@ impl Resolver<'_> {
                     let top = Ref::new(&table, idx(i), &types[i].name)
                         .unfolding()
                         .unwrap_or_default();
-                    let template = if top.too_big() {
-                        "size"
-                    } else if top.depth() > 64 {
+                    // F4 3.5: depth (step 5) before size (step 6).
+                    let template = if top.depth() > 64 {
                         "depth"
+                    } else if top.too_big() {
+                        "size"
                     } else {
                         continue;
                     };

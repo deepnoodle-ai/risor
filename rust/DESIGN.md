@@ -871,7 +871,11 @@ A plain text error has no cause: its text is already the message.
   read each variant of a union, and the opaque names follow references. A
   recursive type with an opaque type's name, or with the name of a named
   type that is not its own reference, is `name-clash` (R315). Equal meets
-  two records' keys in one ordered pass.
+  two records' keys in one ordered pass. Each place of a schema is mapped
+  once and cached, whether the mapping meets it through a `$ref` or as a
+  part of the schema that holds it; a place met again while in progress is
+  the recursive type, named by the last token of its own pointer, which the
+  walk keeps (R302). Depth is tested before size (F4 3.5).
 - **Join's order.** `c ? a : b` is Join(A, B), the else side folded first
   and each branch joined in front of it, when a reference stands anywhere
   in either; two unions are the same by structure when their variants are

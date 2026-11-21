@@ -71,6 +71,7 @@ pub fn ty_schema_named(schema: &Json, opts: SchemaOptions, root_name: &str) -> R
         opts,
         targets: HashMap::new(),
         in_progress: HashMap::new(),
+        pointer: Vec::new(),
         path: Vec::new(),
         guards: 0,
         table: Table::new(),
@@ -122,11 +123,17 @@ pub fn ty_schema_text(text: &str, opts: SchemaOptions) -> Result<Ty, String> {
 struct Mapper<'a> {
     root: &'a Json,
     opts: SchemaOptions,
-    /// The type and depth of each schema a `$ref` named, by its place.
+    /// The type and depth of each schema mapped, by its place: a place is
+    /// mapped once, and its type stands wherever the mapping meets it (F17
+    /// 12.4 item 1).
     targets: HashMap<usize, (Ty, usize)>,
     /// The schemas whose mapping is in progress, by place (3.7 item 7),
-    /// with the number of guards the walk was under when it began.
-    in_progress: HashMap<usize, usize>,
+    /// with the number of guards the walk was under when it began and the
+    /// last token of the place's pointer.
+    in_progress: HashMap<usize, (usize, Option<String>)>,
+    /// The tokens of the pointer of the place the walk is at, from the
+    /// root: a `$ref` moves it to its target (F17 12.4 item 2).
+    pointer: Vec<String>,
     /// Where the walk is, for messages.
     path: Vec<String>,
     /// How many array items and object properties the walk is under (F17
@@ -182,7 +189,10 @@ impl<'a> Mapper<'a> {
             )
         );
         self.guards += guard as usize;
+        let mark = self.pointer.len();
+        self.pointer.extend(keys.iter().map(|k| k.to_string()));
         let r = self.map(s, level + 1);
+        self.pointer.truncate(mark);
         self.guards -= guard as usize;
         for _ in keys {
             self.path.pop();
@@ -198,24 +208,20 @@ impl<'a> Mapper<'a> {
         }
     }
 
-    /// F17 12.4 item 2: the name of a target met again, by the last token of
-    /// its pointer, its first letter upper-cased; the root's is given.
-    fn ref_name(&self, r: &Json, target: &Json) -> R<String> {
+    /// F17 12.4 item 2: the name of a target met again, by the last token
+    /// of its pointer, its first letter upper-cased; the root's is given.
+    fn place_name(&self, target: &Json, last: Option<&str>) -> String {
         if place(target) == place(self.root) {
-            return Ok(self.root_name.clone());
+            return self.root_name.clone();
         }
-        let text = r.as_str().unwrap_or_default();
-        let pointer =
-            percent_decode(text.strip_prefix('#').unwrap_or_default()).unwrap_or_default();
-        let raw = pointer.rsplit('/').next().unwrap_or_default();
-        let mut name = unescape(raw).unwrap_or_default();
+        let mut name = last.unwrap_or_default().to_string();
         if let Some(c) = name.get(0..1) {
             if c.as_bytes()[0].is_ascii_lowercase() {
                 let up = c.to_ascii_uppercase();
                 name.replace_range(0..1, &up);
             }
         }
-        Ok(name)
+        name
     }
 
     /// The index of a target that is a recursive type, made when it is first
@@ -346,7 +352,23 @@ impl<'a> Mapper<'a> {
             }
         };
         let at = place(s);
-        self.in_progress.insert(at, self.guards);
+        if let Some(x) = self.targets.get(&at) {
+            return Ok(x.clone());
+        }
+        // F17 12.4 item 1: a place met again while it is mapped, through a
+        // `$ref` or as a part of the schema that holds it.
+        if let Some((g, last)) = self.in_progress.get(&at).cloned() {
+            if self.guards <= g {
+                return self.err(
+                    "a cycle of $ref with no array item or property between: a type cannot refer to itself there",
+                );
+            }
+            let name = self.place_name(s, last.as_deref());
+            let i = self.recursive_index(at, &name)?;
+            return Ok((self.ref_ty(i), 0));
+        }
+        self.in_progress
+            .insert(at, (self.guards, self.pointer.last().cloned()));
         let r = self.map_object(s, obj, level);
         self.in_progress.remove(&at);
         let (t, d) = r?;
@@ -366,8 +388,11 @@ impl<'a> Mapper<'a> {
         // reference.
         if let Some(&i) = self.recursive.get(&at) {
             self.defs[i as usize] = Some(t);
-            return Ok((self.ref_ty(i), 0));
+            let x = (self.ref_ty(i), 0);
+            self.targets.insert(at, x.clone());
+            return Ok(x);
         }
+        self.targets.insert(at, (t.clone(), d));
         Ok((t, d))
     }
 
@@ -390,27 +415,15 @@ impl<'a> Mapper<'a> {
         }
         // Step 3.
         if let Some(r) = get("$ref") {
-            let target = self.resolve(r)?;
-            let (t, d) = match self.targets.get(&place(target)) {
-                Some(x) => x.clone(),
-                None => {
-                    if let Some(&g) = self.in_progress.get(&place(target)) {
-                        // F17 12.4 item 1: met again, with a guard between.
-                        if self.guards <= g {
-                            return self.err(
-                                "a cycle of $ref with no array item or property between: a type cannot refer to itself there",
-                            );
-                        }
-                        let name = self.ref_name(r, target)?;
-                        let i = self.recursive_index(place(target), &name)?;
-                        (self.ref_ty(i), 0)
-                    } else {
-                        let x = self.sub(target, level, &["$ref"])?;
-                        self.targets.insert(place(target), x.clone());
-                        x
-                    }
-                }
-            };
+            let (target, tokens) = self.resolve(r)?;
+            // The walk moves to the target's place, whose pointer is the
+            // `$ref`'s, decoded.
+            let saved = std::mem::replace(&mut self.pointer, tokens);
+            self.path.push("$ref".into());
+            let x = self.map(target, level + 1);
+            self.path.pop();
+            self.pointer = saved;
+            let (t, d) = x?;
             let t = if nullable { join(&t, &Ty::null()) } else { t };
             return Ok((t, d + 1));
         }
@@ -726,7 +739,7 @@ impl<'a> Mapper<'a> {
     }
 
     /// The schema a `$ref` names (3.7).
-    fn resolve(&self, r: &Json) -> R<&'a Json> {
+    fn resolve(&self, r: &Json) -> R<(&'a Json, Vec<String>)> {
         let Some(text) = r.as_str() else {
             return self.err("$ref is not a string");
         };
@@ -739,12 +752,13 @@ impl<'a> Mapper<'a> {
             return self.err(format!("$ref {text:?} is not well percent-encoded UTF-8"));
         };
         if pointer.is_empty() {
-            return Ok(self.root);
+            return Ok((self.root, Vec::new()));
         }
         let Some(tail) = pointer.strip_prefix('/') else {
             return self.err(format!("$ref {text:?} is not a JSON Pointer"));
         };
         let mut at: &'a Json = self.root;
+        let mut tokens = Vec::new();
         for raw in tail.split('/') {
             let Some(token) = unescape(raw) else {
                 return self.err(format!("$ref {text:?} has a ~ that is not ~0 or ~1"));
@@ -758,8 +772,9 @@ impl<'a> Mapper<'a> {
                 Some(n) => at = n,
                 None => return self.err(format!("$ref {text:?} names nothing")),
             }
+            tokens.push(token);
         }
-        Ok(at)
+        Ok((at, tokens))
     }
 }
 

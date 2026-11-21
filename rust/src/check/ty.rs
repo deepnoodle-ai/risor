@@ -1234,11 +1234,12 @@ pub fn from_text(
         return Err("comparing the types takes more than 4096 pairs of types".into());
     }
     drop(w);
-    if ty.too_big() {
-        return Err(format!("the type is larger than {SIZE_LIMIT}"));
-    }
+    // F4 3.5: depth (step 5) before size (step 6).
     if ty.depth() > 64 {
         return Err("the type is deeper than 64".into());
+    }
+    if ty.too_big() {
+        return Err(format!("the type is larger than {SIZE_LIMIT}"));
     }
     Ok(ty)
 }

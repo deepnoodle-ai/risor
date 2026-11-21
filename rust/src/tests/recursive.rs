@@ -509,3 +509,51 @@ fn the_bound_in_a_signature_is_bad_signature() {
         .build()
         .is_ok());
 }
+
+/// F4 3.5: a type line is tested for depth (step 5) before size (step 6), so
+/// one both deeper than 64 and over the size limit gives `depth`. So does
+/// a recursive line, and an environment's named type says why it is
+/// `bad-type` by its depth.
+#[test]
+fn depth_is_tested_before_size() {
+    let mut lines = vec![("R0".to_string(), "int".to_string())];
+    for i in 1..=15 {
+        lines.push((format!("R{i}"), format!("{{a: R{0}, b: R{0}}}", i - 1)));
+    }
+    let deep = format!("int{}", "[]".repeat(64));
+    for (name, ty) in [
+        ("Xx", format!("{{a: R15, b: R15, c: {deep}}}")),
+        ("Yy", format!("{{a: R15, b: R15, c: {deep}, s: Yy[]}}")),
+    ] {
+        let mut all = lines.clone();
+        all.push((name.to_string(), ty));
+        let src: String = all
+            .iter()
+            .map(|(n, t)| format!("type {n} = {t}; "))
+            .collect::<String>()
+            + "1";
+        let e = Env::default()
+            .check(&parse(&src).unwrap(), &Expected::None)
+            .err()
+            .unwrap();
+        assert_eq!(e.diagnostics.len(), 1, "{name}: {:?}", e.diagnostics);
+        assert_eq!(e.diagnostics[0].code, "check-limit");
+        assert_eq!(
+            e.diagnostics[0].message,
+            crate::messages::build("check-limit", "depth", &[]),
+            "{name}"
+        );
+        let mut b = Env::builder();
+        for (n, t) in &all {
+            b = b.named_type(n, t);
+        }
+        let e = b.build().err().unwrap();
+        assert_eq!(e.diagnostics.len(), 1, "{name}: {:?}", e.diagnostics);
+        assert_eq!(e.diagnostics[0].code, "bad-type");
+        assert!(
+            e.diagnostics[0].message.contains("deeper than 64"),
+            "{name}: {}",
+            e.diagnostics[0].message
+        );
+    }
+}

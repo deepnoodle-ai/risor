@@ -688,7 +688,9 @@ impl<'a> Checker<'a> {
                 };
                 let mut tf = vec![fact(FactKind::Is(t.clone(), false))];
                 let mut ff = vec![fact(FactKind::IsNot(t.clone(), false))];
-                if !t.nullable() && !t.any {
+                // A reference whose definition takes `any` rules out
+                // nothing (F17 12.5: its unfolding is read).
+                if !t.nullable() && !t.view().any {
                     tf.push(fact(FactKind::NonNull));
                 }
                 if t.nullable() {
@@ -2365,7 +2367,7 @@ impl<'a> Checker<'a> {
                             let read = match rec.fields.get(&f.key) {
                                 Some(fl) if !fl.optional => fl.ty.clone(),
                                 Some(fl) => fl.ty.clone().with_null(),
-                                None if rec.rest.any => Ty::any(),
+                                None if rec.rest.view().any => Ty::any(),
                                 None if rec.rest.is_never() => {
                                     self.field_diag("no-field", f.key_span, &f.key, &flat_v);
                                     Ty::never()
@@ -2383,7 +2385,7 @@ impl<'a> Checker<'a> {
                                 self.field_diag("maybe-absent", f.key_span, &f.key, &flat_v);
                                 fl.ty.clone()
                             }
-                            None if rec.rest.any => {
+                            None if rec.rest.view().any => {
                                 // 18.3: the site is on the key.
                                 if self.dyn_site(f.key_span) {
                                     Ty::never()
@@ -2893,7 +2895,7 @@ impl<'a> Checker<'a> {
                     f.ty.clone()
                 }
             }
-            None if rec.rest.any => {
+            None if rec.rest.view().any => {
                 // 10.4: under a fact the read cannot fail.
                 if !optional && !present && self.dyn_site(rs) {
                     return Ty::never();
@@ -2929,7 +2931,7 @@ impl<'a> Checker<'a> {
                     .map(|f| &f.ty)
                     .chain(std::iter::once(&rec.rest)),
             );
-            let any_rest = rec.rest.any;
+            let any_rest = rec.rest.view().any;
             // One mistake, one diagnostic.
             if self.operand(index, it, &Ty::string(), "key").is_none() {
                 return Ty::never();
