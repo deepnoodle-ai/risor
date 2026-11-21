@@ -1195,7 +1195,8 @@ class Checker {
     acc.add(this.synth(c, facts));
     for (let k = conds.length - 1; k >= 0; k--) {
       // `c ? a : b` is Join(A, B) (11.1): the branch is the left operand.
-      acc.add(thens[k], true);
+      // A computation past the bound is on the innermost Cond whose Join it is (f17 12.5 item 7).
+      at(conds[k].span, () => acc.add(thens[k], true));
       if (acc.size() > SIZE_LIMIT) {
         this.say("check-limit", conds[k].span, "size");
         acc = new TypeAcc();

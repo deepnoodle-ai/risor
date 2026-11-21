@@ -435,7 +435,8 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     try {
       env.variableTypes.set(name, typeOf(node, false));
     } catch (e) {
-      if (!(e instanceof TypeRuleError)) throw e;
+      // f17 12.5 item 7: a computation past the bound of 4,096 pairs in an environment is bad-type.
+      if (!(e instanceof TypeRuleError) && !(e instanceof PairLimit)) throw e;
       errs.push(diag("bad-type", `the type of ${name}: ${e.message}`));
     }
   }
@@ -444,7 +445,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       try {
         typeOf(n, true);
       } catch (e) {
-        if (!(e instanceof TypeRuleError)) throw e;
+        if (!(e instanceof TypeRuleError) && !(e instanceof PairLimit)) throw e;
         // 03 3.3.4: every error in a host signature or a method's text is bad-signature.
         errs.push(diag("bad-signature", `the signature of ${fn.name}: ${e.message}`));
         break;
@@ -455,7 +456,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     try {
       typeOf(env.returns, false);
     } catch (e) {
-      if (!(e instanceof TypeRuleError)) throw e;
+      if (!(e instanceof TypeRuleError) && !(e instanceof PairLimit)) throw e;
       errs.push(diag("bad-type", `the expected result: ${e.message}`));
     }
   }
@@ -485,8 +486,15 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       }
     }
     for (const [name, r] of env.recursive) {
+      if (clashed.has(name)) continue;
+      // One with an opaque type's name is name-clash, as a named type with one is (item 2, F4 3.2, R315).
+      if (env.opaque.has(name)) {
+        clashed.add(name);
+        errs.push(diag("name-clash", `the recursive type ${name} has the name of an opaque type`));
+        continue;
+      }
       const t = env.named.get(name);
-      if (t === undefined || clashed.has(name)) continue;
+      if (t === undefined) continue;
       const s = soleRef(t);
       if (s === null || s.name !== name || !same(s, r)) {
         clashed.add(name);

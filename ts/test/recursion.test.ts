@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { conform, conformAll, createEnv, RisorError, typeFromSchema } from "../src/host/api.ts";
+import { conform, conformAll, createEnv, parse, RisorError, typeFromSchema } from "../src/host/api.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -110,5 +110,92 @@ describe("recursive types of an environment (f17 12.4)", () => {
     assert.ok(a.fits(b));
     const other = typeFromSchema({ $defs: { node: { type: "object", properties: { n: { $ref: "#/$defs/node" } } } }, $ref: "#/$defs/node" });
     assert.ok(!a.equal(other));
+  });
+});
+
+describe("recursive types: the review of PR #677", () => {
+  const declareCode = (f: () => unknown): string | undefined => {
+    try {
+      f();
+    } catch (e) {
+      if (e instanceof RisorError) return e.diagnostics[0]?.code;
+      throw e;
+    }
+    return undefined;
+  };
+
+  test("a schema's recursive type with an opaque type's name is name-clash (f17 12.4 item 2, R315)", () => {
+    const code = declareCode(() =>
+      createEnv({ opaque: { Tree: { test: () => false } }, varSchemas: { tree: { schema: { type: "array", items: { $ref: "#" } } } } }),
+    );
+    assert.equal(code, "name-clash");
+  });
+
+  test("a named type of the environment at a definition's top is replaced by its definition (f17 12.2 item 4)", () => {
+    const env = createEnv({ namedTypes: [{ name: "Tree", type: "{kids: Tree[]}" }] });
+    const c = env.check(parse("type Rows = Rows[] | Tree; const x: Rows = {kids: []}; x is Rows[] ? null : x"));
+    assert.equal(c.type.toString(), "{kids: Tree[]} | null");
+  });
+
+  test("a schema's type with a reference beside a record is bad-type (f17 12.4 items 4 and 5)", () => {
+    const node = { type: "object", properties: { kids: { type: "array", items: { $ref: "#/$defs/node" } } }, required: ["kids"], additionalProperties: false };
+    const end = { type: "object", properties: { end: { type: "integer" } }, required: ["end"] };
+    assert.equal(declareCode(() => createEnv({ varSchemas: { t: { schema: { $defs: { node }, anyOf: [{ $ref: "#/$defs/node" }, end] } } } })), "bad-type");
+    const env = createEnv({ varSchemas: { t: { schema: { $defs: { node }, anyOf: [{ $ref: "#/$defs/node" }, { type: "null" }] } } } });
+    assert.equal(env.describe().variables.t, "Node | null");
+  });
+
+  test("completion reads a schema's recursive expected result whole, not by its name", () => {
+    const env = createEnv({});
+    const c = env.complete("{chi", { line: 1, column: 5 }, { schema: { type: "object", properties: { child: { $ref: "#" } } } });
+    assert.deepEqual(c.items.map((i) => i.label), ["child"]);
+  });
+
+  test("completion of a string reads the literals of a recursive type's definition", () => {
+    const env = createEnv({ namedTypes: [{ name: "Tt", type: '"a" | "b" | Tt[]' }], vars: { x: "Tt" } });
+    const c = env.complete('x == "', { line: 1, column: 7 });
+    assert.deepEqual(c.items.map((i) => i.label), ["a", "b"]);
+  });
+
+  test("a schema place is known by where it stands, not by the object that holds it (f17 12.4 item 1)", () => {
+    const shared = { type: "object", properties: { next: { type: "array", items: { $ref: "#/properties/first" } } }, required: ["next"], additionalProperties: false };
+    const schema = { type: "object", properties: { first: shared, second: shared }, required: ["first", "second"], additionalProperties: false };
+    assert.equal(typeFromSchema(schema).toString(), "{first: First, second: {next: First[]}}");
+    assert.equal(typeFromSchema(JSON.parse(JSON.stringify(schema))).toString(), "{first: First, second: {next: First[]}}");
+  });
+
+  test("the $ref that closes a cycle counts against the schema's depth (f01 3.10)", () => {
+    const wrapped = (n: number): unknown => {
+      let s: unknown = { type: "array", items: { $ref: "#" } };
+      for (let i = 0; i < n; i++) s = { allOf: [s] };
+      return s;
+    };
+    assert.equal(typeFromSchema(wrapped(62)).toString(), "Root");
+    assert.throws(() => typeFromSchema(wrapped(63)), (e: unknown) => e instanceof RisorError && e.diagnostics[0].code === "bad-type");
+  });
+
+  /** Two families of 13 types, each holding the next twice: comparing one with the other passes 4,096 pairs. */
+  const families = (): { name: string; type: string }[] => {
+    const out: { name: string; type: string }[] = [];
+    for (const f of ["A", "B"]) for (let i = 0; i < 13; i++) out.push({ name: `${f}${i}`, type: `{x: ${f}${(i + 1) % 13}[], y: ${f}${(i + 1) % 13}[]}` });
+    return out;
+  };
+
+  test("a variable's type past the bound of pairs is bad-type (f17 12.5 item 7)", () => {
+    const code = declareCode(() => createEnv({ namedTypes: families(), varRecord: "{v: {k: \"a\", t: A0} | {k: \"b\", t: B0}}" }));
+    assert.equal(code, "bad-type");
+  });
+
+  test("check-limit of a Join of ? : is on the innermost conditional (f17 12.5 item 7)", () => {
+    const env = createEnv({ namedTypes: families(), varRecord: "{p: bool, q: bool, a: A0, b: B0}" });
+    let err: unknown;
+    try {
+      env.compile(parse("p ? 0 : q ? a : b"));
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err instanceof RisorError);
+    assert.equal(err.diagnostics[0].code, "check-limit");
+    assert.deepEqual(err.diagnostics[0].span, { start: { line: 1, column: 9 }, end: { line: 1, column: 18 } });
   });
 });

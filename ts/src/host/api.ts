@@ -819,7 +819,7 @@ export class Env<V = any, N = any> {
    * assist stage repaired (f12 3.3 item 4), with the types of its nodes. Its
    * diagnostics are not reported.
    */
-  assistCheck(program: import("../syntax/ast.ts").Program, source: Source, expected?: string): { resolution: import("../eval/static.ts").Resolution; check: import("../types/check.ts").CheckResult } {
+  assistCheck(program: import("../syntax/ast.ts").Program, source: Source, expected?: Expected): { resolution: import("../eval/static.ts").Resolution; check: import("../types/check.ts").CheckResult } {
     let exp: CheckExpected = { kind: "none" };
     try {
       exp = this.expected(expected);
@@ -867,26 +867,15 @@ export class Env<V = any, N = any> {
 
   /** Completion at a position of a text that need not parse (package F12, f12 3.1). */
   complete(text: string, pos: Pos, expected?: Expected): Completion {
-    const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, this.assistExpected(expected));
+    const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, expected);
     return { span: spanFromLine(c.span), items: c.items };
   }
 
   /** The hover record at a position of a text that need not parse (package F12, f12 3.13), or null. */
   hover(text: string, pos: Pos, expected?: Expected): Hover | null {
-    const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, this.assistExpected(expected));
+    const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, expected);
     if (h === null) return null;
     return { ...h, span: spanFromLine(h.span), declaration: h.declaration === null ? null : spanFromLine(h.declaration) };
-  }
-
-  /** The expected result as the assist stage reads it: type text or "condition". */
-  private assistExpected(e: Expected | undefined): string | undefined {
-    if (e === undefined || typeof e === "string") return e;
-    try {
-      const x = this.expected(e);
-      return x.kind === "type" ? printType(x.type) : undefined;
-    } catch {
-      return undefined;
-    }
   }
 }
 

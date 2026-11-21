@@ -69,7 +69,13 @@ export function resolveList(items: readonly ListItem[], lookup: (name: string, a
       // f17 12.2 item 4: what a name of item j stands for.
       name: (name, guarded) => {
         const j = lookup(name, i);
-        if (j === null || j < 0) return undefined;
+        if (j === null) return undefined;
+        if (j < 0) {
+          // A named type outside the list, at a top place of a recursive item: its references at the top are
+          // replaced by their definitions too (12.2 item 4), so no definition holds a reference at its top.
+          const t = outer.named.get(name);
+          return t !== undefined && isRec && !guarded ? unfold(t) : undefined;
+        }
         if (inC.has(j)) return guarded ? refType(refs[j]!) : done.get(j);
         // A reference that reaches the top of a recursive item's text through an item that is not recursive is
         // replaced by its definition (R307), so no definition holds a reference at its top.

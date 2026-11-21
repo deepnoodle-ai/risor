@@ -5,7 +5,7 @@
 // and the hover record are read from its tree, its scopes and its types.
 
 import type * as A from "../syntax/ast.ts";
-import type { Env } from "../host/api.ts";
+import type { Env, Expected } from "../host/api.ts";
 import { printSignature } from "../host/api.ts";
 import { ParseError } from "../syntax/diagnostic.ts";
 import { lexCut } from "../syntax/lexer.ts";
@@ -426,7 +426,7 @@ function recordDoc(r: { [k: string]: unknown }): string | null {
 // ---- completion (f12 3.5 to 3.12) ------------------------------------------------
 
 /** Completion at a position (f12 3.1). */
-export function complete(env: Env, text: string, pos: Position, returns?: string): CompletionResult {
+export function complete(env: Env, text: string, pos: Position, returns?: Expected): CompletionResult {
   const src = new Source(text);
   const cut = offsetOf(src, pos);
   const span = (a: number, b: number): LineSpan => src.lineSpan({ start: a, end: b });
@@ -543,9 +543,9 @@ class Context {
   private readonly prog: A.Program;
   private readonly res: Resolution;
   private readonly chk: CheckResult;
-  private readonly returns: string | undefined;
+  private readonly returns: Expected | undefined;
 
-  constructor(env: Env, prog: A.Program, res: Resolution, chk: CheckResult, returns: string | undefined) {
+  constructor(env: Env, prog: A.Program, res: Resolution, chk: CheckResult, returns: Expected | undefined) {
     this.env = env;
     this.prog = prog;
     this.res = res;
@@ -733,8 +733,10 @@ class Context {
       const other = parent.x === lit ? parent.y : parent.x;
       t = this.typeOf(other) ?? null;
     } else t = this.expectedOf(lit);
-    if (t === null || isAny(t)) return [];
-    const s = (t as Alts).str;
+    // A recursive type is read through its definition (f17 12.5): its literals are those of its unfolding.
+    const a = t === null ? null : alts(t);
+    if (a === null) return [];
+    const s = a.str;
     if (s === undefined || s === "string") return [];
     const quote = this.holeQuote ?? '"';
     return [...s]
@@ -747,7 +749,8 @@ class Context {
 
   /** The expected type of a node (f12 3.9), from the outside in. */
   private expectedOf(target: A.Node): Type | null {
-    const ret = this.returns !== undefined && this.returns !== "condition" ? safeType(this.env, this.returns) : null;
+    // The expected result as the environment resolves it: a schema's recursive type is kept whole, not printed and read again.
+    const ret = this.returns !== undefined && this.returns !== "condition" ? safeExpected(this.env, this.returns) : null;
     // The search keeps its own stack: an `else` branch, a receiver and a left
     // operand are as deep in the tree as the program is long (01 13.1).
     const nodes: A.Node[] = [this.prog];
@@ -851,9 +854,9 @@ function listElems(t: Type): Type[] {
   return a !== null && a.list !== undefined ? [a.list] : [];
 }
 
-function safeType(env: Env, text: string): Type | null {
+function safeExpected(env: Env, e: Expected): Type | null {
   try {
-    return env.typeOfText(text);
+    return env.expectedType(e);
   } catch {
     return null;
   }
@@ -902,7 +905,7 @@ function escapeIn(v: string, quote: string): string {
 
 // ---- hover (f12 3.13) ----------------------------------------------------------
 
-export function hover(env: Env, text: string, pos: Position, returns?: string): HoverResult | null {
+export function hover(env: Env, text: string, pos: Position, returns?: Expected): HoverResult | null {
   const src = new Source(text);
   const at = offsetOf(src, pos);
   if (at < 0 || at >= src.length) return null;
