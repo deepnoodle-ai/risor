@@ -222,6 +222,13 @@
   }
  },
  {
+  "name": "a reference counts 0 for depth: 64 lists around it",
+  "source": "type Node = {name: string, kids: Node[]}; const x: Node[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] = []; 1",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
   "name": "a reference counts 0 for depth: 65 lists around it",
   "source": "type Node = {name: string, kids: Node[]}; const x: Node[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][] = []; 1",
   "expect": {
@@ -969,6 +976,120 @@
   ],
   "env": "{s: S1}",
   "source": "const t: S1 = s; 1",
+  "expect": {
+   "type": "int"
+  }
+ },
+ {
+  "name": "the bound: an exact pair is not entered, also when the bound is reached",
+  "types": [
+   {
+    "name": "S1",
+    "type": "{a: S2, b: S2}"
+   },
+   {
+    "name": "S2",
+    "type": "{a: S3, b: S3}"
+   },
+   {
+    "name": "S3",
+    "type": "{a: S4, b: S4}"
+   },
+   {
+    "name": "S4",
+    "type": "{a: S5, b: S5}"
+   },
+   {
+    "name": "S5",
+    "type": "{a: S6, b: S6}"
+   },
+   {
+    "name": "S6",
+    "type": "{a: S7, b: S7}"
+   },
+   {
+    "name": "S7",
+    "type": "{a: S8, b: S8}"
+   },
+   {
+    "name": "S8",
+    "type": "{a: S9, b: S9}"
+   },
+   {
+    "name": "S9",
+    "type": "{a: S10, b: S10}"
+   },
+   {
+    "name": "S10",
+    "type": "{a: S11, b: S11}"
+   },
+   {
+    "name": "S11",
+    "type": "{a: S12, b: S12}"
+   },
+   {
+    "name": "S12",
+    "type": "{a: S1, b: S1}"
+   },
+   {
+    "name": "T1",
+    "type": "{a: T2, b: T2}"
+   },
+   {
+    "name": "T2",
+    "type": "{a: T3, b: T3}"
+   },
+   {
+    "name": "T3",
+    "type": "{a: T4, b: T4}"
+   },
+   {
+    "name": "T4",
+    "type": "{a: T5, b: T5}"
+   },
+   {
+    "name": "T5",
+    "type": "{a: T6, b: T6}"
+   },
+   {
+    "name": "T6",
+    "type": "{a: T7, b: T7}"
+   },
+   {
+    "name": "T7",
+    "type": "{a: T8, b: T8}"
+   },
+   {
+    "name": "T8",
+    "type": "{a: T9, b: T9}"
+   },
+   {
+    "name": "T9",
+    "type": "{a: T10, b: T10}"
+   },
+   {
+    "name": "T10",
+    "type": "{a: T11, b: T11}"
+   },
+   {
+    "name": "T11",
+    "type": "{a: T12, b: T12}"
+   },
+   {
+    "name": "T12",
+    "type": "{a: T1, b: T1}"
+   },
+   {
+    "name": "Pa",
+    "type": "{p: Pa}"
+   },
+   {
+    "name": "Qa",
+    "type": "{p: Qa}"
+   }
+  ],
+  "env": "{s: {x: S1, y: Pa, z: Pa}}",
+  "source": "const t: {x: T1, y: Qa, z: Pa} = s; 1",
   "expect": {
    "type": "int"
   }
@@ -1839,6 +1960,19 @@
  {
   "name": "a reference that reaches a definition's top through a line that is not recursive is replaced by its definition",
   "source": "type Tree = {k: Tree[]}; type Maybe = Tree | null; type Xs = Xs[] | Maybe; const x: Xs = {k: []}; x is Xs[] ? null : x",
+  "expect": {
+   "type": "{k: Tree[]} | null"
+  }
+ },
+ {
+  "name": "a reference that reaches a definition's top through a named type of the environment is replaced by its definition",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{k: Tree[]}"
+   }
+  ],
+  "source": "type Xs = Xs[] | Tree; const x: Xs = {k: []}; x is Xs[] ? null : x",
   "expect": {
    "type": "{k: Tree[]} | null"
   }

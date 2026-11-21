@@ -854,7 +854,10 @@ F1 5.3 gains one key.
    text names another. With package F17 a text may name another, and the
    entries are resolved as one list (`spec/packages/f17-recursion.md` 12.4).
 4. A description with no named type has no key `types`, so every description
-   of an environment with no named type is as F1 gives it.
+   of an environment with no named type is as F1 gives it. With package F17
+   a recursive type that a declaration reaches is listed in `types` too
+   (`spec/packages/f17-recursion.md` 12.4 item 3), so only a description with
+   neither a named type nor a recursive type has no key `types`.
 
 ## 9. Additions to the case format
 

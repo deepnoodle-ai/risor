@@ -1131,8 +1131,11 @@ named types, its variables' types and its signatures, at any depth.
    that passes the bound of 12.5 item 7 here counts as not equal, so the two
    are `name-clash`, not `bad-type`.
 2. One with the name of a named type of the environment is `name-clash`,
-   unless the named type is that recursive type. A name is `name-clash`
-   once, by item 1 or by this item, however many types bear it.
+   unless the named type is that recursive type: a named type whose type is
+   another name, even one of the same structure, is not (R315). One with the
+   name of an opaque type of the environment is `name-clash`, as a named
+   type with an opaque type's name is (F4 3.2). A name is `name-clash` once,
+   by item 1 or by this item, however many types bear it.
 3. **The description** (F4 8) lists, in `types`, each named type and each
    recursive type by its name. A recursive type is printed by its
    unfolding, in which its own name stands for itself: `"Tree": "{kids:

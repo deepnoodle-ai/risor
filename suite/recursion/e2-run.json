@@ -1249,6 +1249,342 @@
   }
  },
  {
+  "name": "a recursive lambda over a recursive type, at a depth limit it reaches exactly",
+  "source": "type Cell = {head: int, tail: Cell | null}; const sum = (c: Cell | null): int => c == null ? 0 : c.head + sum(c.tail); sum(blob as Cell)",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "head": 1,
+    "tail": {
+     "head": 1,
+     "tail": {
+      "head": 1,
+      "tail": {
+       "head": 1,
+       "tail": {
+        "head": 1,
+        "tail": {
+         "head": 1,
+         "tail": {
+          "head": 1,
+          "tail": {
+           "head": 1,
+           "tail": {
+            "head": 1,
+            "tail": {
+             "head": 1,
+             "tail": {
+              "head": 1,
+              "tail": {
+               "head": 1,
+               "tail": {
+                "head": 1,
+                "tail": {
+                 "head": 1,
+                 "tail": {
+                  "head": 1,
+                  "tail": {
+                   "head": 1,
+                   "tail": {
+                    "head": 1,
+                    "tail": {
+                     "head": 1,
+                     "tail": {
+                      "head": 1,
+                      "tail": {
+                       "head": 1,
+                       "tail": {
+                        "head": 1,
+                        "tail": {
+                         "head": 1,
+                         "tail": {
+                          "head": 1,
+                          "tail": {
+                           "head": 1,
+                           "tail": {
+                            "head": 1,
+                            "tail": {
+                             "head": 1,
+                             "tail": {
+                              "head": 1,
+                              "tail": {
+                               "head": 1,
+                               "tail": {
+                                "head": 1,
+                                "tail": {
+                                 "head": 1,
+                                 "tail": {
+                                  "head": 1,
+                                  "tail": {
+                                   "head": 1,
+                                   "tail": {
+                                    "head": 1,
+                                    "tail": {
+                                     "head": 1,
+                                     "tail": {
+                                      "head": 1,
+                                      "tail": {
+                                       "head": 1,
+                                       "tail": {
+                                        "head": 1,
+                                        "tail": {
+                                         "head": 1,
+                                         "tail": {
+                                          "head": 1,
+                                          "tail": {
+                                           "head": 1,
+                                           "tail": {
+                                            "head": 1,
+                                            "tail": {
+                                             "head": 1,
+                                             "tail": {
+                                              "head": 1,
+                                              "tail": {
+                                               "head": 1,
+                                               "tail": {
+                                                "head": 1,
+                                                "tail": {
+                                                 "head": 1,
+                                                 "tail": {
+                                                  "head": 1,
+                                                  "tail": {
+                                                   "head": 1,
+                                                   "tail": {
+                                                    "head": 1,
+                                                    "tail": {
+                                                     "head": 1,
+                                                     "tail": null
+                                                    }
+                                                   }
+                                                  }
+                                                 }
+                                                }
+                                               }
+                                              }
+                                             }
+                                            }
+                                           }
+                                          }
+                                         }
+                                        }
+                                       }
+                                      }
+                                     }
+                                    }
+                                   }
+                                  }
+                                 }
+                                }
+                               }
+                              }
+                             }
+                            }
+                           }
+                          }
+                         }
+                        }
+                       }
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "expect": {
+   "type": "int",
+   "value": 50
+  },
+  "limits": {
+   "depth": 101
+  }
+ },
+ {
+  "name": "a recursive lambda over a recursive type, one past the depth limit",
+  "source": "type Cell = {head: int, tail: Cell | null}; const sum = (c: Cell | null): int => c == null ? 0 : c.head + sum(c.tail); sum(blob as Cell)",
+  "env": "{blob: any}",
+  "vars": {
+   "blob": {
+    "head": 1,
+    "tail": {
+     "head": 1,
+     "tail": {
+      "head": 1,
+      "tail": {
+       "head": 1,
+       "tail": {
+        "head": 1,
+        "tail": {
+         "head": 1,
+         "tail": {
+          "head": 1,
+          "tail": {
+           "head": 1,
+           "tail": {
+            "head": 1,
+            "tail": {
+             "head": 1,
+             "tail": {
+              "head": 1,
+              "tail": {
+               "head": 1,
+               "tail": {
+                "head": 1,
+                "tail": {
+                 "head": 1,
+                 "tail": {
+                  "head": 1,
+                  "tail": {
+                   "head": 1,
+                   "tail": {
+                    "head": 1,
+                    "tail": {
+                     "head": 1,
+                     "tail": {
+                      "head": 1,
+                      "tail": {
+                       "head": 1,
+                       "tail": {
+                        "head": 1,
+                        "tail": {
+                         "head": 1,
+                         "tail": {
+                          "head": 1,
+                          "tail": {
+                           "head": 1,
+                           "tail": {
+                            "head": 1,
+                            "tail": {
+                             "head": 1,
+                             "tail": {
+                              "head": 1,
+                              "tail": {
+                               "head": 1,
+                               "tail": {
+                                "head": 1,
+                                "tail": {
+                                 "head": 1,
+                                 "tail": {
+                                  "head": 1,
+                                  "tail": {
+                                   "head": 1,
+                                   "tail": {
+                                    "head": 1,
+                                    "tail": {
+                                     "head": 1,
+                                     "tail": {
+                                      "head": 1,
+                                      "tail": {
+                                       "head": 1,
+                                       "tail": {
+                                        "head": 1,
+                                        "tail": {
+                                         "head": 1,
+                                         "tail": {
+                                          "head": 1,
+                                          "tail": {
+                                           "head": 1,
+                                           "tail": {
+                                            "head": 1,
+                                            "tail": {
+                                             "head": 1,
+                                             "tail": {
+                                              "head": 1,
+                                              "tail": {
+                                               "head": 1,
+                                               "tail": {
+                                                "head": 1,
+                                                "tail": {
+                                                 "head": 1,
+                                                 "tail": {
+                                                  "head": 1,
+                                                  "tail": {
+                                                   "head": 1,
+                                                   "tail": {
+                                                    "head": 1,
+                                                    "tail": {
+                                                     "head": 1,
+                                                     "tail": null
+                                                    }
+                                                   }
+                                                  }
+                                                 }
+                                                }
+                                               }
+                                              }
+                                             }
+                                            }
+                                           }
+                                          }
+                                         }
+                                        }
+                                       }
+                                      }
+                                     }
+                                    }
+                                   }
+                                  }
+                                 }
+                                }
+                               }
+                              }
+                             }
+                            }
+                           }
+                          }
+                         }
+                        }
+                       }
+                      }
+                     }
+                    }
+                   }
+                  }
+                 }
+                }
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "class": "limit",
+     "code": "depth-exceeded",
+     "message": "calls and nested values went deeper than the depth limit of 100"
+    }
+   ]
+  },
+  "limits": {
+   "depth": 100
+  }
+ },
+ {
   "name": "conform: a recursive named type, the data conforms",
   "types": [
    {

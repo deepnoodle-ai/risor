@@ -557,6 +557,81 @@
   }
  },
  {
+  "name": "name-clash: a recursive type with the name of an opaque type",
+  "opaque": [
+   "Node"
+  ],
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: a named type that is an alias of another recursive type of one structure",
+  "types": [
+   {
+    "name": "Other",
+    "type": "Other[]"
+   },
+   {
+    "name": "Tree",
+    "type": "Other"
+   }
+  ],
+  "schemas": {
+   "tree": {
+    "schema": {
+     "type": "array",
+     "items": {
+      "$ref": "#"
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
   "name": "the description lists a recursive named type by its unfolding",
   "types": [
    {
