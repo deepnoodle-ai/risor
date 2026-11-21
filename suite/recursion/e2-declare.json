@@ -3215,5 +3215,561 @@
    "type": "Items",
    "sites": []
   }
+ },
+ {
+  "name": "the depth of a schema: a recursive target met again from where it was mapped keeps its depth (64 or less)",
+  "schemas": {
+   "tt": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/node"
+      },
+      "b": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "$ref": "#/$defs/node"
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "node": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "type": "array",
+                                                                                       "items": {
+                                                                                        "$ref": "#/$defs/node"
+                                                                                       }
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "source": "tt",
+  "expect": {
+   "type": "{a: Node, b: Node}",
+   "sites": []
+  }
+ },
+ {
+  "name": "the depth of a schema: a recursive target met again from where it was mapped keeps its depth (past 64)",
+  "schemas": {
+   "tt": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/node"
+      },
+      "b": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "$ref": "#/$defs/node"
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "node": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "type": "array",
+                                                                                       "items": {
+                                                                                        "$ref": "#/$defs/node"
+                                                                                       }
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
  }
 ]

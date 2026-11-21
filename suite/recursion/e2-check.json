@@ -2882,5 +2882,24 @@
   "expect": {
    "type": "any"
   }
+ },
+ {
+  "name": "a record with no tag against a recursive tagged union names the missing tag",
+  "source": "type Rt0 = {k: \"num\", v: float} | {k: \"add\", l: Rt0, r: Rt0}; const v: Rt0 = {}; 0",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      78,
+      1,
+      80
+     ],
+     "message": "required field \"k\" has no entry"
+    }
+   ]
+  }
  }
 ]

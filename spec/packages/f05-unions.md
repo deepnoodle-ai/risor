@@ -566,7 +566,7 @@ gives, the contributors of a key).
 
 | e | It fits when | Place of a failure |
 | --- | --- | --- |
-| A `Map` with no computed key, where T's map alternative is a union U | Let t be U's tag. Some entry of e surely gives t, and the Join of the types the contributors of t give for it is a literal set within the tag set of one variant V. e then fits V by Core's table "A map literal against a record" | e, once, when no entry surely gives t. Each contributor of t, when that Join is not within one tag set: a written entry's value (a shorthand's name), a spread's operand. Otherwise the places Core's table gives for V |
+| A `Map` with no computed key, where T's map alternative is a union U | Let t be U's tag. Some entry of e surely gives t, and the Join of the types the contributors of t give for it is a literal set within the tag set of one variant V. e then fits V by Core's table "A map literal against a record" | e, once, when no entry surely gives t, with the template `missing` of `result-mismatch` (or of `arg-mismatch`) and t as its key (R319). Each contributor of t, when that Join is not within one tag set: a written entry's value (a shorthand's name), a spread's operand. Otherwise the places Core's table gives for V |
 
 1. As in Core, the row is tried only when the type of e does not fit T. A `Map`
    with a computed key is not followed.
