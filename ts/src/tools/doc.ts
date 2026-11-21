@@ -205,11 +205,15 @@ interface Cmd {
  * What a part adds to the line it starts on, in a mode: the width it adds
  * before the line ends or the part ends, and whether the line ends in it. The
  * line ends at a break that is taken, at a line end in a text, and after the
- * opening line of a text block.
+ * opening line of a text block. *checks* is whether the walk of item 7 of f12
+ * 2.5 meets a part on the way that compares the width left with 0: a text, a
+ * space, a flat line or a text block. A break that is taken does not, so a
+ * line that is already too long fits when a break comes before any text.
  */
 interface Reach {
   w: number;
   ends: boolean;
+  checks: boolean;
 }
 
 /** The reaches that one layout has found, for each mode. */
@@ -218,16 +222,16 @@ interface Reaches {
   broken: Map<object, Reach>;
 }
 
-const NOTHING: Reach = { w: 0, ends: false };
-const ONE: Reach = { w: 1, ends: false };
-const ENDS: Reach = { w: 0, ends: true };
+const NOTHING: Reach = { w: 0, ends: false, checks: false };
+const ONE: Reach = { w: 1, ends: false, checks: true };
+const ENDS: Reach = { w: 0, ends: true, checks: false };
 
 /** A list whose reach took more parts than this to find is kept; a smaller one is found again. */
 const KEPT_FROM = 16;
 
 function reachOfText(x: string): Reach {
   const nl = x.indexOf("\n");
-  return nl >= 0 ? { w: width(x.slice(0, nl)), ends: true } : { w: width(x), ends: false };
+  return nl >= 0 ? { w: width(x.slice(0, nl)), ends: true, checks: true } : { w: width(x), ends: false, checks: true };
 }
 
 /**
@@ -242,6 +246,7 @@ function reach(root: Doc, rootMode: Mode, known: Reaches): Reach {
     mode: Mode;
     i: number;
     w: number;
+    checks: boolean;
     /** The count of parts when the frame was opened. */
     from: number;
   }
@@ -285,7 +290,7 @@ function reach(root: Doc, rootMode: Mode, known: Reaches): Reach {
             leaf = ENDS;
             break;
           case "tb":
-            leaf = { w: width(d.open), ends: true };
+            leaf = { w: width(d.open), ends: true, checks: true };
             break;
           case "indent":
             inner = d.d;
@@ -306,7 +311,7 @@ function reach(root: Doc, rootMode: Mode, known: Reaches): Reach {
         res = leaf;
         break;
       }
-      frames.push({ d, mode, i: 0, w: 0, from: parts });
+      frames.push({ d, mode, i: 0, w: 0, checks: false, from: parts });
       d = inner;
       mode = innerMode;
     }
@@ -316,13 +321,14 @@ function reach(root: Doc, rootMode: Mode, known: Reaches): Reach {
       if (f === undefined) return res;
       if (Array.isArray(f.d)) {
         f.w += res.w;
+        if (res.checks) f.checks = true;
         f.i++;
         if (!res.ends && f.i < f.d.length) {
           d = f.d[f.i];
           mode = f.mode;
           break;
         }
-        res = { w: f.w, ends: res.ends };
+        res = { w: f.w, ends: res.ends, checks: f.checks };
         if (parts - f.from > KEPT_FROM) known[f.mode].set(f.d, res);
       } else known[f.mode].set(f.d, res);
       frames.pop();
@@ -409,7 +415,8 @@ export function layout(doc: Doc, lineWidth = 80): string {
     let si = stack.length - 1;
     for (;;) {
       r -= x.w;
-      if (r < 0) return false;
+      // Only a width that a part adds is checked; r falls only there, so the last check decides.
+      if (x.checks && r < 0) return false;
       if (x.ends || si < 0) return true;
       const c = stack[si--];
       x = reach(c.d, c.mode, known);

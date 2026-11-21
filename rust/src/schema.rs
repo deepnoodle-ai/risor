@@ -13,7 +13,7 @@
 //! in one table for the schema, when it ends.
 
 use crate::check::ty::{
-    beside_its_kind, fits, has_refs_deep, join, join_all, union_of_alts, Field, Rec, Ref, Table, Ty,
+    add_alts, beside_its_kind, fits_looking, join, join_all, Field, Kinds, Rec, Ref, Table, Ty,
 };
 use crate::json::Json;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -245,33 +245,43 @@ impl<'a> Mapper<'a> {
             .iter()
             .map(|d| closer.ty(&d.clone().unwrap_or_default()))
             .collect();
+        // The replacement joins nothing (R304): a reference whose
+        // definition shares a kind other than null with another alternative
+        // at the top is `bad-type`, as a reference beside a type of its kind
+        // is. A reference is replaced once its definition holds no
+        // reference of the table at its top.
+        let own_top = |t: &Ty| -> Vec<Ref> {
+            t.refs
+                .iter()
+                .filter(|r| r.table_id() == id)
+                .cloned()
+                .collect()
+        };
         for _ in 0..=defs.len() {
             let mut changed = false;
             for i in 0..defs.len() {
-                let own: Vec<Ref> = defs[i]
-                    .refs
-                    .iter()
-                    .filter(|r| r.table_id() == id)
-                    .cloned()
+                let ready: Vec<Ref> = own_top(&defs[i])
+                    .into_iter()
+                    .filter(|r| own_top(&defs[r.index() as usize]).is_empty())
                     .collect();
-                if own.is_empty() {
+                if ready.is_empty() {
                     continue;
                 }
                 changed = true;
-                let mut alts = vec![defs[i].clone()];
-                for r in &own {
-                    alts[0].refs.remove(r);
-                    alts.push(defs[r.index() as usize].clone());
-                }
-                defs[i] = match union_of_alts(&alts) {
-                    Some(t) => t,
-                    None => {
+                let mut t = defs[i].clone();
+                for r in &ready {
+                    t.refs.remove(r);
+                    let d = &defs[r.index() as usize];
+                    if Kinds::of(&t).shares(&Kinds::of(d), false) {
                         return Err(format!(
-                            "the recursive type {}: two records with no tag",
-                            self.names[i]
-                        ))
+                            "the recursive type {}: {} shares a kind with another type of its union",
+                            self.names[i],
+                            r.name()
+                        ));
                     }
-                };
+                    add_alts(&mut t, d);
+                }
+                defs[i] = t;
             }
             if !changed {
                 break;
@@ -511,8 +521,9 @@ impl<'a> Mapper<'a> {
         Ok((out, depth))
     }
 
-    /// The names of `type` (3.3), each once.
-    fn type_names(&self, t: &Json) -> R<BTreeSet<String>> {
+    /// The names of `type` (3.3), each once, in the order written (F17 12.4
+    /// item 3, R303).
+    fn type_names(&self, t: &Json) -> R<Vec<String>> {
         const NAMES: [&str; 7] = [
             "null", "boolean", "integer", "number", "string", "array", "object",
         ];
@@ -521,11 +532,13 @@ impl<'a> Mapper<'a> {
             Json::Arr(a) if !a.is_empty() => a.iter().collect(),
             _ => return self.err("type is not a name or a non-empty array of names"),
         };
-        let mut out = BTreeSet::new();
+        let mut out: Vec<String> = Vec::new();
         for n in list {
             match n.as_str() {
                 Some(s) if NAMES.contains(&s) => {
-                    out.insert(s.to_string());
+                    if !out.iter().any(|o| o == s) {
+                        out.push(s.to_string());
+                    }
                 }
                 Some(s) => return self.err(format!("{s:?} is not a name of type")),
                 None => return self.err("type holds a value that is not a string"),
@@ -596,6 +609,9 @@ impl<'a> Mapper<'a> {
                     let Json::Obj(ps) = p else {
                         return self.err("patternProperties is not an object of schemas");
                     };
+                    // F17 12.4 item 3: in code point order of the keys.
+                    let mut ps: Vec<&(String, Json)> = ps.iter().collect();
+                    ps.sort_by(|a, b| a.0.cmp(&b.0));
                     for (k, x) in ps {
                         let (t, d) = self.sub(x, level, &["patternProperties", k])?;
                         note(d);
@@ -626,6 +642,10 @@ impl<'a> Mapper<'a> {
             let Json::Obj(ps) = p else {
                 return self.err("properties is not an object of schemas");
             };
+            // F17 12.4 item 3 (R303): the mapping meets the properties in
+            // code point order of their keys, which UTF-8 byte order keeps.
+            let mut ps: Vec<&(String, Json)> = ps.iter().collect();
+            ps.sort_by(|a, b| a.0.cmp(&b.0));
             for (k, x) in ps {
                 let (t, d) = self.sub(x, level, &["properties", k])?;
                 note(d);
@@ -829,6 +849,8 @@ fn try_pick(ts: &[Ty]) -> Option<Ty> {
     if left.len() == 1 {
         return Some(left[0].clone());
     }
+    // F17 12.4 item 4 (R312): step 2 reads the kinds of each type, so it
+    // looks into each reference among them.
     if left.iter().any(|t| t.has_refs()) {
         return None;
     }
@@ -846,14 +868,23 @@ fn try_pick(ts: &[Ty]) -> Option<Ty> {
             return Some(t);
         }
     }
-    if left.iter().any(|t| has_refs_deep(t)) {
-        return None;
-    }
+    // Step 3 looks into a reference only as far as its Fits does: a Fits
+    // that enters a pair holding one would look into it.
     for (i, t) in left.iter().enumerate() {
-        let all = left
-            .iter()
-            .enumerate()
-            .all(|(j, u)| i == j || fits(t, u) == Some(false));
+        let mut all = true;
+        for (j, u) in left.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            match fits_looking(t, u) {
+                Err(()) => return None,
+                Ok(Some(false)) => {}
+                Ok(_) => {
+                    all = false;
+                    break;
+                }
+            }
+        }
         if all {
             return Some((*t).clone());
         }
@@ -1138,7 +1169,7 @@ fn index(t: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::ty::{from_text, print};
+    use crate::check::ty::{fits, from_text, print};
     use crate::json::parse;
     use crate::types::text::parse_type;
 

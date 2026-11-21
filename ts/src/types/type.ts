@@ -695,7 +695,13 @@ export class TypeAcc {
   private str = false;
   private anyType = false;
 
-  add(t: Type): void {
+  /**
+   * Join t into the types gathered so far. `left`: t is the left operand of
+   * the Join, as a branch before the branches already gathered is (f17 12.5
+   * item 4: with references, the order of a Join decides which of two names
+   * of one structure it gives).
+   */
+  add(t: Type, left = false): void {
     if (isAny(t)) {
       this.anyType = true;
       return;
@@ -703,7 +709,7 @@ export class TypeAcc {
     if (this.anyType) return;
     if (t.refs !== undefined || this.other.refs !== undefined) {
       this.flush();
-      const j = join(this.other, t);
+      const j = left ? join(t, this.other) : join(this.other, t);
       if (isAny(j)) this.anyType = true;
       else this.other = j;
       return;
@@ -714,7 +720,7 @@ export class TypeAcc {
     }
     if (t.null || t.bool || t.num || t.list || t.map || (t.opaque && t.opaque.size > 0)) {
       const { str: _, ...rest } = t;
-      const j = join(this.other, rest);
+      const j = left ? join(rest, this.other) : join(this.other, rest);
       if (isAny(j)) this.anyType = true;
       else this.other = j;
     }

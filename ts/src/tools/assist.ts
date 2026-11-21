@@ -20,6 +20,7 @@ import type { TypeNode } from "../types/typetext.ts";
 import type { Alts, Rec, Type } from "../types/type.ts";
 import type { Resolution } from "../eval/static.ts";
 import type { CheckResult } from "../types/check.ts";
+import { printFnType } from "../types/check.ts";
 import { compareText } from "../value/value.ts";
 import { GROUP_LIBRARY } from "../generated/library-groups.ts";
 import { MATH_LIBRARY } from "../generated/library-math.ts";
@@ -637,6 +638,12 @@ class Context {
         if (b.lambda) out.push({ label: b.name, kind: "lambda", detail: null, insert: b.name });
         else {
           const slot = b.node instanceof Object && "kind" in b.node && (b.node as A.Try).kind === "Try" ? this.res.catchSlots.get(b.node as A.Try) : this.res.slots.get(b.node);
+          // f17 13.7 item 2: a function parameter is of kind lambda, its detail the printed function type.
+          const fp = slot === undefined ? undefined : this.res.fnSlots.get(slot);
+          if (fp !== undefined) {
+            out.push({ label: b.name, kind: "lambda", detail: printFnType(fp, this.res), insert: b.name });
+            continue;
+          }
           const t = slot === undefined ? undefined : this.chk.slotTypes[slot];
           out.push({ label: b.name, kind: "name", detail: t === undefined ? null : printType(t), insert: b.name });
         }
@@ -1035,6 +1042,8 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         }
         if (r.k === "slot") out = rec("name", tp(n), null, null, slotSpan.has(r.slot) ? ls(slotSpan.get(r.slot)!) : null);
         else if (r.k === "var") out = rec("variable", tp(n));
+        // f17 13.7 item 3: the name of a function parameter given on, or where a value is needed.
+        else if (r.k === "fn") out = rec("lambda", null, printFnType(r.param, res), null, ls(r.param.pattern.span));
         else if (r.k === "lambda") {
           const d = lambdaDecl(res.lambdas[r.id]);
           out = rec("lambda", null, null, null, d === null ? null : ls(d));
@@ -1054,6 +1063,11 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         if (t !== undefined && t.k === "lambda") {
           const d = lambdaDecl(res.lambdas[t.id]);
           out = { ...rec("lambda", tp(n), null, null, d === null ? null : ls(d)) };
+          break;
+        }
+        // f17 13.7 item 3: a call of a function parameter gives the call's type.
+        if (t !== undefined && t.k === "fn") {
+          out = rec("lambda", tp(n), printFnType(t.param, res), null, ls(t.param.pattern.span));
           break;
         }
         const host = e.functions.get(full);
@@ -1132,6 +1146,12 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
       case "NamePat": {
         if (!same(n.span) || n.name === null) break;
         const slot = res.slots.get(n);
+        // f17 13.7 item 3: a function parameter where it is declared.
+        const fp = slot === undefined ? undefined : res.fnSlots.get(slot);
+        if (fp !== undefined) {
+          out = rec("lambda", null, printFnType(fp, res), null, ls(n.span));
+          break;
+        }
         const t = slot === undefined ? undefined : chk.slotTypes[slot];
         out = rec("name", t === undefined ? null : printType(t), null, null, ls(n.span));
         break;

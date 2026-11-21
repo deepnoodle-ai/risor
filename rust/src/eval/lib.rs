@@ -525,9 +525,9 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn lam(&self, args: &[Arg<'h>], i: usize, span: Range) -> R<'h, crate::syntax::ast::NodeId> {
+    fn lam(&self, args: &[Arg<'h>], i: usize, span: Range) -> R<'h, super::Fun> {
         match args.get(i) {
-            Some(Arg::Lam(l)) => Ok(*l),
+            Some(Arg::Lam(f)) => Ok(*f),
             _ => Err(self.internal(span)),
         }
     }

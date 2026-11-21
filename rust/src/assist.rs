@@ -229,8 +229,10 @@ fn innermost(toks: &[Token]) -> Option<Tok> {
 }
 
 /// The repair (3.3): tokens inserted at the end until the program is
-/// complete.
+/// complete. *post* is the closers of the interpolations the cut left open,
+/// from `lex_before`, and nothing else.
 fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast> {
+    debug_assert!(post.iter().all(|t| matches!(t.tok, Tok::TmplTail(_))));
     let limit = pre.len();
     let mut ins: Vec<Token> = Vec::new();
     let build = |ins: &[Token]| -> Vec<Token> {
@@ -245,13 +247,17 @@ fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast>
         match parse_repair(src, &build(&ins), limit) {
             Ok(a) => return Some(a),
             Err(pos) if pos < limit => return None,
-            // The parser read past the place of the insertions, through a
-            // closer of an interpolation the cut left open (3.2 item 4), and
-            // failed after it. A template ends at its closer whatever its
-            // interpolation holds, so no token inserted before the closer
-            // changes what follows it: the repair fails. Inserting on to the
-            // bound gave the same failure, at the cost of a parse of the
-            // whole text for each token tried.
+            // A failure past the place of the insertions is a failure after a
+            // closer: the tokens after the insertions are only the closers of
+            // the interpolations the cut left open (3.2 item 4) and then the
+            // end, and with no closer the end is at k itself. So the parser
+            // closed the innermost template and failed after it. The repair
+            // inserts no template token, so each closer still closes the
+            // same template, and what follows a template's closer does not
+            // depend on what its interpolation holds: no insertion can mend
+            // the failure, and the repair fails. Inserting on to the bound
+            // gave the same failure, at the cost of a parse of the whole text
+            // for each token tried.
             Err(pos) if pos > k => return None,
             Err(_) => {}
         }
@@ -400,6 +406,52 @@ impl<'a> Tree<'a> {
             .unwrap_or_default()
     }
 
+    /// F17 13.1: the printed function type of a function parameter's
+    /// `Param`: each listed parameter as its word, `: ` and its type, then
+    /// `) => ` and the result, or `unknown`. A type with a static diagnostic
+    /// prints as `never`.
+    fn fn_type_text(&self, p: NodeId) -> Option<String> {
+        let NodeKind::Param { fn_: Some(f), .. } = self.kind(p) else {
+            return None;
+        };
+        let ty = |t: &PType| {
+            let r = self.probe.annots.get(&t.span.start).cloned().flatten();
+            print(&r.unwrap_or_else(Ty::never))
+        };
+        let params: Vec<String> = f
+            .params
+            .iter()
+            .map(|(w, _, t)| format!("{w}: {}", ty(t)))
+            .collect();
+        let result = match &f.result {
+            Some(r) => ty(r),
+            None => "unknown".to_string(),
+        };
+        Some(format!("({}) => {result}", params.join(", ")))
+    }
+
+    /// The span of the name of a function parameter's `Param`.
+    fn param_name_span(&self, p: NodeId) -> Option<Range> {
+        match self.kind(p) {
+            NodeKind::Param { pattern, .. } => Some(self.ast.span(*pattern)),
+            _ => None,
+        }
+    }
+
+    /// The `Param` of a function parameter whose name is the `NamePat`
+    /// `pat`.
+    fn fn_param_of(&self, pat: NodeId) -> Option<NodeId> {
+        let p = self.parent.get(pat.index()).copied().flatten()?;
+        match self.kind(p) {
+            NodeKind::Param {
+                pattern,
+                fn_: Some(_),
+                ..
+            } if *pattern == pat => Some(p),
+            _ => None,
+        }
+    }
+
     fn slot_ty(&self, s: u32, at: bool) -> Ty {
         let slots = match (&self.probe.at, at) {
             (Some(a), true) => a,
@@ -473,6 +525,9 @@ impl<'a> Tree<'a> {
         for w in path.windows(2) {
             let (a, c) = (w[0], w[1]);
             let mut names: Vec<(String, Option<u32>, bool)> = Vec::new();
+            // F17 13.7 item 2: each function parameter, by its place in
+            // `names`, with its printed function type.
+            let mut fn_types: Vec<(usize, String)> = Vec::new();
             match self.kind(a) {
                 NodeKind::Program { consts, .. } | NodeKind::Block { consts, .. } => {
                     for &k in consts {
@@ -510,6 +565,9 @@ impl<'a> Tree<'a> {
                         }
                         if let NodeKind::Param { pattern, .. } = self.kind(p) {
                             for (n, s, _) in self.pattern_names(*pattern) {
+                                if let Some(t) = self.fn_type_text(p) {
+                                    fn_types.push((names.len(), t));
+                                }
                                 names.push((n, s, false));
                             }
                         }
@@ -554,15 +612,30 @@ impl<'a> Tree<'a> {
             }
             let cands = names
                 .into_iter()
-                .map(|(n, s, lambda)| Candidate {
-                    insert: n.clone(),
-                    label: n,
-                    kind: if lambda { "lambda" } else { "name" },
-                    detail: if lambda {
-                        None
-                    } else {
-                        s.map(|s| print(&self.slot_ty(s, true)))
-                    },
+                .enumerate()
+                .map(|(i, (n, s, lambda))| {
+                    // F17 13.7 item 2: a function parameter is a candidate
+                    // of kind `lambda`, its detail its printed function type.
+                    let fn_type = fn_types
+                        .iter()
+                        .find(|(j, _)| *j == i)
+                        .map(|(_, t)| t.clone());
+                    Candidate {
+                        insert: n.clone(),
+                        label: n,
+                        kind: if lambda || fn_type.is_some() {
+                            "lambda"
+                        } else {
+                            "name"
+                        },
+                        detail: if lambda {
+                            None
+                        } else if fn_type.is_some() {
+                            fn_type
+                        } else {
+                            s.map(|s| print(&self.slot_ty(s, true)))
+                        },
+                    }
                 })
                 .collect();
             scopes.push(cands);
@@ -1286,10 +1359,11 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
         }
     };
     let tree = Tree::new(env, &parsed, expected, None);
-    hover_in(&tree, wspan)
+    let word: String = ch[ws..we].iter().collect();
+    hover_in(&tree, wspan, &word)
 }
 
-fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
+fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
     let env = tree.env;
     let d = env.data();
     let rec = |kind: &'static str, ty: Option<String>| RawHover {
@@ -1302,8 +1376,11 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
     };
     // F16 7.3: a type name, or the name of a type line.
     if let Some(r) = tree.probe.type_refs.iter().rev().find(|r| r.span == w) {
-        // F17 12.8 item 2: a recursive type shows its unfolding.
-        let shown = if r.ty.is_one_ref() {
+        // F17 12.8 item 2 (R306): a recursive type shows its unfolding. A
+        // name that is no recursive type, an alias of one among them, shows
+        // its type as printed. A recursive type is its own reference, which
+        // bears its name.
+        let shown = if r.ty.is_one_ref() && r.ty.refs.iter().all(|x| x.name() == word) {
             r.ty.view().into_owned()
         } else {
             r.ty.clone()
@@ -1327,6 +1404,13 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
                     // R245: a lambda argument, or a place that needs a value.
                     Res::LambdaRef(l) | Res::SelfRef(l) | Res::NotValue(l) => Some(RawHover {
                         declaration: lambda_site(tree, *l),
+                        ..rec("lambda", None)
+                    }),
+                    // F17 13.7 item 3: a function parameter's name as a
+                    // lambda argument, or where a value is needed.
+                    Res::FnRef(_, p) => Some(RawHover {
+                        signature: tree.fn_type_text(*p),
+                        declaration: tree.param_name_span(*p),
                         ..rec("lambda", None)
                     }),
                     _ if env.is_namespace(name) => Some(rec("namespace", None)),
@@ -1393,12 +1477,22 @@ fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
             }
             NodeKind::NamePat { .. } | NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
                 for (_, s, sp) in tree.pattern_names(id) {
-                    if sp == w {
+                    if sp != w {
+                        continue;
+                    }
+                    // F17 13.7 item 3: a function parameter where it is
+                    // declared.
+                    if let Some(p) = tree.fn_param_of(id) {
                         return Some(RawHover {
+                            signature: tree.fn_type_text(p),
                             declaration: Some(w),
-                            ..rec("name", s.map(|s| print(&tree.slot_ty(s, false))))
+                            ..rec("lambda", None)
                         });
                     }
+                    return Some(RawHover {
+                        declaration: Some(w),
+                        ..rec("name", s.map(|s| print(&tree.slot_ty(s, false))))
+                    });
                 }
             }
             NodeKind::Try { name: Some(nm), .. } if nm.span == w => {
@@ -1431,6 +1525,12 @@ fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: RawHover) -> Option<RawHover> 
         Res::CallLambda(l) | Res::SelfRef(l) => {
             h.kind = "lambda";
             h.declaration = lambda_site(tree, *l);
+        }
+        // F17 13.7 item 3: the type of the `Call`, and the function type.
+        Res::CallFn(_, p) => {
+            h.kind = "lambda";
+            h.signature = tree.fn_type_text(*p);
+            h.declaration = tree.param_name_span(*p);
         }
         _ => {}
     }

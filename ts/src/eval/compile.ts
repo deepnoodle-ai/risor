@@ -13,7 +13,10 @@
 // the run's slots, which every call reaches with no link. The calls a library
 // entry makes of one lambda never overlap, so they share one frame, made with
 // the lambda's callback. There is one path for every program: with no
-// self-reference, the frames hold what fixed slots would.
+// self-reference, the frames hold what fixed slots would. A function
+// parameter (f17 13.4) holds a BoundLambda, a lambda with the frame its calls
+// link to, so a lambda given to a call reads the names of the call where it
+// was evaluated, whichever call of whichever lambda calls it.
 //
 // Long flat forms (a chain of binary operators, a chain of steps, an `else`
 // chain, `const` lines) are compiled and run by loops, so no host stack is
@@ -875,27 +878,29 @@ class Compiler {
     };
   }
 
+  /** The read of the name of slot `s`: of the program, of the call in progress, or of a call a few links out (f17 11.5). */
+  private slotRead(slot: number): Code {
+    const o = codeOperand(() => null);
+    this.nameOperand(slot, o);
+    const s = o.s;
+    switch (o.k) {
+      case 2:
+        return (r) => r.slots[s];
+      case 4:
+        return (r) => r.frame[s];
+      default: {
+        const h = o.h;
+        if (h === 1) return (r) => (r.frame[0] as unknown[])[s];
+        return (r) => up(r.frame, h)[s];
+      }
+    }
+  }
+
   private ident(e: A.Ident): Code {
     const ref = this.res.refs.get(e);
     if (ref === undefined) throw new Error(`unresolved name ${e.name}`);
     const span = e.span;
-    if (ref.k === "slot") {
-      // f17 11.5: a name of the program, of the call in progress, or of a call a few links out.
-      const o = codeOperand(() => null);
-      this.nameOperand(ref.slot, o);
-      const s = o.s;
-      switch (o.k) {
-        case 2:
-          return (r) => r.slots[s];
-        case 4:
-          return (r) => r.frame[s];
-        default: {
-          const h = o.h;
-          if (h === 1) return (r) => (r.frame[0] as unknown[])[s];
-          return (r) => up(r.frame, h)[s];
-        }
-      }
-    }
+    if (ref.k === "slot") return this.slotRead(ref.slot);
     if (ref.k === "var") {
       const name = ref.name;
       let i = this.varIndex.get(name);
@@ -1452,29 +1457,38 @@ class Compiler {
     throw new Error(`a ${s.kind} is not a read`);
   }
 
-  /** An argument that is a lambda: a Lambda node, or the name of a const-bound lambda. */
-  private lambdaArg(a: A.Arg): { lambda: A.Lambda | null; id: number | null; params: number } | null {
-    if (a.kind === "Lambda") return { lambda: a, id: null, params: a.params.length };
+  /**
+   * An argument that is a lambda: a Lambda node, or the name of a const-bound
+   * lambda; with package F17, the name of a function parameter, `fn` its slot.
+   * `params`: its count of parameters, for a function parameter the listed
+   * count (f17 13.4 item 1).
+   */
+  private lambdaArg(a: A.Arg): { lambda: A.Lambda | null; id: number | null; fn: number | null; params: number } | null {
+    if (a.kind === "Lambda") return { lambda: a, id: null, fn: null, params: a.params.length };
     if (a.kind === "Ident") {
       const ref = this.res.refs.get(a);
-      if (ref !== undefined && ref.k === "lambda") return { lambda: null, id: ref.id, params: this.res.lambdas[ref.id].params.length };
+      if (ref !== undefined && ref.k === "lambda") return { lambda: null, id: ref.id, fn: null, params: this.res.lambdas[ref.id].params.length };
+      if (ref !== undefined && ref.k === "fn") return { lambda: null, id: null, fn: ref.slot, params: ref.param.fn!.params.length };
     }
     return null;
   }
 
   /**
-   * Compile the arguments of a call. A lambda argument becomes a Callback;
-   * one written in place charges its 1 step where it stands. `lambdas`: the
-   * positions of the lambda arguments.
+   * Compile the arguments of a call. A lambda argument becomes a Callback, or
+   * for a call by name (`byName`) the BoundLambda a function parameter takes
+   * (f17 13.4); one written in place charges its 1 step where it stands, and
+   * a name charges nothing. A function parameter's name passes on the lambda
+   * bound to it. `lambdas`: the positions of the lambda arguments.
    */
-  private args(args: A.Arg[], measure: number): { eval: (r: Run) => unknown[]; lambdas: number[] } {
+  private args(args: A.Arg[], measure: number, byName = false): { eval: (r: Run) => unknown[]; lambdas: number[] } {
     const codes = args.map((a) => {
       const la = this.lambdaArg(a);
-      if (la === null) return { kind: "value" as const, op: this.operandOf(a as A.Expr), lc: null, id: null, inPlace: false, params: 0, link: null };
+      if (la === null) return { kind: "value" as const, op: this.operandOf(a as A.Expr), lc: null, id: null, inPlace: false, params: 0, link: null, read: null };
+      if (la.fn !== null) return { kind: "lambda" as const, op: null, lc: null, id: null, inPlace: false, params: la.params, link: null, read: this.slotRead(la.fn) };
       const lc = la.lambda !== null ? this.lambda(la.lambda) : null;
       // f17 11.5 item 2: its calls' frames link to the frame of the call in which it was evaluated.
       const link = this.linkTo(la.lambda ?? this.res.lambdas[la.id!]);
-      return { kind: "lambda" as const, op: null, lc, id: la.id, inPlace: la.lambda !== null, params: la.params, link };
+      return { kind: "lambda" as const, op: null, lc, id: la.id, inPlace: la.lambda !== null, params: la.params, link, read: null };
     });
     const lambdas: number[] = [];
     codes.forEach((c, i) => {
@@ -1513,8 +1527,15 @@ class Compiler {
           out[i] = op.k === 0 ? op.c(r) : ev(r, op);
           continue;
         }
+        if (c.read !== null) {
+          // f17 13.4: a function parameter given on, which charges nothing where it stands.
+          const b = c.read(r) as BoundLambda;
+          out[i] = byName ? b : new LambdaCallback(r, b.lc, c.params, measure, b.link);
+          continue;
+        }
         if (c.inPlace) r.charge(1);
-        out[i] = new LambdaCallback(r, c.lc ?? codesOf.get(named[c.id!])!, c.params, measure, c.link!(r));
+        const lc = c.lc ?? codesOf.get(named[c.id!])!;
+        out[i] = byName ? new BoundLambda(lc, c.link!(r)) : new LambdaCallback(r, lc, c.params, measure, c.link!(r));
       }
       return out;
     };
@@ -1563,7 +1584,8 @@ class Compiler {
     const target: Target = this.res.targets.get(node) ?? { k: "unknown" };
     const span = node.span;
     const measure = this.measure(node.level);
-    const { eval: args, lambdas } = this.args(node.args, measure);
+    // f17 13.4: a lambda argument of a call by name is a lambda bound to a function parameter.
+    const { eval: args, lambdas } = this.args(node.args, measure, target.k === "lambda" || target.k === "fn");
     switch (target.k) {
       case "lambda": {
         const node = this.res.lambdas[target.id];
@@ -1597,6 +1619,35 @@ class Compiler {
           }
         };
       }
+      case "fn": {
+        // f17 13.4: a call of a function parameter is a call by name of its bound lambda (02 11.2): the
+        // arguments, 1 step, the depth test, then the bound lambda's parameters (an extra argument dropped,
+        // a missing or null one taking the default) and its body, in a frame linked to the frame of the
+        // call in which the lambda was evaluated. Its trace entry is named by the parameter.
+        const read = this.slotRead(target.slot);
+        const name = target.param.pattern.kind === "NamePat" ? (target.param.pattern.name ?? "") : "";
+        return (r) => {
+          const vals = args(r);
+          r.charge(1);
+          const b = read(r) as BoundLambda;
+          r.depth += measure;
+          try {
+            r.testDepth(r.depth);
+            const caller = r.frame;
+            const lc = b.lc;
+            r.frame = newFrame(lc.size, b.link);
+            const ps = lc.params;
+            for (let i = 0; i < ps.length; i++) bindParam(r, ps[i], i < vals.length ? vals[i] : null);
+            const out = lc.body(r);
+            r.frame = caller;
+            r.depth -= measure;
+            return out;
+          } catch (x) {
+            if (x instanceof RunFailure) x.trace.unshift({ span, name, index: null });
+            throw x;
+          }
+        };
+      }
       case "library": {
         const entry = libraryFunction(target.name)!;
         if (entry.impl === null) this.missing.add(target.name);
@@ -1616,6 +1667,23 @@ class Compiler {
       case "unknown":
         throw new Error("a call with no callee is never compiled");
     }
+  }
+}
+
+/**
+ * Package F17, step E3: the lambda bound to a function parameter (f17 13.1,
+ * 13.4), held in the parameter's slot: its code, and the frame of the call in
+ * which it was evaluated, which the frame of each call of it links to. It is
+ * never a value: the static rules let a function parameter's name only be
+ * called or given on (f17 13.2).
+ */
+class BoundLambda {
+  readonly lc: LambdaCode;
+  readonly link: unknown;
+
+  constructor(lc: LambdaCode, link: unknown) {
+    this.lc = lc;
+    this.link = link;
   }
 }
 

@@ -51,8 +51,9 @@ func init() {
 	// of a code no other file has (f16-entry-points.md 9).
 	addTemplates(sourceQueriesJSON, false)
 	addTemplates(sourceEntryPointsJSON, true)
-	// Package F17's file adds the code circular-type and the template pairs
-	// of check-limit (f17-recursion.md 12.7).
+	// Package F17's file adds the entry of the code circular-type, the
+	// template pairs of check-limit, and the five templates of step E3
+	// (f17-recursion.md 9, 13.5).
 	addTemplates(sourceRecursionJSON, true)
 }
 

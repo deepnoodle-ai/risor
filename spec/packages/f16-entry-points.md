@@ -6,8 +6,8 @@ D1 of its plan (`experiments/v3/design/17-entry-points.md`, and
 annotations on `const` lines, on the parameters of a lambda and on its
 result, and the syntax of a function type on a parameter. It adds fields to
 the nodes `Program`, `Const`, `Lambda` and `Param`, one check code,
-`name-clash`, one template of `arg-mismatch`, the catalog file
-`suite/messages-entry-points.json`, the hover kind `type` of F12, and the
+`name-clash`, the catalog file `suite/messages-entry-points.json`, the hover
+kind `type` of F12, and the
 directory `suite/entry-points/`. It adds no node kind, no value, no type, no
 run code, no `parse` code, no reserved word and no case field.
 
@@ -257,10 +257,13 @@ These rules apply in every compile, with or without the type rules, in phase
    (`spec/packages/f17-recursion.md` 12.3).
 8. A type name and a value name are in two scopes, and never clash:
    `type Order = {id: string}; const Order = 1; Order` reads the value.
-9. **An `Fn` parameter keeps Core's static rules** until step E3 of F17: it is
-   a value binding (`05-types.md` 22.7). A call of it is `call-of-parameter`, a
-   lambda given at it in a call of its lambda is `lambda-to-lambda`, and the
-   name given as a lambda argument is a value.
+9. **An `Fn` parameter keeps Core's static rules** with this slice alone: it
+   is a value binding (`05-types.md` 22.7). A call of it is
+   `call-of-parameter`, a lambda given at it in a call of its lambda is
+   `lambda-to-lambda`, and the name given as a lambda argument is a value.
+   Package F17, which follows this slice in the order (1.4), makes it a
+   function binding that may be called and given on
+   (`spec/packages/f17-recursion.md` 13.2).
 10. **The reference of a lambda to its own name** is Core's rule
     `recursion-needs-types` (section 5). With this package alone every
     reference is that error, whether or not the lambda's parameters and
@@ -270,6 +273,9 @@ These rules apply in every compile, with or without the type rules, in phase
 11. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
     `suite/entry-points/` the static codes are Core's twelve, `untagged-union`
     and `check-limit` at a program type (F4 6.1 item 4), and `name-clash`.
+    F17's static `arg-mismatch` is a static code in its own directory
+    (`spec/packages/f17-recursion.md` 8 item 5), not here: only
+    `d1-check.json`, which runs checked, expects `arg-mismatch`.
 
 ### 3.2 A compile without the type rules
 
@@ -277,10 +283,10 @@ These rules apply in every compile, with or without the type rules, in phase
    ignores every claim: it binds what the value is, and runs no test. So
    `const x: int = "a"; x` gives `"a"`.
 2. An `Fn` annotation is read by every compile (`15-build-rulings.md` R208).
-   In this slice it changes no rule: its parameter keeps Core's static rules
-   (3.1 item 9). So `const g = (f: (x: int) => int) => f; g(1)` gives 1 in a
-   run without the type rules; the checker reports `arg-mismatch` at the `1`
-   (3.3).
+   In this slice alone it changes no rule: its parameter keeps Core's static
+   rules (3.1 item 9). Package F17 gives it its own (3.1 item 9), so with F17
+   `const g = (f: (x: int) => int) => f; g(1)` is `not-a-value` on the body
+   and `arg-mismatch` on the `1`, both static.
 
 ### 3.3 The fit of an annotation
 
@@ -296,9 +302,10 @@ of failure, and the message prints the type found: `expected int, found any`.
 | A default, `(x: T = d)` | d | T | The same | The same |
 | A result annotation, `(...): R => b` | b | R | The same | The same |
 | An argument of a call by name at `(x: T)` | The argument | T; with a default, `T \| null` | `arg-mismatch`: `argument`, `missing`, `extra`; or `maybe-null` when it fits but for null | The same |
-| A plain argument of a call by name at `(f: (...) => R)` | | | `arg-mismatch`, template `function`: `param` the parameter's name, `name` the lambda's | The argument |
+| A plain argument of a call by name at `(f: (...) => R)` | | | `arg-mismatch`, template `function`: `param` the parameter's name, `name` the lambda's. With F17 a static rule, and the template may be `parameter-at-fn` (`spec/packages/f17-recursion.md` 13.2 rule 3) | The argument |
 | A value the library passes to `(x: T)` (3.4) | Q | T | `arg-mismatch`, template `argument` | The annotation |
-| A value the library passes to `(f: (...) => R)` | Q | | `arg-mismatch`, template `fn-value`: `name` the function, `found` Q | The function type |
+| A value the library passes to `(f: (...) => R)` | | | None: with F17 a lambda that has an `Fn` parameter is never passed (`spec/packages/f17-recursion.md` 13.2 rule 8) | |
+| With F17: a lambda or a function parameter given at `(f: (...) => R)`, and a call of `f` | | | `spec/packages/f17-recursion.md` 13.3. Every fit there is this section's | |
 
 1. After the fit, the name of an annotated `const` line is bound to T, by
    `05-types.md` 12: `const x: int | null = 1;` gives `x` the type
@@ -316,7 +323,7 @@ of failure, and the message prints the type found: `expected int, found any`.
 
 | Lambda | Rule |
 | --- | --- |
-| **Checked once**: a `const`-bound lambda with at least one annotation, and every parameter annotated | Checked once, where it is written, under the facts there. Each parameter is bound to its annotation; a parameter with a function type, or with an annotation that has a static diagnostic, is bound to `never`. Each default and the body's fit to the result annotation are 3.3's. Its sites are kept, also when it has no use. The check counts as one check against `05-types.md` 20.3, and its nesting where it is written against 20.2; a `check-limit` of either is on the lambda, the whole of it (2.3). Its **result type** is its result annotation, or the body's type |
+| **Checked once**: a `const`-bound lambda with at least one annotation, and every parameter annotated | Checked once, where it is written, under the facts there. Each parameter is bound to its annotation; a parameter with an annotation that has a static diagnostic is bound to `never`, and a parameter with a function type to that type, which F17 lets the body call (`spec/packages/f17-recursion.md` 13.3). Each default and the body's fit to the result annotation are 3.3's. Its sites are kept, also when it has no use. The check counts as one check against `05-types.md` 20.3, and its nesting where it is written against 20.2; a `check-limit` of either is on the lambda, the whole of it (2.3). Its **result type** is its result annotation, or the body's type |
 | A use of a lambda checked once | Its body is not checked again, and the use counts against no limit. A call by name: `arity` (static); each plain argument synthesized and fitted to its parameter by 3.3; a lambda argument is `lambda-to-lambda` (static). The call's type is the result type. As a lambda argument of a library function or method (13.5), or of a method on `any` (13.3): each value passed is fitted to its parameter by 3.3, and the result type stands for the body's type |
 | **Partly annotated**: a parameter has no annotation | Checked at each use, by `05-types.md` 13.9. An annotated parameter is bound to its annotation, and the argument at it is fitted by 3.3; the others are bound as 13.9 says. A result annotation is fitted at each use, and the call's type is the annotation, or the body's type |
 | No use, and not checked once | The row "No use" of 13.9: an annotated parameter is bound to its annotation, any other to `any`. Its defaults and its result annotation are fitted by Fits (`05-types.md` 4.2): a fit that uses `any` holds there, as the sites of that check are dropped |
@@ -518,7 +525,13 @@ a code no other file has is added whole.
 | Code | Phase | Template | Text | Params |
 | --- | --- | --- | --- | --- |
 | `name-clash` | `check` | `default` | `{name} is a type of the environment, and a type line cannot declare it again` | `name`: word |
-| `arg-mismatch` | `check` | `fn-value` | `{name} passes {found} to a parameter that takes a function` | `name`: word, `found`: type |
+
+The file had a second entry, the template `fn-value` of `arg-mismatch`, for a
+value that the library passes to an `Fn` parameter of a lambda argument. With
+F17 no lambda that has an `Fn` parameter is passed, so no build that offers
+F17 chooses it, and no build offers this slice without F17 (1.4). It retired
+with step E3 of F17 (`spec/packages/f17-recursion.md` 13.5;
+`15-build-rulings.md` R288).
 
 1. `recursion-needs-types` is a code of Core (section 5). Its entry is in
    `suite/messages-check.json` (F8 3.1), with the template `default`. Its text

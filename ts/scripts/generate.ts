@@ -8,7 +8,7 @@
 //   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
 //   suite/messages-parse.json and messages-check.json join it too (package F8, f08 3.1)
 //   suite/messages-entry-points.json joins it as F7's file does, and adds a code (package F16, f16 9.1)
-//   suite/messages-recursion.json joins it the same way (package F17, f17 9)
+//   suite/messages-recursion.json joins it the same way, and adds templates to codes the catalog has (package F17, f17 9, 13.5)
 // Run with `npm run generate`. A test fails when the generated files are stale.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -40,7 +40,8 @@ export function generated(): Record<string, string> {
     Object.assign(c.templates, e.templates as object);
   }
   // f16 9.1: an entry of a code another file has adds templates to it, as F7's do; a new code is added whole.
-  // f17 9: F17's catalog file joins it the same way.
+  // f17 9, 13.5: F17's catalog file joins it the same way: an entry of a code another file has keeps its phase,
+  // adds params of kinds that code has already, and new template names (f08 3.1 item 8).
   for (const f of ["messages-entry-points.json", "messages-recursion.json"]) {
     for (const e of JSON.parse(readFileSync(join(suite, f), "utf8")) as Record<string, unknown>[]) {
       const c = catalog.find((x) => x.code === e.code);
@@ -48,6 +49,8 @@ export function generated(): Record<string, string> {
         catalog.push({ code: e.code, phase: e.phase, caught: null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string> });
         continue;
       }
+      if (c.phase !== e.phase) throw new Error(`${f}: ${String(e.code)} is of phase ${String(c.phase)}`);
+      for (const [k, kind] of Object.entries(e.params as Record<string, string>)) if (k in c.params && c.params[k] !== kind) throw new Error(`${f}: ${String(e.code)} has the param ${k} of another kind`);
       for (const t of Object.keys(e.templates as object)) if (t in c.templates) throw new Error(`${f}: ${String(e.code)} has the template ${t} already`);
       Object.assign(c.params, e.params as object);
       Object.assign(c.templates, e.templates as object);

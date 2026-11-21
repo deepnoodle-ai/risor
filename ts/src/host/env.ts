@@ -473,17 +473,25 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
         throw e;
       }
     };
+    // A name is name-clash once, however many types bear it (item 2, R305).
+    const clashed = new Set<string>();
     for (const r of reached) {
       if (r.def === undefined) continue;
       const known = env.recursive.get(r.name);
       if (known === undefined) env.recursive.set(r.name, r);
-      else if (!same(known, r)) errs.push(diag("name-clash", `two recursive types are named ${r.name}`));
+      else if (!clashed.has(r.name) && !same(known, r)) {
+        clashed.add(r.name);
+        errs.push(diag("name-clash", `two recursive types are named ${r.name}`));
+      }
     }
     for (const [name, r] of env.recursive) {
       const t = env.named.get(name);
-      if (t === undefined) continue;
+      if (t === undefined || clashed.has(name)) continue;
       const s = soleRef(t);
-      if (s === null || s.name !== name || !same(s, r)) errs.push(diag("name-clash", `the recursive type ${name} has the name of a named type`));
+      if (s === null || s.name !== name || !same(s, r)) {
+        clashed.add(name);
+        errs.push(diag("name-clash", `the recursive type ${name} has the name of a named type`));
+      }
     }
   }
 

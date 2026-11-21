@@ -13,13 +13,13 @@ import { compareText } from "../value/value.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Span } from "../syntax/source.ts";
 import type { Resolution } from "../eval/static.ts";
-import { typedLambda } from "../eval/static.ts";
+import { higherOrder, typedLambda } from "../eval/static.ts";
 import type { SigNode, TypeNode } from "./typetext.ts";
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
   truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType, unite, hitVariants, allVariants, variantsType, tagSetOf,
-  unfold, PairLimit,
+  unfold, PairLimit, refType,
 } from "./type.ts";
 import type { Alts, Field, Fit, Rec, Type, Union } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
@@ -206,10 +206,48 @@ function spanOf(a: Span, b: Span): Span {
 }
 
 /**
- * A lambda argument: a Lambda node, or the name of a const-bound lambda.
- * `self`: the name is a reference of the lambda to its own name (05 22.5).
+ * A lambda argument: a Lambda node, or the name of a const-bound lambda; with
+ * package F17, step E3, also the name of a function parameter, `fn` its
+ * function type (f17 13.1). `self`: the name is a reference of the lambda to
+ * its own name (05 22.5). `higher`: a higher-order lambda, which f17 13.2
+ * rule 8 reports, and which is not checked (13.3).
  */
-type LambdaArg = { lambda: A.Lambda; id: number | null; span: Span; self: boolean };
+type LambdaArg =
+  | { lambda: A.Lambda; id: number | null; span: Span; self: boolean; higher: boolean; fn: null }
+  | { lambda: null; id: null; span: Span; self: false; higher: false; fn: FnSig };
+
+/**
+ * Package F17, step E3: a function type as the checker reads it (f17 13.1,
+ * 13.3). A listed type or a result with a static diagnostic is null: it is
+ * fitted by nothing, and what it would bind is `never` (f16 3.3 item 2).
+ */
+export interface FnSig {
+  param: A.Param;
+  words: string[];
+  params: (Type | null)[];
+  /** The span of each listed type. */
+  spans: Span[];
+  result: Type | "unknown" | null;
+}
+
+/** The function type of a function parameter (f17 13.1). */
+export function fnSigOf(p: A.Param, res: Resolution): FnSig {
+  const fn = p.fn!;
+  return {
+    param: p,
+    words: fn.params.map((q) => q.word),
+    params: fn.params.map((q) => res.annTypes.get(q.type) ?? null),
+    spans: fn.params.map((q) => q.type.span),
+    result: fn.result === null ? "unknown" : (res.annTypes.get(fn.result) ?? null),
+  };
+}
+
+/** The printed function type of a function parameter (f17 13.1): a type with a static diagnostic prints as `never`. */
+export function printFnType(p: A.Param, res: Resolution): string {
+  const s = fnSigOf(p, res);
+  const t = (x: Type | null) => printType(x ?? NEVER);
+  return `(${s.words.map((w, i) => `${w}: ${t(s.params[i])}`).join(", ")}) => ${s.result === "unknown" ? "unknown" : t(s.result)}`;
+}
 
 /**
  * How a lambda's body is checked (13.9, f16 3.4): with the values a library
@@ -361,7 +399,7 @@ class Checker {
     }
     if (x.kind !== "Ident") return null;
     const r = this.res.refs.get(x);
-    if (r === undefined || r.k === "lambda") return null;
+    if (r === undefined || r.k === "lambda" || r.k === "fn") return null;
     const root = r.k === "slot" ? `s${r.slot}` : `v${r.name}`;
     steps = steps.reverse();
     return [root, ...steps].join(SEP);
@@ -809,7 +847,8 @@ class Checker {
 
   private ident(e: A.Ident, f: Facts): Type {
     const r = this.res.refs.get(e);
-    if (r === undefined || r.k === "lambda") return NEVER;
+    // A function is never read as a value (f17 13.2 rule 4): that read is a static diagnostic.
+    if (r === undefined || r.k === "lambda" || r.k === "fn") return NEVER;
     let t = r.k === "slot" ? (this.slotTypes[r.slot] ?? NEVER) : (this.env.variables.get(r.name) ?? NEVER);
     const key = r.k === "slot" ? `s${r.slot}` : `v${r.name}`;
     if (f.has(key)) t = nonnull(t);
@@ -826,7 +865,7 @@ class Checker {
   private nullFact(e: A.Expr): string | null {
     if (e.kind !== "Ident" || this.memberFacts.size === 0) return null;
     const r = this.res.refs.get(e);
-    if (r === undefined || r.k === "slot" || r.k === "lambda" || !this.memberFacts.has(r.name)) return null;
+    if (r === undefined || r.k !== "var" || !this.memberFacts.has(r.name)) return null;
     return NULL_FACT + "v" + r.name;
   }
 
@@ -1155,7 +1194,8 @@ class Checker {
     let acc = new TypeAcc();
     acc.add(this.synth(c, facts));
     for (let k = conds.length - 1; k >= 0; k--) {
-      acc.add(thens[k]);
+      // `c ? a : b` is Join(A, B) (11.1): the branch is the left operand.
+      acc.add(thens[k], true);
       if (acc.size() > SIZE_LIMIT) {
         this.say("check-limit", conds[k].span, "size");
         acc = new TypeAcc();
@@ -1553,12 +1593,28 @@ class Checker {
   // ---- calls (13) -------------------------------------------------------------------
 
   private lambdaArg(a: A.Arg): LambdaArg | null {
-    if (a.kind === "Lambda") return { lambda: a, id: null, span: a.span, self: false };
+    if (a.kind === "Lambda") return { lambda: a, id: null, span: a.span, self: false, higher: higherOrder(a), fn: null };
     if (a.kind === "Ident") {
       const r = this.res.refs.get(a);
-      if (r !== undefined && r.k === "lambda") return { lambda: this.res.lambdas[r.id], id: r.id, span: a.span, self: this.res.recursive.has(a) };
+      if (r !== undefined && r.k === "lambda") {
+        const l = this.res.lambdas[r.id];
+        return { lambda: l, id: r.id, span: a.span, self: this.res.recursive.has(a), higher: higherOrder(l), fn: null };
+      }
+      // f17 13.1: a function parameter's name as an argument is a lambda argument.
+      if (r !== undefined && r.k === "fn") return { lambda: null, id: null, span: a.span, self: false, higher: false, fn: this.fnSig(r.param) };
     }
     return null;
+  }
+
+  private readonly fnSigs = new Map<A.Param, FnSig>();
+
+  private fnSig(p: A.Param): FnSig {
+    let s = this.fnSigs.get(p);
+    if (s === undefined) {
+      s = fnSigOf(p, this.res);
+      this.fnSigs.set(p, s);
+    }
+    return s;
   }
 
   /** Synth every plain argument; lambda arguments are not checked. */
@@ -1581,6 +1637,7 @@ class Checker {
       }
       return this.lambdaCall(node, target.id, f);
     }
+    if (target.k === "fn") return this.fnCall(node, this.fnSig(target.param), f);
     const sig = target.k === "library" ? this.env.library.get(target.name) : this.env.functions.get(target.name);
     if (sig === undefined) {
       this.plainArgs(args, f);
@@ -1599,7 +1656,8 @@ class Checker {
       for (const a of s.args) {
         const la = this.lambdaArg(a);
         if (la === null) this.synth(a as A.Expr, f);
-        else if (!la.self) this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level, s.name);
+        else if (la.fn !== null) this.fnPassed(la.fn, la.fn.params.map(() => ANY));
+        else if (!la.self && !la.higher) this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level, s.name);
       }
       if (rejected) return NEVER;
       // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3).
@@ -1670,6 +1728,8 @@ class Checker {
       const p = paramAt(i);
       if (la !== null) {
         argTypes.push(null);
+        // f17 13.2 rule 8 reports a higher-order lambda alone, and 13.3 does not check it.
+        if (la.higher) return;
         if (p.type.t === "fn") lambdas.push({ i, la });
         else if (isMethod) this.say("not-a-value", la.span, "argument", { param: p.name, name: callName });
         return;
@@ -1677,7 +1737,7 @@ class Checker {
       const t = this.synth(a as A.Expr, f);
       argTypes.push(t);
       if (p.type.t === "fn") {
-        this.say("arg-mismatch", a.span, "function", { param: p.name, name: callName });
+        this.valueAtFn(a, p.name, callName);
         return;
       }
       this.bind(paramType(i)!, t, gain);
@@ -1689,29 +1749,37 @@ class Checker {
     for (const { i, la } of lambdas) {
       // 13.9: nothing is checked at a lambda's own name given in its body.
       if (la.self) continue;
-      if (this.drop === 0) this.callbacks.push({ body: sp(la.lambda.body.span), call: sp(span) });
+      // f17 13.3: a function parameter given to the library is checked by step 3 with its function type in
+      // place of the lambda: its listed count, the fit of each Q to its listed type, its result as B. Its
+      // diagnostics and its result's site are on the argument, as it has no body.
+      const declared = la.fn !== null ? la.fn.params.length : la.lambda.params.length;
+      const bodySpan = la.fn !== null ? la.span : la.lambda.body.span;
+      if (this.drop === 0) this.callbacks.push({ body: sp(bodySpan), call: sp(span) });
       const fn = paramAt(i).type as Extract<SigNode["params"][number]["type"], { t: "fn" }>;
-      if (la.lambda.params.length > fn.params.length) {
+      if (declared > fn.params.length) {
         if (isMethod) this.say("arity", la.span, "parameters", { name: callName, most: fn.params.length });
         continue;
       }
       const qs = fn.params.map((q) => q.type);
-      if (qs.slice(0, la.lambda.params.length).some((q) => varsOf(q).some((v) => !sol.has(v)))) {
+      if (qs.slice(0, declared).some((q) => varsOf(q).some((v) => !sol.has(v)))) {
         this.say("cannot-infer", la.span, "default", { name: callName });
         continue;
       }
       const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => sol.get(v) ?? NEVER });
       const r = fn.result;
       const level = node.level;
+      const use = (again: boolean) => (la.fn !== null ? this.fnPassed(la.fn, qs.map(inst)) : this.lambdaUse(la, qs.map(inst), f, level, again, callName));
       if (r === "unknown") {
-        const b = this.lambdaUse(la, qs.map(inst), f, level, false, callName);
+        const b = use(false);
+        // f17 13.3: with R `unknown` nothing more is done for a function parameter; it narrows nothing.
+        if (la.fn !== null) continue;
         if (b !== null) this.tested(b.type, la.lambda.body.span);
         if (b !== null && sig.narrows && i === 0) this.narrowed = { la, elem: qs.length > 0 ? inst(qs[0]) : NEVER };
         continue;
       }
       const before = new Map(sol);
       const m = this.mark();
-      let b = this.lambdaUse(la, qs.map(inst), f, level, false, callName);
+      let b = use(false);
       if (b === null) continue;
       // 3a. The seed rule of 13.5, also on a fit that used any. With F17 (f17
       // 5.6 item 2) it reads with R in place of the Var: it fires when B does
@@ -1729,17 +1797,18 @@ class Checker {
         });
         sol.set(seed, got.t === null ? before.get(seed)! : join(before.get(seed)!, got.t));
         if (typeSize(sol.get(seed)!) > SIZE_LIMIT) return this.sizeFail(span);
-        b = this.lambdaUse(la, qs.map(inst), f, level, true, callName);
+        b = use(true);
         if (b === null) continue;
         // No bind on the second check (13.5).
       } else {
         this.bind(r, b.type, gain);
         if (over) return this.sizeFail(span);
       }
-      // The body always fits R, every Var by its solution (13.5).
+      // The body always fits R, every Var by its solution (13.5); a fit that uses any holds, with a
+      // dynamic site, for a function parameter too (f17 13.3).
       const want = inst(r);
-      if (fits(b.type, want) === 0) this.say("arg-mismatch", la.lambda.body.span, "body", { name: callName, found: printType(b.type), expected: printType(want) });
-      else this.fitSimple(b.type, want, la.lambda.body.span, "arg-mismatch");
+      if (fits(b.type, want) === 0) this.say("arg-mismatch", bodySpan, "body", { name: callName, found: printType(b.type), expected: printType(want) });
+      else this.fitSimple(b.type, want, bodySpan, "arg-mismatch");
     }
     // 4. Bounds.
     for (const bd of sig.sig.bounds) {
@@ -1777,9 +1846,9 @@ class Checker {
     return this.sizeLimit(this.depthLimit(result, span), span);
   }
 
-  private narrowed: { la: LambdaArg; elem: Type } | null = null;
+  private narrowed: { la: LambdaArg & { fn: null }; elem: Type } | null = null;
 
-  private narrowedType(la: LambdaArg, elem: Type): Type {
+  private narrowedType(la: LambdaArg & { fn: null }, elem: Type): Type {
     const p0 = la.lambda.params[0];
     // 13.8 "When": a name with no default; a default takes the place of a null element.
     if (p0 === undefined || p0.pattern.kind !== "NamePat" || p0.pattern.name === null || p0.default !== null) return elem;
@@ -1985,9 +2054,10 @@ class Checker {
         if ("written" in it) {
           const en = it.written;
           if (fl === undefined && isNever(r.rest)) {
-            // A recursive type prints by its name (f17 12.6 item 3).
-            const uw = unfold(want);
-            const shown = !isAny(uw) && uw !== want && uw.map === r ? want : { map: r };
+            // `expected` is the record; a record of a reference's definition prints as the reference, whatever
+            // stands beside it (f17 12.6 item 4).
+            const owner = isAny(want) ? undefined : want.refs?.find((x) => x.def !== undefined && !isAny(x.def) && (x.def.map === r || x.def.union?.variants.includes(r) === true));
+            const shown: Type = owner !== undefined ? refType(owner) : { map: r };
             this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType(shown), key: it.key });
             continue;
           }
@@ -2007,7 +2077,7 @@ class Checker {
   // ---- lambdas (13.2, 13.9) ------------------------------------------------------------
 
   /** Check a lambda written in place, with its parameters bound to `qs`. */
-  private lambdaInPlace(la: LambdaArg, qs: Type[], f: Facts, level: number, callName: string): { type: Type } | null {
+  private lambdaInPlace(la: LambdaArg & { fn: null }, qs: Type[], f: Facts, level: number, callName: string): { type: Type } | null {
     return this.lambdaUse(la, qs, f, level, false, callName);
   }
 
@@ -2015,14 +2085,14 @@ class Checker {
    * A use of a lambda argument: a Lambda written there, or a const-bound
    * lambda by name, which counts against the limits of 20.2 and 20.3.
    */
-  private lambdaUse(la: LambdaArg, qs: Type[], f: Facts, level: number, again = false, callName = ""): { type: Type } | null {
+  private lambdaUse(la: LambdaArg & { fn: null }, qs: Type[], f: Facts, level: number, again = false, callName = ""): { type: Type } | null {
     if (la.id === null) {
       const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), f, "lib", callName);
       return { type: t };
     }
     if (checkedOnce(la.lambda)) {
       // f16 3.4: its body is not checked again; each value passed is fitted to its parameter.
-      la.lambda.params.forEach((p, i) => this.passed(p, qs[i] ?? NEVER, callName));
+      la.lambda.params.forEach((p, i) => this.passed(p, qs[i] ?? NEVER));
       return { type: this.onceTypes.get(la.id) ?? NEVER };
     }
     if (!again && !this.useLimit(la.lambda, level + 1, la.span)) return null;
@@ -2033,15 +2103,108 @@ class Checker {
     return { type: t };
   }
 
-  /** f16 3.3: a value the library passes to an annotated parameter must surely fit it, at the annotation. */
-  private passed(p: A.Param, q: Type, callName: string): void {
-    if (p.fn !== null) {
-      this.say("arg-mismatch", p.fn.span, "fn-value", { name: callName, found: printType(q) });
-      return;
-    }
+  /**
+   * f16 3.3: a value the library passes to an annotated parameter must surely
+   * fit it, at the annotation. With F17 no lambda that has a function
+   * parameter is passed (f17 13.2 rule 8), so `p` never has a function type.
+   */
+  private passed(p: A.Param, q: Type): void {
     if (p.type === null) return;
     const t = this.res.annTypes.get(p.type) ?? null;
     if (t !== null && fits(q, t) !== 1) this.say("arg-mismatch", p.type.span, "argument", { expected: printType(t), found: printType(q) });
+  }
+
+  /**
+   * f17 13.3: a function parameter g where a list of values `qs` is passed to
+   * it, by a library entry or by a method on `any`: each value must surely fit
+   * the type g lists at its position, at that type. Its result stands for a
+   * body's type: `any` for `unknown`.
+   */
+  private fnPassed(g: FnSig, qs: Type[]): { type: Type } {
+    g.params.forEach((t, j) => {
+      // f16 3.3 item 2: a type with a static diagnostic is fitted by nothing.
+      if (t === null) return;
+      const q = qs[j] ?? NEVER;
+      if (fits(q, t) !== 1) this.say("arg-mismatch", g.spans[j], "argument", { expected: printType(t), found: printType(q) });
+    });
+    return { type: g.result === "unknown" ? ANY : (g.result ?? NEVER) };
+  }
+
+  /**
+   * f17 13.3: a lambda argument at the function parameter p of a call of a
+   * `const`-bound lambda `callName`. A `Lambda` written there, or a lambda
+   * named there, is checked against p's function type as step 3 of 05 13.5
+   * checks one against a library `Fn`, with no `Var` (a lambda checked once
+   * is not checked again: lambdaUse); a function parameter given on is
+   * fitted, with no body. Every fit is strict.
+   */
+  private fnArg(la: LambdaArg, p: FnSig, f: Facts, level: number, callName: string): void {
+    const want = p.result;
+    if (la.fn !== null) {
+      // Each type that p lists must surely fit the type that g lists at that position, at g's type.
+      const g = la.fn;
+      g.params.forEach((gt, j) => {
+        if (gt === null) return;
+        const pt = p.params[j] ?? NEVER;
+        if (fits(pt, gt) !== 1) this.say("arg-mismatch", g.spans[j], "argument", { expected: printType(gt), found: printType(pt) });
+      });
+      if (want === "unknown" || want === null) return;
+      // A result `unknown` is `any` there, which surely fits only `any`.
+      const gr = g.result === "unknown" ? ANY : g.result;
+      if (gr !== null && fits(gr, want) !== 1) this.say("arg-mismatch", la.span, "body", { name: callName, found: printType(gr), expected: printType(want) });
+      return;
+    }
+    // Each parameter is bound to the listed type at its position, `never` for one with a static diagnostic.
+    const b = this.lambdaUse(la, p.params.map((t) => t ?? NEVER), f, level, false, callName);
+    if (b === null) return;
+    const body = la.lambda.body.span;
+    // With a result `unknown` the body is a tested position, and nothing is fitted (13.7).
+    if (want === "unknown") {
+      this.tested(b.type, body);
+      return;
+    }
+    if (want !== null && fits(b.type, want) !== 1) this.say("arg-mismatch", body, "body", { name: callName, found: printType(b.type), expected: printType(want) });
+  }
+
+  /**
+   * f17 13.3: a call `f(a1, ..., an)` of a function parameter. With the listed
+   * count, each plain argument is synthesized where the call stands and fitted
+   * to its listed type by f16 3.3; the call's type is the result, `any` for
+   * `unknown`. With another count (`arity`, static) it is `never`. The call
+   * records no site of its own.
+   */
+  private fnCall(node: A.Call | A.MethodCall, s: FnSig, f: Facts): Type {
+    const args = node.args;
+    if (args.length !== s.params.length) {
+      this.plainArgs(args, f);
+      return NEVER;
+    }
+    const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
+    args.forEach((a, i) => {
+      // A lambda argument there is not-a-value, a static rule (f17 13.2 rule 7): not checked.
+      if (this.lambdaArg(a) !== null) return;
+      this.synth(a as A.Expr, f);
+      const t = s.params[i];
+      if (t !== null) this.fitStrict(a as A.Expr, t, argCode);
+    });
+    return s.result === "unknown" ? ANY : (s.result ?? NEVER);
+  }
+
+  /**
+   * A plain argument at an `Fn` of a library entry (05 13.2), `arg-mismatch`:
+   * with package F17, the template `parameter-at-fn` names the fix when the
+   * argument is the name of a parameter written as a name with no default
+   * (f17 13.3, 13.5).
+   */
+  private valueAtFn(a: A.Arg, param: string, callName: string): void {
+    if (a.kind === "Ident") {
+      const r = this.res.refs.get(a);
+      if (r !== undefined && r.k === "slot" && this.res.hintSlots.has(r.slot)) {
+        this.say("arg-mismatch", a.span, "parameter-at-fn", { name: a.name });
+        return;
+      }
+    }
+    this.say("arg-mismatch", a.span, "function", { param, name: callName });
   }
 
   /** f16 3.3: e fitted to an annotation through its form, where a fit that uses `any` does not hold. */
@@ -2070,9 +2233,11 @@ class Checker {
     l.params.forEach((p, i) => {
       const a = args[i] ?? { given: false, type: NEVER };
       if (p.fn !== null || p.type !== null) {
-        // f16 3.3, 3.4: an annotated parameter is bound to its annotation; a function type, or an annotation
-        // with a static diagnostic, binds never. Its default is fitted to the annotation.
-        if (mode === "lib") this.passed(p, a.type, callName);
+        // f16 3.3, 3.4: an annotated parameter is bound to its annotation; an annotation with a static
+        // diagnostic binds never. Its default is fitted to the annotation. A function parameter is bound to
+        // its function type (f17 13.3): its slot holds no value type, and its uses read the type from the
+        // parameter (fnSig).
+        if (mode === "lib") this.passed(p, a.type);
         const t = p.type === null ? null : (this.res.annTypes.get(p.type) ?? null);
         if (p.default !== null) {
           this.synth(p.default, f);
@@ -2115,11 +2280,20 @@ class Checker {
     const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
     args.forEach((a, i) => {
       const p = l.params[i];
-      if (this.lambdaArg(a) !== null || p === undefined) return;
-      if (p.fn !== null) {
-        this.say("arg-mismatch", a.span, "function", { param: p.pattern.kind === "NamePat" ? (p.pattern.name ?? "") : "", name });
+      if (p === undefined) return;
+      const la = this.lambdaArg(a);
+      if (la !== null) {
+        // f17 13.3: a lambda argument at a function parameter is checked against its function type, where
+        // the call stands. One that a static rule reports is not checked (13.2 rules 2, 8, 9), nor a
+        // reference of a lambda to its own name that is not typed (05 13.9).
+        if (p.fn === null || la.higher || la.self) return;
+        const declared = la.fn !== null ? la.fn.params.length : la.lambda.params.length;
+        if (declared > p.fn.params.length) return;
+        this.fnArg(la, this.fnSig(p), f, node.level, name);
         return;
       }
+      // A value at a function parameter is arg-mismatch, a static rule (f17 13.2 rule 3).
+      if (p.fn !== null) return;
       const t = p.type === null ? null : (this.res.annTypes.get(p.type) ?? null);
       if (t !== null) this.fitStrict(a as A.Expr, p.default !== null ? withNull(t) : t, argCode);
     });

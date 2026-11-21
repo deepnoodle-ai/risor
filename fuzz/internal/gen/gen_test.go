@@ -124,6 +124,25 @@ func TestNumberJSON(t *testing.T) {
 	}
 }
 
+// The generator writes function parameters (F17 step E3), and -noe3 leaves
+// them out.
+func TestFunctionParameters(t *testing.T) {
+	lib := loadLib(t)
+	with := 0
+	for i := range 2000 {
+		c := Generate(lib, Options{}, 9, 0, i)
+		if c.E3 {
+			with++
+		}
+		if d := Generate(lib, Options{NoE3: true}, 9, 0, i); d.E3 {
+			t.Fatalf("case %d has a function parameter with NoE3", i)
+		}
+	}
+	if with < 100 {
+		t.Errorf("%d of 2000 cases have a function parameter", with)
+	}
+}
+
 // A flat chain has 1,000 links or more, and prints as text with no level of
 // nesting deeper than its lambda's argument list.
 func TestFlatChain(t *testing.T) {

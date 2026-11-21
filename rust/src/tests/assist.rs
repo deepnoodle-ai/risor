@@ -27,6 +27,20 @@ fn a_text_block_interpolation_left_open() {
     assert_eq!(labels("`${user.na‸"), ["name"]);
 }
 
+/// The cut is in a template that is the argument of a call left open. The
+/// repair closes the template and then fails at the closer of the outer
+/// interpolation, where the call still needs its `)`. No token inserted
+/// before the inner closer can mend that, so the repair fails at once, and
+/// completion gives the fallback (3.5 item 1): the environment's names, as
+/// if the program bound none, so `xy` is not listed.
+#[test]
+fn a_failure_after_a_template_closer_ends_the_repair() {
+    assert_eq!(labels("`${f(`${us‸"), ["user"]);
+    assert!(labels("const xy = 1; `${f(`${x‸").is_empty());
+    // With no call left open, the same cut is repaired.
+    assert_eq!(labels("const xy = 1; `${xy + `${x‸"), ["xy"]);
+}
+
 #[test]
 fn the_repair_closes_what_is_open() {
     assert_eq!(labels("if (us‸"), ["user"]);

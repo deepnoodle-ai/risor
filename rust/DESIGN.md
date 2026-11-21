@@ -191,8 +191,9 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
 ### Scopes and lambdas
 
 - Compile resolves every name once: to a variable of the environment, to a
-  slot of a scope, to a library entry or host function, or to a `const`-bound
-  lambda. Static rules are reported from the same walk.
+  slot of a scope, to a library entry or host function, to a `const`-bound
+  lambda, or to a function parameter (F17 13.1). Static rules are reported
+  from the same walk.
 - **Each call has a frame** (F17 11.5). The resolver numbers every slot of
   the program once, for the checker, and also gives it a place
   (`compile::Place`): the depth of its frame and its index there. The
@@ -215,13 +216,27 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
   have done. A lambda that binds no name has no frame. A lambda is still
   its `NodeId`: it needs no pointer to a frame. There is one path for every
   program, with or without a self-reference; no slot has a fixed place.
+- **Closures** (F17 13.4). A lambda bound to a function parameter runs
+  where it is not in scope, so the entries below its depth are not those of
+  the code that calls it. Where such a lambda is evaluated, as an argument
+  of a call of a higher-order lambda, `Run::closure` keeps it with a copy of
+  the entries of `display` below its frame's depth, and the parameter's slot
+  holds the closure's index, as a number: static rule 4 keeps any read of
+  that slot as a value from compiling. A call of the closure
+  (`invoke_fun`), by a call of the parameter or by a library entry, saves
+  those entries, puts the copy in their place, calls the lambda as any
+  call does, and puts them back, on a failure too. The closures a call's
+  arguments made are dropped when the call ends. A lambda never outlives
+  the call in which it was evaluated, so every frame a copy names is still
+  in place when the closure runs.
 - **A library entry's calls share a frame.** The calls an entry makes of
   its lambda never overlap, so on the fast path (plain parameters) they
   share one: `Run::callback` pushes it, each call binds its names in it
   again and sets the display entry to it, and the caller of the entry
   (`method`, `call_lib`) drops every such frame the entry pushed, whether it
   gave a value or failed (`end_callbacks`). A lambda with patterns or
-  defaults gets a frame for each call, as a call by name does.
+  defaults gets a frame for each call, as a call by name does, and so does
+  a closure.
 - **Measured** (`examples/bench.rs`, the 31 programs of `suite/bench`,
   interleaved rounds against the build before step E1, medians, release,
   rustc 1.100.0, aarch64 macOS): a frame pushed and dropped for every call
@@ -329,6 +344,8 @@ less; `filter` and `reduce`, 4 to 17% less (measured before F17 step E1).
 | Run the worst form at depth limit 400 | 724 KiB | 1,940 KiB |
 | Self-recursion (F17 11.6) at depth limit 200: by name, through `map`, through `flatMap` | 180, 244, 260 KiB | 372, 676, 756 KiB |
 | The same at depth limit 400 | 372, 500, 532 KiB | 756, 1,364, 1,524 KiB |
+| Function parameters (F17 13.4 item 6) at depth limit 200: a recursion through a call of a function parameter; a chain of lambdas given on | 180, 180 KiB | 500, 500 KiB |
+| The same at depth limit 400 | 356, 356 KiB | 1,012, 1,012 KiB |
 
 Frames for each call (F17 11.5) raised the worst form from 387 and 691 KiB
 optimized, 1,043 and 1,859 KiB unoptimized, by 4% to 5%: a call by name
@@ -392,7 +409,11 @@ one node past it; data nested to the limit, and one level past; and walks
 inside walks, each link calling the one before from its walk's callback, to
 the limit and one link past; and the three forms of self-recursion of F17
 11.6, a typed lambda that calls itself by name, through `map` and through
-`flatMap`, each call adding 1, to the limit and one call past. It runs each
+`flatMap`, each call adding 1, to the limit and one call past; and the two
+forms of F17 13.4 item 6 (`03-host.md` 3.9.1), a recursion through a call of
+a function parameter at every level and a chain of lambdas given at function
+parameters, each with N the largest within the limit and one more. It runs
+each
 limit on a thread of two thirds of the stated figure, so the figure has a
 margin of 1.5. CI runs it unoptimized and optimized. Unoptimized at depth 200, the test passes on 13/16 of that thread
 and overflows on 12/16 (aarch64 and x86_64 macOS).
@@ -762,9 +783,10 @@ A plain text error has no cause: its text is already the message.
   `reduce`, whose R is the `Var`, this is the rule as before.
 - **The runner**: `PACKAGES` holds 17 before 12, so a file named
   `until-f17-` is not run; `recursion_package` runs
-  `suite/recursion/`, its `tools-` and `e1-` files among them, and
-  `library_recursion_cases` the record's cases. F17 is offered as steps E0
-  and E1 together (R254).
+  `suite/recursion/`, its `tools-`, `e1-` and `e3-` files among them,
+  `library_recursion_cases` the record's cases, and
+  `catalog_recursion_cases` those of `suite/messages-recursion.json`. F17 is
+  offered whole, as steps E0, E1 and E3 together (R254, R261).
 
 ### Step E1: typed self-recursion
 
@@ -827,6 +849,24 @@ A plain text error has no cause: its text is already the message.
   progress. Pairs in progress and failed are indexed by a key of the top of
   their two types, so a computation takes time linear in the pairs it
   enters, not their square.
+- **Schemas** (`schema.rs`). The mapping meets an object's
+  `additionalProperties`, then `patternProperties` and `properties` each in
+  code point order of their keys, and the names of `type` in the order
+  written (12.4 item 3, R303). When it ends, a reference at a definition's
+  top is replaced by its definition once that definition holds none of the
+  table at its top; the replacement joins nothing, so a shared kind other
+  than null is `bad-type` (R304). Pick refuses a reference at the top of a
+  type left, which step 2 reads the kinds of; step 3 fits by
+  `fits_looking`, which fails when the computation enters a pair holding a
+  reference that is not complete (12.4 item 4, R312).
+- **Join's order.** `c ? a : b` is Join(A, B), the else side folded first
+  and each branch joined in front of it, when a reference stands anywhere
+  in either; two unions are the same by structure when their variants are
+  Equal, references followed, and the Join keeps A's union (12.5 item 4,
+  R310).
+- **Hover** on a type name unfolds only a recursive type, a reference whose
+  name is the word hovered; an alias of one prints as its type (12.8 item 2,
+  R306).
 - **The bound** (`pairs::watch`): a computation that passes 4,096 pairs
   ends with its fallback and sets a flag that the innermost `Watch` sees.
   `check` watches from the end of resolution; when the flag is set, the
@@ -847,6 +887,61 @@ A plain text error has no cause: its text is already the message.
   type API's `fits`, `equal` and `join` past the bound. Measured (rustc
   1.100.0, aarch64 macOS) as for "Stack" above: unoptimized it needs 36 KiB;
   optimized it passes on the least thread the platform gives (16 KiB).
+
+### Step E3: function parameters
+
+- **The static rules** (`compile.rs`). A function parameter is bound as any
+  parameter, with a slot, then its name is rebound in the scope as
+  `Bind::Fn`, the third kind of binding. Its name as an argument resolves to
+  `Res::FnRef` and is no read; anywhere else it is `Res::FnRef` and
+  `not-a-value`, template `function`. A call of it is `Res::CallFn`. Rule 8
+  is tested first at every `Call` and `MethodCall`, whatever the callee and
+  whatever its count (`higher_order_args`); the arguments it reports are
+  skipped by the tests of the callee. The resolver keeps the slots of the
+  hint parameters (`plain_params`): those of a `const`-bound lambda, the one
+  that `const_line` has on `walking`, written as a name with no default and
+  no function type. They choose the hints `call-of-parameter` `fn-hint` and
+  `arg-mismatch` `parameter-at-fn`; the checker reads them for the hint at a
+  library `Fn`. At rule 2 the callee's parameter decides: a name with no
+  default gives `lambda-to-lambda` `fn-hint`, named by the parameter, and a
+  pattern, `_` or a default gives `default`, named by the callee. The name of
+  a higher-order `const`-bound lambda read as a value is `not-a-value`
+  `higher-order`.
+  The listed types and the result are resolved as annotations, so the
+  checker reads each, `None` with a diagnostic.
+- **The checker** (`check/mod.rs`). A function parameter's slot is
+  `never`, since it is never read; its function type is read from its
+  `Param`. `call_fn` fits each plain argument of a call by F16 3.3.
+  `use_lambda` checks each lambda argument at a function parameter
+  (`lambda_at_fn`) before the callee's body, at every call, whether the
+  callee is checked once or at each use: a lambda written there or named
+  through `check_lambda` with the listed types as the Qs, then its result
+  against the function type's; a function parameter given on by its listed
+  types and result alone. At a library `Fn`, step 3 takes a function
+  parameter as `Cb::Fn`: its listed types are fitted to the Qs, B is its
+  result, and the seed rule and the fit of B are step 3's. It narrows
+  nothing, and with R `unknown` nothing more is done.
+- **Evaluation** (`eval/mod.rs`). `Program::higher` marks the higher-order
+  lambdas. A call of one (`call_higher`) binds each lambda argument at a
+  function parameter as a closure ("Scopes and lambdas"), a lambda written
+  there for 1 step, and drops the closures its arguments made when it ends.
+  A call of a function parameter (`call_fn`) is a call by name of its
+  closure, with the parameter's name in the trace. A library entry gets a
+  closure as `Fun` with its index; its callback then takes the slow path,
+  with a frame for each call. The shape test counts a function parameter's
+  listed count (`lambda_count`).
+- **Tools** (`assist.rs`). A function parameter is a candidate of kind
+  `lambda` with its printed function type (`Tree::fn_type_text`, from the
+  annotations the check resolved) as its detail; a hover on its name where
+  it is declared, as an argument, or as the name of a call of it gives the
+  kind `lambda` and the printed function type, and for a call the type of
+  the call. The formatter and the analysis need nothing new.
+- **Messages and the runner**: `suite/messages-recursion.json` adds its
+  five templates to four codes, as F16's file does; with step E2's
+  `circular-type` and `check-limit` `pairs`, 32 check codes and 81 templates
+  in all. F16's `fn-value` is gone. In `suite/recursion/` the static codes
+  are those of F16 3.1 item 11, `circular-type` and `arg-mismatch`
+  (`Statics::Recursion`; F17 8 item 5).
 
 ## Package F16, slice D1: annotations and type lines
 
@@ -906,8 +1001,9 @@ A plain text error has no cause: its text is already the message.
   slice (`03-host.md` 3.11 item 5). `entry_points_package` runs
   `suite/entry-points/`, its `tools-` files among them;
   `catalog_entry_points_cases` the cases of
-  `suite/messages-entry-points.json`, whose entries add `name-clash` and the
-  template `fn-value` of `arg-mismatch` to the catalog. In that directory
+  `suite/messages-entry-points.json`, whose entry adds `name-clash` to the
+  catalog; its template `fn-value` of `arg-mismatch` retired with F17 step
+  E3. In that directory
   `name-clash`, `untagged-union` and `check-limit` are static codes beside
   Core's twelve. The place of D1 before F17 is the recommendation of R211,
   not yet confirmed (F16 1.5).

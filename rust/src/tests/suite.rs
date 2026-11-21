@@ -516,20 +516,22 @@ fn catalog_entry_points_cases() {
     println!("suite/messages-entry-points.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
-    assert_eq!(total.pass, 2);
+    assert_eq!(total.pass, 1);
 }
 
-/// Package F17: the cases of `suite/messages-recursion.json`, each run once,
-/// checked, with the static codes of `suite/recursion/` (`f17-recursion.md`
-/// 9).
+/// Package F17: the cases of `suite/messages-recursion.json`, each run
+/// once, checked, with the static codes of `suite/recursion/`
+/// (`f17-recursion.md` 8 item 5, 9 and 13.8 item 1).
 #[test]
 fn catalog_recursion_cases() {
     let mut total = Counts::default();
     let mut failed = Vec::new();
+    let dir = suite_dir().join("recursion");
     for (entry, cases) in crate::messages::catalog().recursion_cases.clone() {
-        let mut cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
-        for c in &mut cases {
-            c.statics = crate::testing::case::Statics::Recursion;
+        // 8 item 5 and 13.8 item 2: the static codes are those of
+        // `suite/recursion/`.
+        let cases = load_doc(&cases, &dir).expect("the cases are valid");
+        for c in &cases {
             let v = crate::testing::run_case_in(c, true);
             if let Verdict::Fail(diffs) = &v {
                 failed.push(c.name.clone());
@@ -544,7 +546,7 @@ fn catalog_recursion_cases() {
     println!("suite/messages-recursion.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
-    assert_eq!(total.pass, 3);
+    assert_eq!(total.pass, 8);
 }
 
 /// Package F17: the record of `suite/library-recursion.json`, run as those

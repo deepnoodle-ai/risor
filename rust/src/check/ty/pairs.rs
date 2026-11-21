@@ -25,6 +25,25 @@ pub const BOUND: u32 = 4096;
 
 thread_local! {
     static PASSED: Cell<bool> = const { Cell::new(false) };
+    /// Whether a computation entered a pair with a reference that is not
+    /// complete: it looked into a reference whose definition is not known
+    /// (F17 12.4 item 4).
+    static LOOKED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Fits(S, T) as [`super::fits`], or `Err(())` when the computation would
+/// look into a reference that is not complete: one that a schema's mapping
+/// has met, whose definition is not known yet (F17 12.4 item 4, R312). It
+/// looks into one only when it enters a pair that holds it.
+pub fn fits_looking(s: &Ty, t: &Ty) -> Result<Option<bool>, ()> {
+    let prev = LOOKED.with(|l| l.replace(false));
+    let r = super::fits(s, t);
+    let looked = LOOKED.with(|l| l.replace(prev));
+    if looked {
+        Err(())
+    } else {
+        Ok(r)
+    }
 }
 
 /// A watch on the bound: whether a computation passed it since the watch
@@ -200,6 +219,9 @@ pub(super) fn run<T>(fallback: impl FnOnce() -> T, mut root: impl FnMut(&mut Cx)
             return fallback();
         }
         cx.entered += 1;
+        if a.refs.iter().chain(&b.refs).any(|r| !r.complete()) {
+            LOOKED.with(|l| l.set(true));
+        }
         cx.open.entry(key).or_default().push(cx.frames.len());
         cx.frames.push(Frame {
             kind,
@@ -520,11 +542,25 @@ impl Cx {
             (x, y) => x.clone().or(y.clone()),
         };
         // F5 4.1: a union survives only beside the same union; Join never
-        // makes one.
-        let (map, variants) = match (&a.map, &b.map) {
-            (Some(_), Some(_)) if a.variants.is_some() && a.variants == b.variants => {
-                (a.map.clone(), a.variants.clone())
+        // makes one. Two unions are the same by structure when they are
+        // Equal, references followed, and the Join is A's union (F17 12.5
+        // item 4, R310).
+        let same_union = match (&a.variants, &b.variants) {
+            (Some(_), Some(_)) if a.variants == b.variants => true,
+            (Some(x), Some(y)) if x.len() == y.len() => {
+                let mut same = true;
+                for (p, q) in x.iter().zip(y.iter()) {
+                    if !self.equal_rec(p, q)? {
+                        same = false;
+                        break;
+                    }
+                }
+                same
             }
+            _ => false,
+        };
+        let (map, variants) = match (&a.map, &b.map) {
+            (Some(_), Some(_)) if same_union => (a.map.clone(), a.variants.clone()),
             (Some(x), Some(y)) => (Some(Arc::new(self.join_rec(x, y)?)), None),
             (Some(_), None) => (a.map.clone(), a.variants.clone()),
             (None, Some(_)) => (b.map.clone(), b.variants.clone()),

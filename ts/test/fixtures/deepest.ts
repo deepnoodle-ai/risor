@@ -60,6 +60,38 @@ function self(name: string, depth: number): string {
   return past.ok ? "no-limit" : past.diagnostic.code === "depth-exceeded" ? "ok" : past.diagnostic.code;
 }
 
+/**
+ * Package F17, step E3 (f17 13.4): recursions through a function parameter.
+ * `max(L)` is the largest N whose run stays within the depth limit L; N + 1
+ * is `depth-exceeded`, not a stack overflow. The first two are the deepest
+ * cases of f17 13.4 item 6 (03 3.9.1); the others are this binding's own: a
+ * call of a function parameter, a lambda bound to one and given on, and one
+ * given to `map`.
+ */
+const FN_PARAMS: Record<string, { src: string; value: unknown; max: (limit: number) => number }> = {
+  // f17 13.4 item 6: each of d, down and the call of f adds 1, so d(N) reaches 2N + 2.
+  "fn-down": { src: "const down = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : f(n - 1); const d = (n: int): int => down(d, n); d(N)", value: 0, max: (l) => Math.floor((l - 2) / 2) },
+  // f17 13.4 item 6: N + 1 calls of r, f(0) adds 2, and each of the N lambdas' f(y) adds 1: 2N + 3.
+  "fn-chain": { src: "const r = (f: (x: int) => int, n: int): int => n == 0 ? f(0) : r(y => f(y), n - 1); r(x => x, N)", value: 0, max: (l) => Math.floor((l - 3) / 2) },
+  // N + 1 calls of r, then f(0), in the middle of `? :`, adds 2.
+  "fn-bottom": { src: "const r = (f: (x: int) => int, n: int): int => n <= 0 ? f(0) : r(f, n - 1); r(x => x + 1, N)", value: 1, max: (l) => l - 3 },
+  // For each level, d, apply and the lambda bound to f each add 1: 3N + 1.
+  "fn-apply": { src: "const apply = (f: (x: int) => int, x: int): int => f(x); const d = (n: int): int => n <= 0 ? 0 : apply(y => d(y), n - 1); d(N)", value: 0, max: (l) => Math.floor((l - 1) / 3) },
+  // For each level, d and g each add 1, d through the measure of `map`: 2N + 2.
+  "fn-map": { src: "const g = (f: (x: int) => int, n: int): int => n <= 0 ? 0 : [n - 1].map(f)[0]; const d = (n: int): int => g(d, n); d(N)", value: 0, max: (l) => Math.floor((l - 2) / 2) },
+};
+
+function fnParams(name: string, depth: number): string {
+  const { src, value, max } = FN_PARAMS[name];
+  const env = createEnv({ limits: { depth, steps: null, allocation: null } });
+  const run = (n: number) => execute(env.compile(parse(src.replace("N", String(n)))), {});
+  const within = run(max(depth));
+  if (!within.ok) return within.diagnostic.code;
+  if (JSON.stringify(within.value) !== JSON.stringify(value)) return "wrong-value";
+  const past = run(max(depth) + 1);
+  return past.ok ? "no-limit" : past.diagnostic.code === "depth-exceeded" ? "ok" : past.diagnostic.code;
+}
+
 /** 100 levels of source nesting, in each kind of opener. */
 function nesting(): string {
   const env = createEnv({ varRecord: "{c: any}", limits: { steps: null, allocation: null } });
@@ -93,5 +125,6 @@ for (const depth of [200, 400]) {
   out.push(`calls ${depth}`, calls(depth), `walk ${depth}`, walk(depth), `walk() ${depth}`, walkEntry(depth));
   for (const f of FORMS) out.push(`${f.name} ${depth}`, form(f.name, depth));
   for (const name of Object.keys(SELF)) out.push(`${name} ${depth}`, self(name, depth));
+  for (const name of Object.keys(FN_PARAMS)) out.push(`${name} ${depth}`, fnParams(name, depth));
 }
 console.log(out.join(" "));

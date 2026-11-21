@@ -210,9 +210,9 @@ All three implementations pass the Core specification with the type
 checker, and offer the same follow-on packages from
 [`spec/packages/`](spec/packages): JSON Schema, config files, templates,
 queries and others. The newest additions are type annotations and `type`
-lines, guards on `match` arms, `walk` for trees, and typed lambdas that call
-themselves. Recursive named types, function parameters and `export const`
-entry points are next.
+lines, guards on `match` arms, `walk` for trees, typed lambdas that call
+themselves, and helpers that take a function as a parameter. Recursive named
+types and `export const` entry points are next.
 
 ## Request for comment
 

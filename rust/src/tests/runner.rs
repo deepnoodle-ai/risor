@@ -256,6 +256,7 @@ fn static_codes_by_directory() {
         ("check-limit", false, true, true, true),
         ("name-clash", false, false, true, true),
         ("circular-type", false, false, false, true),
+        ("arg-mismatch", false, false, false, true),
         ("kind", false, false, false, false),
     ] {
         assert_eq!(is_static(code, Statics::Core), core, "{code}");

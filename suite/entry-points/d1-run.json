@@ -27,15 +27,12 @@
   {"name": "a parameter annotation is not tested at run time", "source": "const f = (x: int) => x; f(\"s\")", "check": false, "expect": {"allocated":0,"steps":2,"value":"s"}},
   {"name": "a result annotation is not tested at run time", "source": "const f = (x): int => \"s\"; f(1)", "check": false, "expect": {"allocated":0,"steps":2,"value":"s"}},
   {"name": "an annotation of a library-passed parameter is not tested at run time", "source": "[\"a\"].map((x: int) => x)", "check": false, "expect": {"allocated":4,"steps":4,"value":["a"]}},
-  {"name": "an Fn parameter read as a value runs in a compile without the type rules", "source": "const g = (f: (x: int) => int) => f; g(1)", "check": false, "expect": {"allocated":0,"steps":2,"value":1}},
   {"name": "a type line's type is not tested at run time", "source": "type Item = {id: string}; const i: Item = {id: 1}; i.id", "check": false, "expect": {"allocated":3,"steps":1,"value":1}},
   {"name": "an annotated const line costs what a plain one costs", "source": "const x: int = 1; x + 1", "expect": {"allocated":0,"steps":1,"type":"int","value":2}},
   {"name": "a plain const line, for comparison", "source": "const x = 1; x + 1", "expect": {"allocated":0,"steps":1,"type":"int","value":2}},
   {"name": "type lines cost nothing", "source": "type Aa = int; type Bb = {n: Aa}; 1", "expect": {"allocated":0,"steps":0,"type":"int","value":1}},
   {"name": "an annotated lambda costs what a plain one costs", "source": "const f = (x: int): int => x + 1; f(1)", "expect": {"allocated":0,"steps":3,"type":"int","value":2}},
   {"name": "a plain lambda, for comparison", "source": "const f = x => x + 1; f(1)", "expect": {"allocated":0,"steps":3,"type":"int","value":2}},
-  {"name": "an Fn parameter called in the body is call-of-parameter", "source": "const g = (f: (x: int) => int, n: int) => f(n); 1", "expect": {"diagnostics":[{"code":"call-of-parameter","message":"f is a value, not a function, and cannot be called","span":[1,43,1,44]}],"phase":"check"}},
-  {"name": "a lambda given at an Fn parameter is lambda-to-lambda", "source": "const g = (f: (x: int) => int, n: int) => n; g(x => x, 1)", "expect": {"diagnostics":[{"code":"lambda-to-lambda","message":"a function cannot be passed to g, which is a const-bound lambda; pass the data instead","span":[1,48,1,54]}],"phase":"check"}},
   {"name": "duplicate-name: the later line stands, and one whose type fails declares nothing", "source": "type Aa = int; type Aa = Nope; const x: Aa = 1; x", "expect": {"diagnostics": [{"code": "duplicate-name", "message": "Aa is already bound here", "span": [1, 21, 1, 23]}, {"code": "undefined-name", "message": "no type is named Nope", "span": [1, 26, 1, 30]}, {"code": "undefined-name", "message": "no type is named Aa", "span": [1, 41, 1, 43]}], "phase": "check"}},
   {"name": "duplicate-name: after a line whose type failed", "source": "type Aa = Nope; type Aa = int; const x: Aa = 1; x", "expect": {"diagnostics": [{"code": "undefined-name", "message": "no type is named Nope", "span": [1, 11, 1, 15]}, {"code": "duplicate-name", "message": "Aa is already bound here", "span": [1, 22, 1, 24]}], "phase": "check"}}
 ]

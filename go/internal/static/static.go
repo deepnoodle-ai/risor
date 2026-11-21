@@ -52,15 +52,32 @@ const (
 	Value       BindKind = iota // a const name, a parameter, a pattern name, a catch name
 	ConstLambda                 // a const-bound lambda
 	EnvVar                      // a variable of the environment
+	// FnParam is a parameter with a function type: a function binding
+	// (f17-recursion.md 13.1). It has a slot, which holds the lambda passed.
+	FnParam
 )
 
 // Binding is one binding of a name.
 type Binding struct {
 	Kind   BindKind
 	Name   string
-	Slot   int // for Value
+	Slot   int // for Value and FnParam
 	Lambda *syntax.Lambda
 	Var    int // for EnvVar
+	// Param is the parameter that binds the name, for a parameter written as
+	// a name, and for FnParam (f17-recursion.md 13.2).
+	Param *syntax.Param
+	// Bound reports, for a parameter, that its lambda is a const-bound
+	// lambda: the only lambda that may have a parameter with a function type.
+	Bound bool
+}
+
+// HintParam reports whether a value binding is a parameter of a const-bound
+// lambda written as a name with no default: the form a parameter with a
+// function type takes, where one may stand. Its call and its use as a
+// function name the fix (f17-recursion.md 13.2 item 4).
+func (b *Binding) HintParam() bool {
+	return b != nil && b.Kind == Value && b.Param != nil && b.Param.Default == nil && b.Bound
 }
 
 // CalleeKind is what a call calls.
@@ -72,6 +89,8 @@ const (
 	Lambda
 	Host
 	Lib
+	// Param is a parameter with a function type (f17-recursion.md 13.2).
+	Param
 )
 
 // Callee is the callee of a Call, or of a MethodCall that calls a namespace.
@@ -80,6 +99,8 @@ type Callee struct {
 	Lambda *syntax.Lambda
 	Host   *Func
 	Lib    *library.Entry
+	// Binding is the binding of a Param callee.
+	Binding *Binding
 }
 
 // Diag is one static diagnostic.
@@ -163,6 +184,8 @@ type walker struct {
 	// self holds, for each const-bound lambda that refers to its own name,
 	// its first reference in the text (05-types.md 22.5).
 	self map[*syntax.Lambda]selfRef
+	// last is the binding bind made last.
+	last *Binding
 }
 
 // selfRef is a reference of a const-bound lambda to its own name.
@@ -259,11 +282,12 @@ func (w *walker) bind(name string, sp syntax.Span, s *scope, kind BindKind, lam 
 		w.diagm("duplicate-name", sp, "", nameP(name))
 	}
 	b := &Binding{Kind: kind, Name: name, Lambda: lam, Slot: -1}
-	if kind == Value {
+	if kind == Value || kind == FnParam {
 		b.Slot = w.res.NSlots
 		w.res.NSlots++
 	}
 	s.names[name] = b
+	w.last = b
 	return b.Slot
 }
 
@@ -273,7 +297,7 @@ func (w *walker) constLine(c *syntax.Const, s *scope) {
 			// The name is bound first: it is in scope in the lambda's body
 			// and defaults (01-language.md 5 rule 6; 22.7).
 			w.bind(np.Name, np.Span(), s, ConstLambda, lam)
-			w.lambda(lam, s)
+			w.lambda(lam, s, true)
 			return
 		}
 	}
@@ -526,7 +550,8 @@ func (w *walker) pattern(p syntax.Pattern, s *scope) {
 	}
 }
 
-func (w *walker) lambda(l *syntax.Lambda, s *scope) {
+// lambda walks a lambda. bound reports that it is a const-bound lambda.
+func (w *walker) lambda(l *syntax.Lambda, s *scope, bound bool) {
 	ls := &scope{parent: s, names: map[string]*Binding{}}
 	for _, p := range l.Params {
 		w.annotation(p.Type)
@@ -539,7 +564,24 @@ func (w *walker) lambda(l *syntax.Lambda, s *scope) {
 		if p.Default != nil {
 			w.expr(p.Default, ls)
 		}
+		np, isName := p.Pattern.(*syntax.NamePat)
+		if p.Fn != nil && isName {
+			// A parameter with a function type is a function binding, with
+			// a slot for the lambda passed (f17-recursion.md 13.2).
+			w.last = nil
+			if slot := w.bind(np.Name, np.Span(), ls, FnParam, nil); slot >= 0 {
+				w.res.Slots[np] = slot
+				w.last.Param = p
+				w.last.Bound = bound
+			}
+			continue
+		}
+		w.last = nil
 		w.pattern(p.Pattern, ls)
+		if isName && w.last != nil {
+			w.last.Param = p
+			w.last.Bound = bound
+		}
 	}
 	w.annotation(l.Result)
 	w.expr(l.Body, ls)
@@ -558,27 +600,70 @@ func (w *walker) branch(n syntax.Node, s *scope) {
 	w.expr(n, s)
 }
 
-// isLambdaArg reports whether an argument is a lambda argument (22.4), and
-// its count of parameters.
+// isLambdaArg reports whether an argument is a lambda argument (22.4; with
+// F17 13.1, also the name of a parameter with a function type), and its
+// count of parameters: for a parameter with a function type, the count its
+// function type lists.
 func (w *walker) isLambdaArg(a syntax.Node, s *scope) (bool, int) {
 	switch a := a.(type) {
 	case *syntax.Lambda:
 		return true, len(a.Params)
 	case *syntax.Ident:
-		if b := s.lookup(a.Name); b != nil && b.Kind == ConstLambda {
+		b := s.lookup(a.Name)
+		switch {
+		case b != nil && b.Kind == ConstLambda:
 			w.res.Idents[a] = b
 			w.selfRef(a, b)
 			return true, len(b.Lambda.Params)
+		case b != nil && b.Kind == FnParam:
+			w.res.Idents[a] = b
+			return true, len(b.Param.Fn.Params)
 		}
 	}
 	return false, 0
 }
 
-func (w *walker) args(args []syntax.Node, s *scope) {
+// HigherOrder reports whether a lambda has a parameter with a function type
+// (f17-recursion.md 13.1): it cannot be passed as a lambda argument.
+func HigherOrder(l *syntax.Lambda) bool {
+	if l == nil {
+		return false
+	}
+	for _, p := range l.Params {
+		if p.Fn != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// higherOrderArg reports whether a lambda argument is a lambda with a
+// parameter with a function type: a Lambda node, or the name of a
+// const-bound lambda (f17-recursion.md 13.2 rule 8).
+func (w *walker) higherOrderArg(a syntax.Node) bool {
+	switch a := a.(type) {
+	case *syntax.Lambda:
+		return HigherOrder(a)
+	case *syntax.Ident:
+		if b := w.res.Idents[a]; b != nil && b.Kind == ConstLambda {
+			return HigherOrder(b.Lambda)
+		}
+	}
+	return false
+}
+
+// args walks the arguments of a Call or a MethodCall. A lambda argument
+// that has a parameter with a function type is lambda-to-lambda wherever it
+// stands, whatever the callee (f17-recursion.md 13.2 rule 8); name is the
+// callee as written.
+func (w *walker) args(name string, args []syntax.Node, s *scope) {
 	for _, a := range args {
 		if ok, _ := w.isLambdaArg(a, s); ok {
+			if w.higherOrderArg(a) {
+				w.diagm("lambda-to-lambda", a.Span(), "higher-order", messages.Word("name", name))
+			}
 			if l, isL := a.(*syntax.Lambda); isL {
-				w.lambda(l, s)
+				w.lambda(l, s, false)
 			}
 			continue
 		}
@@ -609,11 +694,20 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		}
 	default:
 		if b := s.lookup(name); b != nil {
-			if b.Kind == ConstLambda {
+			switch b.Kind {
+			case ConstLambda:
 				callee = &Callee{Kind: Lambda, Lambda: b.Lambda}
 				w.selfRef(n, b)
-			} else {
-				w.diagm("call-of-parameter", nameSpan, "", messages.Word("name", name))
+			case FnParam:
+				// A parameter with a function type may be called
+				// (f17-recursion.md 13.2 rule 1).
+				callee = &Callee{Kind: Param, Binding: b}
+			default:
+				tmpl := ""
+				if b.HintParam() {
+					tmpl = "fn-hint"
+				}
+				w.diagm("call-of-parameter", nameSpan, tmpl, messages.Word("name", name))
 			}
 		} else if f, ok := w.names.Funcs[name]; ok {
 			callee = &Callee{Kind: Host, Host: f}
@@ -624,19 +718,22 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		}
 	}
 	w.res.Calls[n] = callee
+	full := name
+	if ns != "" {
+		full = ns + "." + name
+	}
 	if callee.Kind != Unknown {
 		var min, max int
 		switch callee.Kind {
 		case Lambda:
 			min, max = lambdaCounts(callee.Lambda)
+		case Param:
+			min = len(callee.Binding.Param.Fn.Params)
+			max = min
 		case Host:
 			min, max = callee.Host.Sig.MinArgs(), callee.Host.Sig.MaxArgs()
 		case Lib:
 			min, max = callee.Lib.MinArgs(), callee.Lib.MaxArgs()
-		}
-		full := name
-		if ns != "" {
-			full = ns + "." + name
 		}
 		if len(args) < min || (max >= 0 && len(args) > max) {
 			w.diagm("arity", n.Span(), ArityTemplate(min, max), messages.Word("name", full),
@@ -644,34 +741,84 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 				messages.Word("most", strconv.Itoa(max)))
 		} else {
 			for i, a := range args {
-				ok, nparams := w.isLambdaArg(a, s)
-				if !ok {
-					continue
-				}
-				switch callee.Kind {
-				case Lambda:
-					w.diagm("lambda-to-lambda", a.Span(), "", messages.Word("name", full))
-				case Host:
-					// A host signature has no Fn parameter (bad-signature).
-					w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full),
-						messages.Word("param", hostParam(callee.Host, i)))
-				case Lib:
-					p := callee.Lib.ParamAt(i)
-					if p == nil || p.Callback < 0 {
-						pn := ""
-						if p != nil {
-							pn = p.Name
-						}
-						w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full), messages.Word("param", pn))
-					} else if nparams > p.Callback {
-						w.diagm("arity", a.Span(), "parameters", messages.Word("name", full),
-							messages.Word("most", strconv.Itoa(p.Callback)))
-					}
-				}
+				w.argTest(callee, full, i, a, s)
 			}
 		}
 	}
-	w.args(args, s)
+	w.args(full, args, s)
+}
+
+// argTest applies the tests of 22.5 to argument i of a call whose count is
+// right, with those of f17-recursion.md 13.2 for a parameter with a
+// function type.
+func (w *walker) argTest(callee *Callee, full string, i int, a syntax.Node, s *scope) {
+	ok, nparams := w.isLambdaArg(a, s)
+	if ok && w.higherOrderArg(a) {
+		return // rule 8 (args) decides this argument
+	}
+	switch callee.Kind {
+	case Lambda:
+		p := callee.Lambda.Params[i]
+		switch {
+		case p.Fn == nil:
+			if !ok {
+				break
+			}
+			// Rule 2: a parameter written as a name with no default may take
+			// a function type, and the message says so (f17-recursion.md
+			// 13.2 item 4); a pattern or a default shows a value.
+			if np, isName := p.Pattern.(*syntax.NamePat); isName && !np.Discard && p.Default == nil {
+				w.diagm("lambda-to-lambda", a.Span(), "fn-hint", messages.Word("name", np.Name))
+			} else {
+				w.diagm("lambda-to-lambda", a.Span(), "", messages.Word("name", full))
+			}
+		case !ok:
+			// A value at a parameter with a function type (rule 3).
+			pn := ""
+			if np, isName := p.Pattern.(*syntax.NamePat); isName {
+				pn = np.Name
+			}
+			if id, isID := a.(*syntax.Ident); isID {
+				if b := s.lookup(id.Name); b.HintParam() {
+					w.diagm("arg-mismatch", a.Span(), "parameter-at-fn", messages.Word("name", id.Name))
+					return
+				}
+			}
+			w.diagm("arg-mismatch", a.Span(), "function", messages.Word("param", pn), messages.Word("name", full))
+		case nparams > len(p.Fn.Params):
+			// rule 9
+			w.diagm("arity", a.Span(), "parameters", messages.Word("name", full),
+				messages.Word("most", strconv.Itoa(len(p.Fn.Params))))
+		}
+	case Param:
+		// A function type's parameters are never functions: each takes a
+		// value, as a parameter of a function that is not an Fn does.
+		if ok {
+			w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full),
+				messages.Word("param", callee.Binding.Param.Fn.Params[i].Name))
+		}
+	case Host:
+		if ok {
+			// A host signature has no Fn parameter (bad-signature).
+			w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full),
+				messages.Word("param", hostParam(callee.Host, i)))
+		}
+	case Lib:
+		if !ok {
+			return
+		}
+		p := callee.Lib.ParamAt(i)
+		if p == nil || p.Callback < 0 {
+			pn := ""
+			if p != nil {
+				pn = p.Name
+			}
+			w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full), messages.Word("param", pn))
+		} else if nparams > p.Callback {
+			w.diagm("arity", a.Span(), "parameters", messages.Word("name", full),
+				messages.Word("most", strconv.Itoa(p.Callback)))
+		}
+	}
 }
 
 func (w *walker) expr(n syntax.Node, s *scope) {
@@ -682,7 +829,18 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		switch {
 		case b != nil && b.Kind == ConstLambda:
 			w.res.Idents[n] = b
-			w.diagm("not-a-value", n.Span(), "lambda", nameP(n.Name))
+			tmpl := "lambda"
+			if HigherOrder(b.Lambda) {
+				// It takes a function, so it may only be called
+				// (f17-recursion.md 13.5).
+				tmpl = "higher-order"
+			}
+			w.diagm("not-a-value", n.Span(), tmpl, nameP(n.Name))
+		case b != nil && b.Kind == FnParam:
+			// A parameter with a function type is not a value
+			// (f17-recursion.md 13.2 rule 4).
+			w.res.Idents[n] = b
+			w.diagm("not-a-value", n.Span(), "function", nameP(n.Name))
 		case b != nil:
 			w.res.Idents[n] = b
 		case w.names.Namespaces[n.Name]:
@@ -701,7 +859,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 			return
 		}
 		w.chainBase(n.X, s)
-		w.args(n.Args, s)
+		w.args(n.Name, n.Args, s)
 	case *syntax.Member:
 		if w.constant(n) {
 			return
@@ -749,7 +907,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		}
 	case *syntax.Lambda:
 		// A lambda where no argument may stand cannot parse; walk it anyway.
-		w.lambda(n, s)
+		w.lambda(n, s, false)
 	case *syntax.Map:
 		keys := map[string]bool{}
 		for _, e := range n.Entries {
@@ -891,7 +1049,7 @@ func (w *walker) chainBase(x syntax.Node, s *scope) {
 		case *syntax.Index:
 			w.expr(n.Index, s)
 		case *syntax.MethodCall:
-			w.args(n.Args, s)
+			w.args(n.Name, n.Args, s)
 		}
 	}
 }

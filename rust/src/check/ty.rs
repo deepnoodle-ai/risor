@@ -18,7 +18,7 @@ use std::sync::Arc;
 mod pairs;
 mod refs;
 
-pub use pairs::{passed, watch};
+pub use pairs::{fits_looking, passed, watch};
 pub use refs::{
     add_alts, beside_its_kind, can_be_falsy, has_refs_deep, map_refs, reach, strengthen, Kinds,
     Memo, Ref, Table,

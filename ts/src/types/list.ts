@@ -7,7 +7,7 @@
 
 import type { Span } from "../syntax/source.ts";
 import type { TypeNode } from "./typetext.ts";
-import { isAny, kindsOf, newRef, refType, sortedKeys, variantsPrinted, withoutRefs } from "./type.ts";
+import { isAny, kindsOf, newRef, refType, sortedKeys, unfold, variantsPrinted, withoutRefs } from "./type.ts";
 import type { FromContext, Ref, Type } from "./type.ts";
 import { resolveText } from "./resolve.ts";
 import type { TypeDiag } from "./resolve.ts";
@@ -71,7 +71,9 @@ export function resolveList(items: readonly ListItem[], lookup: (name: string, a
         const j = lookup(name, i);
         if (j === null || j < 0) return undefined;
         if (inC.has(j)) return guarded ? refType(refs[j]!) : done.get(j);
-        if (!recursive[j]) return types[j];
+        // A reference that reaches the top of a recursive item's text through an item that is not recursive is
+        // replaced by its definition (R307), so no definition holds a reference at its top.
+        if (!recursive[j]) return guarded || !isRec || types[j] === undefined ? types[j] : unfold(types[j]!);
         if (guarded || !isRec) return refType(refs[j]!);
         return refs[j]!.def;
       },
