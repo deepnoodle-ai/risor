@@ -772,7 +772,15 @@ fn deep_any(t: &Ty, p: impl Fn(&Ty) -> bool, _stop_at_any: bool) -> bool {
         if let Some(e) = &t.list {
             stack.push(e.as_ref().clone());
         }
-        if let Some(r) = &t.map {
+        // A tagged union's field types are its variants' (F5 2.3): the flat
+        // record joins them, which can hide an opaque name beside `any`, or
+        // make an `any` that no variant has.
+        let recs: Vec<&Rec> = match (&t.variants, &t.map) {
+            (Some(vs), _) => vs.iter().collect(),
+            (None, Some(r)) => vec![r.as_ref()],
+            (None, None) => Vec::new(),
+        };
+        for r in recs {
             stack.extend(r.fields.values().map(|f| f.ty.clone()));
             stack.push(r.rest.clone());
         }
@@ -840,7 +848,8 @@ pub fn without(x: &Ty, t: &Ty) -> Ty {
         };
         if sure(one) {
             out.str = None;
-        } else if let (Strs::Lits(l), Some(Strs::Lits(tl))) = (&st, &t.str) {
+        } else if let (Strs::Lits(l), Some(Strs::Lits(tl))) = (&st, &t.view().str) {
+            // T's literal set is that of its unfolding (F17 12.5).
             let left: BTreeSet<String> = l.difference(tl).cloned().collect();
             out.str = if left.is_empty() {
                 None
@@ -1216,7 +1225,15 @@ pub fn from_text(
     opaque: &(impl TypeNames + ?Sized),
     vars: Option<&Solutions>,
 ) -> Result<Ty, String> {
+    // F17 12.5 item 7: a Join that the union of records makes may pass the
+    // bound of pairs; the type is then refused (`bad-type`, and in a host
+    // signature `bad-signature`, R317).
+    let w = watch();
     let ty = convert(t, opaque, vars)?;
+    if w.passed() {
+        return Err("comparing the types takes more than 4096 pairs of types".into());
+    }
+    drop(w);
     if ty.too_big() {
         return Err(format!("the type is larger than {SIZE_LIMIT}"));
     }

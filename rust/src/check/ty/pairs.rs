@@ -131,9 +131,12 @@ struct Frame {
 }
 
 /// A key of a pair from the top of its two types alone: equal pairs have
-/// equal keys. It finds the pairs a pair may equal without a walk of the
-/// pairs in progress or failed, so that a computation takes time linear in
-/// the pairs it enters.
+/// equal keys. It narrows the pairs in progress or failed that a pair may
+/// equal to those of its key, so a lookup need not walk them all. Distinct
+/// pairs may share a key, and a rule that meets many pairs runs again from
+/// its start after each, replaying the outcomes before it: the work is
+/// bounded by the bound times the work of one rule, not linear in the pairs
+/// entered.
 fn key(kind: Kind, a: &Ty, b: &Ty) -> u64 {
     fn top(t: &Ty, h: &mut impl Hasher) {
         (t.any, t.null, t.boolean, t.num.map(|n| n == Num::Int)).hash(h);
@@ -683,7 +686,6 @@ impl Cx {
             || a.num != b.num
             || a.str != b.str
             || a.list.is_some() != b.list.is_some()
-            || a.map.is_some() != b.map.is_some()
         {
             return Ok(false);
         }
@@ -691,6 +693,10 @@ impl Cx {
             if !self.equal(x, y)? {
                 return Ok(false);
             }
+        }
+        // The map after the list, in the order of printing (12.5 item 6).
+        if a.map.is_some() != b.map.is_some() {
+            return Ok(false);
         }
         if a.map.is_some() {
             let (av, bv) = (a.variants(), b.variants());
@@ -706,13 +712,22 @@ impl Cx {
         Ok(a.opaque == b.opaque && a.refs == b.refs && a.null == b.null)
     }
 
+    /// Two records' keys in code point order, each once, each field's mark
+    /// before its type, then the rests (12.5 item 6): a key that one lacks
+    /// ends the test where the order meets it, after the keys before it.
     fn equal_rec(&mut self, x: &Rec, y: &Rec) -> Step<bool> {
-        if !x.fields.keys().eq(y.fields.keys()) {
-            return Ok(false);
-        }
-        for (fx, fy) in x.fields.values().zip(y.fields.values()) {
-            if fx.optional != fy.optional || !self.equal(&fx.ty, &fy.ty)? {
-                return Ok(false);
+        let (mut xs, mut ys) = (x.fields.iter().peekable(), y.fields.iter().peekable());
+        loop {
+            match (xs.peek(), ys.peek()) {
+                (None, None) => break,
+                (Some((kx, fx)), Some((ky, fy))) if kx == ky => {
+                    if fx.optional != fy.optional || !self.equal(&fx.ty, &fy.ty)? {
+                        return Ok(false);
+                    }
+                    xs.next();
+                    ys.next();
+                }
+                _ => return Ok(false),
             }
         }
         self.equal(&x.rest, &y.rest)

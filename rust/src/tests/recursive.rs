@@ -4,7 +4,7 @@
 //! conformance function stops past the default depth limit.
 
 use super::host::stated_stack;
-use crate::check::ty::{print, Ty};
+use crate::check::ty::{print, Ty, TypeNames};
 use crate::{parse, CompileOptions, Data, Env, Expected, Pos};
 use std::sync::Weak;
 
@@ -220,4 +220,292 @@ fn an_extra_key_prints_the_record_type_by_its_name() {
         )),
         [r#"Rt0 does not allow key "x""#]
     );
+}
+
+/// The named types of [`chains`], for an environment.
+fn chain_env(n: usize) -> crate::EnvBuilder {
+    let mut b = Env::builder();
+    for p in ["A", "B"] {
+        for i in 0..n {
+            b = b.named_type(&format!("{p}{i}"), &format!("{{n: {p}{}}}", (i + 1) % n));
+        }
+    }
+    b
+}
+
+/// Equal visits two records' keys in code point order (F17 12.5 item 6): at
+/// `a` before the key `z` that one lacks. So `{a: A0, z: int}` and `{a: B0,
+/// zz: int}` enter the pairs of the two chains, and pass the bound, before
+/// the keys differ. A union the type API builds is invalid when the Join of
+/// its records passes the bound.
+#[test]
+fn equal_compares_a_key_before_a_later_key_that_differs() {
+    let env = chain_env(4100)
+        .named_type("Xa", "{a: A0, z: int}")
+        .named_type("Xb", "{a: B0, zz: int}")
+        .build()
+        .unwrap();
+    let names = &env.data().names;
+    let (xa, xb) = (names.lookup("Xa").unwrap(), names.lookup("Xb").unwrap());
+    let w = crate::check::ty::watch();
+    assert!(!crate::check::ty::equal(&xa, &xb));
+    assert!(w.passed(), "the comparison stopped at the keys");
+    drop(w);
+
+    use crate::typ::{literal_type, record_type, tagged_union_type, FieldType};
+    let variant = |tag: &str, v: &str| {
+        let field = |key: &str, ty| FieldType {
+            key: key.into(),
+            ty,
+            optional: false,
+        };
+        record_type(
+            &[
+                field("kind", literal_type(&[tag])),
+                field("v", env.parse_type(v).unwrap()),
+            ],
+            &crate::typ::Type::NEVER,
+        )
+    };
+    let u = tagged_union_type(&[variant("a", "A0"), variant("b", "B0")]);
+    assert!(u.ty().is_err(), "{u}");
+    let u = crate::typ::union_type(&[variant("a", "A0"), variant("b", "B0")]);
+    assert!(u.ty().is_err(), "{u}");
+    let u = tagged_union_type(&[variant("a", "A0"), variant("b", "A0")]);
+    assert!(u.ty().is_ok(), "{u}");
+}
+
+/// A union the type API builds holds the tables of the recursive types its
+/// variants read through a reference, and outlives the types it came from.
+#[test]
+fn a_built_union_holds_its_recursive_tables() {
+    use crate::typ::{
+        literal_type, record_type, tagged_union_type, type_from_schema, FieldType, Type,
+    };
+    let a = type_from_schema(
+        r##"{"$defs": {"node": {"type": "object", "properties": {"kind": {"const": "a"},
+            "next": {"$ref": "#/$defs/node"}}, "required": ["kind"],
+            "additionalProperties": false}}, "$ref": "#/$defs/node"}"##,
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(a.to_string(), "Node");
+    let b = record_type(
+        &[FieldType {
+            key: "kind".into(),
+            ty: literal_type(&["b"]),
+            optional: false,
+        }],
+        &Type::NEVER,
+    );
+    let tagged = tagged_union_type(&[a.clone(), b.clone()]);
+    let union = crate::typ::union_type(&[a.clone(), b]);
+    let weak = std::sync::Arc::downgrade(
+        &crate::check::ty::reach(std::iter::once(a.ty().unwrap()))[0]
+            .table()
+            .unwrap(),
+    );
+    drop(a);
+    let node = |next: Option<Data>| {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("kind".to_string(), Data::Str("a".into()));
+        if let Some(n) = next {
+            m.insert("next".to_string(), n);
+        }
+        Data::Map(m)
+    };
+    let data = node(Some(node(Some(node(None)))));
+    for u in [&tagged, &union] {
+        assert_eq!(u.to_string(), r#"{kind: "a", next?: Node} | {kind: "b"}"#);
+        assert!(crate::conform(&crate::Value::from_data(&data), u).is_ok());
+    }
+    assert!(weak.upgrade().is_some());
+    drop((tagged, union));
+    assert!(weak.upgrade().is_none(), "the table was kept");
+}
+
+/// has-opaque reads each variant of a tagged union: the flat record joins
+/// `Token` and `any` to `any`, so a rendering of it is `kind`, not a
+/// `dynamic` site (`05-types.md` 7.3).
+#[test]
+fn has_opaque_reads_the_variants_of_a_union() {
+    let env = Env::builder()
+        .opaque("Token")
+        .var_record(r#"{x: {tag: "a", value: Token} | {tag: "b", value: any}}"#)
+        .build()
+        .unwrap();
+    let ty = env.data().var_types[0].clone();
+    assert!(crate::check::ty::has_opaque(&ty));
+    let e = env
+        .check(&parse("`${x}`").unwrap(), &Expected::None)
+        .err()
+        .unwrap();
+    assert_eq!(e.diagnostics[0].code, "kind");
+}
+
+/// A host's named type names only declared opaque types (`05-host-api.md`
+/// E.7), at any depth, in a union's variants and through references.
+#[test]
+fn a_host_named_type_names_declared_opaque_types() {
+    use crate::typ::{list_type, opaque_type_named};
+    let tok = list_type(&opaque_type_named("Token"));
+    let e = Env::builder()
+        .named_type_of("Alias", &tok)
+        .build()
+        .err()
+        .unwrap();
+    assert_eq!(e.diagnostics[0].code, "bad-type");
+    assert!(Env::builder()
+        .opaque("Token")
+        .named_type_of("Alias", &tok)
+        .build()
+        .is_ok());
+    // Through a reference: a recursive type that holds the opaque type.
+    let host = Env::builder()
+        .opaque("Token")
+        .named_type("Cell", "{t: Token, next: Cell | null}")
+        .build()
+        .unwrap();
+    let cell = host.parse_type("Cell").unwrap();
+    let e = Env::builder()
+        .named_type_of("Alias", &cell)
+        .build()
+        .err()
+        .unwrap();
+    assert_eq!(e.diagnostics[0].code, "bad-type");
+}
+
+/// The lines `R0` to `R{k}`, each a record of two fields of the line
+/// before, and a recursive `Xs` whose top reaches `Tree` through `Alias`,
+/// a line that is not recursive.
+fn doubling(k: usize) -> Vec<(String, String)> {
+    let mut v = vec![("R0".to_string(), "int".to_string())];
+    for i in 1..=k {
+        v.push((format!("R{i}"), format!("{{a: R{0}, b: R{0}}}", i - 1)));
+    }
+    v.push(("Tree".into(), format!("{{kids: Tree[], payload: R{k}}}")));
+    v.push(("Alias".into(), "Tree".into()));
+    v.push((
+        "Xs".into(),
+        format!("{{again: Xs, payload: R{k}}}[] | Alias"),
+    ));
+    v
+}
+
+/// F17 12.6 item 1: a definition is tested for size with the references at
+/// its top replaced (12.2 item 4). `Xs` reaches `Tree`'s definition through
+/// `Alias`: its text is under the limit and its definition over it.
+#[test]
+fn a_definition_is_tested_for_size_once_its_top_is_replaced() {
+    for (k, over) in [(14, false), (15, true)] {
+        let lines = doubling(k);
+        let src: String = lines
+            .iter()
+            .map(|(n, t)| format!("type {n} = {t}; "))
+            .collect::<String>()
+            + "1";
+        let r = Env::default().check(&parse(&src).unwrap(), &Expected::None);
+        match r {
+            Ok(_) => assert!(!over, "k = {k}: the lines check"),
+            Err(e) => {
+                assert!(over, "k = {k}: {:?}", e.diagnostics);
+                assert_eq!(e.diagnostics.len(), 1);
+                assert_eq!(e.diagnostics[0].code, "check-limit");
+                assert_eq!(
+                    e.diagnostics[0].message,
+                    crate::messages::build("check-limit", "size", &[])
+                );
+            }
+        }
+        let mut b = Env::builder();
+        for (n, t) in &lines {
+            b = b.named_type(n, t);
+        }
+        match b.build() {
+            Ok(_) => assert!(!over, "k = {k}: the environment builds"),
+            Err(e) => {
+                assert!(over, "k = {k}: {:?}", e.diagnostics);
+                assert!(e.diagnostics.iter().all(|d| d.code == "bad-type"));
+            }
+        }
+    }
+}
+
+/// The type of `p ? a : q ? b : u` is Join(A, Join(B, U)); with `u: any`
+/// that is `any` at once, and no Join of A and B is made. Rings of 64 and
+/// 65 records would take 4,160 pairs to join.
+#[test]
+fn a_chain_of_conditionals_joins_only_from_its_end() {
+    let ring = |p: &str, n: usize| -> String {
+        (0..n)
+            .map(|i| format!("type {p}{i} = {{next: {p}{}}}; ", (i + 1) % n))
+            .collect()
+    };
+    let env = Env::builder()
+        .var_record("{p: bool, q: bool, u: any, x: any}")
+        .build()
+        .unwrap();
+    let src = format!(
+        "{}{}const a = x as P0; const b = x as Q0; p ? a : q ? b : u",
+        ring("P", 64),
+        ring("Q", 65)
+    );
+    let r = env.check(&parse(&src).unwrap(), &Expected::None).unwrap();
+    assert_eq!(r.ty.to_string(), "any");
+    // The Join that the chain does make passes the bound.
+    let src = format!(
+        "{}{}const a = x as P0; const b = x as Q0; p ? a : b",
+        ring("P", 64),
+        ring("Q", 65)
+    );
+    let e = env
+        .check(&parse(&src).unwrap(), &Expected::None)
+        .err()
+        .unwrap();
+    assert_eq!(e.diagnostics[0].code, "check-limit");
+}
+
+/// The families of the case "the bound: a join in a chain of ? : is on the
+/// innermost conditional": `A0` to `A12` and `B0` to `B12`, each record two
+/// lists of the next. A Join of `A0` and `B0` passes the bound of pairs.
+fn families(b: crate::EnvBuilder) -> crate::EnvBuilder {
+    let mut b = b;
+    for p in ["A", "B"] {
+        for i in 0..13 {
+            let next = format!("{p}{}", (i + 1) % 13);
+            b = b.named_type(&format!("{p}{i}"), &format!("{{x: {next}[], y: {next}[]}}"));
+        }
+    }
+    b
+}
+
+/// F17 12.5 item 7 (R317): the bound passed in a host signature is
+/// `bad-signature`; in a variable's type it is `bad-type`. A union of two
+/// records whose fields join past the bound passes it as it is declared.
+#[test]
+fn the_bound_in_a_signature_is_bad_signature() {
+    let sig = r#"(v: {k: "a", t: A0} | {k: "b", t: B0}) => int"#;
+    let e = families(Env::builder())
+        .function("f", sig, |_, _| Ok(Data::Int(1)))
+        .build()
+        .err()
+        .unwrap();
+    let codes: Vec<&str> = e.diagnostics.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["bad-signature"]);
+    let e = families(Env::builder())
+        .var_record(r#"{v: {k: "a", t: A0} | {k: "b", t: B0}}"#)
+        .build()
+        .err()
+        .unwrap();
+    let codes: Vec<&str> = e.diagnostics.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["bad-type"]);
+    // One family on both sides joins at once.
+    assert!(families(Env::builder())
+        .function(
+            "f",
+            r#"(v: {k: "a", t: A0} | {k: "b", t: A0}) => int"#,
+            |_, _| { Ok(Data::Int(1)) }
+        )
+        .build()
+        .is_ok());
 }

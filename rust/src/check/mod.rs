@@ -2103,7 +2103,6 @@ impl<'a> Checker<'a> {
 
     fn cond(&mut self, id: NodeId) -> Ty {
         let k = self.facts.len();
-        let mut acc = Ty::never();
         let mut n = id;
         let mut chain: Vec<(NodeId, Ty)> = Vec::new();
         while let NodeKind::Cond {
@@ -2118,12 +2117,10 @@ impl<'a> Checker<'a> {
             let bt = self.synth(*then);
             self.facts.truncate(k2);
             self.facts.extend(ff);
-            acc = join(&acc, &bt);
             chain.push((n, bt));
             n = *else_;
         }
         let et = self.synth(n);
-        let _ = acc;
         self.facts.truncate(k);
         let mut below = et;
         for (c, bt) in chain.into_iter().rev() {

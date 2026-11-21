@@ -633,7 +633,16 @@ impl EnvBuilder {
                 NamedDecl::Schema(schema, opts) => {
                     Item::Fixed(crate::schema::ty_schema_named(schema, *opts, name))
                 }
-                NamedDecl::Type(t) => Item::Fixed(t.clone()),
+                // A type the host built names only declared opaque types,
+                // as a variable's does (`05-host-api.md` E.7).
+                NamedDecl::Type(t) => Item::Fixed(t.clone().and_then(|t| {
+                    let mut names = std::collections::BTreeSet::new();
+                    opaque_names(&t, &mut names, &mut Default::default());
+                    match names.iter().find(|n| !opaque.contains(n)) {
+                        Some(n) => Err(format!("{n} is not a declared opaque type")),
+                        None => Ok(t),
+                    }
+                })),
             };
             items.push((name.clone(), item));
         }
@@ -986,10 +995,20 @@ impl EnvBuilder {
                     clashes.insert(r.name().to_string());
                 }
                 earlier.push(r);
+                // 12.4 item 2 (R315): a named type of its name is no clash
+                // only when it is that recursive type, its own reference;
+                // an alias of another, even of one structure, clashes. So
+                // does an opaque type of its name (F4 3.2).
                 if let Some(t) = named.get(r.name()) {
-                    if !equal(t, &one(r)) {
+                    let itself = t.is_one_ref()
+                        && t.refs.iter().all(|x| x.name() == r.name())
+                        && equal(t, &one(r));
+                    if !itself {
                         clashes.insert(r.name().to_string());
                     }
+                }
+                if opaque.iter().any(|o| o == r.name()) {
+                    clashes.insert(r.name().to_string());
                 }
             }
             for n in clashes {
@@ -1284,6 +1303,17 @@ fn named_list(items: &[(String, Item)], outside: &Names) -> Vec<Result<Ty, Strin
                             i,
                             format!("{name} shares a kind with another type of its union"),
                         ));
+                        continue;
+                    }
+                    // F17 12.6 item 1: the definition is tested with each
+                    // reference at its top replaced (12.2 item 4), which a
+                    // reference through an item that is not recursive
+                    // makes larger than its text.
+                    let top = Ref::new(&table, idx(i), &items[i].0)
+                        .unfolding()
+                        .unwrap_or_default();
+                    if let Err(e) = limits(&top) {
+                        errs.push((i, e));
                     }
                 }
             }

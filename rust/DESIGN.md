@@ -847,8 +847,10 @@ A plain text error has no cause: its text is already the message.
   met before. So native recursion is that of one pair's rule, which the
   depth of its two types bounds, not the 4,096 pairs the bound allows in
   progress. Pairs in progress and failed are indexed by a key of the top of
-  their two types, so a computation takes time linear in the pairs it
-  enters, not their square.
+  their two types, which narrows a lookup to the pairs of one key rather
+  than all of them. A rule that meets k pairs runs k + 1 times, replaying
+  the outcomes before each, so its work can grow as the square of k; the
+  bound caps the pairs a computation enters.
 - **Schemas** (`schema.rs`). The mapping meets an object's
   `additionalProperties`, then `patternProperties` and `properties` each in
   code point order of their keys, and the names of `type` in the order
@@ -859,6 +861,17 @@ A plain text error has no cause: its text is already the message.
   type left, which step 2 reads the kinds of; step 3 fits by
   `fits_looking`, which fails when the computation enters a pair holding a
   reference that is not complete (12.4 item 4, R312).
+- **Review of PR #677.** A schema's own type is tested by 12.2 item 6 as
+  a definition is (R316). A definition is tested for size and depth with
+  the references at its top replaced, in type lines and in an environment
+  (12.6 item 1). `from_text` watches the bound, so a union of records whose
+  flat record passes it is `bad-type`, or `bad-signature` in a host
+  signature (R317). A union the type API builds is strengthened and watched
+  as `join` is. has-opaque, has-any and the opaque names of a host's type
+  read each variant of a union, and the opaque names follow references. A
+  recursive type with an opaque type's name, or with the name of a named
+  type that is not its own reference, is `name-clash` (R315). Equal meets
+  two records' keys in one ordered pass.
 - **Join's order.** `c ? a : b` is Join(A, B), the else side folded first
   and each branch joined in front of it, when a reference stands anywhere
   in either; two unions are the same by structure when their variants are

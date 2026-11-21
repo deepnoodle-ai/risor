@@ -469,8 +469,21 @@ pub fn union_type(types: &[Type]) -> Type {
         return b;
     }
     let ts: Vec<Ty> = types.iter().map(|t| t.ty.clone()).collect();
-    match cty::union_of_alts(&ts) {
-        Some(u) => checked(u),
+    let w = cty::watch();
+    let u = cty::union_of_alts(&ts);
+    built(u, w.passed())
+}
+
+/// A union a constructor built: invalid with no tag, or when a Join of its
+/// records passed the bound of pairs (F17 12.5 item 7). The references it
+/// reaches hold their tables: a definition read through a reference holds
+/// its own table weakly, and the union outlives the types it came from.
+fn built(u: Option<Ty>, passed: bool) -> Type {
+    if passed {
+        return invalid("comparing the types takes more than 4096 pairs of types");
+    }
+    match u {
+        Some(u) => checked(cty::strengthen(&u)),
         None => invalid("the records have no tag"),
     }
 }
@@ -494,10 +507,9 @@ pub fn tagged_union_type(records: &[Type]) -> Type {
     if recs.len() < 2 {
         return invalid("a tagged union has two variants or more");
     }
-    match Ty::of_variants(recs) {
-        Some(t) => checked(t),
-        None => invalid("the records have no tag"),
-    }
+    let w = cty::watch();
+    let u = Ty::of_variants(recs);
+    built(u, w.passed())
 }
 
 /// The opaque type of a name. An environment that uses it must declare the

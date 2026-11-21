@@ -754,7 +754,24 @@ impl Resolver<'_> {
                             &[("name", name)],
                         );
                         text_bad = true;
+                        continue;
                     }
+                    // 12.6 item 1: the definition is tested with each
+                    // reference at its top replaced (12.2 item 4), which a
+                    // reference through a line that is not recursive makes
+                    // larger than the line's text.
+                    let top = Ref::new(&table, idx(i), &types[i].name)
+                        .unfolding()
+                        .unwrap_or_default();
+                    let template = if top.too_big() {
+                        "size"
+                    } else if top.depth() > 64 {
+                        "depth"
+                    } else {
+                        continue;
+                    };
+                    self.diag("check-limit", types[i].ty.span, template, &[]);
+                    text_bad = true;
                 }
             }
             if text_bad {

@@ -100,6 +100,13 @@ pub fn ty_schema_named(schema: &Json, opts: SchemaOptions, root_name: &str) -> R
     }
     if !m.defs.is_empty() {
         m.set_definitions(&mut closer)?;
+        // F17 12.4 item 5 (R316): the schema's own type is tested as a
+        // definition is: a reference beside a type of its kind.
+        if let Some(n) = beside_its_kind(&t) {
+            return Err(format!(
+                "the schema's type: {n} shares a kind with another type of its union"
+            ));
+        }
     }
     Ok(t)
 }
