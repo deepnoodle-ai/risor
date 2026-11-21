@@ -433,8 +433,9 @@ class Checker {
       const t = this.res.asTypes.get(e);
       if (e.form === "is" && q !== null && t !== undefined && t !== null) {
         const nullable = hasNull(t);
+        // A reference whose definition is `any` is read through its unfolding (f17 12.5), as `any` is: no fact on null.
         out = {
-          t: [this.typeFact("=", q, t), ...(!nullable && !isAny(t) ? [q] : [])],
+          t: [this.typeFact("=", q, t), ...(!nullable && !isAny(unfold(t)) ? [q] : [])],
           f: [this.typeFact("!", q, t), ...(nullable ? [q] : [])],
         };
         // f14 4.2: `p is T`, T exactly null, gives null(p) beside them.
@@ -1538,7 +1539,8 @@ class Checker {
         if (fits(k, STRING) === 0 && !isNever(k)) return NEVER;
         const v = recordValues(r);
         if (optional) return withNull(v);
-        if (isAny(r.rest)) this.site("dynamic", recvSpan, s.span);
+        // As for a field read, a rest that is a reference to `any` is `any` (f17 12.5).
+        if (isAny(unfold(r.rest))) this.site("dynamic", recvSpan, s.span);
         else this.say("maybe-absent", s.index.span, "index", { type: printType(whole) });
         return v;
       }
@@ -1576,14 +1578,16 @@ class Checker {
     if (fl !== undefined && (!fl.optional || present)) return fl.type;
     // A read of a field of a union reads flat(U), and its messages print that one record (f05 4.3).
     if (!isAny(whole) && whole.union !== undefined) whole = { map: r };
-    if (fl !== undefined || (!isNever(r.rest) && !isAny(r.rest))) {
+    // The rest is classified by its unfolding (f17 12.5): a reference whose definition is `any` reads as `any`.
+    const rest = unfold(r.rest);
+    if (fl !== undefined || (!isNever(rest) && !isAny(rest))) {
       const t = fl !== undefined ? fl.type : r.rest;
       if (present) return t;
       if (optional) return withNull(t);
       this.say("maybe-absent", keySpan, "field", { key, type: printType(whole) });
       return t;
     }
-    if (isAny(r.rest)) {
+    if (isAny(rest)) {
       if (optional || present) return ANY;
       return this.site("dynamic", recvSpan, ...owners) ? NEVER : ANY;
     }

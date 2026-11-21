@@ -213,7 +213,7 @@ class Mapper {
   }
 
   run(): Type {
-    let t = this.map(this.root, ROOT, true, 0, "#").type;
+    let t = this.map(this.root, ROOT, true, 0).type;
     this.setDefinitions();
     if (this.opts.has("closed")) {
       const memo = new Map<Type, Type>();
@@ -292,11 +292,11 @@ class Mapper {
    * 8). A place is mapped once, and its type stands wherever the mapping meets
    * it. `place`: where S stands in the root, its decoded tokens as a pointer
    * (f17 12.4 item 1): a place is known by where it stands, not by the object
-   * that holds it, so one object at two places is two places. `pointer`: the
-   * `$ref` that meets it, which names it if it is met again while it is mapped
-   * (12.4 item 2).
+   * that holds it, so one object at two places is two places. A place met
+   * again while it is mapped is named by the last token of its path (12.4
+   * item 2).
    */
-  private map(s: unknown, place: string, isRoot: boolean, level: number, pointer: string | null = null): Mapped {
+  private map(s: unknown, place: string, isRoot: boolean, level: number): Mapped {
     if (!isObj(s)) return this.map0(s, place, isRoot, level);
     // f01 3.10: the edge to a target counts, also when the target is met again.
     if (level > MAX_DEPTH) fail("the schema is deeper than 64");
@@ -304,7 +304,7 @@ class Mapper {
     if (going !== undefined) {
       // f17 12.4 item 1: met again with an array's items or an object's properties between, a recursive type.
       if (this.guards <= going.guards) fail("a cycle of $ref with no array item or property between");
-      return { type: refType(this.recursiveRef(place, pointer)), depth: 0 };
+      return { type: refType(this.recursiveRef(place)), depth: 0 };
     }
     const known = this.targets.get(place);
     if (known !== undefined) {
@@ -332,7 +332,7 @@ class Mapper {
     if (has(s, "$dynamicRef") || has(s, "$recursiveRef")) fail("$dynamicRef and $recursiveRef are not read");
     if (has(s, "$ref")) {
       const target = this.resolve(s.$ref);
-      const m = this.map(target.schema, target.place, target.place === ROOT, level + 1, s.$ref as string);
+      const m = this.map(target.schema, target.place, target.place === ROOT, level + 1);
       return { type: s.nullable === true ? join(m.type, NULL) : m.type, depth: m.depth + 1 };
     }
     const parts: Type[] = [];
@@ -362,14 +362,15 @@ class Mapper {
   }
 
   /** The reference of a recursive target, named as f17 12.4 item 2 says. */
-  private recursiveRef(target: string, pointer: string | null): Ref {
+  private recursiveRef(target: string): Ref {
     const known = this.recursive.get(target);
     if (known !== undefined) return known.ref;
     let name: string;
     if (target === ROOT) name = this.rootName;
     else {
-      const frag = percentDecode(pointer!.slice(1));
-      const raw = frag.slice(frag.lastIndexOf("/") + 1);
+      // The last token of the place's path: every pointer to the place decodes to these tokens, and a place met
+      // again as a part of the schema that holds it has no pointer of its own there.
+      const raw = target.slice(target.lastIndexOf("/") + 1);
       const tok = raw.replace(/~1/g, "/").replace(/~0/g, "~");
       name = /^[a-z]/.test(tok) ? tok[0].toUpperCase() + tok.slice(1) : tok;
     }

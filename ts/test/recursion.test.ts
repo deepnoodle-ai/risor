@@ -174,6 +174,19 @@ describe("recursive types: the review of PR #677", () => {
     assert.throws(() => typeFromSchema(wrapped(63)), (e: unknown) => e instanceof RisorError && e.diagnostics[0].code === "bad-type");
   });
 
+  test("a map's rest that is a reference to any reads by a computed key as map<any> does (f17 12.5)", () => {
+    const sitesOf = (rest: string) => {
+      const env = createEnv({ namedTypes: [{ name: "Top", type: "any | Top[]" }], varRecord: `{m: map<${rest}>, k: string}` });
+      return env.check(parse("m[k]")).sites.map((x) => x.class);
+    };
+    assert.deepEqual(sitesOf("Top"), sitesOf("any"));
+  });
+
+  test("a schema place met again as a part of the schema that holds it needs no pointer to be named (f17 12.4 item 2)", () => {
+    const schema = { $ref: "#/$defs/node/items", $defs: { node: { type: "array", items: { $ref: "#/$defs/node" } } } };
+    assert.equal(typeFromSchema(schema).toString(), "Items");
+  });
+
   /** Two families of 13 types, each holding the next twice: comparing one with the other passes 4,096 pairs. */
   const families = (): { name: string; type: string }[] => {
     const out: { name: string; type: string }[] = [];
