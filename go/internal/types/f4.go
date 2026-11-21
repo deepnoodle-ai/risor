@@ -76,6 +76,7 @@ func WithoutType(x, t *Type) *Type {
 	}
 	out := Never
 	var left []*Record // the variants left, which may form a smaller union
+	tu := t.u()        // the strings T takes through a reference count too
 	for _, a := range alts(x) {
 		if SurelyFits(a, t) {
 			continue
@@ -84,10 +85,10 @@ func WithoutType(x, t *Type) *Type {
 			left = append(left, a.rec)
 			continue
 		}
-		if a.str == strLits && t.str == strLits {
+		if a.str == strLits && tu.str == strLits {
 			var left []string
 			for _, l := range a.lits {
-				if !hasString(t.lits, l) {
+				if !hasString(tu.lits, l) {
 					left = append(left, l)
 				}
 			}
@@ -126,6 +127,12 @@ func (c *rctx) disjoint(a, b *Type) bool {
 	}
 	if len(a.refs) == 0 && len(b.refs) == 0 {
 		return c.disjointPlain(a, b)
+	}
+	// F17 12.5 item 5: the same reference on both sides, or two types
+	// identical as written, are equal at once, so not disjoint, and no
+	// pair is entered.
+	if a == b || identical(a, b) {
+		return false
 	}
 	if c.find(c.disjt, a, b) {
 		return false

@@ -5,6 +5,7 @@ package static
 import (
 	"github.com/deepnoodle-ai/risor/go/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/types"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -372,19 +373,25 @@ func (w *walker) resolveTypeLines(lines []*syntax.TypeLine) {
 		clash[i] = named || env.Opaque[tl.Name]
 		w.lines[tl] = &lineResult{}
 	}
-	target := func(i int, name string) int {
-		at := -1
-		for j := 0; j < n; j++ {
-			if clash[j] || names[j] != name {
-				continue
-			}
-			if j <= i {
-				at = j
-			} else if at < 0 {
-				return j
-			}
+	// The positions of the lines of each name that is not name-clash, in
+	// list order, so that a use finds its line by a search, not a scan.
+	byName := map[string][]int{}
+	for j := 0; j < n; j++ {
+		if !clash[j] {
+			byName[names[j]] = append(byName[names[j]], j)
 		}
-		return at
+	}
+	target := func(i int, name string) int {
+		js := byName[name]
+		if len(js) == 0 {
+			return -1
+		}
+		// The last at or before i, else the first after it.
+		k, _ := slices.BinarySearch(js, i+1)
+		if k > 0 {
+			return js[k-1]
+		}
+		return js[0]
 	}
 	res := make([]*lineResult, n)
 	uses := make([][]types.Use, n)
@@ -446,7 +453,18 @@ func (w *walker) resolveTypeLines(lines []*syntax.TypeLine) {
 				}
 			}
 		}
-		if ok && b.Comp(c) {
+		if ok && !b.Comp(c) {
+			// A definition over the size limit once the references at its
+			// top were replaced (12.2 item 4, 12.6): check-limit on the
+			// line's type, as F4 6.1 reports one.
+			for _, i := range c {
+				if b.Over[i] {
+					res[i].diags = append(res[i].diags, Diag{Code: "check-limit", Span: lines[i].Type.Span, Tmpl: "size"})
+				}
+			}
+			ok = false
+		}
+		if ok {
 			// 12.2 item 6: a reference of the component beside a type of its
 			// kind, once for each line, at its name.
 			for _, i := range c {

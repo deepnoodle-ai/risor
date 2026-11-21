@@ -160,23 +160,21 @@ func WithoutMap(t *Type) *Type {
 }
 
 // sameRec reports whether two records are the same by structure (2.5): the
-// keys and marks, then the field types in key order, then the rests.
+// keys of both in code point order, each field's mark before its type, then
+// the rests (F17 12.5 item 6). It stops at the first that differs.
 func sameRec(a, b *Record) bool { return (&rctx{}).sameRec(a, b) }
 
 func (c *rctx) sameRec(a, b *Record) bool {
+	for i := 0; i < len(a.Fields) && i < len(b.Fields); i++ {
+		// The fields are sorted by key, so the first index whose keys
+		// differ holds the least key that only one record has.
+		f, g := a.Fields[i], b.Fields[i]
+		if f.Key != g.Key || f.Optional != g.Optional || !c.equal(f.Type, g.Type) {
+			return false
+		}
+	}
 	if len(a.Fields) != len(b.Fields) {
 		return false
-	}
-	for i, f := range a.Fields {
-		g := b.Fields[i]
-		if f.Key != g.Key || f.Optional != g.Optional {
-			return false
-		}
-	}
-	for i, f := range a.Fields {
-		if !c.equal(f.Type, b.Fields[i].Type) {
-			return false
-		}
 	}
 	return c.equal(a.Rest, b.Rest)
 }

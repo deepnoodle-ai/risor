@@ -235,7 +235,13 @@ func (w *walker) record(v any, r *types.Record, path []any, tag string, hasTag b
 	var first *cfail
 	for _, k := range others {
 		fv, _ := value.Get(v, k)
-		if c := w.test(fv, r.Rest, w.extend(path, k), false); c != nil && first == nil {
+		c := w.test(fv, r.Rest, w.extend(path, k), false)
+		if c == errDepth {
+			// Past the depth limit the conformance function ends, as a
+			// run's walk does (F17 12.7 item 3).
+			return c
+		}
+		if c != nil && first == nil {
 			first = c
 		}
 	}

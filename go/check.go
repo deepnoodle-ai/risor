@@ -182,7 +182,7 @@ func (e *Env) typeEnv() {
 // recNames collects the recursive types the environment's declarations
 // reach: those of its named types, variables and signatures (F17 12.4).
 // Two that are not one type may not share a name, and none may take the
-// name of a named type of another type: name-clash. The description lists
+// name of an opaque type or of a named type that is not it: name-clash. The description lists
 // each in types.
 func (e *Env) recNames() {
 	var ts []*types.Type
@@ -221,8 +221,17 @@ func (e *Env) recNames() {
 			continue
 		}
 		byName[n.Name] = n
+		if _, ok := e.opaque[n.Name]; ok {
+			// As a named type with an opaque type's name is (F4 3.2; R315).
+			clashed[n.Name] = true
+			e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s has the name of an opaque type", n.Name))
+			continue
+		}
 		if t, ok := e.namedTypes[n.Name]; ok {
-			if r := t.Refs(); !(len(r) == 1 && types.Equal(t, types.Ref(r[0])) && types.SameDef(r[0], n)) {
+			// Only the named type that is this recursive type may bear its
+			// name: one whose type is another name, even of the same
+			// structure, is not (R315).
+			if r, ok := t.RefOnly(); !ok || r.Name != n.Name || !types.SameDef(r, n) {
 				clashed[n.Name] = true
 				e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s and the named type %s are not one type", n.Name, n.Name))
 				continue

@@ -48,6 +48,12 @@ func (c *conv) fail(format string, args ...any) {
 
 func catch(err *error) {
 	if r := recover(); r != nil {
+		if _, ok := r.(*PairLimit); ok {
+			// F17 12.5 item 7: a Join of the text past the pair bound is an
+			// error of the text: bad-type, or bad-signature in a signature.
+			*err = &TextError{Msg: fmt.Sprintf("the type needs more than %d pairs of types to compare", MaxPairs)}
+			return
+		}
 		te, ok := r.(*TextError)
 		if !ok {
 			panic(r)

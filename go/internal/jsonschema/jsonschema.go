@@ -89,6 +89,13 @@ func Map(root any, o Options, rootName string) (t *types.Type, err error) {
 	}()
 	t = m.schema(root, "").t
 	m.setDefs()
+	if len(m.order) > 0 {
+		// F17 12.4 item 5 (R316): the schema's own type follows 12.2 item 6
+		// too, so that every type a description prints reads back.
+		if n, bad := types.SharedDeep(t); bad {
+			m.fail("%s shares a kind with another type of its union; give the union a definition of its own", n.Name)
+		}
+	}
 	t = types.Close(t)
 	if types.Size(t) > types.MaxSize {
 		m.fail("the type is larger than %d", types.MaxSize)
@@ -133,7 +140,7 @@ func (m *mapper) nameOf(key, ref string) *types.Named {
 	}
 	name := m.rootName
 	if key != "" {
-		tok := key[strings.LastIndexByte(key, 0)+1:]
+		tok := lastTok(key)
 		if tok != "" && tok[0] >= 'a' && tok[0] <= 'z' {
 			tok = string(tok[0]-'a'+'A') + tok[1:]
 		}
@@ -200,11 +207,29 @@ func (m *mapper) schema(s any, key string) result {
 // child is the place of a schema inside the one being mapped: under the
 // keyword k, then at each member or index of tok.
 func (m *mapper) child(k string, tok ...string) string {
-	key := m.at + "\x00" + k
+	key := m.at + keyTok(k)
 	for _, t := range tok {
-		key += "\x00" + t
+		key += keyTok(t)
 	}
 	return key
+}
+
+// keyTok is one token of a place's key: a NUL, then the token with each
+// NUL and each \x01 in it escaped, so that no two paths share a key.
+func keyTok(t string) string {
+	if strings.ContainsAny(t, "\x00\x01") {
+		t = strings.NewReplacer("\x01", "\x01\x01", "\x00", "\x01\x02").Replace(t)
+	}
+	return "\x00" + t
+}
+
+// lastTok is the last token of a place's key, unescaped.
+func lastTok(key string) string {
+	t := key[strings.LastIndexByte(key, 0)+1:]
+	if strings.IndexByte(t, 1) >= 0 {
+		t = strings.NewReplacer("\x01\x01", "\x01", "\x01\x02", "\x00").Replace(t)
+	}
+	return t
 }
 
 // schemaAt is M(S) of the schema at the place being mapped.
@@ -634,7 +659,7 @@ func (m *mapper) resolve(ref string) (any, string) {
 		if !ok {
 			m.fail("the $ref %q has a bad escape", ref)
 		}
-		key.WriteString("\x00" + tok)
+		key.WriteString(keyTok(tok))
 		switch c := cur.(type) {
 		case map[string]any:
 			next, ok := c[tok]
@@ -746,12 +771,13 @@ func pick(ts []*types.Type) *types.Type {
 	}
 	// Step 2 (F5 8.3): every type left is one map alternative, a record or a
 	// union: their meet, folded from the left. A meet that fails sends the
-	// whole list to step 3.
+	// whole list to step 3. The kinds of every type are read, so a
+	// reference among them is looked into even after one that is not a map
+	// (F17 12.4 item 4).
 	allMap := true
 	for _, t := range left {
 		if t.Kinds() != 1 || t.Record() == nil {
 			allMap = false
-			break
 		}
 	}
 	if allMap {

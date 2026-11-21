@@ -1,5 +1,7 @@
 package types
 
+import "slices"
+
 // This file resolves a list of named types together (F17 12.2): an
 // environment's named types, or a program's type lines. A name may stand
 // for itself and for any name of its list. The names on a cycle are
@@ -122,12 +124,7 @@ func tarjan(n int, next func(int) []int) [][]int {
 					break
 				}
 			}
-			// list order inside a component
-			for i := 1; i < len(c); i++ {
-				for j := i; j > 0 && c[j] < c[j-1]; j-- {
-					c[j], c[j-1] = c[j-1], c[j]
-				}
-			}
+			slices.Sort(c) // list order inside a component
 			out = append(out, c)
 		}
 	}
@@ -149,7 +146,11 @@ type ListBuild struct {
 	// recursive item, the type of any other.
 	Built  []*Type
 	Failed []bool
-	state  []uint8
+	// Over marks a recursive item whose definition passed MaxSize once a
+	// reference at its top was replaced by its definition (12.2 item 4,
+	// 12.6): its text was within the limit, so BuildFn did not report it.
+	Over  []bool
+	state []uint8
 	// BuildFn builds item i's type, naming items through Look. It reports
 	// false when the text has a diagnostic.
 	BuildFn func(i int) (*Type, bool)
@@ -159,7 +160,7 @@ type ListBuild struct {
 func NewListBuild(info *ListInfo, names []string) *ListBuild {
 	n := len(names)
 	b := &ListBuild{Info: info, Names: names, Named: make([]*Named, n), Built: make([]*Type, n),
-		Failed: make([]bool, n), state: make([]uint8, n)}
+		Failed: make([]bool, n), Over: make([]bool, n), state: make([]uint8, n)}
 	for i := range names {
 		if info.Recursive[i] {
 			b.Named[i] = NewNamed(names[i])
@@ -196,9 +197,15 @@ func (b *ListBuild) build(i int) {
 		b.Failed[i] = true
 		return
 	}
-	if b.Info.Recursive[i] {
-		// A definition holds no reference at its top (12.2 item 4).
+	if b.Info.Recursive[i] && t.HasRefs() {
+		// A definition holds no reference at its top (12.2 item 4). The
+		// definitions that replace them may make it larger; not deeper,
+		// since each was tested where it was declared.
 		t = Unfold(t)
+		if Size(t) > MaxSize {
+			b.Failed[i], b.Over[i] = true, true
+			return
+		}
 	}
 	b.Built[i] = t
 }

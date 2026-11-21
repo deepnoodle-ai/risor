@@ -569,22 +569,38 @@ func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
 		n = next
 	}
 	// When the Join of every branch is within the limits, so is the Join
-	// of the branches from any Cond on: one Join serves the chain.
-	all := types.JoinAll(append(thens, last))
-	if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
-		for _, cn := range chain {
-			c.setTy(cn, all)
+	// of the branches from any Cond on: one Join serves the chain. With a
+	// reference the order of the Joins counts (F17 12.5 item 4): each Cond
+	// joins its then with the Join of the branches after it, from the
+	// innermost out, and a computation past the pair bound is on that Cond.
+	refs := types.HasDeepRefs(last)
+	for _, th := range thens {
+		refs = refs || types.HasDeepRefs(th)
+	}
+	if !refs {
+		all := types.JoinAll(append(thens, last))
+		if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
+			for _, cn := range chain {
+				c.setTy(cn, all)
+			}
+			return all
 		}
-		return all
 	}
 	t := last
 	for i := len(chain) - 1; i >= 0; i-- {
 		// Both parts were tested where they became types, so this Join
 		// works on types within the limit.
-		t = c.depthLimit(chain[i], types.Join(thens[i], t))
+		t = c.depthLimit(chain[i], c.joinAt(chain[i], thens[i], t))
 		c.setTy(chain[i], t)
 	}
 	return t
+}
+
+// joinAt is the Join of a and b made by the check of node n: past the pair
+// bound the check ends on n (F17 12.5 item 7).
+func (c *checker) joinAt(n syntax.Node, a, b *types.Type) *types.Type {
+	defer c.catchPairs(n)
+	return types.Join(a, b)
 }
 
 func litType(n syntax.Node) *types.Type {

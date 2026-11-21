@@ -430,9 +430,15 @@ func (d *deriver) setDefs() error {
 	if n, bad := types.SetDefs(d.order, d.defs); bad {
 		return fmt.Errorf("%s shares a kind with another type where it stands", n.Name)
 	}
+	// 12.4 item 5: each definition is tested once it is set. Replacing the
+	// references at its top may have made it larger than when it was
+	// derived.
 	for _, n := range d.order {
 		if types.Depth(n.Def()) > types.MaxDepth {
 			return fmt.Errorf("the type of %s is deeper than 64", n.Name)
+		}
+		if types.Size(n.Def()) > types.MaxSize {
+			return fmt.Errorf("the type of %s is larger than %d", n.Name, types.MaxSize)
 		}
 	}
 	return nil

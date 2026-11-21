@@ -57,6 +57,8 @@ type Type struct {
 	// and written atomically: a type of an environment is shared by
 	// compiles that run at once.
 	size, depth int32
+	// deep caches hasDeepRefs: 0 not yet known, 1 no, 2 yes.
+	deep int32
 }
 
 // Field is one field of a record.
@@ -215,10 +217,11 @@ func (t *Type) Kinds() int {
 
 func (t *Type) withoutNull() *Type {
 	if len(t.refs) > 0 {
-		// A reference whose definition has null is unfolded (F17 12.4).
+		// A reference whose definition has null is unfolded; the others
+		// stay by name (F17 12.5 item 8).
 		for _, n := range t.refs {
 			if n.def != nil && n.def.null {
-				return t.u().withoutNull()
+				return unfoldSome(t, func(d *Type) bool { return d.null }, (*Type).withoutNull)
 			}
 		}
 	}
@@ -228,6 +231,27 @@ func (t *Type) withoutNull() *Type {
 	c := t.clone()
 	c.null = false
 	return c
+}
+
+// unfoldSome applies rule to t with each reference whose definition unfold
+// selects replaced by that definition, and the other references kept beside
+// the result. A definition has no reference at its top, and the kinds of a
+// reference are disjoint from the other alternatives' but null, so the
+// references kept stand beside the rule's result unchanged.
+func unfoldSome(t *Type, unfold func(def *Type) bool, rule func(*Type) *Type) *Type {
+	base := t.plain()
+	var kept []*Named
+	for _, n := range t.refs {
+		if n.def == nil {
+			panic(&Incomplete{Name: n.Name})
+		}
+		if unfold(n.def) {
+			base = mergeKinds(base, n.def)
+		} else {
+			kept = append(kept, n)
+		}
+	}
+	return withRefs(rule(base), kept)
 }
 
 // Nonnull is t without null; nonnull(any) is any (4.5).
@@ -277,9 +301,11 @@ func unionStrings(a, b []string) []string {
 // tree, so no set is copied once for each type joined.
 func JoinAll(ts []*Type) *Type {
 	for _, t := range ts {
-		if len(t.refs) > 0 {
+		if hasDeepRefs(t) {
 			// With a reference the types are joined from the left, in order
-			// (F17 12.4): a Join of references is not associative as written.
+			// (F17 12.5 item 4): a Join of references is not associative as
+			// written, and the pairs it enters depend on the order. That
+			// holds for a reference inside a list or a record too.
 			r := Never
 			for _, t := range ts {
 				r = Join(r, t)
@@ -318,6 +344,46 @@ func JoinAll(ts []*Type) *Type {
 		r = Join(r, Lit(lits...))
 	}
 	return r
+}
+
+// HasDeepRefs reports whether t has a reference at any depth of its parts,
+// not looking into the definitions.
+func HasDeepRefs(t *Type) bool { return hasDeepRefs(t) }
+
+// hasDeepRefs reports whether t has a reference at any depth of its parts,
+// not looking into the definitions. It is cached, as Size is.
+func hasDeepRefs(t *Type) bool {
+	switch atomic.LoadInt32(&t.deep) {
+	case 1:
+		return false
+	case 2:
+		return true
+	}
+	has := len(t.refs) > 0
+	if !has && t.list != nil {
+		has = hasDeepRefs(t.list)
+	}
+	if !has && t.rec != nil {
+	recs:
+		for _, r := range ownVariants(t) {
+			for _, f := range r.Fields {
+				if hasDeepRefs(f.Type) {
+					has = true
+					break recs
+				}
+			}
+			if r.Rest != nil && hasDeepRefs(r.Rest) {
+				has = true
+				break
+			}
+		}
+	}
+	v := int32(1)
+	if has {
+		v = 2
+	}
+	atomic.StoreInt32(&t.deep, v)
+	return has
 }
 
 func joinTree(ts []*Type) *Type {
@@ -723,14 +789,9 @@ func Without(r *Record, keys map[string]bool) *Record {
 // when Truthy keeps its definition whole (F17 12.4).
 func Truthy(t *Type) *Type {
 	if len(t.refs) > 0 {
-		for _, n := range t.refs {
-			if !truthyWhole(n.def) {
-				return Truthy(t.u())
-			}
-		}
-		r := Truthy(t.plain()).clone()
-		r.refs = t.refs
-		return r
+		// Each reference that Truthy would not keep whole is unfolded; the
+		// others stay by name (F17 12.5 item 8).
+		return unfoldSome(t, func(d *Type) bool { return !truthyWhole(d) }, Truthy)
 	}
 	if t.any || t.IsNever() {
 		return t
@@ -1001,11 +1062,13 @@ func Size(t *Type) int {
 // (F5 2.5), coinductive over references (F17 12.4). One computation.
 func Equal(a, b *Type) bool { return (&rctx{}).equal(a, b) }
 
+// equalPlain compares two types with no reference at the top, alternative
+// by alternative in the order of printing (F17 12.5 item 6): bool, number,
+// string, list, map, the opaque names, null. It stops at the first that
+// differs, so a list or map compared before a null that differs still
+// counts its pairs.
 func (c *rctx) equalPlain(a, b *Type) bool {
-	if a.any != b.any || a.null != b.null || a.boolean != b.boolean || a.num != b.num || a.str != b.str {
-		return false
-	}
-	if !eqStrings(a.lits, b.lits) || !eqStrings(a.opaque, b.opaque) || !eqStrings(a.vars, b.vars) {
+	if a.any != b.any || a.boolean != b.boolean || a.num != b.num || a.str != b.str || !eqStrings(a.lits, b.lits) {
 		return false
 	}
 	if (a.list == nil) != (b.list == nil) || (a.list != nil && !c.equal(a.list, b.list)) {
@@ -1014,13 +1077,17 @@ func (c *rctx) equalPlain(a, b *Type) bool {
 	if (a.rec == nil) != (b.rec == nil) || (a.uni == nil) != (b.uni == nil) {
 		return false
 	}
-	if a.uni != nil {
-		return c.sameUnion(a.uni, b.uni)
+	switch {
+	case a.uni != nil:
+		if !c.sameUnion(a.uni, b.uni) {
+			return false
+		}
+	case a.rec != nil:
+		if !c.sameRec(a.rec, b.rec) {
+			return false
+		}
 	}
-	if a.rec != nil {
-		return c.sameRec(a.rec, b.rec)
-	}
-	return true
+	return eqStrings(a.opaque, b.opaque) && eqStrings(a.vars, b.vars) && a.null == b.null
 }
 
 func eqStrings(a, b []string) bool {

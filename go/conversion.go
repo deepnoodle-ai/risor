@@ -182,7 +182,17 @@ func (e *Env) namedEnv() {
 				}
 			}
 		}
-		if ok && b.Comp(c) {
+		if ok && !b.Comp(c) {
+			// A definition over the size limit once the references at its
+			// top were replaced (12.2 item 4, 12.6).
+			for _, i := range c {
+				if b.Over[i] && errs[i] == "" {
+					errs[i] = fmt.Sprintf("the type is larger than %d", types.MaxSize)
+				}
+			}
+			ok = false
+		}
+		if ok {
 			// 12.2 item 6: a reference of the component beside a type of
 			// its kind.
 			for _, i := range c {

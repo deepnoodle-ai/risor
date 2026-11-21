@@ -214,3 +214,31 @@ func TestEnumIsNLogN(t *testing.T) {
 	_, err := Map(map[string]any{"enum": vals}, Options{}, "")
 	assert.NotNil(t, err)
 }
+
+func TestPlaceKeys(t *testing.T) {
+	// Each place has a key of its own: a property name that holds the
+	// separator of the tokens is not a path of two places (F17 12.4 item 1).
+	text := `{"type": "object", "required": ["a", "a\u0000properties\u0000b"],
+		"properties": {
+			"a": {"type": "object", "required": ["b"], "properties": {"b": {"type": "integer"}}},
+			"a\u0000properties\u0000b": {"type": "string"}}}`
+	ty, err := mapJSON(t, text, Options{Closed: true})
+	assert.Nil(t, err)
+	got := ty.String()
+	assert.True(t, strings.Contains(got, `: string`), got)
+	// Two pointers that decode to the same tokens name one place, and the
+	// name of a recursive type is its last token.
+	ty, err = mapJSON(t, `{"$ref": "#/$defs/tr%65e", "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Tree")
+}
+
+func TestPickReadsEveryKind(t *testing.T) {
+	// F17 12.4 item 4: Pick's step 2 reads the kinds of each type, so a
+	// reference whose definition is not yet known is bad-type even after a
+	// type that is not a map.
+	_, err := mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [false, {"$ref": "#"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	_, err = mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [{"$ref": "#"}, false]}}}`, Options{})
+	assert.NotNil(t, err)
+}
