@@ -301,6 +301,12 @@ enum FnResult {
     Type(Option<Ty>),
 }
 
+/// Whether a type is `any`, read through its unfolding (F17 12.5): a
+/// reference whose definition takes `any` is `any`.
+fn takes_any(t: &Ty) -> bool {
+    t.any || (!t.refs.is_empty() && t.view().any)
+}
+
 fn whole(v: f64) -> bool {
     crate::value::is_whole(v)
 }
@@ -962,7 +968,7 @@ impl<'a> Checker<'a> {
 
     /// A tested position (10.1, 10.2).
     fn tested(&mut self, id: NodeId, t: &Ty) {
-        if !self.rejects("constant-condition") || t.any || t.is_never() {
+        if !self.rejects("constant-condition") || takes_any(t) || t.is_never() {
             return;
         }
         let span = self.span(id);
@@ -1063,7 +1069,7 @@ impl<'a> Checker<'a> {
                             self.null_at(xs, &t);
                             t = t.nonnull();
                         }
-                        if t.any {
+                        if takes_any(&t) {
                             if self.dyn_site(xs) {
                                 return Ty::never();
                             }
@@ -1713,7 +1719,7 @@ impl<'a> Checker<'a> {
                     t = t.nonnull();
                 }
                 let tv = t.view().into_owned();
-                if t.any {
+                if takes_any(&t) {
                     if !self.dyn_site(vs) {
                         j = join(&j, &Ty::any());
                     }
@@ -1768,7 +1774,7 @@ impl<'a> Checker<'a> {
                         t = t.nonnull();
                     }
                     let tv = t.view().into_owned();
-                    if t.any {
+                    if takes_any(&t) {
                         if !self.dyn_site(vs) {
                             rec = merge(&rec, None);
                         }
@@ -1933,19 +1939,19 @@ impl<'a> Checker<'a> {
             b = b.nonnull();
         }
         let mut any = false;
-        if a.any {
+        if takes_any(&a) {
             any = true;
             if self.dyn_site(xs) {
                 a = Ty::never();
             }
         }
-        if b.any {
+        if takes_any(&b) {
             any = true;
             if self.dyn_site(ys) {
                 b = Ty::never();
             }
         }
-        any = any && (a.any || b.any);
+        any = any && (takes_any(&a) || takes_any(&b));
         let fit = |t: &Ty, target: Ty| fits(t, &target).is_some();
         let order = matches!(
             op,
@@ -2061,7 +2067,7 @@ impl<'a> Checker<'a> {
             self.null_at(ys, &b);
             b = b.nonnull();
         }
-        if b.any {
+        if takes_any(&b) {
             self.dyn_site(ys);
             return Ty::boolean();
         }
@@ -2319,7 +2325,7 @@ impl<'a> Checker<'a> {
                     self.null_at(bound, &v);
                     v = v.nonnull();
                 }
-                if v.any {
+                if takes_any(&v) {
                     let t = if self.dyn_site(bound) {
                         Ty::never()
                     } else {
@@ -2423,7 +2429,7 @@ impl<'a> Checker<'a> {
                     self.null_at(bound, &v);
                     v = v.nonnull();
                 }
-                if v.any {
+                if takes_any(&v) {
                     let t = if self.dyn_site(bound) {
                         Ty::never()
                     } else {
@@ -2549,7 +2555,7 @@ impl<'a> Checker<'a> {
                 recv = s;
                 continue;
             }
-            if !(cur.any || cur.is_never() || cur.view().kinds() == 1) {
+            if !(takes_any(&cur) || cur.is_never() || cur.view().kinds() == 1) {
                 self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
@@ -2561,7 +2567,7 @@ impl<'a> Checker<'a> {
                     // A `String` key reads a field of a record (9.2). On any
                     // other receiver it is an index like any other.
                     NodeKind::String { value, .. }
-                        if cur.view().map.is_some() || cur.any || cur.is_never() =>
+                        if cur.view().map.is_some() || takes_any(&cur) || cur.is_never() =>
                     {
                         Some((value.clone(), self.span(*index)))
                     }
@@ -2578,7 +2584,7 @@ impl<'a> Checker<'a> {
                 }
                 _ => None,
             };
-            cur = if cur.any {
+            cur = if takes_any(&cur) {
                 let rejected = self.dyn_site(rs);
                 match self.kind(s) {
                     NodeKind::Index { index, .. } => {
@@ -2689,7 +2695,7 @@ impl<'a> Checker<'a> {
         star: Range,
         optional: bool,
     ) -> (Ty, bool) {
-        let elem = if cur.any {
+        let elem = if takes_any(&cur) {
             if self.dyn_site(rs) {
                 self.synth_indexes(reads);
                 return (Ty::never(), false);
@@ -2718,7 +2724,7 @@ impl<'a> Checker<'a> {
             return (Ty::never(), false);
         }
         let u = if skipped_elem { u.with_null() } else { u };
-        (Ty::list(u), optional && cur.any)
+        (Ty::list(u), optional && takes_any(&cur))
     }
 
     /// The reads of one level of a projection, from the element type.
@@ -2758,7 +2764,7 @@ impl<'a> Checker<'a> {
                     }
                     cur = cur.nonnull();
                 }
-                let e = if cur.any {
+                let e = if takes_any(&cur) {
                     if self.dyn_site(rs) {
                         *failed = true;
                         return Ty::never();
@@ -2799,11 +2805,11 @@ impl<'a> Checker<'a> {
                 cur = cur.nonnull();
             }
             let before = self.diags.len();
-            if !(cur.any || cur.is_never() || cur.view().kinds() == 1) {
+            if !(takes_any(&cur) || cur.is_never() || cur.view().kinds() == 1) {
                 self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
-            cur = if cur.any {
+            cur = if takes_any(&cur) {
                 let rejected = self.dyn_site(rs);
                 if let NodeKind::Index { index, .. } = self.kind(r) {
                     self.synth(*index);

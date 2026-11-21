@@ -598,3 +598,28 @@ fn a_literal_with_no_tag_names_the_missing_tag() {
         [("arg-mismatch", want)]
     );
 }
+
+/// A reference whose definition takes `any` reads as `any` wherever the
+/// checker tests for `any` (F17 12.5): spreads, reads, projections,
+/// operators, patterns.
+#[test]
+fn a_reference_to_any_reads_as_any() {
+    let line = "type Wide = any | Wide[]; const x: Wide = [];";
+    for (src, want) in [
+        ("[...x]", "any[]"),
+        ("{...x}", "map<any>"),
+        ("x.foo", "any"),
+        ("x[0]", "any"),
+        ("x[*].a", "any[]"),
+        ("x + 1", "any"),
+        ("x in [1]", "bool"),
+        ("{ const {a} = x; a }", "any"),
+        ("{ const [a] = x; a }", "any"),
+    ] {
+        let r = Env::default().check(&parse(&format!("{line} {src}")).unwrap(), &Expected::None);
+        match r {
+            Ok(c) => assert_eq!(c.ty.to_string(), want, "{src}"),
+            Err(e) => panic!("{src}: {:?}", e.diagnostics),
+        }
+    }
+}

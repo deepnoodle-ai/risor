@@ -2901,5 +2901,21 @@
     }
    ]
   }
+ },
+ {
+  "name": "a spread of a value whose type is a reference to any is a spread of any",
+  "reject": [],
+  "source": "type Wide = any | Wide[]; const x: Wide = []; [...x]",
+  "expect": {
+   "type": "any[]"
+  }
+ },
+ {
+  "name": "a map spread of a value whose type is a reference to any is a spread of any",
+  "reject": [],
+  "source": "type Wide = any | Wide[]; const x: Wide = {}; {...x}",
+  "expect": {
+   "type": "map<any>"
+  }
  }
 ]
