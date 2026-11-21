@@ -2532,5 +2532,96 @@
     }
    ]
   }
+ },
+ {
+  "name": "bad-type: a schema's own type puts a reference beside a record of its kind",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "anyOf": [
+      {
+       "$ref": "#/$defs/node"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "end": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "end"
+       ],
+       "additionalProperties": false
+      }
+     ]
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's own type may put a reference beside null",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "anyOf": [
+      {
+       "$ref": "#/$defs/node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "Node | null",
+   "sites": []
+  }
  }
 ]

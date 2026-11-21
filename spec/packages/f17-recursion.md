@@ -1108,6 +1108,10 @@ its component failed is `bad-type` too.
    one kind other than null is `bad-type`, as a reference beside a type of
    its kind is (12.2 item 6, R265). Then 12.2 item 6 is applied, and each
    definition's depth and size are tested (12.6). A failure is `bad-type`.
+   12.2 item 6 holds for the schema's own type too, which is no definition:
+   `{"anyOf": [{"$ref": "#/$defs/node"}, {"type": "object", ...}]}`, with
+   `node` a recursive object, puts a reference beside a record and is
+   `bad-type`, so that every type a description prints reads back (R316).
 
 **Go's `TypeOf`** (F1 6.2, a binding rule of Go):
 
@@ -1221,7 +1225,7 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
 | --- | --- |
 | A rule of the checker | `check-limit`, template `pairs`, on the innermost node whose check is in progress. A fit that a `const` line makes after its value is checked is on the value; the fit of the program's result to the expected result is on the result. **The check ends**: its diagnostics are this one alone. The diagnostics of the static rules stand |
 | A program type, a type line among them | `check-limit`, template `pairs`, on the program type, as F4 6.1 reports `check-limit` |
-| An environment, a schema, `TypeOf` | `bad-type`. The Equal of two recursive types of one name (12.4) is the exception: it counts as not equal, so `name-clash` |
+| An environment, a schema, `TypeOf` | `bad-type`. The Equal of two recursive types of one name (12.4) is the exception: it counts as not equal, so `name-clash`. In a host function's signature it is `bad-signature`, as every error in a signature is (`03-host.md` 3.3.4; R317) |
 | A host's call of the type API (Fits, Join, Equal of a binding) | A binding rule: Go gives `false`, or an invalid type for Join |
 
    The count is of pairs entered, not of pairs in progress at once. A count of
