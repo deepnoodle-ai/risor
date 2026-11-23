@@ -291,7 +291,10 @@ This row is added to the table of `03-host.md` 3.3.1.
    is resolved (3.5) in its turn, against the opaque types of the environment
    and the named types before it in the list.
 3. **No recursive type.** A named type may use only names declared before it.
-   So it cannot refer to itself, directly or through others.
+   So it cannot refer to itself, directly or through others. Package F17
+   replaces items 2 and 3: the named types of an environment are resolved as
+   one list, and a named type may name itself and any of them
+   (`spec/packages/f17-recursion.md` 12.2, 12.4).
 4. **By schema.** A named type declared by schema has the type F1 3 gives, with
    the options given, each off unless given. A schema names no type of the
    environment (F1 2.1 item 3).
@@ -322,7 +325,10 @@ diagnostic has no span.
    `B = A`, the first entry is `bad-type`, and the second then names an `A`
    that failed. An implementation reports at least one `bad-type`. A case
    expects exactly one diagnostic, so the suite's cases of a cycle have one
-   named type that names itself or a later one.
+   named type that names itself or a later one. With package F17 a name of a
+   later named type is no error. A cycle with no list, field or map between,
+   and a reference beside a type of its kind, are `bad-type`, once for each
+   named type they fail (`spec/packages/f17-recursion.md` 12.2 items 3 and 6).
 2. A named type with an error is not declared. Whether a later declaration
    that names it is reported as well is not specified, and no case of the
    suite has one.
@@ -457,11 +463,14 @@ A failure has a path and a template of the `not-conforming` entry of
 2. `expected` is the type T of the test that failed: the whole alternative
    set, not the alternative of v's kind. For `x as int \| null` with `x` the
    string `"a"`, the message is `expected int | null, found "a"`. A named type
-   is printed by its structure.
+   is printed by its structure. With package F17 a recursive type is printed
+   by its name (`spec/packages/f17-recursion.md` 12.6).
 3. For a host number that cannot enter, `found` is the word `number`.
 4. For `missing` and `extra` the last step of the path is the key.
 5. The path has at most 64 steps: each step enters a level, and a resolved
-   type is at most 64 deep.
+   type is at most 64 deep. With package F17 a recursive type has no such
+   bound, and the path has at most as many steps as the depth limit
+   (`spec/packages/f17-recursion.md` 12.7).
 
 ### 4.5 Where package F5 attaches
 
@@ -530,7 +539,9 @@ These rows join the tables of `02-evaluation.md` 5.2 and 6.1.
    `any` is not entered.
 4. The walk enters a level only where the type has one, so it enters at most
    64 levels whatever the data: host data nested 10,000 deep, tested against
-   `{meta: any, ...}`, is entered once.
+   `{meta: any, ...}`, is entered once. With package F17 a recursive type has
+   a level at every depth, and the walk follows the data to the depth limit
+   (`spec/packages/f17-recursion.md` 12.7).
 5. The count at a test is the count of the calls in progress (`02-evaluation.md`
    8.4 item 1), plus the walk's levels. A test adds nothing else.
 6. A failure that `catch` catches returns the count to its value when the
@@ -803,7 +814,10 @@ Every binding gives the host the test that `as` and `is` make.
    cancellation signal. It charges nothing.
 2. **Its work** is bounded by the value: it visits a value at most once for
    each way the type reaches it. **Its depth** is bounded by the type, at most
-   64, whatever the data. Cyclic host data cannot make it loop.
+   64, whatever the data. Cyclic host data cannot make it loop. With package
+   F17 a recursive type does not bound it, and the function fails with
+   `depth-exceeded` past the default depth limit, 200
+   (`spec/packages/f17-recursion.md` 12.7).
 3. A host that wants limits and a count runs the program `v as T`, with `v`
    declared `any`.
 4. Type text given to it is resolved as declared type text (`05-types.md`
@@ -830,14 +844,20 @@ F1 5.3 gains one key.
 | `types` | An object: each named type's name, and its type printed by `05-types.md` 3.9. Present only when the environment declares at least one named type |
 
 1. A type prints by its structure, so the text of a named type holds no name
-   but opaque ones, and each reads back alone.
+   but opaque ones, and each reads back alone. With package F17 a recursive
+   type prints by its name, and `types` lists it by its unfolding
+   (`spec/packages/f17-recursion.md` 12.4).
 2. The types of variables and signatures are printed by structure too: a name
    used in them is replaced.
 3. An environment built from a description (F1 5.4) declares each entry of
    `types` as a named type by type text. Their order does not matter, since no
-   text names another.
+   text names another. With package F17 a text may name another, and the
+   entries are resolved as one list (`spec/packages/f17-recursion.md` 12.4).
 4. A description with no named type has no key `types`, so every description
-   of an environment with no named type is as F1 gives it.
+   of an environment with no named type is as F1 gives it. With package F17
+   a recursive type that a declaration reaches is listed in `types` too
+   (`spec/packages/f17-recursion.md` 12.4 item 3), so only a description with
+   neither a named type nor a recursive type has no key `types`.
 
 ## 9. Additions to the case format
 

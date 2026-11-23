@@ -131,9 +131,12 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
     invalidOf = (message) => new Type(null, message, DEFAULT_CLASSIFIER);
   }
 
+  /** The alternatives read: a recursive type's are its definition's (f17 12.1). */
   #alts(): Alts | null {
     const t = this.#t;
-    return t === null || T.isAny(t) ? null : t;
+    if (t === null || T.isAny(t)) return null;
+    const u = T.unfold(t);
+    return T.isAny(u) ? null : u;
   }
 
   /** The kind of the type (see `TypeKind`). */
@@ -197,9 +200,10 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
    * one alternative; never and an invalid type have none.
    */
   alternatives(): Type[] {
-    const t = this.#t;
-    if (t === null) return [];
-    if (T.isAny(t)) return [this];
+    if (this.#t === null) return [];
+    if (T.isAny(this.#t)) return [this];
+    const t = this.#alts();
+    if (t === null) return [wrap(T.ANY, this.#cls)];
     const out: Alts[] = [];
     if (t.null) out.push(T.NULL);
     if (t.bool) out.push(T.BOOL);
@@ -255,12 +259,14 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
   /** Whether every value of this type is a value of `want` (05 4.2). False when either is invalid. */
   fits(want: Type): boolean {
     if (this.#t === null || want.#t === null) return false;
-    return T.fits(this.#t, want.#t) !== 0;
+    return pairs(() => T.fits(this.#t!, want.#t!) !== 0, false);
   }
 
   /** Whether the two are the same type. False when either is invalid. */
   equal(u: Type): boolean {
     if (this.#t === null || u.#t === null) return false;
+    // f17 12.4: two recursive types of one name and one structure are one type (Equal, 12.5).
+    if (T.hasRefDeep(this.#t) || T.hasRefDeep(u.#t)) return pairs(() => T.sameType(this.#t!, u.#t!), false);
     return T.typeEqual(this.#t, u.#t);
   }
 
@@ -299,8 +305,10 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
         }
         return {
           issues: fs.map((f) => ({
-            message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls),
-            path: f.path,
+            // f17 12.7 item 3: past the default depth limit, depth-exceeded with no path.
+            ...(f.template === "depth"
+              ? { message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls) }
+              : { message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls), path: f.path }),
           })),
         };
       },
@@ -333,11 +341,21 @@ function clsOf(ts: Type[]): Classifier {
   return DEFAULT_CLASSIFIER;
 }
 
+/** A computation over recursive types, or `past` when it passes the bound of 4,096 pairs (f17 12.5 item 7). */
+function pairs<R>(f: () => R, past: R): R {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof T.PairLimit) return past;
+    throw e;
+  }
+}
+
 /** Build from valid parts, or give the first invalid part. */
 function build(parts: Type[], f: (ts: T.Type[]) => T.Type | string): Type {
   const bad = firstInvalid(parts);
   if (bad !== null) return bad;
-  const r = f(parts.map(unwrap));
+  const r = pairs(() => f(parts.map(unwrap)), "a comparison of types went past 4,096 pairs");
   return typeof r === "string" ? invalidOf(r) : wrap(r, clsOf(parts));
 }
 
@@ -445,18 +463,12 @@ export function join<A, B>(a: Type<A>, b: Type<B>): Type<A | B> {
 /** Internal: the opaque type names a type mentions. */
 export function opaqueNamesIn(t: T.Type): Set<string> {
   const out = new Set<string>();
-  const seen = new Set<object>();
-  const walk = (x: T.Type): void => {
-    if (T.isAny(x) || seen.has(x)) return;
-    seen.add(x);
-    for (const n of x.opaque ?? []) out.add(n);
-    if (x.list) walk(x.list);
-    const recs = x.union ? [...x.union.variants, x.map!] : x.map ? [x.map] : [];
-    for (const r of recs) {
-      for (const f of r.fields.values()) walk(f.type);
-      walk(r.rest);
+  // Every part, and the definitions of the references reached (f17 12.4), with an explicit stack.
+  T.someReachable(t, (x) => {
+    if (!T.isAny(x)) {
+      for (const n of x.opaque ?? []) out.add(n);
     }
-  };
-  walk(t);
+    return false;
+  });
   return out;
 }

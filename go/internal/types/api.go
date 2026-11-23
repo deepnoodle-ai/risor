@@ -5,13 +5,14 @@ import "fmt"
 // Helpers of the binding's structural type API.
 
 // IsFloat reports whether t's number alternative is float.
-func (t *Type) IsFloat() bool { return t.num == numFloat }
+func (t *Type) IsFloat() bool { return t.u().num == numFloat }
 
 // Alternatives splits t into its alternatives, one for each kind it has:
 // null, bool, the number (int or float), the string or literal set, the
 // list, the map alternative (a record or a tagged union), each opaque type
 // and each type variable. any is its own one alternative; never has none.
 func Alternatives(t *Type) []*Type {
+	t = t.u()
 	if t.any {
 		return []*Type{Any}
 	}
@@ -51,24 +52,13 @@ func Alternatives(t *Type) []*Type {
 
 // UnionOf is the type of the alternatives ts, as `|` joins them in type
 // text (F5 3.1): the records among them, a union contributing its
-// variants, must form a tagged union when they are two or more.
+// variants, must form a tagged union when they are two or more. A
+// reference stays by name unless it shares a kind other than null with
+// another alternative, as in type text (F17 12.2 item 5).
 func UnionOf(ts []*Type) (*Type, error) {
-	xs := make([]*Type, 0, len(ts))
-	var recs []*Record
-	for _, x := range ts {
-		if x.rec != nil {
-			recs = append(recs, variants(x)...)
-			x = WithoutMap(x)
-		}
-		xs = append(xs, x)
-	}
-	out := JoinAll(xs)
-	if len(recs) > 0 {
-		m, ok := FormUnion(recs)
-		if !ok {
-			return nil, fmt.Errorf("two or more records that form no tagged union in one type")
-		}
-		out = WithMap(out, m)
+	out, ok := Alternatives3(ts)
+	if !ok {
+		return nil, fmt.Errorf("two or more records that form no tagged union in one type")
 	}
 	return out, nil
 }

@@ -808,6 +808,103 @@ A plain text error has no cause: its text is already the message.
   its frame is pushed; nothing else is new. Each call's own names are the
   frames of "Scopes and lambdas" above.
 
+### Step E2: recursive named types
+
+- **References** (`check/ty/refs.rs`): `Ty.refs` is the set of references
+  among a type's alternatives (F17 12.1). A `Ref` is a table, an index in it
+  and the name, and is equal by the three. A `Table` is one recursive
+  component: its definitions, set once when the component has resolved,
+  each with its `top`, the definition with each other component's reference
+  at its top replaced by that reference's own `top`. A reference's unfolding
+  is its table's `top`, so following references at the top of a type takes
+  one step, whatever the chain of lines (`view`). An atom is a reference with
+  no table: the runner's case `type` compares by it (12.6).
+- **No cycles of `Arc`** (`Table::set`): a definition holds the references
+  of its own table as `Weak`, so a table owns no strong path back to itself,
+  and components form no cycle among themselves. What keeps a table alive is
+  what holds its types: `Resolution`, `Program` and the checker's probe keep
+  the tables of the program's type lines, an environment's types hold the
+  tables of its named types, and every type that leaves the crate (`Type`,
+  `CheckResult`) is `strengthen`ed first, so that each reference it
+  reaches is strong. `a_recursive_type_leaks_nothing`
+  (`src/tests/recursive.rs`) tests that a table dies with the last of them.
+- **The list** (`check/list.rs`): type lines, an environment's named types
+  and a schema's `$ref` targets are each one list. Tarjan's algorithm, with
+  an explicit stack, finds the components and orders them so that each
+  comes after those it names; `plan` marks the recursive ones, the lines in a
+  cycle with no guard (`direct`), and in a recursive component the order in
+  which the lines resolve, each after the lines it names at its top. The
+  resolver (`compile.rs`, `type_lines_list`), the environment (`env.rs`,
+  `named_list`) and the schema reader (`schema.rs`, `set_definitions`)
+  share it. Each looks names up through maps, so a list resolves in time
+  linear in its lines.
+- **The computations** (`check/ty/pairs.rs`): Fits, Join, Equal and
+  disjoint follow references by pairs (12.5). A computation is a `Cx`: the
+  pairs in progress as a stack of frames, the pairs failed, and the count of
+  pairs entered. A rule that meets a pair to enter stops with `Need`; the
+  machine pushes a frame for the pair and runs its rule, then runs the rule
+  that met it again from its start, replaying from its log each outcome it
+  met before. So native recursion is that of one pair's rule, which the
+  depth of its two types bounds, not the 4,096 pairs the bound allows in
+  progress. Pairs in progress and failed are indexed by a key of the top of
+  their two types, which narrows a lookup to the pairs of one key rather
+  than all of them. A rule that meets k pairs runs k + 1 times, replaying
+  the outcomes before each, so its work can grow as the square of k; the
+  bound caps the pairs a computation enters.
+- **Schemas** (`schema.rs`). The mapping meets an object's
+  `additionalProperties`, then `patternProperties` and `properties` each in
+  code point order of their keys, and the names of `type` in the order
+  written (12.4 item 3, R303). When it ends, a reference at a definition's
+  top is replaced by its definition once that definition holds none of the
+  table at its top; the replacement joins nothing, so a shared kind other
+  than null is `bad-type` (R304). Pick refuses a reference at the top of a
+  type left, which step 2 reads the kinds of; step 3 fits by
+  `fits_looking`, which fails when the computation enters a pair holding a
+  reference that is not complete (12.4 item 4, R312).
+- **Review of PR #677.** A schema's own type is tested by 12.2 item 6 as
+  a definition is (R316). A definition is tested for size and depth with
+  the references at its top replaced, in type lines and in an environment
+  (12.6 item 1). `from_text` watches the bound, so a union of records whose
+  flat record passes it is `bad-type`, or `bad-signature` in a host
+  signature (R317). A union the type API builds is strengthened and watched
+  as `join` is. has-opaque, has-any and the opaque names of a host's type
+  read each variant of a union, and the opaque names follow references. A
+  recursive type with an opaque type's name, or with the name of a named
+  type that is not its own reference, is `name-clash` (R315). Equal meets
+  two records' keys in one ordered pass. Each place of a schema is mapped
+  once and cached, whether the mapping meets it through a `$ref` or as a
+  part of the schema that holds it; a place met again while in progress is
+  the recursive type, named by the last token of its own pointer, which the
+  walk keeps (R302). Depth is tested before size (F4 3.5).
+- **Join's order.** `c ? a : b` is Join(A, B), the else side folded first
+  and each branch joined in front of it, when a reference stands anywhere
+  in either; two unions are the same by structure when their variants are
+  Equal, references followed, and the Join keeps A's union (12.5 item 4,
+  R310).
+- **Hover** on a type name unfolds only a recursive type, a reference whose
+  name is the word hovered; an alias of one prints as its type (12.8 item 2,
+  R306).
+- **The bound** (`pairs::watch`): a computation that passes 4,096 pairs
+  ends with its fallback and sets a flag that the innermost `Watch` sees.
+  `check` watches from the end of resolution; when the flag is set, the
+  check ends with the static diagnostics and one `check-limit`, template
+  `pairs`, on the last node the checker marked (12.5 item 7, 12.6 item 4).
+  The type API's `fits`, `equal` and `join` watch their own computation:
+  past the bound they give false, false and an invalid type.
+- **Conformance** (`conform.rs`): a recursive type has no depth, so the test
+  counts the levels it enters (`Free`) and fails past 200 with
+  `depth-exceeded`, class `limit`, no path (12.7 item 3); `ConformAll` ends
+  with it.
+- **The stack test.** `a_comparison_that_reaches_the_bound_runs_within_the_stated_stack`
+  (`src/tests/recursive.rs`) runs, on a thread of the stack stated for depth
+  limit 200: two chains of 4,100 type lines, `Ai = {n: Ai+1}`, and a fit of
+  `A0` to `B0`, which enters 4,096 pairs each inside the last and passes the
+  bound; the same one link short of it; hover and completion on it; and an
+  environment with the two chains as named types, its description, and the
+  type API's `fits`, `equal` and `join` past the bound. Measured (rustc
+  1.100.0, aarch64 macOS) as for "Stack" above: unoptimized it needs 36 KiB;
+  optimized it passes on the least thread the platform gives (16 KiB).
+
 ### Step E3: function parameters
 
 - **The static rules** (`compile.rs`). A function parameter is bound as any
@@ -857,9 +954,11 @@ A plain text error has no cause: its text is already the message.
   kind `lambda` and the printed function type, and for a call the type of
   the call. The formatter and the analysis need nothing new.
 - **Messages and the runner**: `suite/messages-recursion.json` adds its
-  five templates to four codes, as F16's file does: 31 check codes and 78
-  templates in all. F16's `fn-value` is gone. In `suite/recursion/` the static codes are Core's twelve and
-  `arg-mismatch` (`Statics::Recursion`).
+  five templates to four codes, as F16's file does; with step E2's
+  `circular-type` and `check-limit` `pairs`, 32 check codes and 81 templates
+  in all. F16's `fn-value` is gone. In `suite/recursion/` the static codes
+  are those of F16 3.1 item 11, `circular-type` and `arg-mismatch`
+  (`Statics::Recursion`; F17 8 item 5).
 
 ## Package F16, slice D1: annotations and type lines
 

@@ -8,9 +8,10 @@ use crate::host::{Data, HostError};
 use crate::hosttype::{opaque_names, type_of, HostType};
 use crate::json::Json;
 use crate::library;
-use crate::schema::{ty_schema, SchemaOptions};
+use crate::schema::SchemaOptions;
 use crate::types::text::{parse_sig, parse_type, Rest, Sig, Type};
 use crate::value::Value;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -600,8 +601,9 @@ impl EnvBuilder {
                 opaque.push(name.clone());
             }
         }
-        // F4 3.1, 3.2: named types, each resolved in its turn against the
-        // opaque types and the named types before it.
+        // F4 3.1, 3.2, F17 12.4: the named types the environment declares
+        // itself are one list, resolved together against the opaque types
+        // and the parent's named types.
         let mut names = Names {
             opaque: opaque.clone(),
             named: parent
@@ -609,40 +611,52 @@ impl EnvBuilder {
                 .map(|p| p.names.named.clone())
                 .unwrap_or_default(),
         };
-        let inherited_named = names.named.len();
+        let mut items: Vec<(String, Item)> = Vec::new();
+        let mut seen: HashSet<&str> = HashSet::new();
         for (name, decl) in &self.named {
             if !crate::syntax::parser::is_type_name(name) {
                 bad(code::BAD_NAME, format!("{name:?} cannot name a type"));
                 continue;
             }
-            if opaque.contains(name)
-                || names.named[inherited_named..]
-                    .iter()
-                    .any(|(n, _)| n == name)
-            {
+            if opaque.contains(name) || !seen.insert(name.as_str()) {
                 bad(
                     code::NAME_CLASH,
                     format!("the type name {name} is declared twice"),
                 );
                 continue;
             }
-            let ty = match decl {
+            let item = match decl {
                 NamedDecl::Text(text) => match parse_type(text) {
-                    Ok(t) => from_text(&t, &names, None),
-                    Err(e) => Err(e.to_string()),
+                    Ok(t) => Item::Text(t),
+                    Err(e) => Item::Fixed(Err(e.to_string())),
                 },
-                NamedDecl::Schema(schema, opts) => ty_schema(schema, *opts),
-                NamedDecl::Type(t) => t.clone(),
-            };
-            match ty {
-                Ok(t) => {
-                    // A child's named type replaces its parent's (3.4).
-                    names.named.retain(|(n, _)| n != name);
-                    names.named.push((name.clone(), t));
+                NamedDecl::Schema(schema, opts) => {
+                    Item::Fixed(crate::schema::ty_schema_named(schema, *opts, name))
                 }
+                // A type the host built names only declared opaque types,
+                // as a variable's does (`05-host-api.md` E.7).
+                NamedDecl::Type(t) => Item::Fixed(t.clone().and_then(|t| {
+                    let mut names = std::collections::BTreeSet::new();
+                    opaque_names(&t, &mut names, &mut Default::default());
+                    match names.iter().find(|n| !opaque.contains(n)) {
+                        Some(n) => Err(format!("{n} is not a declared opaque type")),
+                        None => Ok(t),
+                    }
+                })),
+            };
+            items.push((name.clone(), item));
+        }
+        let mut declared: Vec<(String, Ty)> = Vec::new();
+        for ((name, _), r) in items.iter().zip(named_list(&items, &names)) {
+            match r {
+                Ok(t) => declared.push((name.clone(), t)),
                 Err(e) => bad(code::BAD_TYPE, format!("the named type {name}: {e}")),
             }
         }
+        // A child's named type replaces its parent's (3.4).
+        let replaced: HashSet<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
+        names.named.retain(|(n, _)| !replaced.contains(n.as_str()));
+        names.named.extend(declared);
         // 3.4 item 2: a child's opaque type of a parent's named type's name.
         if let Some(p) = &parent {
             for o in &self.opaque {
@@ -710,7 +724,15 @@ impl EnvBuilder {
                     Err(e) => Err(format!("the variable {name}: {e}")),
                 },
                 VarDecl::Schema(schema, opts) => {
-                    ty_schema(schema, *opts).map_err(|e| format!("the variable {name}: {e}"))
+                    // F17 12.4 item 2: a recursive root takes the variable's
+                    // name, its first letter upper-cased.
+                    let mut root = name.clone();
+                    if let Some(c) = root.get(0..1) {
+                        let up = c.to_ascii_uppercase();
+                        root.replace_range(0..1, &up);
+                    }
+                    crate::schema::ty_schema_named(schema, *opts, &root)
+                        .map_err(|e| format!("the variable {name}: {e}"))
                 }
                 VarDecl::Host(t) => match t {
                     Ok(t) => {
@@ -953,6 +975,49 @@ impl EnvBuilder {
                 }
             }
         }
+        // F17 12.4: the recursive types the declarations reach share one
+        // space of names with the named types. Two with one name and one
+        // structure are one type.
+        {
+            use crate::check::ty::{equal, reach, Ref};
+            let one = |r: &Ref| Ty {
+                refs: [r.clone()].into(),
+                ..Ty::default()
+            };
+            let found = reach(names.named.iter().map(|(_, t)| t).chain(var_types.iter()));
+            let named: HashMap<&str, &Ty> =
+                names.named.iter().map(|(n, t)| (n.as_str(), t)).collect();
+            let mut by_name: HashMap<&str, Vec<&Ref>> = HashMap::new();
+            let mut clashes: std::collections::BTreeSet<String> = Default::default();
+            for r in &found {
+                let earlier = by_name.entry(r.name()).or_default();
+                if earlier.iter().any(|s| !equal(&one(s), &one(r))) {
+                    clashes.insert(r.name().to_string());
+                }
+                earlier.push(r);
+                // 12.4 item 2 (R315): a named type of its name is no clash
+                // only when it is that recursive type, its own reference;
+                // an alias of another, even of one structure, clashes. So
+                // does an opaque type of its name (F4 3.2).
+                if let Some(t) = named.get(r.name()) {
+                    let itself = t.is_one_ref()
+                        && t.refs.iter().all(|x| x.name() == r.name())
+                        && equal(t, &one(r));
+                    if !itself {
+                        clashes.insert(r.name().to_string());
+                    }
+                }
+                if opaque.iter().any(|o| o == r.name()) {
+                    clashes.insert(r.name().to_string());
+                }
+            }
+            for n in clashes {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the recursive type {n} has the name of another type"),
+                );
+            }
+        }
         // F14 2.5, 2.6: the host facts, a parent's less those that name a
         // variable the child replaces, then the child's own.
         let mut sets: Vec<Vec<String>> = Vec::new();
@@ -1047,6 +1112,237 @@ fn declared_in(record: Option<&str>) -> Vec<String> {
 /// The rules of 19.5 beyond the grammar, for a signature: every type names
 /// declared opaque types only and is at most 64 deep (`bad-type`), and a rest
 /// parameter is a list (`bad-signature`). Returns whether it holds.
+/// An item of the list of an environment's own named types (F17 12.4).
+enum Item {
+    /// Type text, which may name the other items.
+    Text(Type),
+    /// A type a schema or the host gave, or why there is none.
+    Fixed(Result<Ty, String>),
+}
+
+/// Resolve the named types an environment declares itself as one list (F17
+/// 12.2, 12.4): what each declares, or why it is `bad-type`. `outside` holds
+/// the opaque types and the parent's named types.
+fn named_list(items: &[(String, Item)], outside: &Names) -> Vec<Result<Ty, String>> {
+    use crate::check::list;
+    use crate::check::ty::{
+        beside_its_kind, convert_with, text_names, watch, Ref, Table, TypeNames,
+    };
+    let n = items.len();
+    let opaque: HashSet<&str> = outside.opaque.iter().map(String::as_str).collect();
+    let mut first: HashMap<&str, usize> = HashMap::new();
+    for (i, (m, _)) in items.iter().enumerate() {
+        first.entry(m.as_str()).or_insert(i);
+    }
+    let own = |name: &str| -> Option<usize> {
+        if opaque.contains(name) {
+            return None;
+        }
+        first.get(name).copied()
+    };
+    // Each item's index in its component's table.
+    let mut at_in_comp = vec![0u32; n];
+    // The uses of each item, and its undefined names.
+    let mut uses: Vec<Vec<(usize, bool)>> = vec![Vec::new(); n];
+    let mut undefined: Vec<Vec<String>> = vec![Vec::new(); n];
+    for (i, (_, it)) in items.iter().enumerate() {
+        if let Item::Text(t) = it {
+            text_names(t, true, &mut |name, top| match own(name) {
+                Some(j) => uses[i].push((j, top)),
+                None => {
+                    if outside.lookup(name).is_none() {
+                        undefined[i].push(name.to_string());
+                    }
+                }
+            });
+        }
+    }
+    let plan = list::plan(&list::Graph { uses });
+    let mut comp_of = vec![0usize; n];
+    for (c, comp) in plan.components.iter().enumerate() {
+        for &i in comp {
+            comp_of[i] = c;
+        }
+    }
+    let mut out: Vec<Option<Result<Ty, String>>> = (0..n).map(|_| None).collect();
+    let failed = |out: &Vec<Option<Result<Ty, String>>>, j: usize| matches!(out[j], Some(Err(_)));
+    // The limits a definition is tested against where it is declared (F17
+    // 12.6 item 1).
+    // F4 3.5: depth (step 5) before size (step 6).
+    let limits = |t: &Ty| -> Result<(), String> {
+        if t.depth() > 64 {
+            return Err("the type is deeper than 64".into());
+        }
+        if t.too_big() {
+            return Err(format!(
+                "the type is larger than {}",
+                crate::check::ty::SIZE_LIMIT
+            ));
+        }
+        Ok(())
+    };
+    for (c, comp) in plan.components.iter().enumerate() {
+        // F17 12.2 items 2, 3 and 7.
+        let mut errs: Vec<(usize, String)> = Vec::new();
+        for &i in comp {
+            if let Some(u) = undefined[i].first() {
+                errs.push((
+                    i,
+                    format!("{u} is not a declared opaque type or named type"),
+                ));
+            }
+            if let Item::Text(t) = &items[i].1 {
+                let mut named_failed: Option<String> = None;
+                text_names(t, true, &mut |name, _| {
+                    if let Some(j) = own(name) {
+                        if comp_of[j] != c && failed(&out, j) && named_failed.is_none() {
+                            named_failed = Some(name.to_string());
+                        }
+                    }
+                });
+                if let Some(m) = named_failed {
+                    errs.push((i, format!("{m} is a named type that failed")));
+                }
+            }
+            if plan.direct[i] {
+                errs.push((
+                    i,
+                    format!(
+                        "{} refers to itself outside any list, map or record",
+                        items[i].0
+                    ),
+                ));
+            }
+        }
+        if errs.is_empty() && !plan.recursive[comp[0]] {
+            let i = comp[0];
+            let r = match &items[i].1 {
+                Item::Fixed(r) => r.clone(),
+                Item::Text(t) => {
+                    let w = watch();
+                    let mut lookup = |name: &str, _top: bool| -> Option<Ty> {
+                        match own(name) {
+                            Some(j) => out[j].clone().and_then(|r| r.ok()),
+                            None => outside.lookup(name),
+                        }
+                    };
+                    let r = convert_with(t, true, &mut lookup, None);
+                    if w.passed() {
+                        Err("comparing the types takes more than 4096 pairs of types".into())
+                    } else {
+                        r.and_then(|t| limits(&t).map(|_| t))
+                    }
+                }
+            };
+            out[i] = Some(r);
+            continue;
+        }
+        if errs.is_empty() {
+            // A recursive component: a table, and each item resolved after
+            // the items of the component it names at top places.
+            let table = Table::new();
+            for (k, &i) in comp.iter().enumerate() {
+                at_in_comp[i] = k as u32;
+            }
+            let at = &at_in_comp;
+            let idx = |i: usize| at[i];
+            let mut seq: Vec<usize> = comp.clone();
+            seq.sort_by_key(|&i| plan.top_rank[i]);
+            let mut defs: Vec<Option<Ty>> = vec![None; comp.len()];
+            for &i in &seq {
+                let Item::Text(t) = &items[i].1 else {
+                    continue;
+                };
+                let w = watch();
+                let r = {
+                    let defs_now = &defs;
+                    let out_now = &out;
+                    let table = &table;
+                    let mut lookup = |name: &str, top: bool| -> Option<Ty> {
+                        let Some(j) = own(name) else {
+                            return outside.lookup(name);
+                        };
+                        if comp_of[j] == c {
+                            if top {
+                                return Some(defs_now[idx(j) as usize].clone().unwrap_or_default());
+                            }
+                            return Some(Ty {
+                                refs: [Ref::new(table, idx(j), &items[j].0)].into(),
+                                ..Ty::default()
+                            });
+                        }
+                        let d = out_now[j].clone().and_then(|r| r.ok()).unwrap_or_default();
+                        if top && plan.recursive[j] {
+                            return Some(
+                                d.refs
+                                    .iter()
+                                    .next()
+                                    .and_then(|r| r.definition())
+                                    .unwrap_or_default(),
+                            );
+                        }
+                        Some(d)
+                    };
+                    convert_with(t, true, &mut lookup, None)
+                };
+                let r = if w.passed() {
+                    Err("comparing the types takes more than 4096 pairs of types".into())
+                } else {
+                    r.and_then(|t| limits(&t).map(|_| t))
+                };
+                match r {
+                    Ok(t) => defs[idx(i) as usize] = Some(t),
+                    Err(e) => errs.push((i, e)),
+                }
+            }
+            if errs.is_empty() {
+                let ds: Vec<Ty> = defs.iter().map(|d| d.clone().unwrap_or_default()).collect();
+                table.set(ds.clone());
+                for &i in comp {
+                    if let Some(name) = beside_its_kind(&ds[idx(i) as usize]) {
+                        errs.push((
+                            i,
+                            format!("{name} shares a kind with another type of its union"),
+                        ));
+                        continue;
+                    }
+                    // F17 12.6 item 1: the definition is tested with each
+                    // reference at its top replaced (12.2 item 4), which a
+                    // reference through an item that is not recursive
+                    // makes larger than its text.
+                    let top = Ref::new(&table, idx(i), &items[i].0)
+                        .unfolding()
+                        .unwrap_or_default();
+                    if let Err(e) = limits(&top) {
+                        errs.push((i, e));
+                    }
+                }
+            }
+            if errs.is_empty() {
+                for &i in comp {
+                    out[i] = Some(Ok(Ty {
+                        refs: [Ref::new(&table, idx(i), &items[i].0)].into(),
+                        ..Ty::default()
+                    }));
+                }
+                continue;
+            }
+        }
+        // The component fails: each item of it is `bad-type`.
+        for &i in comp {
+            let e = errs
+                .iter()
+                .find(|(j, _)| *j == i)
+                .map(|(_, e)| e.clone())
+                .unwrap_or_else(|| "another named type of its cycle failed".into());
+            out[i] = Some(Err(e));
+        }
+    }
+    out.into_iter()
+        .map(|r| r.unwrap_or_else(|| Err("not resolved".into())))
+        .collect()
+}
+
 fn sig_types(sig: &Sig, opaque: &Names, bad: &mut impl FnMut(&'static str, String)) -> bool {
     use crate::types::text::ParamType;
     let none = crate::check::ty::Solutions::new();

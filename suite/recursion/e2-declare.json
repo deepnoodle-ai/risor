@@ -1,0 +1,3775 @@
+[
+ {
+  "name": "a named type names itself",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "env": "{t: Tree}",
+  "vars": {
+   "t": {
+    "kids": []
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "Tree[]",
+   "value": []
+  }
+ },
+ {
+  "name": "two named types name each other",
+  "types": [
+   {
+    "name": "Dir",
+    "type": "{files: File[], dirs: Dir[]}"
+   },
+   {
+    "name": "File",
+    "type": "{name: string, parent: Dir | null}"
+   }
+  ],
+  "env": "{d: Dir}",
+  "vars": {
+   "d": {
+    "files": [
+     {
+      "name": "a",
+      "parent": null
+     }
+    ],
+    "dirs": []
+   }
+  },
+  "source": "d.files[0].parent",
+  "expect": {
+   "type": "Dir | null",
+   "value": null
+  }
+ },
+ {
+  "name": "a named type names a later one at its top",
+  "types": [
+   {
+    "name": "Maybe",
+    "type": "Cell | null"
+   },
+   {
+    "name": "Cell",
+    "type": "{head: int, tail: Maybe}"
+   }
+  ],
+  "env": "{m: Maybe}",
+  "vars": {
+   "m": {
+    "head": 1,
+    "tail": null
+   }
+  },
+  "source": "m?.tail",
+  "expect": {
+   "type": "Maybe | null",
+   "value": null
+  }
+ },
+ {
+  "name": "bad-type: a named type that is itself or null",
+  "types": [
+   {
+    "name": "Loop",
+    "type": "Loop | null"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a named type that is itself, beside a record that names it",
+  "types": [
+   {
+    "name": "Ping",
+    "type": "{p: Ping} | Ping"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a reference beside a type of its kind",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{next: Node | {end: bool}}"
+   }
+  ],
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's $ref cycle is a recursive type, named by the pointer's last token",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "Node[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "a schema's $ref to its root is named by the variable",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "kids": {
+       "type": "array",
+       "items": {
+        "$ref": "#"
+       }
+      }
+     },
+     "required": [
+      "kids"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "source": "tree",
+  "expect": {
+   "type": "Tree",
+   "sites": []
+  }
+ },
+ {
+  "name": "a schema's $ref to its root is named by the named type",
+  "types": [
+   {
+    "name": "Chain",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "next": {
+       "anyOf": [
+        {
+         "$ref": "#"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "required": [
+      "next"
+     ],
+     "additionalProperties": false
+    }
+   }
+  ],
+  "env": "{c: Chain}",
+  "source": "c.next",
+  "expect": {
+   "type": "Chain | null",
+   "sites": []
+  }
+ },
+ {
+  "name": "bad-type: a schema's cycle with no array item, property or map between",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "loop": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/loop"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "$ref": "#/$defs/loop"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: allOf on a schema being mapped",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "allOf": [
+          {
+           "$ref": "#/$defs/node"
+          },
+          {
+           "type": "object"
+          }
+         ]
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a schema's reference beside a record",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "anyOf": [
+          {
+           "$ref": "#/$defs/node"
+          },
+          {
+           "type": "object",
+           "properties": {
+            "end": {
+             "type": "boolean"
+            }
+           }
+          }
+         ]
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a name that is no type name",
+  "schemas": {
+   "v": {
+    "schema": {
+     "$defs": {
+      "tree-node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/tree-node"
+       }
+      }
+     },
+     "$ref": "#/$defs/tree-node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: two recursive types of one schema with one name",
+  "schemas": {
+   "v": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/a/node"
+      },
+      "b": {
+       "$ref": "#/$defs/b/node"
+      }
+     },
+     "$defs": {
+      "a": {
+       "node": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/a/node"
+        }
+       }
+      },
+      "b": {
+       "node": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "$ref": "#/$defs/b/node"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: two recursive types of the environment with one name",
+  "schemas": {
+   "a": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/node"
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "b": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "n": {
+         "$ref": "#/$defs/node"
+        }
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "two recursive types with one name and one structure are one type",
+  "schemas": {
+   "a": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "b": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "[a, b]",
+  "expect": {
+   "type": "Node[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "name-clash: a recursive type and a named type with one name",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{id: int}"
+   }
+  ],
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: a recursive type with the name of an opaque type",
+  "opaque": [
+   "Node"
+  ],
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: a named type that is an alias of another recursive type of one structure",
+  "types": [
+   {
+    "name": "Other",
+    "type": "Other[]"
+   },
+   {
+    "name": "Tree",
+    "type": "Other"
+   }
+  ],
+  "schemas": {
+   "tree": {
+    "schema": {
+     "type": "array",
+     "items": {
+      "$ref": "#"
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the description lists a recursive named type by its unfolding",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   }
+  ],
+  "env": "{t: Tree, ts: Tree[]}",
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "t": "Tree",
+     "ts": "Tree[]"
+    },
+    "types": {
+     "Tree": "{kids: Tree[]}"
+    }
+   }
+  }
+ },
+ {
+  "name": "the description lists a schema's recursive type",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "name",
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "t": "Node"
+    },
+    "types": {
+     "Node": "{kids: Node[], name: string}"
+    }
+   }
+  }
+ },
+ {
+  "name": "a schema's cycle through prefixItems is a recursive type (F17 12.4 item 1)",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "array",
+       "prefixItems": [
+        {
+         "$ref": "#/$defs/node"
+        }
+       ],
+       "items": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t[0]",
+  "expect": {
+   "type": "Node",
+   "sites": [
+    {
+     "class": "index",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's cycle through items that is an array is a recursive type",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": [
+        {
+         "$ref": "#/$defs/node"
+        }
+       ],
+       "additionalItems": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t[0]",
+  "expect": {
+   "type": "Node",
+   "sites": [
+    {
+     "class": "index",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's cycle through additionalItems is a recursive type",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": [
+        {
+         "type": "integer"
+        }
+       ],
+       "additionalItems": {
+        "$ref": "#/$defs/node"
+       }
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t[0]",
+  "expect": {
+   "type": "int | Node",
+   "sites": [
+    {
+     "class": "index",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a target is the place its pointer names: a $ref to a $ref is a target of its own",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "alias": {
+       "$ref": "#/$defs/node"
+      },
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/alias"
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "Node",
+   "sites": []
+  }
+ },
+ {
+  "name": "a target is the place its pointer names: the target met again is named, not the one entered first",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "alias": {
+       "$ref": "#/$defs/node"
+      },
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/alias"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/alias"
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "Alias",
+   "sites": []
+  }
+ },
+ {
+  "name": "two pointers that decode to the same tokens name one target",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/n%6Fde"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "Node",
+   "sites": []
+  }
+ },
+ {
+  "name": "the mapping takes the properties in code point order of their keys",
+  "schemas": {
+   "t": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "y": {
+       "$ref": "#/$defs/bb"
+      },
+      "x": {
+       "$ref": "#/$defs/aa"
+      }
+     },
+     "required": [
+      "x",
+      "y"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "aa": {
+       "type": "object",
+       "properties": {
+        "b": {
+         "$ref": "#/$defs/bb"
+        }
+       },
+       "additionalProperties": false
+      },
+      "bb": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/aa"
+        }
+       },
+       "additionalProperties": false
+      }
+     }
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "{x: Aa, y: {a?: Aa}}",
+   "sites": []
+  }
+ },
+ {
+  "name": "the mapping takes the names of type in the order written",
+  "schemas": {
+   "t": {
+    "schema": {
+     "type": [
+      "object",
+      "array"
+     ],
+     "properties": {
+      "x": {
+       "$ref": "#/$defs/bb"
+      }
+     },
+     "items": {
+      "$ref": "#/$defs/aa"
+     },
+     "$defs": {
+      "aa": {
+       "type": "object",
+       "properties": {
+        "b": {
+         "$ref": "#/$defs/bb"
+        }
+       },
+       "additionalProperties": false
+      },
+      "bb": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/aa"
+        }
+       },
+       "additionalProperties": false
+      }
+     }
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "{b?: Bb}[] | {x?: Bb, ...}",
+   "sites": []
+  }
+ },
+ {
+  "name": "a place met again while it is mapped as a part of the schema that holds it is a recursive type",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "tree": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/tree/properties/kids"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/tree"
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "{kids: Kids}",
+   "sites": []
+  }
+ },
+ {
+  "name": "a place has one type, however the mapping reaches it",
+  "schemas": {
+   "t": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/tree/properties/kids"
+      },
+      "b": {
+       "$ref": "#/$defs/tree"
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "tree": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/tree/properties/kids"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "{a: Kids, b: {kids: Kids}}",
+   "sites": []
+  }
+ },
+ {
+  "name": "bad-type: a reference at a definition's top, replaced by its definition, shares a kind with another alternative",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "bee": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/bee"
+       }
+      },
+      "aye": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/bee"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "integer"
+         }
+        },
+        {
+         "type": "object",
+         "properties": {
+          "self": {
+           "$ref": "#/$defs/aye"
+          }
+         },
+         "additionalProperties": false
+        }
+       ]
+      }
+     },
+     "$ref": "#/$defs/aye"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a reference at a definition's top is replaced by its definition beside alternatives of other kinds",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "bee": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/bee"
+       }
+      },
+      "aye": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/bee"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "object",
+         "properties": {
+          "self": {
+           "$ref": "#/$defs/aye"
+          }
+         },
+         "additionalProperties": false
+        }
+       ]
+      }
+     },
+     "$ref": "#/$defs/aye"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "t": "Aye"
+    },
+    "types": {
+     "Aye": "int | Bee[] | {self?: Aye}",
+     "Bee": "Bee[]"
+    }
+   }
+  }
+ },
+ {
+  "name": "two recursive types of one name whose Equal enters 4,095 pairs are one type",
+  "schemas": {
+   "x": {
+    "schema": {
+     "$defs": {
+      "t0": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t1"
+        },
+        "b": {
+         "$ref": "#/$defs/t1"
+        },
+        "s": {
+         "$ref": "#/$defs/t0"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t1": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t2"
+        },
+        "b": {
+         "$ref": "#/$defs/t2"
+        },
+        "s": {
+         "$ref": "#/$defs/t1"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t2": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t3"
+        },
+        "b": {
+         "$ref": "#/$defs/t3"
+        },
+        "s": {
+         "$ref": "#/$defs/t2"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t3": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t4"
+        },
+        "b": {
+         "$ref": "#/$defs/t4"
+        },
+        "s": {
+         "$ref": "#/$defs/t3"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t4": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t5"
+        },
+        "b": {
+         "$ref": "#/$defs/t5"
+        },
+        "s": {
+         "$ref": "#/$defs/t4"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t5": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t6"
+        },
+        "b": {
+         "$ref": "#/$defs/t6"
+        },
+        "s": {
+         "$ref": "#/$defs/t5"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t6": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t7"
+        },
+        "b": {
+         "$ref": "#/$defs/t7"
+        },
+        "s": {
+         "$ref": "#/$defs/t6"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t7": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t8"
+        },
+        "b": {
+         "$ref": "#/$defs/t8"
+        },
+        "s": {
+         "$ref": "#/$defs/t7"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t8": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t9"
+        },
+        "b": {
+         "$ref": "#/$defs/t9"
+        },
+        "s": {
+         "$ref": "#/$defs/t8"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t9": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t10"
+        },
+        "b": {
+         "$ref": "#/$defs/t10"
+        },
+        "s": {
+         "$ref": "#/$defs/t9"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t10": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t11"
+        },
+        "b": {
+         "$ref": "#/$defs/t11"
+        },
+        "s": {
+         "$ref": "#/$defs/t10"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t11": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "integer"
+        },
+        "s": {
+         "$ref": "#/$defs/t11"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/t0"
+    }
+   },
+   "y": {
+    "schema": {
+     "$defs": {
+      "t0": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t1"
+        },
+        "b": {
+         "$ref": "#/$defs/t1"
+        },
+        "s": {
+         "$ref": "#/$defs/t0"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t1": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t2"
+        },
+        "b": {
+         "$ref": "#/$defs/t2"
+        },
+        "s": {
+         "$ref": "#/$defs/t1"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t2": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t3"
+        },
+        "b": {
+         "$ref": "#/$defs/t3"
+        },
+        "s": {
+         "$ref": "#/$defs/t2"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t3": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t4"
+        },
+        "b": {
+         "$ref": "#/$defs/t4"
+        },
+        "s": {
+         "$ref": "#/$defs/t3"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t4": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t5"
+        },
+        "b": {
+         "$ref": "#/$defs/t5"
+        },
+        "s": {
+         "$ref": "#/$defs/t4"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t5": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t6"
+        },
+        "b": {
+         "$ref": "#/$defs/t6"
+        },
+        "s": {
+         "$ref": "#/$defs/t5"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t6": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t7"
+        },
+        "b": {
+         "$ref": "#/$defs/t7"
+        },
+        "s": {
+         "$ref": "#/$defs/t6"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t7": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t8"
+        },
+        "b": {
+         "$ref": "#/$defs/t8"
+        },
+        "s": {
+         "$ref": "#/$defs/t7"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t8": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t9"
+        },
+        "b": {
+         "$ref": "#/$defs/t9"
+        },
+        "s": {
+         "$ref": "#/$defs/t8"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t9": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t10"
+        },
+        "b": {
+         "$ref": "#/$defs/t10"
+        },
+        "s": {
+         "$ref": "#/$defs/t9"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t10": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t11"
+        },
+        "b": {
+         "$ref": "#/$defs/t11"
+        },
+        "s": {
+         "$ref": "#/$defs/t10"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t11": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "integer"
+        },
+        "s": {
+         "$ref": "#/$defs/t11"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/t0"
+    }
+   }
+  },
+  "source": "[x, y]",
+  "expect": {
+   "type": "T0[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "name-clash: two recursive types of one name whose Equal passes the bound of pairs",
+  "schemas": {
+   "x": {
+    "schema": {
+     "$defs": {
+      "t0": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t1"
+        },
+        "b": {
+         "$ref": "#/$defs/t1"
+        },
+        "s": {
+         "$ref": "#/$defs/t0"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t1": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t2"
+        },
+        "b": {
+         "$ref": "#/$defs/t2"
+        },
+        "s": {
+         "$ref": "#/$defs/t1"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t2": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t3"
+        },
+        "b": {
+         "$ref": "#/$defs/t3"
+        },
+        "s": {
+         "$ref": "#/$defs/t2"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t3": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t4"
+        },
+        "b": {
+         "$ref": "#/$defs/t4"
+        },
+        "s": {
+         "$ref": "#/$defs/t3"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t4": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t5"
+        },
+        "b": {
+         "$ref": "#/$defs/t5"
+        },
+        "s": {
+         "$ref": "#/$defs/t4"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t5": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t6"
+        },
+        "b": {
+         "$ref": "#/$defs/t6"
+        },
+        "s": {
+         "$ref": "#/$defs/t5"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t6": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t7"
+        },
+        "b": {
+         "$ref": "#/$defs/t7"
+        },
+        "s": {
+         "$ref": "#/$defs/t6"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t7": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t8"
+        },
+        "b": {
+         "$ref": "#/$defs/t8"
+        },
+        "s": {
+         "$ref": "#/$defs/t7"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t8": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t9"
+        },
+        "b": {
+         "$ref": "#/$defs/t9"
+        },
+        "s": {
+         "$ref": "#/$defs/t8"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t9": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t10"
+        },
+        "b": {
+         "$ref": "#/$defs/t10"
+        },
+        "s": {
+         "$ref": "#/$defs/t9"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t10": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t11"
+        },
+        "b": {
+         "$ref": "#/$defs/t11"
+        },
+        "s": {
+         "$ref": "#/$defs/t10"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t11": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t12"
+        },
+        "b": {
+         "$ref": "#/$defs/t12"
+        },
+        "s": {
+         "$ref": "#/$defs/t11"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t12": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "integer"
+        },
+        "s": {
+         "$ref": "#/$defs/t12"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/t0"
+    }
+   },
+   "y": {
+    "schema": {
+     "$defs": {
+      "t0": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t1"
+        },
+        "b": {
+         "$ref": "#/$defs/t1"
+        },
+        "s": {
+         "$ref": "#/$defs/t0"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t1": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t2"
+        },
+        "b": {
+         "$ref": "#/$defs/t2"
+        },
+        "s": {
+         "$ref": "#/$defs/t1"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t2": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t3"
+        },
+        "b": {
+         "$ref": "#/$defs/t3"
+        },
+        "s": {
+         "$ref": "#/$defs/t2"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t3": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t4"
+        },
+        "b": {
+         "$ref": "#/$defs/t4"
+        },
+        "s": {
+         "$ref": "#/$defs/t3"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t4": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t5"
+        },
+        "b": {
+         "$ref": "#/$defs/t5"
+        },
+        "s": {
+         "$ref": "#/$defs/t4"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t5": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t6"
+        },
+        "b": {
+         "$ref": "#/$defs/t6"
+        },
+        "s": {
+         "$ref": "#/$defs/t5"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t6": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t7"
+        },
+        "b": {
+         "$ref": "#/$defs/t7"
+        },
+        "s": {
+         "$ref": "#/$defs/t6"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t7": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t8"
+        },
+        "b": {
+         "$ref": "#/$defs/t8"
+        },
+        "s": {
+         "$ref": "#/$defs/t7"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t8": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t9"
+        },
+        "b": {
+         "$ref": "#/$defs/t9"
+        },
+        "s": {
+         "$ref": "#/$defs/t8"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t9": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t10"
+        },
+        "b": {
+         "$ref": "#/$defs/t10"
+        },
+        "s": {
+         "$ref": "#/$defs/t9"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t10": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t11"
+        },
+        "b": {
+         "$ref": "#/$defs/t11"
+        },
+        "s": {
+         "$ref": "#/$defs/t10"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t11": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "$ref": "#/$defs/t12"
+        },
+        "b": {
+         "$ref": "#/$defs/t12"
+        },
+        "s": {
+         "$ref": "#/$defs/t11"
+        }
+       },
+       "required": [
+        "a",
+        "b"
+       ],
+       "additionalProperties": false
+      },
+      "t12": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "integer"
+        },
+        "s": {
+         "$ref": "#/$defs/t12"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/t0"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: once for a name that three recursive types of three structures bear",
+  "schemas": {
+   "x": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "y": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "b": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "b"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   },
+   "z": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "c": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "c"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "name-clash: once for a name of a named type and of a recursive type of another structure",
+  "types": [
+   {
+    "name": "Node",
+    "type": "{n: Node[]}"
+   }
+  ],
+  "env": "{x: Node}",
+  "schemas": {
+   "y": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "b": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "b"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the description lists an alias of a recursive type by the name it aliases",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{kids: Tree[]}"
+   },
+   {
+    "name": "Alias",
+    "type": "Tree"
+   }
+  ],
+  "env": "{x: Alias}",
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "x": "Tree"
+    },
+    "types": {
+     "Alias": "Tree",
+     "Tree": "{kids: Tree[]}"
+    }
+   }
+  }
+ },
+ {
+  "name": "a reference that reaches a definition's top through a type that is not recursive is replaced by its definition",
+  "types": [
+   {
+    "name": "Tree",
+    "type": "{k: Tree[]}"
+   },
+   {
+    "name": "Maybe",
+    "type": "Tree | null"
+   },
+   {
+    "name": "Xs",
+    "type": "Xs[] | Maybe"
+   }
+  ],
+  "env": "{x: Xs}",
+  "source": "1",
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "x": "Xs"
+    },
+    "types": {
+     "Maybe": "Tree | null",
+     "Tree": "{k: Tree[]}",
+     "Xs": "Xs[] | {k: Tree[]} | null"
+    }
+   }
+  }
+ },
+ {
+  "name": "allOf picks a type that holds a reference when the fit does not look into it",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "allOf": [
+          {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/node"
+           }
+          },
+          {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/node"
+           }
+          }
+         ]
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "Node[]",
+   "sites": []
+  }
+ },
+ {
+  "name": "allOf picks the first type when the fit fails on the kind, before a reference",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "allOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/node"
+           }
+          }
+         ]
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "t.kids",
+  "expect": {
+   "type": "string",
+   "sites": []
+  }
+ },
+ {
+  "name": "bad-type: allOf of two records meets a reference being mapped, whose kinds it reads",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "allOf": [
+          {
+           "type": "object",
+           "properties": {
+            "n": {
+             "$ref": "#/$defs/node"
+            }
+           }
+          },
+          {
+           "type": "object",
+           "properties": {
+            "n": {
+             "$ref": "#/$defs/node"
+            }
+           }
+          }
+         ]
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "$ref": "#/$defs/node"
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: a schema's own type puts a reference beside a record of its kind",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "anyOf": [
+      {
+       "$ref": "#/$defs/node"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "end": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "end"
+       ],
+       "additionalProperties": false
+      }
+     ]
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema's own type may put a reference beside null",
+  "schemas": {
+   "t": {
+    "schema": {
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "kids": {
+         "type": "array",
+         "items": {
+          "$ref": "#/$defs/node"
+         }
+        }
+       },
+       "required": [
+        "kids"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "anyOf": [
+      {
+       "$ref": "#/$defs/node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   }
+  },
+  "source": "t",
+  "expect": {
+   "type": "Node | null",
+   "sites": []
+  }
+ },
+ {
+  "name": "the depth of a schema with a cycle: the $ref that closes it counts 1, its target 0: depth 64",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "allOf": [
+      {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "allOf": [
+                                                                                        {
+                                                                                         "allOf": [
+                                                                                          {
+                                                                                           "allOf": [
+                                                                                            {
+                                                                                             "allOf": [
+                                                                                              {
+                                                                                               "allOf": [
+                                                                                                {
+                                                                                                 "allOf": [
+                                                                                                  {
+                                                                                                   "allOf": [
+                                                                                                    {
+                                                                                                     "allOf": [
+                                                                                                      {
+                                                                                                       "allOf": [
+                                                                                                        {
+                                                                                                         "allOf": [
+                                                                                                          {
+                                                                                                           "allOf": [
+                                                                                                            {
+                                                                                                             "allOf": [
+                                                                                                              {
+                                                                                                               "allOf": [
+                                                                                                                {
+                                                                                                                 "allOf": [
+                                                                                                                  {
+                                                                                                                   "allOf": [
+                                                                                                                    {
+                                                                                                                     "allOf": [
+                                                                                                                      {
+                                                                                                                       "allOf": [
+                                                                                                                        {
+                                                                                                                         "allOf": [
+                                                                                                                          {
+                                                                                                                           "allOf": [
+                                                                                                                            {
+                                                                                                                             "allOf": [
+                                                                                                                              {
+                                                                                                                               "allOf": [
+                                                                                                                                {
+                                                                                                                                 "type": "array",
+                                                                                                                                 "items": {
+                                                                                                                                  "$ref": "#"
+                                                                                                                                 }
+                                                                                                                                }
+                                                                                                                               ]
+                                                                                                                              }
+                                                                                                                             ]
+                                                                                                                            }
+                                                                                                                           ]
+                                                                                                                          }
+                                                                                                                         ]
+                                                                                                                        }
+                                                                                                                       ]
+                                                                                                                      }
+                                                                                                                     ]
+                                                                                                                    }
+                                                                                                                   ]
+                                                                                                                  }
+                                                                                                                 ]
+                                                                                                                }
+                                                                                                               ]
+                                                                                                              }
+                                                                                                             ]
+                                                                                                            }
+                                                                                                           ]
+                                                                                                          }
+                                                                                                         ]
+                                                                                                        }
+                                                                                                       ]
+                                                                                                      }
+                                                                                                     ]
+                                                                                                    }
+                                                                                                   ]
+                                                                                                  }
+                                                                                                 ]
+                                                                                                }
+                                                                                               ]
+                                                                                              }
+                                                                                             ]
+                                                                                            }
+                                                                                           ]
+                                                                                          }
+                                                                                         ]
+                                                                                        }
+                                                                                       ]
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "source": "tree",
+  "expect": {
+   "type": "Tree",
+   "sites": []
+  }
+ },
+ {
+  "name": "the depth of a schema with a cycle: depth 65 is bad-type",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "allOf": [
+      {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "allOf": [
+                                                                                        {
+                                                                                         "allOf": [
+                                                                                          {
+                                                                                           "allOf": [
+                                                                                            {
+                                                                                             "allOf": [
+                                                                                              {
+                                                                                               "allOf": [
+                                                                                                {
+                                                                                                 "allOf": [
+                                                                                                  {
+                                                                                                   "allOf": [
+                                                                                                    {
+                                                                                                     "allOf": [
+                                                                                                      {
+                                                                                                       "allOf": [
+                                                                                                        {
+                                                                                                         "allOf": [
+                                                                                                          {
+                                                                                                           "allOf": [
+                                                                                                            {
+                                                                                                             "allOf": [
+                                                                                                              {
+                                                                                                               "allOf": [
+                                                                                                                {
+                                                                                                                 "allOf": [
+                                                                                                                  {
+                                                                                                                   "allOf": [
+                                                                                                                    {
+                                                                                                                     "allOf": [
+                                                                                                                      {
+                                                                                                                       "allOf": [
+                                                                                                                        {
+                                                                                                                         "allOf": [
+                                                                                                                          {
+                                                                                                                           "allOf": [
+                                                                                                                            {
+                                                                                                                             "allOf": [
+                                                                                                                              {
+                                                                                                                               "allOf": [
+                                                                                                                                {
+                                                                                                                                 "allOf": [
+                                                                                                                                  {
+                                                                                                                                   "type": "array",
+                                                                                                                                   "items": {
+                                                                                                                                    "$ref": "#"
+                                                                                                                                   }
+                                                                                                                                  }
+                                                                                                                                 ]
+                                                                                                                                }
+                                                                                                                               ]
+                                                                                                                              }
+                                                                                                                             ]
+                                                                                                                            }
+                                                                                                                           ]
+                                                                                                                          }
+                                                                                                                         ]
+                                                                                                                        }
+                                                                                                                       ]
+                                                                                                                      }
+                                                                                                                     ]
+                                                                                                                    }
+                                                                                                                   ]
+                                                                                                                  }
+                                                                                                                 ]
+                                                                                                                }
+                                                                                                               ]
+                                                                                                              }
+                                                                                                             ]
+                                                                                                            }
+                                                                                                           ]
+                                                                                                          }
+                                                                                                         ]
+                                                                                                        }
+                                                                                                       ]
+                                                                                                      }
+                                                                                                     ]
+                                                                                                    }
+                                                                                                   ]
+                                                                                                  }
+                                                                                                 ]
+                                                                                                }
+                                                                                               ]
+                                                                                              }
+                                                                                             ]
+                                                                                            }
+                                                                                           ]
+                                                                                          }
+                                                                                         ]
+                                                                                        }
+                                                                                       ]
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad-type: Pick reads the kinds of every type of allOf, a reference being mapped among them",
+  "schemas": {
+   "root": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "allOf": [
+        false,
+        {
+         "$ref": "#"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a target met again through a part of the schema that holds it, reached first by its own $ref",
+  "schemas": {
+   "tree": {
+    "schema": {
+     "$ref": "#/$defs/node/items",
+     "$defs": {
+      "node": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/node"
+       }
+      }
+     }
+    }
+   }
+  },
+  "source": "tree",
+  "expect": {
+   "type": "Items",
+   "sites": []
+  }
+ },
+ {
+  "name": "the depth of a schema: a recursive target met again from where it was mapped keeps its depth (64 or less)",
+  "schemas": {
+   "tt": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/node"
+      },
+      "b": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "$ref": "#/$defs/node"
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "node": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "type": "array",
+                                                                                       "items": {
+                                                                                        "$ref": "#/$defs/node"
+                                                                                       }
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "source": "tt",
+  "expect": {
+   "type": "{a: Node, b: Node}",
+   "sites": []
+  }
+ },
+ {
+  "name": "the depth of a schema: a recursive target met again from where it was mapped keeps its depth (past 64)",
+  "schemas": {
+   "tt": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "$ref": "#/$defs/node"
+      },
+      "b": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "$ref": "#/$defs/node"
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "required": [
+      "a",
+      "b"
+     ],
+     "additionalProperties": false,
+     "$defs": {
+      "node": {
+       "allOf": [
+        {
+         "allOf": [
+          {
+           "allOf": [
+            {
+             "allOf": [
+              {
+               "allOf": [
+                {
+                 "allOf": [
+                  {
+                   "allOf": [
+                    {
+                     "allOf": [
+                      {
+                       "allOf": [
+                        {
+                         "allOf": [
+                          {
+                           "allOf": [
+                            {
+                             "allOf": [
+                              {
+                               "allOf": [
+                                {
+                                 "allOf": [
+                                  {
+                                   "allOf": [
+                                    {
+                                     "allOf": [
+                                      {
+                                       "allOf": [
+                                        {
+                                         "allOf": [
+                                          {
+                                           "allOf": [
+                                            {
+                                             "allOf": [
+                                              {
+                                               "allOf": [
+                                                {
+                                                 "allOf": [
+                                                  {
+                                                   "allOf": [
+                                                    {
+                                                     "allOf": [
+                                                      {
+                                                       "allOf": [
+                                                        {
+                                                         "allOf": [
+                                                          {
+                                                           "allOf": [
+                                                            {
+                                                             "allOf": [
+                                                              {
+                                                               "allOf": [
+                                                                {
+                                                                 "allOf": [
+                                                                  {
+                                                                   "allOf": [
+                                                                    {
+                                                                     "allOf": [
+                                                                      {
+                                                                       "allOf": [
+                                                                        {
+                                                                         "allOf": [
+                                                                          {
+                                                                           "allOf": [
+                                                                            {
+                                                                             "allOf": [
+                                                                              {
+                                                                               "allOf": [
+                                                                                {
+                                                                                 "allOf": [
+                                                                                  {
+                                                                                   "allOf": [
+                                                                                    {
+                                                                                     "allOf": [
+                                                                                      {
+                                                                                       "type": "array",
+                                                                                       "items": {
+                                                                                        "$ref": "#/$defs/node"
+                                                                                       }
+                                                                                      }
+                                                                                     ]
+                                                                                    }
+                                                                                   ]
+                                                                                  }
+                                                                                 ]
+                                                                                }
+                                                                               ]
+                                                                              }
+                                                                             ]
+                                                                            }
+                                                                           ]
+                                                                          }
+                                                                         ]
+                                                                        }
+                                                                       ]
+                                                                      }
+                                                                     ]
+                                                                    }
+                                                                   ]
+                                                                  }
+                                                                 ]
+                                                                }
+                                                               ]
+                                                              }
+                                                             ]
+                                                            }
+                                                           ]
+                                                          }
+                                                         ]
+                                                        }
+                                                       ]
+                                                      }
+                                                     ]
+                                                    }
+                                                   ]
+                                                  }
+                                                 ]
+                                                }
+                                               ]
+                                              }
+                                             ]
+                                            }
+                                           ]
+                                          }
+                                         ]
+                                        }
+                                       ]
+                                      }
+                                     ]
+                                    }
+                                   ]
+                                  }
+                                 ]
+                                }
+                               ]
+                              }
+                             ]
+                            }
+                           ]
+                          }
+                         ]
+                        }
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  "source": "1",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ }
+]

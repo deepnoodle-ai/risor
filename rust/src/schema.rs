@@ -6,10 +6,17 @@
 //! once, by its place in the document, and its type is shared: the type's
 //! element and record slots are reference-counted, so two `$ref`s to one
 //! definition at each of k levels make k types, not 2^k (3.10 item 5).
+//!
+//! F17 12.4: a target met again while it is mapped, with an array's items or
+//! an object's properties between, is a recursive type. Its references
+//! stand in the types while the mapping goes on; their definitions are set,
+//! in one table for the schema, when it ends.
 
-use crate::check::ty::{fits, join, join_all, Field, Rec, Ty};
+use crate::check::ty::{
+    add_alts, beside_its_kind, fits_looking, join, join_all, Field, Kinds, Rec, Ref, Table, Ty,
+};
 use crate::json::Json;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 /// The three options of 4. Each is off unless given.
@@ -52,23 +59,35 @@ const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
 /// M(S) with the options given: the type of a schema (3, 4). The error is
 /// the message of the `declare` error `bad-type`, and says where in the
-/// schema it is, as a JSON Pointer.
+/// schema it is, as a JSON Pointer. A recursive root is named `Root`.
 pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
+    ty_schema_named(schema, opts, "Root")
+}
+
+/// As [`ty_schema`], with the name a recursive root takes (F17 12.4 item 2).
+pub fn ty_schema_named(schema: &Json, opts: SchemaOptions, root_name: &str) -> Result<Ty, String> {
     let mut m = Mapper {
         root: schema,
         opts,
         targets: HashMap::new(),
-        in_progress: HashSet::new(),
+        in_progress: HashMap::new(),
+        pointer: Vec::new(),
         path: Vec::new(),
+        guards: 0,
+        table: Table::new(),
+        recursive: HashMap::new(),
+        names: Vec::new(),
+        defs: Vec::new(),
+        root_name: root_name.to_string(),
     };
     let (t, _) = m.map(schema, 0)?;
     // Close when `closed`; either way the fills are dropped (4.4): the
     // type the mapping gives has the Join of each base and fill only.
-    let t = Closer {
+    let mut closer = Closer {
         close: opts.closed,
         ..Closer::default()
-    }
-    .ty(&t);
+    };
+    let t = closer.ty(&t);
     // `05-types.md` 20.7: a `$ref` shares, so the type written
     // out can pass the size limit though the schema is small.
     if t.too_big() {
@@ -79,6 +98,16 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
     }
     if type_depth(&t, &mut HashMap::new()) > MAX_DEPTH {
         return Err("the type the schema gives is deeper than 64".into());
+    }
+    if !m.defs.is_empty() {
+        m.set_definitions(&mut closer)?;
+        // F17 12.4 item 5 (R316): the schema's own type is tested as a
+        // definition is: a reference beside a type of its kind.
+        if let Some(n) = beside_its_kind(&t) {
+            return Err(format!(
+                "the schema's type: {n} shares a kind with another type of its union"
+            ));
+        }
     }
     Ok(t)
 }
@@ -94,12 +123,30 @@ pub fn ty_schema_text(text: &str, opts: SchemaOptions) -> Result<Ty, String> {
 struct Mapper<'a> {
     root: &'a Json,
     opts: SchemaOptions,
-    /// The type and depth of each schema a `$ref` named, by its place.
+    /// The type and depth of each schema mapped, by its place: a place is
+    /// mapped once, and its type stands wherever the mapping meets it (F17
+    /// 12.4 item 1).
     targets: HashMap<usize, (Ty, usize)>,
-    /// The schemas whose mapping is in progress, by place (3.7 item 7).
-    in_progress: HashSet<usize>,
+    /// The schemas whose mapping is in progress, by place (3.7 item 7),
+    /// with the number of guards the walk was under when it began and the
+    /// last token of the place's pointer.
+    in_progress: HashMap<usize, (usize, Option<String>)>,
+    /// The tokens of the pointer of the place the walk is at, from the
+    /// root: a `$ref` moves it to its target (F17 12.4 item 2).
+    pointer: Vec<String>,
     /// Where the walk is, for messages.
     path: Vec<String>,
+    /// How many array items and object properties the walk is under (F17
+    /// 12.4 item 1).
+    guards: usize,
+    /// The schema's recursive types: their table, the index of each by its
+    /// target's place, their names, and their definitions once mapped.
+    table: Arc<Table>,
+    recursive: HashMap<usize, u32>,
+    names: Vec<String>,
+    defs: Vec<Option<Ty>>,
+    /// The name a recursive root takes.
+    root_name: String,
 }
 
 fn place(s: &Json) -> usize {
@@ -128,11 +175,162 @@ impl<'a> Mapper<'a> {
         for k in keys {
             self.path.push(k.to_string());
         }
+        // F17 12.4 item 1: an array's items, an object's properties,
+        // `additionalProperties` and `patternProperties` are guards.
+        let guard = matches!(
+            keys.first(),
+            Some(
+                &("items"
+                    | "prefixItems"
+                    | "additionalItems"
+                    | "properties"
+                    | "additionalProperties"
+                    | "patternProperties")
+            )
+        );
+        self.guards += guard as usize;
+        let mark = self.pointer.len();
+        self.pointer.extend(keys.iter().map(|k| k.to_string()));
         let r = self.map(s, level + 1);
+        self.pointer.truncate(mark);
+        self.guards -= guard as usize;
         for _ in keys {
             self.path.pop();
         }
         r
+    }
+
+    /// The reference of a recursive type of the schema.
+    fn ref_ty(&self, idx: u32) -> Ty {
+        Ty {
+            refs: [Ref::new(&self.table, idx, &self.names[idx as usize])].into(),
+            ..Ty::default()
+        }
+    }
+
+    /// F17 12.4 item 2: the name of a target met again, by the last token
+    /// of its pointer, its first letter upper-cased; the root's is given.
+    fn place_name(&self, target: &Json, last: Option<&str>) -> String {
+        if place(target) == place(self.root) {
+            return self.root_name.clone();
+        }
+        let mut name = last.unwrap_or_default().to_string();
+        if let Some(c) = name.get(0..1) {
+            if c.as_bytes()[0].is_ascii_lowercase() {
+                let up = c.to_ascii_uppercase();
+                name.replace_range(0..1, &up);
+            }
+        }
+        name
+    }
+
+    /// The index of a target that is a recursive type, made when it is first
+    /// met again.
+    fn recursive_index(&mut self, key: usize, name: &str) -> R<u32> {
+        if let Some(i) = self.recursive.get(&key) {
+            return Ok(*i);
+        }
+        if !crate::syntax::parser::is_type_name(name) || name == crate::syntax::parser::HOLE {
+            return self.err(format!(
+                "the recursive type {name:?} has a name that is not a type name"
+            ));
+        }
+        if self.names.iter().any(|n| n == name) {
+            return self.err(format!(
+                "two recursive types of the schema are named {name}"
+            ));
+        }
+        let i = self.names.len() as u32;
+        self.names.push(name.to_string());
+        self.defs.push(None);
+        self.recursive.insert(key, i);
+        Ok(i)
+    }
+
+    /// F17 12.4 item 5: when the mapping ends, each definition is set, with
+    /// each reference at its top replaced by that reference's definition;
+    /// then a reference beside a type of its kind, depth and size are
+    /// tested.
+    fn set_definitions(&mut self, closer: &mut Closer) -> R<()> {
+        let id = self.table.id();
+        let mut defs: Vec<Ty> = self
+            .defs
+            .iter()
+            .map(|d| closer.ty(&d.clone().unwrap_or_default()))
+            .collect();
+        // The replacement joins nothing (R304): a reference whose
+        // definition shares a kind other than null with another alternative
+        // at the top is `bad-type`, as a reference beside a type of its kind
+        // is. A reference is replaced once its definition holds no
+        // reference of the table at its top.
+        let own_top = |t: &Ty| -> Vec<Ref> {
+            t.refs
+                .iter()
+                .filter(|r| r.table_id() == id)
+                .cloned()
+                .collect()
+        };
+        for _ in 0..=defs.len() {
+            let mut changed = false;
+            for i in 0..defs.len() {
+                let ready: Vec<Ref> = own_top(&defs[i])
+                    .into_iter()
+                    .filter(|r| own_top(&defs[r.index() as usize]).is_empty())
+                    .collect();
+                if ready.is_empty() {
+                    continue;
+                }
+                changed = true;
+                let mut t = defs[i].clone();
+                for r in &ready {
+                    t.refs.remove(r);
+                    let d = &defs[r.index() as usize];
+                    if Kinds::of(&t).shares(&Kinds::of(d), false) {
+                        return Err(format!(
+                            "the recursive type {}: {} shares a kind with another type of its union",
+                            self.names[i],
+                            r.name()
+                        ));
+                    }
+                    add_alts(&mut t, d);
+                }
+                defs[i] = t;
+            }
+            if !changed {
+                break;
+            }
+        }
+        for (i, d) in defs.iter().enumerate() {
+            if d.refs.iter().any(|r| r.table_id() == id) {
+                return Err(format!(
+                    "the recursive type {} refers to itself outside any array or object",
+                    self.names[i]
+                ));
+            }
+        }
+        self.table.set(defs.clone());
+        for (i, d) in defs.iter().enumerate() {
+            if let Some(n) = beside_its_kind(d) {
+                return Err(format!(
+                    "the recursive type {}: {n} shares a kind with another type of its union",
+                    self.names[i]
+                ));
+            }
+            if d.too_big() {
+                return Err(format!(
+                    "the recursive type {} is larger than {}",
+                    self.names[i],
+                    crate::check::ty::SIZE_LIMIT
+                ));
+            }
+            if type_depth(d, &mut HashMap::new()) > MAX_DEPTH {
+                return Err(format!(
+                    "the recursive type {} is deeper than 64",
+                    self.names[i]
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// M(S) and the depth of S (3.10). `level` is how far below the root
@@ -154,7 +352,23 @@ impl<'a> Mapper<'a> {
             }
         };
         let at = place(s);
-        self.in_progress.insert(at);
+        if let Some(x) = self.targets.get(&at) {
+            return Ok(x.clone());
+        }
+        // F17 12.4 item 1: a place met again while it is mapped, through a
+        // `$ref` or as a part of the schema that holds it.
+        if let Some((g, last)) = self.in_progress.get(&at).cloned() {
+            if self.guards <= g {
+                return self.err(
+                    "a cycle of $ref with no array item or property between: a type cannot refer to itself there",
+                );
+            }
+            let name = self.place_name(s, last.as_deref());
+            let i = self.recursive_index(at, &name)?;
+            return Ok((self.ref_ty(i), 0));
+        }
+        self.in_progress
+            .insert(at, (self.guards, self.pointer.last().cloned()));
         let r = self.map_object(s, obj, level);
         self.in_progress.remove(&at);
         let (t, d) = r?;
@@ -169,6 +383,18 @@ impl<'a> Mapper<'a> {
                 crate::check::ty::SIZE_LIMIT
             ));
         }
+        // F17 12.4: a schema met again while it was mapped is a recursive
+        // type; what it maps to is its definition, and it stands as its
+        // reference.
+        // Its depth is the one measured: a place met again has depth 0
+        // only where it is met again (R318).
+        if let Some(&i) = self.recursive.get(&at) {
+            self.defs[i as usize] = Some(t);
+            let x = (self.ref_ty(i), d);
+            self.targets.insert(at, x.clone());
+            return Ok(x);
+        }
+        self.targets.insert(at, (t.clone(), d));
         Ok((t, d))
     }
 
@@ -191,18 +417,15 @@ impl<'a> Mapper<'a> {
         }
         // Step 3.
         if let Some(r) = get("$ref") {
-            let target = self.resolve(r)?;
-            let (t, d) = match self.targets.get(&place(target)) {
-                Some(x) => x.clone(),
-                None => {
-                    if self.in_progress.contains(&place(target)) {
-                        return self.err("a cycle of $ref: a type cannot refer to itself");
-                    }
-                    let x = self.sub(target, level, &["$ref"])?;
-                    self.targets.insert(place(target), x.clone());
-                    x
-                }
-            };
+            let (target, tokens) = self.resolve(r)?;
+            // The walk moves to the target's place, whose pointer is the
+            // `$ref`'s, decoded.
+            let saved = std::mem::replace(&mut self.pointer, tokens);
+            self.path.push("$ref".into());
+            let x = self.map(target, level + 1);
+            self.path.pop();
+            self.pointer = saved;
+            let (t, d) = x?;
             let t = if nullable { join(&t, &Ty::null()) } else { t };
             return Ok((t, d + 1));
         }
@@ -230,14 +453,19 @@ impl<'a> Mapper<'a> {
                 ts.push(t);
             }
             let part = if key == "allOf" {
-                pick(&ts)
+                match try_pick(&ts) {
+                    Some(t) => t,
+                    None => return self.err(LOOKS_INTO),
+                }
             } else {
                 branches_part(&ts)
             };
             parts.push(part);
         }
         // Steps 5 and 6.
-        let t = pick(&parts);
+        let Some(t) = try_pick(&parts) else {
+            return self.err(LOOKS_INTO);
+        };
         let t = if nullable { join(&t, &Ty::null()) } else { t };
         Ok((t, depth))
     }
@@ -315,8 +543,9 @@ impl<'a> Mapper<'a> {
         Ok((out, depth))
     }
 
-    /// The names of `type` (3.3), each once.
-    fn type_names(&self, t: &Json) -> R<BTreeSet<String>> {
+    /// The names of `type` (3.3), each once, in the order written (F17 12.4
+    /// item 3, R303).
+    fn type_names(&self, t: &Json) -> R<Vec<String>> {
         const NAMES: [&str; 7] = [
             "null", "boolean", "integer", "number", "string", "array", "object",
         ];
@@ -325,11 +554,13 @@ impl<'a> Mapper<'a> {
             Json::Arr(a) if !a.is_empty() => a.iter().collect(),
             _ => return self.err("type is not a name or a non-empty array of names"),
         };
-        let mut out = BTreeSet::new();
+        let mut out: Vec<String> = Vec::new();
         for n in list {
             match n.as_str() {
                 Some(s) if NAMES.contains(&s) => {
-                    out.insert(s.to_string());
+                    if !out.iter().any(|o| o == s) {
+                        out.push(s.to_string());
+                    }
                 }
                 Some(s) => return self.err(format!("{s:?} is not a name of type")),
                 None => return self.err("type holds a value that is not a string"),
@@ -400,6 +631,9 @@ impl<'a> Mapper<'a> {
                     let Json::Obj(ps) = p else {
                         return self.err("patternProperties is not an object of schemas");
                     };
+                    // F17 12.4 item 3: in code point order of the keys.
+                    let mut ps: Vec<&(String, Json)> = ps.iter().collect();
+                    ps.sort_by(|a, b| a.0.cmp(&b.0));
                     for (k, x) in ps {
                         let (t, d) = self.sub(x, level, &["patternProperties", k])?;
                         note(d);
@@ -430,6 +664,10 @@ impl<'a> Mapper<'a> {
             let Json::Obj(ps) = p else {
                 return self.err("properties is not an object of schemas");
             };
+            // F17 12.4 item 3 (R303): the mapping meets the properties in
+            // code point order of their keys, which UTF-8 byte order keeps.
+            let mut ps: Vec<&(String, Json)> = ps.iter().collect();
+            ps.sort_by(|a, b| a.0.cmp(&b.0));
             for (k, x) in ps {
                 let (t, d) = self.sub(x, level, &["properties", k])?;
                 note(d);
@@ -503,7 +741,7 @@ impl<'a> Mapper<'a> {
     }
 
     /// The schema a `$ref` names (3.7).
-    fn resolve(&self, r: &Json) -> R<&'a Json> {
+    fn resolve(&self, r: &Json) -> R<(&'a Json, Vec<String>)> {
         let Some(text) = r.as_str() else {
             return self.err("$ref is not a string");
         };
@@ -516,12 +754,13 @@ impl<'a> Mapper<'a> {
             return self.err(format!("$ref {text:?} is not well percent-encoded UTF-8"));
         };
         if pointer.is_empty() {
-            return Ok(self.root);
+            return Ok((self.root, Vec::new()));
         }
         let Some(tail) = pointer.strip_prefix('/') else {
             return self.err(format!("$ref {text:?} is not a JSON Pointer"));
         };
         let mut at: &'a Json = self.root;
+        let mut tokens = Vec::new();
         for raw in tail.split('/') {
             let Some(token) = unescape(raw) else {
                 return self.err(format!("$ref {text:?} has a ~ that is not ~0 or ~1"));
@@ -535,8 +774,9 @@ impl<'a> Mapper<'a> {
                 Some(n) => at = n,
                 None => return self.err(format!("$ref {text:?} names nothing")),
             }
+            tokens.push(token);
         }
-        Ok(at)
+        Ok((at, tokens))
     }
 }
 
@@ -614,36 +854,66 @@ fn record_only(t: &Ty) -> Option<&Rec> {
     }
 }
 
+/// F17 12.4 item 4: the message of a Pick or Meet that would look into a
+/// recursive type of the schema, whose definition is not known yet.
+const LOOKS_INTO: &str = "allOf would look into a recursive type of the schema while it is mapped";
+
 /// Pick(T1, ..., Tn) (3.6 item 2).
+#[cfg(test)]
 pub fn pick(ts: &[Ty]) -> Ty {
+    try_pick(ts).unwrap_or_else(Ty::any)
+}
+
+/// Pick, or `None` when it would look into a reference (F17 12.4 item 4).
+fn try_pick(ts: &[Ty]) -> Option<Ty> {
     let left: Vec<&Ty> = ts.iter().filter(|t| !t.any).collect();
     if left.is_empty() {
-        return Ty::any();
+        return Some(Ty::any());
     }
     if left.len() == 1 {
-        return left[0].clone();
+        return Some(left[0].clone());
+    }
+    // F17 12.4 item 4 (R312): step 2 reads the kinds of each type, so it
+    // looks into each reference among them.
+    if left.iter().any(|t| t.has_refs()) {
+        return None;
     }
     // Step 2, with F5 8.3: records and unions meet, folded from the left;
     // a meet that fails sends the whole list to step 3.
     if left.iter().all(|t| record_only(t).is_some()) {
         let mut acc: Option<Ty> = Some(left[0].clone());
         for t in &left[1..] {
-            acc = acc.and_then(|a| meet_ty(&a, t));
+            acc = match acc {
+                Some(a) => meet_ty(&a, t)?,
+                None => None,
+            };
         }
         if let Some(t) = acc {
-            return t;
+            return Some(t);
         }
     }
+    // Step 3 looks into a reference only as far as its Fits does: a Fits
+    // that enters a pair holding one would look into it.
     for (i, t) in left.iter().enumerate() {
-        let all = left
-            .iter()
-            .enumerate()
-            .all(|(j, u)| i == j || fits(t, u) == Some(false));
+        let mut all = true;
+        for (j, u) in left.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            match fits_looking(t, u) {
+                Err(()) => return None,
+                Ok(Some(false)) => {}
+                Ok(_) => {
+                    all = false;
+                    break;
+                }
+            }
+        }
         if all {
-            return (*t).clone();
+            return Some((*t).clone());
         }
     }
-    left[0].clone()
+    Some(left[0].clone())
 }
 
 /// The part of an `anyOf` or `oneOf` (F5 8.1): the records of the branches,
@@ -676,26 +946,40 @@ fn branches_part(ts: &[Ty]) -> Ty {
 
 /// The meet of two types that are each a record or a union (F5 8.3): two
 /// records by Meet; a record and a union by the meet with each variant, when
-/// those form a tagged union; `None` when the meet fails.
-fn meet_ty(a: &Ty, b: &Ty) -> Option<Ty> {
-    match (&a.variants, &b.variants) {
-        (None, None) => Some(Ty::rec(meet(a.map.as_deref()?, b.map.as_deref()?))),
+/// those form a tagged union; `Some(None)` when the meet fails, and `None`
+/// when it would look into a reference.
+fn meet_ty(a: &Ty, b: &Ty) -> Option<Option<Ty>> {
+    Some(match (&a.variants, &b.variants) {
+        (None, None) => match (a.map.as_deref(), b.map.as_deref()) {
+            (Some(x), Some(y)) => Some(Ty::rec(try_meet(x, y)?)),
+            _ => None,
+        },
         (Some(_), Some(_)) => None,
-        (None, Some(vs)) => {
-            let r = a.map.as_deref()?;
-            Ty::of_variants(vs.iter().map(|v| meet(r, v)).collect())
-                .filter(|t| t.variants.is_some())
-        }
-        (Some(vs), None) => {
-            let r = b.map.as_deref()?;
-            Ty::of_variants(vs.iter().map(|v| meet(v, r)).collect())
-                .filter(|t| t.variants.is_some())
-        }
-    }
+        (None, Some(vs)) => match a.map.as_deref() {
+            Some(r) => {
+                let ms: Option<Vec<Rec>> = vs.iter().map(|v| try_meet(r, v)).collect();
+                Ty::of_variants(ms?).filter(|t| t.variants.is_some())
+            }
+            None => None,
+        },
+        (Some(vs), None) => match b.map.as_deref() {
+            Some(r) => {
+                let ms: Option<Vec<Rec>> = vs.iter().map(|v| try_meet(v, r)).collect();
+                Ty::of_variants(ms?).filter(|t| t.variants.is_some())
+            }
+            None => None,
+        },
+    })
 }
 
 /// Meet(A, B) of two records (3.6 item 3, 8).
+#[cfg(test)]
 pub fn meet(a: &Rec, b: &Rec) -> Rec {
+    try_meet(a, b).unwrap_or_else(|| Rec::new(BTreeMap::new(), Ty::any()))
+}
+
+/// Meet, or `None` when it would look into a reference.
+fn try_meet(a: &Rec, b: &Rec) -> Option<Rec> {
     let keys: BTreeSet<&String> = a.fields.keys().chain(b.fields.keys()).collect();
     let mut fields = BTreeMap::new();
     let mut fills = BTreeMap::new();
@@ -709,7 +993,7 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
             (None, Some(f)) => f.ty.clone(),
             (None, None) => r.rest.clone(),
         };
-        let bs = pick(&[base(a, fa), base(b, fb)]);
+        let bs = try_pick(&[base(a, fa), base(b, fb)])?;
         let fill = match (a.fills.get(k), b.fills.get(k)) {
             (Some(x), Some(y)) => Some(join(&x.1, &y.1)),
             (Some(x), None) | (None, Some(x)) => Some(x.1.clone()),
@@ -732,13 +1016,13 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
             },
         );
     }
-    Rec {
+    Some(Rec {
         fields,
-        rest: pick(&[a.rest.clone(), b.rest.clone()]),
+        rest: try_pick(&[a.rest.clone(), b.rest.clone()])?,
         closable: a.closable && b.closable,
         size: Default::default(),
         fills,
-    }
+    })
 }
 
 /// Close(T) (4.1 item 3): the rest of every closable record of T is
@@ -909,7 +1193,7 @@ fn index(t: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::ty::{from_text, print};
+    use crate::check::ty::{fits, from_text, print};
     use crate::json::parse;
     use crate::types::text::parse_type;
 
@@ -1182,6 +1466,49 @@ mod tests {
         assert_eq!(t.map(|t| print(&t)), Ok("int[]".to_string()));
         assert!(ty_schema_text("{\"type\": ", SchemaOptions::default()).is_err());
         assert!(ty_schema_text(r#"{"a": 1, "a": 2}"#, SchemaOptions::default()).is_err());
+    }
+
+    /// R318: a recursive target that finishes mapping keeps the depth it
+    /// measured; only where it is met again does it have depth 0. `node` is
+    /// n one-branch `allOf` around an array whose items refer to `node`.
+    /// Reached first at `a`, it is mapped there; at `b`, under k more
+    /// `allOf`, its depth is the one it measured, which the walk of `b` does
+    /// not enter again.
+    #[test]
+    fn a_recursive_target_keeps_its_depth() {
+        let wrap = |mut s: String, n: usize| {
+            for _ in 0..n {
+                s = format!(r#"{{"allOf": [{s}]}}"#);
+            }
+            s
+        };
+        let schema = |n: usize, k: usize| {
+            let node = wrap(
+                r##"{"type": "array", "items": {"$ref": "#/$defs/node"}}"##.into(),
+                n,
+            );
+            let b = wrap(r##"{"$ref": "#/$defs/node"}"##.into(), k);
+            format!(
+                r##"{{"type": "object", "properties": {{"a": {{"$ref": "#/$defs/node"}},
+                "b": {b}}}, "required": ["a", "b"], "additionalProperties": false,
+                "$defs": {{"node": {node}}}}}"##
+            )
+        };
+        let t = ty_schema_text(&schema(40, 10), SchemaOptions::default()).unwrap();
+        assert_eq!(print(&t), "{a: Node, b: Node}");
+        let e = ty_schema_text(&schema(40, 30), SchemaOptions::default()).unwrap_err();
+        assert!(e.contains("deeper than 64"), "{e}");
+        let schema = |n: usize| {
+            let mut node = r##"{"type": "array", "items": {"$ref": "#/$defs/node"}}"##.to_string();
+            for _ in 0..n {
+                node = format!(r#"{{"allOf": [{node}]}}"#);
+            }
+            format!(r##"{{"$ref": "#/$defs/node", "$defs": {{"node": {node}}}}}"##)
+        };
+        let t = ty_schema_text(&schema(61), SchemaOptions::default()).unwrap();
+        assert_eq!(print(&t), "Node");
+        let e = ty_schema_text(&schema(62), SchemaOptions::default()).unwrap_err();
+        assert!(e.contains("deeper than 64"), "{e}");
     }
 
     #[test]

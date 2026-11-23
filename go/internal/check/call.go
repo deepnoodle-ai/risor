@@ -140,7 +140,7 @@ func (c *checker) readKey(cur *types.Type, key string, keySpan, recvSpan syntax.
 	case cur.IsNever():
 		return types.Never
 	case cur.Record() != nil:
-		t := c.readField(cur.Record(), key, keySpan, recvSpan, optional, present)
+		t := c.readField(cur.Record(), types.Shown(cur), key, keySpan, recvSpan, optional, present)
 		if present {
 			t = types.Nonnull(t)
 		}
@@ -1134,7 +1134,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 				return
 			}
 			if r := want.Record(); r != nil {
-				c.fitMapRecord(e, c.givers(e), r, want, k, fail)
+				c.fitMapRecord(e, c.givers(e), r, types.RecordShown(want), k, fail)
 				return
 			}
 		}

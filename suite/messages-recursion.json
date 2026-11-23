@@ -1,5 +1,125 @@
 [
   {
+    "code": "circular-type",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "direct": "{name} refers to itself outside any list, map or record",
+      "union": "{name} shares a kind with another type of its union; give the union a type line of its own"
+    },
+    "when": {
+      "direct": "f17-recursion.md 12.2 item 3: a type line on a cycle of names at top places. name is the line's name",
+      "union": "f17-recursion.md 12.2 item 6: a reference of the line's component beside another alternative of one of its kinds. name is the reference"
+    },
+    "cases": [
+      {
+        "name": "circular-type: direct",
+        "source": "type Loop = Loop | null; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "circular-type",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "Loop refers to itself outside any list, map or record"
+            }
+          ]
+        }
+      },
+      {
+        "name": "circular-type: union",
+        "source": "type Node = {next: Node | {end: bool}}; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "circular-type",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "Node shares a kind with another type of its union; give the union a type line of its own"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "check-limit",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "pairs": "comparing the types here takes more than 4096 pairs of types"
+    },
+    "when": {
+      "pairs": "f17-recursion.md 12.5: one computation of a fit, a join, an equality or a disjointness enters more than 4096 pairs. The check ends there"
+    },
+    "cases": [
+      {
+        "name": "check-limit: pairs",
+        "types": [
+          {"name": "S1", "type": "{a: S2, b: S2}"},
+          {"name": "S2", "type": "{a: S3, b: S3}"},
+          {"name": "S3", "type": "{a: S4, b: S4}"},
+          {"name": "S4", "type": "{a: S5, b: S5}"},
+          {"name": "S5", "type": "{a: S6, b: S6}"},
+          {"name": "S6", "type": "{a: S7, b: S7}"},
+          {"name": "S7", "type": "{a: S8, b: S8}"},
+          {"name": "S8", "type": "{a: S9, b: S9}"},
+          {"name": "S9", "type": "{a: S10, b: S10}"},
+          {"name": "S10", "type": "{a: S11, b: S11}"},
+          {"name": "S11", "type": "{a: S12, b: S12}"},
+          {"name": "S12", "type": "{a: S1, b: S1}"},
+          {"name": "T1", "type": "{a: T2, b: T2}"},
+          {"name": "T2", "type": "{a: T3, b: T3}"},
+          {"name": "T3", "type": "{a: T4, b: T4}"},
+          {"name": "T4", "type": "{a: T5, b: T5}"},
+          {"name": "T5", "type": "{a: T6, b: T6}"},
+          {"name": "T6", "type": "{a: T7, b: T7}"},
+          {"name": "T7", "type": "{a: T8, b: T8}"},
+          {"name": "T8", "type": "{a: T9, b: T9}"},
+          {"name": "T9", "type": "{a: T10, b: T10}"},
+          {"name": "T10", "type": "{a: T11, b: T11}"},
+          {"name": "T11", "type": "{a: T12, b: T12}"},
+          {"name": "T12", "type": "{a: T1, b: T1}"},
+          {"name": "Pa", "type": "{p: Pa}"},
+          {"name": "Qa", "type": "{p: Qa}"}
+        ],
+        "env": "{s: {x: S1, y: Pa, z: Pa}}",
+        "source": "const t: {x: T1, y: Qa, z: Qa} = s; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                1,
+                34,
+                1,
+                35
+              ],
+              "message": "comparing the types here takes more than 4096 pairs of types"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "code": "call-of-parameter",
     "phase": "check",
     "since": "3.0",

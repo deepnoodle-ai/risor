@@ -520,7 +520,8 @@ fn catalog_entry_points_cases() {
 }
 
 /// Package F17: the cases of `suite/messages-recursion.json`, each run
-/// once, checked (`f17-recursion.md` 13.8 item 1).
+/// once, checked, with the static codes of `suite/recursion/`
+/// (`f17-recursion.md` 8 item 5, 9 and 13.8 item 1).
 #[test]
 fn catalog_recursion_cases() {
     let mut total = Counts::default();
@@ -545,7 +546,7 @@ fn catalog_recursion_cases() {
     println!("suite/messages-recursion.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
-    assert_eq!(total.pass, 5);
+    assert_eq!(total.pass, 8);
 }
 
 /// Package F17: the record of `suite/library-recursion.json`, run as those

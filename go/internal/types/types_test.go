@@ -229,3 +229,91 @@ func TestJoinAll(t *testing.T) {
 	assert.Equal(t, JoinAll([]*Type{Int, Any}).String(), "any")
 	assert.Equal(t, JoinAll(nil).String(), "never")
 }
+
+// family is a recursive type of thirteen definitions, each but the last
+// holding the next twice: two families of one structure take more than
+// MaxPairs pairs to compare (12.5 item 7).
+func family(p string) *Named {
+	ns := make([]*Named, 13)
+	for i := range ns {
+		ns[i] = NewNamed(p + string(rune('A'+i)))
+	}
+	for i, n := range ns {
+		if i == 12 {
+			n.SetDef(Rec([]Field{{Key: "a", Type: Int}, {Key: "s", Type: Ref(n)}}, nil))
+			continue
+		}
+		next := Ref(ns[i+1])
+		n.SetDef(Rec([]Field{{Key: "a", Type: next}, {Key: "b", Type: next}, {Key: "s", Type: Ref(n)}}, nil))
+	}
+	return ns[0]
+}
+
+func TestJoinAllFoldsWithNestedRefs(t *testing.T) {
+	a, b := family("X"), family("Y")
+	assert.True(t, Guard(func() { Join(List(Ref(a)), List(Ref(b))) }))
+	// 12.5 item 4: with a reference the Join of more than two types folds
+	// from the left, so any[] meets each list in turn and no pair of the
+	// two families is compared. The reference here is inside a list.
+	var r *Type
+	assert.False(t, Guard(func() { r = JoinAll([]*Type{List(Any), List(Ref(a)), List(Ref(b))}) }))
+	assert.Equal(t, r.String(), "any[]")
+}
+
+func TestEqualOrder(t *testing.T) {
+	// 12.5 item 6: Equal visits the alternatives in the order of printing,
+	// and two records' keys in code point order, each field's mark before
+	// its type. A difference met later does not hide the pairs before it.
+	a, b := family("X"), family("Y")
+	limit := func(x, y *Type) bool { return Guard(func() { Equal(x, y) }) }
+	// The lists are compared before null.
+	assert.True(t, limit(WithNull(List(Ref(a))), List(Ref(b))))
+	// Each field's type before the next field's mark.
+	rec := func(n *Named, zOpt bool) *Type {
+		return Rec([]Field{{Key: "a", Type: Ref(n)}, {Key: "z", Type: Int, Optional: zOpt}}, nil)
+	}
+	assert.True(t, limit(rec(a, false), rec(b, true)))
+	// And before a key that only one record has.
+	assert.True(t, limit(Rec([]Field{{Key: "a", Type: Ref(a)}}, nil), rec(b, false)))
+	// Opaque names differ after the lists.
+	assert.True(t, limit(Join(List(Ref(a)), parse(t, "Time")), List(Ref(b))))
+}
+
+func TestTruthyNonnullKeepReferences(t *testing.T) {
+	// 12.5 item 8: Truthy and nonnull unfold only the references that need
+	// it; the others stay by name.
+	a, b := NewNamed("A"), NewNamed("B")
+	a.SetDef(WithNull(Rec([]Field{{Key: "next", Type: Ref(a), Optional: true}}, nil)))
+	b.SetDef(List(Ref(b)))
+	ab := withRefs(Ref(a), []*Named{b})
+	assert.Equal(t, ab.String(), "A | B")
+	assert.Equal(t, Truthy(ab).String(), "{next?: A} | B")
+	assert.Equal(t, Nonnull(ab).String(), "{next?: A} | B")
+	// A reference that needs nothing stays alone.
+	assert.Equal(t, Truthy(Ref(b)).String(), "B")
+	assert.Equal(t, Nonnull(Ref(b)).String(), "B")
+	assert.Equal(t, Nonnull(WithNull(Ref(b))).String(), "B")
+}
+
+func TestDisjointSameReference(t *testing.T) {
+	// 12.5 item 5: the same reference on both sides is equal at once, so
+	// not disjoint, with no pair entered.
+	n := NewNamed("Node")
+	n.SetDef(Rec([]Field{{Key: "next", Type: Ref(n), Optional: true}}, nil))
+	c := &rctx{}
+	assert.False(t, c.disjoint(Ref(n), Ref(n)))
+	assert.Equal(t, c.n, 0)
+	c = &rctx{}
+	assert.False(t, c.disjoint(List(Ref(n)), List(Ref(n))))
+	assert.Equal(t, c.n, 0)
+}
+
+func TestWithoutTypeThroughReference(t *testing.T) {
+	// without(X, T) (F4 6.2) takes away the strings T takes, also through
+	// a reference of T.
+	n := NewNamed("Node")
+	n.SetDef(Join(Rec([]Field{{Key: "next", Type: Ref(n), Optional: true}}, nil), Lit("a")))
+	assert.Equal(t, WithoutType(Lit("a", "b"), Ref(n)).String(), `"b"`)
+	assert.Equal(t, WithoutType(Lit("a"), Ref(n)).String(), "never")
+	assert.Equal(t, WithoutType(Join(Lit("a", "b"), Int), Ref(n)).String(), `int | "b"`)
+}

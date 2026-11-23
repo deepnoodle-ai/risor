@@ -72,6 +72,7 @@ const fn base() -> Ty {
         map: None,
         variants: None,
         opaque: BTreeSet::new(),
+        refs: BTreeSet::new(),
     }
 }
 
@@ -110,7 +111,14 @@ const fn prim(any: bool, null: bool, boolean: bool, num: Option<Num>, string: bo
         map: None,
         variants: None,
         opaque: BTreeSet::new(),
+        refs: BTreeSet::new(),
     })
+}
+
+/// A type whose references hold their tables (F17 12): a part of a
+/// recursive type's unfolding outlives the type it came from.
+fn strong(ty: Ty) -> Type {
+    of(cty::strengthen(&ty))
 }
 
 impl Type {
@@ -124,7 +132,7 @@ impl Type {
     pub const STRING: Type = prim(false, false, false, None, true);
 
     pub(crate) fn from_ty(ty: Ty) -> Type {
-        of(ty)
+        strong(ty)
     }
 
     /// The checker's type of a type known to be valid.
@@ -153,10 +161,11 @@ impl Type {
     /// The kind of a type of one alternative; [`TypeKind::Mixed`] for two
     /// or more.
     pub fn kind(&self) -> TypeKind {
-        let t = &self.ty;
         if self.bad.is_some() {
             return TypeKind::Invalid;
         }
+        // F17 12.5: a recursive type answers for its unfolding.
+        let t = &*self.ty.view();
         if t.any {
             return TypeKind::Any;
         }
@@ -194,23 +203,29 @@ impl Type {
         }
     }
 
+    /// The unfolding of a valid type (F17 12.5): what its accessors read.
+    fn unfolded(&self) -> Option<Ty> {
+        self.valid().map(|t| t.view().into_owned())
+    }
+
     /// The element type of its list alternative, or `None`.
     pub fn elem(&self) -> Option<Type> {
-        self.valid()?.list.as_deref().map(|e| of(e.clone()))
+        self.unfolded()?.list.as_deref().map(|e| strong(e.clone()))
     }
 
     /// The fields of the record of its map alternative, in code point order
     /// of their keys. A tagged union answers for its flat record (F5 2.3),
     /// which is what a read sees. Empty when it has no map alternative.
     pub fn fields(&self) -> Vec<FieldType> {
-        match self.valid().and_then(|t| t.map.as_deref()) {
+        let t = self.unfolded();
+        match t.as_ref().and_then(|t| t.map.as_deref()) {
             None => Vec::new(),
             Some(r) => r
                 .fields
                 .iter()
                 .map(|(k, f)| FieldType {
                     key: k.clone(),
-                    ty: of(f.ty.clone()),
+                    ty: strong(f.ty.clone()),
                     optional: f.optional,
                 })
                 .collect(),
@@ -219,10 +234,11 @@ impl Type {
 
     /// One field of the record of its map alternative, by key.
     pub fn field(&self, key: &str) -> Option<FieldType> {
-        let r = self.valid()?.map.as_deref()?;
+        let t = self.unfolded()?;
+        let r = t.map.as_deref()?;
         r.fields.get(key).map(|f| FieldType {
             key: key.to_string(),
-            ty: of(f.ty.clone()),
+            ty: strong(f.ty.clone()),
             optional: f.optional,
         })
     }
@@ -231,7 +247,10 @@ impl Type {
     /// [`Type::ANY`] for an open one, `T` for `map<T>`. `None` when it has no
     /// map alternative.
     pub fn rest(&self) -> Option<Type> {
-        self.valid()?.map.as_deref().map(|r| of(r.rest.clone()))
+        self.unfolded()?
+            .map
+            .as_deref()
+            .map(|r| strong(r.rest.clone()))
     }
 
     /// Its alternatives, one of each kind: null, bool, the number, the
@@ -239,7 +258,7 @@ impl Type {
     /// `any` is its own one alternative; `never` and an invalid type have
     /// none.
     pub fn alternatives(&self) -> Vec<Type> {
-        let Some(t) = self.valid() else {
+        let Some(t) = self.unfolded() else {
             return Vec::new();
         };
         if t.any {
@@ -265,13 +284,13 @@ impl Type {
             }));
         }
         if let Some(e) = &t.list {
-            out.push(of(Ty {
+            out.push(strong(Ty {
                 list: Some(e.clone()),
                 ..base()
             }));
         }
         if t.map.is_some() {
-            out.push(of(Ty {
+            out.push(strong(Ty {
                 map: t.map.clone(),
                 variants: t.variants.clone(),
                 ..base()
@@ -286,42 +305,43 @@ impl Type {
     /// The variants of a tagged union, in the order of printing (F5 2.4);
     /// empty for any other type.
     pub fn variants(&self) -> Vec<Type> {
-        match self.valid().and_then(|t| t.variants.as_deref()) {
+        let t = self.unfolded();
+        match t.as_ref().and_then(|t| t.variants.as_deref()) {
             None => Vec::new(),
-            Some(vs) => vs.iter().map(|r| of(Ty::rec(r.clone()))).collect(),
+            Some(vs) => vs.iter().map(|r| strong(Ty::rec(r.clone()))).collect(),
         }
     }
 
     /// The strings of its literal set, sorted; empty when its string
     /// alternative is every string, or it has none.
     pub fn literals(&self) -> Vec<String> {
-        match self.valid().and_then(|t| t.str.as_ref()) {
-            Some(Strs::Lits(l)) => l.iter().cloned().collect(),
+        match self.unfolded().and_then(|t| t.str) {
+            Some(Strs::Lits(l)) => l.into_iter().collect(),
             _ => Vec::new(),
         }
     }
 
     /// The tag key of a tagged union (F5 2.1), or `None`.
     pub fn tag(&self) -> Option<String> {
-        self.valid()?.tag()
+        self.unfolded()?.tag()
     }
 
     /// The type without null (`05-types.md` 4.5).
     pub fn non_null(&self) -> Type {
         match self.valid() {
-            Some(t) => of(t.nonnull()),
+            Some(t) => strong(t.nonnull()),
             None => self.clone(),
         }
     }
 
     /// Whether null is one of its values. `any` is nullable.
     pub fn is_nullable(&self) -> bool {
-        self.valid().is_some_and(|t| t.any || t.null)
+        self.unfolded().is_some_and(|t| t.any || t.null)
     }
 
     /// Whether its map alternative refuses every key it does not list.
     pub fn is_exact(&self) -> bool {
-        self.valid()
+        self.unfolded()
             .is_some_and(|t| t.map.is_some() && t.variants().iter().all(|r| r.rest.is_never()))
     }
 
@@ -330,21 +350,40 @@ impl Type {
         if self.kind() != TypeKind::Opaque {
             return String::new();
         }
-        self.ty.opaque.iter().next().cloned().unwrap_or_default()
+        self.ty
+            .view()
+            .opaque
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Fits(S, T) (`05-types.md` 4.2): every value of `self` is a value of
     /// `want`. False when either is invalid.
     pub fn fits(&self, want: &Type) -> bool {
         match (self.valid(), want.valid()) {
-            (Some(s), Some(t)) => cty::fits(s, t).is_some(),
+            (Some(s), Some(t)) => {
+                // F17 12.5 item 7: past the bound of pairs, false.
+                let w = cty::watch();
+                let r = cty::fits(s, t).is_some();
+                r && !w.passed()
+            }
             _ => false,
         }
     }
 
-    /// Whether the two are the same type.
+    /// Whether the two are the same type: the same by structure (F5 2.5),
+    /// whatever the names of their recursive types (F17 12).
     pub fn equal(&self, u: &Type) -> bool {
-        self == u
+        match (self.valid(), u.valid()) {
+            (Some(a), Some(b)) => {
+                let w = cty::watch();
+                let r = cty::equal(a, b);
+                r && !w.passed()
+            }
+            _ => self == u,
+        }
     }
 }
 
@@ -430,8 +469,21 @@ pub fn union_type(types: &[Type]) -> Type {
         return b;
     }
     let ts: Vec<Ty> = types.iter().map(|t| t.ty.clone()).collect();
-    match cty::union_of_alts(&ts) {
-        Some(u) => checked(u),
+    let w = cty::watch();
+    let u = cty::union_of_alts(&ts);
+    built(u, w.passed())
+}
+
+/// A union a constructor built: invalid with no tag, or when a Join of its
+/// records passed the bound of pairs (F17 12.5 item 7). The references it
+/// reaches hold their tables: a definition read through a reference holds
+/// its own table weakly, and the union outlives the types it came from.
+fn built(u: Option<Ty>, passed: bool) -> Type {
+    if passed {
+        return invalid("comparing the types takes more than 4096 pairs of types");
+    }
+    match u {
+        Some(u) => checked(cty::strengthen(&u)),
         None => invalid("the records have no tag"),
     }
 }
@@ -447,20 +499,17 @@ pub fn tagged_union_type(records: &[Type]) -> Type {
         if r.kind() != TypeKind::Record {
             return invalid(format!("{r} is not one record"));
         }
-        recs.push(
-            r.ty.map
-                .as_deref()
-                .cloned()
-                .expect("a record type has a record"),
-        );
+        match r.ty.view().map.as_deref() {
+            Some(m) => recs.push(m.clone()),
+            None => return invalid(format!("{r} is not one record")),
+        }
     }
     if recs.len() < 2 {
         return invalid("a tagged union has two variants or more");
     }
-    match Ty::of_variants(recs) {
-        Some(t) => checked(t),
-        None => invalid("the records have no tag"),
-    }
+    let w = cty::watch();
+    let u = Ty::of_variants(recs);
+    built(u, w.passed())
 }
 
 /// The opaque type of a name. An environment that uses it must declare the
@@ -470,12 +519,17 @@ pub fn opaque_type_named(name: &str) -> Type {
 }
 
 /// Join(A, B) (`05-types.md` 4.1): the least type both fit. Invalid when
-/// either is.
+/// either is, or when the Join passes the bound of F17 12.5 item 7.
 pub fn join(a: &Type, b: &Type) -> Type {
     if let Some(x) = first_invalid([a, b]) {
         return x;
     }
-    checked(cty::join(&a.ty, &b.ty))
+    let w = cty::watch();
+    let j = cty::join(&a.ty, &b.ty);
+    if w.passed() {
+        return invalid("comparing the types takes more than 4096 pairs of types");
+    }
+    checked(cty::strengthen(&j))
 }
 
 /// The type a JSON Schema maps to, with the options given (F1 2). The
@@ -483,7 +537,7 @@ pub fn join(a: &Type, b: &Type) -> Type {
 pub fn type_from_schema(schema: &str, opts: SchemaOptions) -> Result<Type, Error> {
     let bad = |m: String| Error::one(Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m));
     let j = crate::json::parse(schema).map_err(bad)?;
-    crate::schema::ty_schema(&j, opts).map(of).map_err(bad)
+    crate::schema::ty_schema(&j, opts).map(strong).map_err(bad)
 }
 
 /// The conformance function (`05-host-api.md` A.13): `Ok(())` when the
@@ -491,13 +545,15 @@ pub fn type_from_schema(schema: &str, opts: SchemaOptions) -> Result<Type, Error
 /// is not a run: no limit, no usage. An invalid type gives its `bad-type`
 /// diagnostic.
 pub fn conform(v: &Value<'_>, t: &Type) -> Result<(), Diagnostic> {
-    use crate::conform::{test, Free};
+    use crate::conform::{test, too_deep, Free};
     let ty = t
         .ty()
         .map_err(|m| Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m))?;
-    match test(v, ty, &mut Free) {
+    match test(v, ty, &mut Free::default()) {
         Ok(Some(f)) => Err(f.diagnostic()),
-        _ => Ok(()),
+        Ok(None) => Ok(()),
+        // F17 12.7 item 3: past the default depth limit.
+        Err(_) => Err(too_deep()),
     }
 }
 

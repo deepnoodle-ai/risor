@@ -2018,6 +2018,26 @@
         }
       },
       {
+        "name": "result-mismatch: a key the record does not allow, beside null",
+        "returns": "{a: int, b: int} | null",
+        "source": "{a: 1, b: 2, c: 3}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "result-mismatch",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "{a: int, b: int} does not allow key \"c\""
+            }
+          ]
+        }
+      },
+      {
         "name": "result-mismatch: each branch",
         "env": "{flag: bool}",
         "returns": "int",

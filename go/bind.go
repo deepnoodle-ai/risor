@@ -4,6 +4,7 @@ package risor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -77,13 +78,24 @@ type derivation struct {
 	// text is the derived signature, or "" when it was not derived.
 	text string
 	// errs are always reported; ifaceErrs only when the host gave no
-	// signature of its own.
+	// signature of its own: those of an interface type, and of a type that
+	// contains itself.
 	errs, ifaceErrs []bindErr
 	// params is the count of parameters the Go function takes from a
 	// call: the arguments, without a receiver or a first *Call or
 	// context.Context.
 	params     int
 	reflective bool
+}
+
+// failDerived records an error of deriveIn: one of recursion fails only
+// the derived signature, like an interface type; any other always fails.
+func (b *derivation) failDerived(err error, format string, args ...any) {
+	if errors.Is(err, errRecursive) {
+		b.ifaceErrs = append(b.ifaceErrs, bindErr{diag.CodeBadType, fmt.Sprintf(format, args...)})
+		return
+	}
+	b.fail(diag.CodeBadType, format, args...)
 }
 
 func (b *derivation) fail(code, format string, args ...any) {
@@ -458,7 +470,8 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 			i++
 		}
 	}
-	d := &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}, strict: true}
+	d := newDeriver()
+	d.strict = true
 	var params []string
 	for ; i < n; i++ {
 		t := ft.In(i)
@@ -475,7 +488,7 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 		}
 		typ, err := deriveIn(d, t)
 		if err != nil {
-			b.fail(diag.CodeBadType, "parameter %d: %v", pos, err)
+			b.failDerived(err, "parameter %d: %v", pos, err)
 			continue
 		}
 		params = append(params, typ)
@@ -494,7 +507,7 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 		a.res = resVal
 		typ, err := deriveIn(d, ft.Out(0))
 		if err != nil {
-			b.fail(diag.CodeBadType, "the result: %v", err)
+			b.failDerived(err, "the result: %v", err)
 		}
 		result = typ
 	case 2:
@@ -505,7 +518,7 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 		a.res = resValErr
 		typ, err := deriveIn(d, ft.Out(0))
 		if err != nil {
-			b.fail(diag.CodeBadType, "the result: %v", err)
+			b.failDerived(err, "the result: %v", err)
 		}
 		result = typ
 	default:
@@ -561,6 +574,11 @@ func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 	b.text = s.String()
 }
 
+// errRecursive is the error of a parameter or result whose type contains
+// itself. Only the derived signature fails: a host that writes the
+// signature in Type declares the function (F17 12.4, Go's TypeOf item 4).
+var errRecursive = errors.New("it contains itself; declare it with NamedTypeOf and write the signature in Type")
+
 // deriveIn derives the type of a parameter or a result as type text. An
 // OpaqueType that reads its receiver panics on the zero value it is asked
 // of; that is an error of the type, not a crash of the host.
@@ -571,6 +589,12 @@ func deriveIn(d *deriver, t reflect.Type) (text string, err error) {
 		}
 	}()
 	ty, err := d.nested(t)
+	if err == nil && len(types.RecNames(ty)) > 0 {
+		// F17 12.4: a signature is text, and a recursive type has no text
+		// of its own here. The type itself is tested, not the deriver: a
+		// later int is no recursion because an earlier parameter was.
+		err = errRecursive
+	}
 	if err == nil && types.Depth(ty) > types.MaxDepth {
 		err = fmt.Errorf("the type is deeper than %d", types.MaxDepth)
 	}

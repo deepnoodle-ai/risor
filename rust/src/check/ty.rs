@@ -6,9 +6,23 @@
 //! recurses only into element, field and rest types, so the type depth limit
 //! of 64 bounds it (20.6).
 
+// A `Ref` is a key of the sets of references a type holds. Its order and
+// equality are of its name, table number and index, which never change; its
+// one interior mutability is its table's `OnceLock`, which they do not read.
+#![allow(clippy::mutable_key_type)]
+
 use crate::types::text::{self, Rest};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
+
+mod pairs;
+mod refs;
+
+pub use pairs::{fits_looking, passed, watch};
+pub use refs::{
+    add_alts, beside_its_kind, can_be_falsy, has_refs_deep, map_refs, reach, strengthen, Kinds,
+    Memo, Ref, Table,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Num {
@@ -122,6 +136,8 @@ pub struct Ty {
     /// more, in the order of printing (F5 2.4). `map` is then their Join.
     pub variants: Option<Arc<Vec<Rec>>>,
     pub opaque: BTreeSet<String>,
+    /// F17 12.1: the references among its alternatives.
+    pub refs: BTreeSet<Ref>,
 }
 
 /// The type of a key in a record: its field's type, else the rest (F4 6.2).
@@ -177,7 +193,7 @@ fn tag_set<'a>(r: &'a Rec, tag: &str) -> &'a BTreeSet<String> {
 enum UnionOf {
     None,
     /// The record, and the variants of a union (two or more) or none.
-    Map(Rec, Option<Vec<Rec>>),
+    Map(Box<Rec>, Option<Vec<Rec>>),
     /// Two or more records that form no tagged union.
     NoTag,
 }
@@ -185,7 +201,7 @@ enum UnionOf {
 fn union_of(recs: Vec<Rec>) -> UnionOf {
     match recs.len() {
         0 => UnionOf::None,
-        1 => UnionOf::Map(recs.into_iter().next().expect("one record"), None),
+        1 => UnionOf::Map(Box::new(recs.into_iter().next().expect("one record")), None),
         _ => {
             let refs: Vec<&Rec> = recs.iter().collect();
             let Some(tag) = find_tag(&refs) else {
@@ -201,7 +217,7 @@ fn union_of(recs: Vec<Rec>) -> UnionOf {
             for v in &vs[1..] {
                 flat = join_rec(&flat, v);
             }
-            UnionOf::Map(flat, Some(vs))
+            UnionOf::Map(Box::new(flat), Some(vs))
         }
     }
 }
@@ -214,7 +230,7 @@ impl Ty {
             UnionOf::NoTag => None,
             UnionOf::None => Some(Ty::never()),
             UnionOf::Map(r, vs) => Some(Ty {
-                map: Some(Arc::new(r)),
+                map: Some(Arc::new(*r)),
                 variants: vs.map(Arc::new),
                 ..Ty::default()
             }),
@@ -245,7 +261,7 @@ impl Ty {
         t.map = None;
         match union_of(recs.clone()) {
             UnionOf::Map(r, vs) => {
-                t.map = Some(Arc::new(r));
+                t.map = Some(Arc::new(*r));
                 t.variants = vs.map(Arc::new);
             }
             UnionOf::None => {}
@@ -357,6 +373,8 @@ impl Ty {
             None => 0,
         };
         n += self.opaque.len() as u64;
+        // F17 12.6 item 2: a reference has size 1.
+        n += self.refs.len() as u64;
         if let Some(e) = &self.list {
             n = n.saturating_add(1 + e.size());
         }
@@ -382,7 +400,9 @@ impl Ty {
         self.size() > SIZE_LIMIT
     }
 
-    /// The number of kinds that have an alternative.
+    /// The number of kinds that have an alternative, as written: a
+    /// reference counts one. A rule of the checker reads the kinds of the
+    /// unfolding (F17 12.5).
     pub fn kinds(&self) -> usize {
         self.null as usize
             + self.boolean as usize
@@ -391,6 +411,7 @@ impl Ty {
             + self.list.is_some() as usize
             + self.map.is_some() as usize
             + self.opaque.len()
+            + self.refs.len()
     }
 
     /// Exactly the type `null`.
@@ -405,16 +426,47 @@ impl Ty {
         self
     }
 
-    /// nonnull(T) (4.5).
+    /// nonnull(T) (4.5). F17 12.5 item 8: a reference whose definition has
+    /// `null` is unfolded; another stays.
     pub fn nonnull(&self) -> Ty {
         let mut t = self.clone();
         t.null = false;
+        if t.refs.is_empty() {
+            return t;
+        }
+        for r in std::mem::take(&mut t.refs) {
+            match r.unfolding() {
+                Some(mut u) if u.null => {
+                    u.null = false;
+                    add_alts(&mut t, &u);
+                }
+                _ => {
+                    if !t.any {
+                        t.refs.insert(r);
+                    }
+                }
+            }
+        }
         t
     }
 
     /// The record of a type whose map slot holds one.
     pub fn record(&self) -> Option<&Rec> {
         self.map.as_deref()
+    }
+
+    /// Whether null is among the alternatives of its unfolding (F17 12.5).
+    pub fn nullable(&self) -> bool {
+        self.null
+            || self
+                .refs
+                .iter()
+                .any(|r| r.unfolding().is_some_and(|u| u.null))
+    }
+
+    /// Whether it is one reference and nothing else.
+    pub fn is_one_ref(&self) -> bool {
+        self.refs.len() == 1 && self.without_refs().is_never()
     }
 
     /// The depth of a type (2.5).
@@ -437,131 +489,25 @@ impl Ty {
     }
 }
 
-/// Join(A, B) (4.1).
+/// Join(A, B) (4.1, F17 12.5 item 4): one computation.
 pub fn join(a: &Ty, b: &Ty) -> Ty {
     if a.any || b.any {
         return Ty::any();
     }
-    Ty {
-        any: false,
-        null: a.null || b.null,
-        boolean: a.boolean || b.boolean,
-        num: match (a.num, b.num) {
-            (Some(x), Some(y)) => Some(x.max(y)),
-            (x, y) => x.or(y),
-        },
-        str: match (&a.str, &b.str) {
-            (Some(Strs::Lits(x)), Some(Strs::Lits(y))) => {
-                Some(Strs::Lits(x.union(y).cloned().collect()))
-            }
-            (Some(_), Some(_)) => Some(Strs::All),
-            (x, y) => x.clone().or(y.clone()),
-        },
-        list: match (&a.list, &b.list) {
-            (Some(x), Some(y)) => Some(Arc::new(join(x, y))),
-            (x, y) => x.clone().or(y.clone()),
-        },
-        map: match (&a.map, &b.map) {
-            (Some(_), Some(_)) if a.variants.is_some() && a.variants == b.variants => a.map.clone(),
-            (Some(x), Some(y)) => Some(Arc::new(join_rec(x, y))),
-            (x, y) => x.clone().or(y.clone()),
-        },
-        // F5 4.1: a union survives only beside the same union; Join never
-        // makes one.
-        variants: match (&a.map, &b.map) {
-            (Some(_), Some(_)) => a.variants.clone().filter(|_| a.variants == b.variants),
-            (Some(_), None) => a.variants.clone(),
-            (None, Some(_)) => b.variants.clone(),
-            _ => None,
-        },
-        opaque: a.opaque.union(&b.opaque).cloned().collect(),
-    }
+    pairs::run(Ty::any, |cx| cx.join(a, b))
 }
 
-fn join_rec(a: &Rec, b: &Rec) -> Rec {
-    let mut fields = BTreeMap::new();
-    let mut fills = BTreeMap::new();
-    // F1 4.4: a key in both has the Join of the bases and of the fills; a
-    // key in one has its base joined with the other's rest, and keeps its
-    // fill. A field that carries a fill is required.
-    let base = |r: &Rec, k: &str, f: &Field| r.fills.get(k).map_or(f.ty.clone(), |x| x.0.clone());
-    for (k, fa) in &a.fields {
-        let f = match b.fields.get(k) {
-            Some(fb) => {
-                let fill = match (a.fills.get(k), b.fills.get(k)) {
-                    (Some(x), Some(y)) => Some(join(&x.1, &y.1)),
-                    (Some(x), None) | (None, Some(x)) => Some(x.1.clone()),
-                    (None, None) => None,
-                };
-                match fill {
-                    None => Field {
-                        ty: join(&fa.ty, &fb.ty),
-                        optional: fa.optional || fb.optional,
-                    },
-                    Some(fl) => {
-                        let bs = join(&base(a, k, fa), &base(b, k, fb));
-                        let ty = join(&bs, &fl);
-                        fills.insert(k.clone(), (bs, fl));
-                        Field {
-                            ty,
-                            optional: false,
-                        }
-                    }
-                }
-            }
-            None => match a.fills.get(k) {
-                None => Field {
-                    ty: join(&fa.ty, &b.rest),
-                    optional: true,
-                },
-                Some((bs, fl)) => {
-                    let bs = join(bs, &b.rest);
-                    let ty = join(&bs, fl);
-                    fills.insert(k.clone(), (bs, fl.clone()));
-                    Field {
-                        ty,
-                        optional: false,
-                    }
-                }
-            },
-        };
-        fields.insert(k.clone(), f);
-    }
-    for (k, fb) in &b.fields {
-        if !a.fields.contains_key(k) {
-            let f = match b.fills.get(k) {
-                None => Field {
-                    ty: join(&fb.ty, &a.rest),
-                    optional: true,
-                },
-                Some((bs, fl)) => {
-                    let bs = join(bs, &a.rest);
-                    let ty = join(&bs, fl);
-                    fills.insert(k.clone(), (bs, fl.clone()));
-                    Field {
-                        ty,
-                        optional: false,
-                    }
-                }
-            };
-            fields.insert(k.clone(), f);
-        }
-    }
-    Rec {
-        fields,
-        rest: join(&a.rest, &b.rest),
-        // F1 3.6 item 8: closable when one is closable and the other is
-        // closable or exact.
-        closable: (a.closable || b.closable)
-            && (a.closable || a.rest.is_never())
-            && (b.closable || b.rest.is_never()),
-        size: SizeCache::default(),
-        fills,
-    }
+/// The Join of two records, as the Join of two types of one record each.
+pub fn join_rec(a: &Rec, b: &Rec) -> Rec {
+    pairs::run(
+        || Rec::new(BTreeMap::new(), Ty::any()),
+        |cx| cx.join_rec(a, b),
+    )
 }
 
-/// The Join of several types. Literal sets are merged in place, so joining
-/// n literals is n log n work, not n squared.
+/// The Join of several types, folded from the left, each Join a computation
+/// (F17 12.5 item 4). Literal sets are merged in place, so joining n
+/// literals is n log n work, not n squared.
 pub fn join_all<'a>(ts: impl Iterator<Item = &'a Ty>) -> Ty {
     let mut acc = Ty::never();
     for t in ts {
@@ -570,7 +516,8 @@ pub fn join_all<'a>(ts: impl Iterator<Item = &'a Ty>) -> Ty {
     acc
 }
 
-/// `acc = Join(acc, t)`, with the literal set of `acc` extended in place: the work is in the size of `t`, not of `acc`.
+/// `acc = Join(acc, t)`, with the literal set of `acc` extended in place: the
+/// work is in the size of `t`, not of `acc`.
 pub fn join_into(acc: &mut Ty, t: &Ty) {
     if acc.any {
         return;
@@ -579,119 +526,43 @@ pub fn join_into(acc: &mut Ty, t: &Ty) {
         *acc = Ty::any();
         return;
     }
-    acc.null |= t.null;
-    acc.boolean |= t.boolean;
-    acc.num = match (acc.num, t.num) {
-        (Some(x), Some(y)) => Some(x.max(y)),
-        (x, y) => x.or(y),
-    };
-    match (&mut acc.str, &t.str) {
-        (Some(Strs::Lits(a)), Some(Strs::Lits(b))) => a.extend(b.iter().cloned()),
-        (Some(a), Some(_)) => *a = Strs::All,
-        (a @ None, b) => *a = b.clone(),
-        (Some(_), None) => {}
+    if acc.has_refs() || t.has_refs() || acc.is_never() || t.is_never() {
+        *acc = join(acc, t);
+        return;
     }
-    acc.list = match (&acc.list, &t.list) {
-        (Some(x), Some(y)) => Some(Arc::new(join(x, y))),
-        (x, y) => x.clone().or(y.clone()),
+    let s = match (acc.str.take(), &t.str) {
+        (Some(Strs::Lits(mut a)), Some(Strs::Lits(b))) => {
+            a.extend(b.iter().cloned());
+            Some(Strs::Lits(a))
+        }
+        (Some(_), Some(_)) => Some(Strs::All),
+        (a, b) => a.or_else(|| b.clone()),
     };
-    let same = acc.variants.is_some() && acc.variants == t.variants;
-    acc.variants = match (&acc.map, &t.map) {
-        (Some(_), Some(_)) => acc.variants.clone().filter(|_| same),
-        (Some(_), None) => acc.variants.clone(),
-        (None, Some(_)) => t.variants.clone(),
-        _ => None,
-    };
-    acc.map = match (&acc.map, &t.map) {
-        (Some(_), Some(_)) if same => acc.map.clone(),
-        (Some(x), Some(y)) => Some(Arc::new(join_rec(x, y))),
-        (x, y) => x.clone().or(y.clone()),
-    };
-    acc.opaque.extend(t.opaque.iter().cloned());
+    let mut u = t.clone();
+    u.str = None;
+    if u.is_never() {
+        acc.str = s;
+        return;
+    }
+    let mut j = join(acc, &u);
+    if !j.any {
+        j.str = s;
+    }
+    *acc = j;
 }
 
-/// Fits(S, T) (4.2). `Some(uses_any)` when S fits T.
+/// Fits(S, T) (4.2, F17 12.5 item 3): one computation. `Some(uses_any)`
+/// when S fits T.
 pub fn fits(s: &Ty, t: &Ty) -> Option<bool> {
     if s.is_never() || t.any {
         return Some(false);
     }
-    if s.any {
-        return Some(true);
-    }
-    let mut used = false;
-    if s.null && !t.null {
-        return None;
-    }
-    if s.boolean && !t.boolean {
-        return None;
-    }
-    if let Some(n) = s.num {
-        match (n, t.num) {
-            (Num::Int, Some(_)) | (Num::Float, Some(Num::Float)) => {}
-            _ => return None,
-        }
-    }
-    if let Some(ss) = &s.str {
-        match (ss, &t.str) {
-            (_, Some(Strs::All)) => {}
-            (Strs::Lits(a), Some(Strs::Lits(b))) if a.is_subset(b) => {}
-            _ => return None,
-        }
-    }
-    if let Some(e) = &s.list {
-        used |= fits(e, t.list.as_ref()?)?;
-    }
-    if s.map.is_some() {
-        t.map.as_ref()?;
-        // F5 4.2: each variant of S fits some variant of T; the fit uses any
-        // when some variant fits none without using any.
-        let tv = t.variants();
-        for sv in s.variants() {
-            let mut best: Option<bool> = None;
-            for x in &tv {
-                match fits_rec(sv, x) {
-                    Some(false) => {
-                        best = Some(false);
-                        break;
-                    }
-                    Some(true) => best = Some(true),
-                    None => {}
-                }
-            }
-            used |= best?;
-        }
-    }
-    if !s.opaque.is_subset(&t.opaque) {
-        return None;
-    }
-    Some(used)
+    pairs::run(|| None, |cx| cx.fits(s, t))
 }
 
-fn fits_rec(s: &Rec, t: &Rec) -> Option<bool> {
-    let mut used = false;
-    for (k, ft) in &t.fields {
-        match s.fields.get(k) {
-            Some(fs) => {
-                used |= fits(&fs.ty, &ft.ty)?;
-                if fs.optional && !ft.optional {
-                    return None;
-                }
-            }
-            None => {
-                if !ft.optional {
-                    return None;
-                }
-                used |= fits(&s.rest, &ft.ty)?;
-            }
-        }
-    }
-    for (k, fs) in &s.fields {
-        if !t.fields.contains_key(k) {
-            used |= fits(&fs.ty, &t.rest)?;
-        }
-    }
-    used |= fits(&s.rest, &t.rest)?;
-    Some(used)
+/// Equal(A, B): the same by structure (F5 2.5, F17 12.5 item 5).
+pub fn equal(a: &Ty, b: &Ty) -> bool {
+    a == b || pairs::run(|| false, |cx| cx.equal(a, b))
 }
 
 /// Merge(R, M) (4.3): the entries of a map of type M written over a map of
@@ -756,8 +627,27 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
     }
 }
 
-/// Truthy(T) (4.4).
+/// Truthy(T) (4.4). F17 12.5 item 8: a reference stays when its definition
+/// cannot be falsy; otherwise the rule is applied to its unfolding.
 pub fn truthy(t: &Ty) -> Ty {
+    if t.any {
+        return Ty::any();
+    }
+    let mut out = truthy_core(t);
+    for r in &t.refs {
+        match r.unfolding() {
+            Some(u) if can_be_falsy(&u) => add_alts(&mut out, &truthy_core(&u)),
+            _ => {
+                if !out.any {
+                    out.refs.insert(r.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn truthy_core(t: &Ty) -> Ty {
     if t.any {
         return Ty::any();
     }
@@ -785,11 +675,13 @@ pub fn truthy(t: &Ty) -> Ty {
         // F5 4.4: a union's truthy part is the union.
         variants: t.variants.clone(),
         opaque: t.opaque.clone(),
+        refs: BTreeSet::new(),
     }
 }
 
-/// Falsy(T) (4.4).
+/// Falsy(T) (4.4), of the unfolding (F17 12.5 item 8).
 pub fn falsy(t: &Ty) -> Ty {
+    let t = &*t.view();
     if t.any {
         return Ty::any();
     }
@@ -819,11 +711,13 @@ pub fn falsy(t: &Ty) -> Ty {
             }),
         variants: None,
         opaque: BTreeSet::new(),
+        refs: t.refs.clone(),
     }
 }
 
-/// overlap(A, B) (4.5).
+/// overlap(A, B) (4.5), of the unfoldings.
 pub fn overlap(a: &Ty, b: &Ty) -> bool {
+    let (a, b) = (&*a.view(), &*b.view());
     if a.is_never() || b.is_never() {
         return false;
     }
@@ -841,81 +735,63 @@ pub fn overlap(a: &Ty, b: &Ty) -> bool {
         || (a.list.is_some() && b.list.is_some())
         || (a.map.is_some() && b.map.is_some())
         || !a.opaque.is_disjoint(&b.opaque)
+        || !a.refs.is_disjoint(&b.refs)
 }
 
-/// has-opaque(T) (4.5).
+/// has-opaque(T) (4.5): an opaque name at any depth, references followed.
 pub fn has_opaque(t: &Ty) -> bool {
-    if t.any {
-        return false;
-    }
-    !t.opaque.is_empty()
-        || t.list.as_ref().is_some_and(|e| has_opaque(e))
-        || t.map
-            .as_ref()
-            .is_some_and(|r| r.fields.values().any(|f| has_opaque(&f.ty)) || has_opaque(&r.rest))
+    deep_any(t, |x| !x.any && !x.opaque.is_empty(), true)
 }
 
-/// has-any(T) (`05-types.md` 7.3): T is `any`, or an element, field or rest type of
-/// T has `any`, at any depth.
+/// has-any(T) (`05-types.md` 7.3): T is `any`, or an element, field or rest
+/// type of T has `any`, at any depth, references followed.
 pub fn has_any(t: &Ty) -> bool {
-    t.any
-        || t.list.as_ref().is_some_and(|e| has_any(e))
-        || t.map
-            .as_ref()
-            .is_some_and(|r| r.fields.values().any(|f| has_any(&f.ty)) || has_any(&r.rest))
+    deep_any(t, |x| x.any, false)
 }
 
-/// disjoint(A, B) (F4 6.2): true when no value conforms to both. Sound and
-/// not complete.
-pub fn disjoint(a: &Ty, b: &Ty) -> bool {
-    if a.is_never() || b.is_never() {
-        return true;
-    }
-    if a.any || b.any {
-        return false;
-    }
-    if (a.null && b.null) || (a.boolean && b.boolean) || (a.num.is_some() && b.num.is_some()) {
-        return false;
-    }
-    if !a.opaque.is_disjoint(&b.opaque) {
-        return false;
-    }
-    match (&a.str, &b.str) {
-        (Some(Strs::Lits(x)), Some(Strs::Lits(y))) if x.is_disjoint(y) => {}
-        (Some(_), Some(_)) => return false,
-        _ => {}
-    }
-    if a.list.is_some() && b.list.is_some() {
-        return false;
-    }
-    if a.map.is_some() && b.map.is_some() {
-        // F5 4.5: they share a value unless every variant of A is disjoint
-        // from every variant of B.
-        return a
-            .variants()
-            .iter()
-            .all(|x| b.variants().iter().all(|y| disjoint_rec(x, y)));
-    }
-    true
-}
-
-/// The record row of disjoint (F4 6.2).
-fn disjoint_rec(x: &Rec, y: &Rec) -> bool {
-    {
-        let field = |r: &Rec, k: &str| r.fields.get(k).map_or(r.rest.clone(), |f| f.ty.clone());
-        let required = x
-            .fields
-            .iter()
-            .chain(y.fields.iter())
-            .filter(|(_, f)| !f.optional)
-            .map(|(k, _)| k);
-        for k in required {
-            if disjoint(&field(x, k), &field(y, k)) {
-                return true;
+/// Whether `p` holds of the type or of a part at any depth, references
+/// followed, each definition once. `stop_at_any`: the parts of `any` are
+/// not looked into (it has none). The walk keeps its own stack.
+fn deep_any(t: &Ty, p: impl Fn(&Ty) -> bool, _stop_at_any: bool) -> bool {
+    let mut seen_refs: std::collections::HashSet<(u64, u32)> = Default::default();
+    let mut stack: Vec<Ty> = vec![t.clone()];
+    while let Some(t) = stack.pop() {
+        if p(&t) {
+            return true;
+        }
+        if t.any {
+            continue;
+        }
+        for r in &t.refs {
+            if seen_refs.insert((r.table_id(), r.index())) {
+                if let Some(d) = r.definition() {
+                    stack.push(d);
+                }
             }
         }
-        false
+        if let Some(e) = &t.list {
+            stack.push(e.as_ref().clone());
+        }
+        // A tagged union's field types are its variants' (F5 2.3): the flat
+        // record joins them, which can hide an opaque name beside `any`, or
+        // make an `any` that no variant has.
+        let recs: Vec<&Rec> = match (&t.variants, &t.map) {
+            (Some(vs), _) => vs.iter().collect(),
+            (None, Some(r)) => vec![r.as_ref()],
+            (None, None) => Vec::new(),
+        };
+        for r in recs {
+            stack.extend(r.fields.values().map(|f| f.ty.clone()));
+            stack.push(r.rest.clone());
+        }
     }
+    false
+}
+
+/// disjoint(A, B) (F4 6.2, F17 12.5 item 5): true when no value conforms to
+/// both. Sound and not complete. One computation.
+pub fn disjoint(a: &Ty, b: &Ty) -> bool {
+    pairs::run(|| false, |cx| cx.disjoint(a, b))
 }
 
 /// without(X, T) (F4 6.2): what is left of X when a value of type X is
@@ -924,6 +800,30 @@ pub fn without(x: &Ty, t: &Ty) -> Ty {
     if x.any {
         return Ty::any();
     }
+    // F17 12.5 item 8: each reference of X that shares a kind with T, null
+    // included, is unfolded; the others stay.
+    let unfolded;
+    let x = if x.refs.is_empty() {
+        x
+    } else {
+        let kt = Kinds::of(t);
+        let mut y = x.without_refs();
+        for r in &x.refs {
+            match r.unfolding() {
+                Some(u) if Kinds::of(&u).shares(&kt, true) || kt.is_any() => add_alts(&mut y, &u),
+                _ => {
+                    if !y.any {
+                        y.refs.insert(r.clone());
+                    }
+                }
+            }
+        }
+        unfolded = y;
+        if unfolded.any {
+            return Ty::any();
+        }
+        &unfolded
+    };
     let sure = |a: Ty| fits(&a, t) == Some(false);
     let mut out = x.clone();
     if out.null && sure(Ty::null()) {
@@ -948,7 +848,8 @@ pub fn without(x: &Ty, t: &Ty) -> Ty {
         };
         if sure(one) {
             out.str = None;
-        } else if let (Strs::Lits(l), Some(Strs::Lits(tl))) = (&st, &t.str) {
+        } else if let (Strs::Lits(l), Some(Strs::Lits(tl))) = (&st, &t.view().str) {
+            // T's literal set is that of its unfolding (F17 12.5).
             let left: BTreeSet<String> = l.difference(tl).cloned().collect();
             out.str = if left.is_empty() {
                 None
@@ -988,7 +889,7 @@ pub fn without(x: &Ty, t: &Ty) -> Ty {
 /// alternatives that form a tagged union stay a union.
 pub fn unite(a: &Ty, b: &Ty) -> Ty {
     let j = join(a, b);
-    if j.any || a.map.is_none() || b.map.is_none() {
+    if j.any || a.has_refs() || b.has_refs() || a.map.is_none() || b.map.is_none() {
         return j;
     }
     let mut vs: Vec<Rec> = Vec::new();
@@ -1015,7 +916,8 @@ pub fn hit(t: &Ty, f: &str, s: &BTreeSet<String>) -> Vec<Rec> {
         str: Some(Strs::Lits(s.clone())),
         ..Ty::default()
     };
-    t.variants()
+    t.view()
+        .variants()
         .into_iter()
         .filter(|v| !disjoint(&key_ty(v, f), &lits))
         .cloned()
@@ -1029,7 +931,8 @@ pub fn all_of(t: &Ty, f: &str, s: &BTreeSet<String>) -> Vec<Rec> {
         str: Some(Strs::Lits(s.clone())),
         ..Ty::default()
     };
-    t.variants()
+    t.view()
+        .variants()
         .into_iter()
         .filter(|v| {
             v.fields
@@ -1048,14 +951,46 @@ pub fn variants_ty(vs: Vec<Rec>) -> Ty {
 /// The alternatives of one `Type`, joined (`05-types.md` 3.4), with their
 /// records forming the map alternative (F5 3.1): one record, or a tagged
 /// union of two or more. `None` when two or more records form none.
+///
+/// F17 12.2 item 5: a complete reference that shares a kind other than null
+/// with another alternative counts as its definition; any other stands
+/// beside the alternatives as it is.
 pub fn union_of_alts(ts: &[Ty]) -> Option<Ty> {
     let mut acc = Ty::never();
     let mut recs: Vec<Rec> = Vec::new();
-    for t in ts {
+    let mut refs: BTreeSet<Ref> = BTreeSet::new();
+    let kinds: Vec<Kinds> = if ts.iter().any(|t| t.has_refs()) {
+        ts.iter().map(Kinds::of).collect()
+    } else {
+        Vec::new()
+    };
+    for (i, t) in ts.iter().enumerate() {
+        let mut t = std::borrow::Cow::Borrowed(t);
+        if t.has_refs() {
+            let mut x = t.without_refs();
+            for r in &t.refs {
+                let u = r.unfolding();
+                let counts = u.as_ref().is_some_and(|u| {
+                    let k = Kinds::of(u);
+                    kinds
+                        .iter()
+                        .enumerate()
+                        .any(|(j, o)| j != i && k.shares(o, false))
+                });
+                match u {
+                    Some(u) if counts => add_alts(&mut x, &u),
+                    _ => {
+                        refs.insert(r.clone());
+                    }
+                }
+            }
+            t = std::borrow::Cow::Owned(x);
+        }
         recs.extend(t.variants().into_iter().cloned());
-        let mut rest = t.clone();
+        let mut rest = t.into_owned();
         rest.map = None;
         rest.variants = None;
+        refs.extend(std::mem::take(&mut rest.refs));
         join_into(&mut acc, &rest);
     }
     if acc.any {
@@ -1068,12 +1003,20 @@ pub fn union_of_alts(ts: &[Ty]) -> Option<Ty> {
     } else if let Some(r) = recs.pop() {
         acc.map = Some(Arc::new(r));
     }
+    acc.refs.extend(refs);
     Some(acc)
 }
 
 /// The values of a finite type (4.5), or `None` when it is not finite.
 pub fn finite_values(t: &Ty) -> Option<Vec<FiniteValue>> {
-    if t.any || t.num.is_some() || t.list.is_some() || t.map.is_some() || !t.opaque.is_empty() {
+    let t = &*t.view();
+    if t.any
+        || t.has_refs()
+        || t.num.is_some()
+        || t.list.is_some()
+        || t.map.is_some()
+        || !t.opaque.is_empty()
+    {
         return None;
     }
     let mut out = Vec::new();
@@ -1175,6 +1118,8 @@ pub fn print(t: &Ty) -> String {
             .iter()
             .map(|o| o.strip_prefix(VAR_MARK).unwrap_or(o).to_string()),
     );
+    // F17 12.6 item 3: references after the opaque names, by name.
+    ps.extend(t.refs.iter().map(|r| r.name().to_string()));
     if t.null {
         ps.push("null".into());
     }
@@ -1280,12 +1225,21 @@ pub fn from_text(
     opaque: &(impl TypeNames + ?Sized),
     vars: Option<&Solutions>,
 ) -> Result<Ty, String> {
+    // F17 12.5 item 7: a Join that the union of records makes may pass the
+    // bound of pairs; the type is then refused (`bad-type`, and in a host
+    // signature `bad-signature`, R317).
+    let w = watch();
     let ty = convert(t, opaque, vars)?;
-    if ty.too_big() {
-        return Err(format!("the type is larger than {SIZE_LIMIT}"));
+    if w.passed() {
+        return Err("comparing the types takes more than 4096 pairs of types".into());
     }
+    drop(w);
+    // F4 3.5: depth (step 5) before size (step 6).
     if ty.depth() > 64 {
         return Err("the type is deeper than 64".into());
+    }
+    if ty.too_big() {
+        return Err(format!("the type is larger than {SIZE_LIMIT}"));
     }
     Ok(ty)
 }
@@ -1301,6 +1255,18 @@ fn convert<N: TypeNames + ?Sized>(
     opaque: &N,
     vars: Option<&Solutions>,
 ) -> Result<Ty, String> {
+    convert_with(t, true, &mut |n: &str, _top: bool| opaque.lookup(n), vars)
+}
+
+/// Read a type text as a type, with `lookup` giving the type each name
+/// stands for, told whether the name stands at a top place (F17 12.1): not
+/// inside a list's element, a record's field or rest, or `map<T>`.
+pub fn convert_with(
+    t: &text::Type,
+    top: bool,
+    lookup: &mut dyn FnMut(&str, bool) -> Option<Ty>,
+    vars: Option<&Solutions>,
+) -> Result<Ty, String> {
     Ok(match t {
         text::Type::Null => Ty::null(),
         text::Type::Bool => Ty::boolean(),
@@ -1310,11 +1276,11 @@ fn convert<N: TypeNames + ?Sized>(
         text::Type::Any => Ty::any(),
         text::Type::Never => Ty::never(),
         text::Type::Lit(s) => Ty::lit(s),
-        text::Type::MapOf(e) => Ty::map_of(convert(e, opaque, vars)?),
+        text::Type::MapOf(e) => Ty::map_of(convert_with(e, false, lookup, vars)?),
         text::Type::Record(r) => {
             let mut fields = BTreeMap::new();
             for f in &r.fields {
-                let ty = convert(&f.ty, opaque, vars)?;
+                let ty = convert_with(&f.ty, false, lookup, vars)?;
                 if fields
                     .insert(
                         f.key.clone(),
@@ -1331,11 +1297,11 @@ fn convert<N: TypeNames + ?Sized>(
             let rest = match &r.rest {
                 Rest::Exact => Ty::never(),
                 Rest::Any => Ty::any(),
-                Rest::Typed(t) => convert(t, opaque, vars)?,
+                Rest::Typed(t) => convert_with(t, false, lookup, vars)?,
             };
             Ty::rec(Rec::new(fields, rest))
         }
-        text::Type::Name(n) => match opaque.lookup(n) {
+        text::Type::Name(n) => match lookup(n, top) {
             Some(t) => t,
             None => return Err(format!("{n} is not a declared opaque type or named type")),
         },
@@ -1343,16 +1309,39 @@ fn convert<N: TypeNames + ?Sized>(
             Some(v) => v.get(c).cloned().unwrap_or_default(),
             None => return Err(format!("the type variable {c} stands outside a signature")),
         },
-        text::Type::List(e) => Ty::list(convert(e, opaque, vars)?),
+        text::Type::List(e) => Ty::list(convert_with(e, false, lookup, vars)?),
         text::Type::Union(alts) => {
             let ts: Vec<Ty> = alts
                 .iter()
-                .map(|a| convert(a, opaque, vars))
+                .map(|a| convert_with(a, top, lookup, vars))
                 .collect::<Result<_, _>>()?;
             union_of_alts(&ts)
                 .ok_or_else(|| "two records in one type that form no tagged union".to_string())?
         }
     })
+}
+
+/// Every name of a type text, with whether it stands at a top place (F17
+/// 12.1), in order.
+pub fn text_names(t: &text::Type, top: bool, f: &mut dyn FnMut(&str, bool)) {
+    match t {
+        text::Type::Name(n) => f(n, top),
+        text::Type::MapOf(e) | text::Type::List(e) => text_names(e, false, f),
+        text::Type::Record(r) => {
+            for fl in &r.fields {
+                text_names(&fl.ty, false, f);
+            }
+            if let Rest::Typed(t) = &r.rest {
+                text_names(t, false, f);
+            }
+        }
+        text::Type::Union(alts) => {
+            for a in alts {
+                text_names(a, top, f);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

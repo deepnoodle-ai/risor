@@ -33,8 +33,8 @@ pub struct Catalog {
     /// F16: the cases of `suite/messages-entry-points.json`
     /// (`f16-entry-points.md` 9.1).
     pub entry_point_cases: Vec<(String, Json)>,
-    /// F17: the cases of `suite/messages-recursion.json`
-    /// (`f17-recursion.md` 13.5).
+    /// F17: the cases of `suite/messages-recursion.json` (`f17-recursion.md`
+    /// 9 and 13.5).
     pub recursion_cases: Vec<(String, Json)>,
 }
 
@@ -76,8 +76,9 @@ pub const QUERIES_SOURCE: &str = include_str!("../../suite/messages-queries.json
 /// 9.1).
 pub const ENTRY_POINTS_SOURCE: &str = include_str!("../../suite/messages-entry-points.json");
 
-/// Package F17: the catalog file of three templates of existing codes
-/// (`f17-recursion.md` 13.5).
+/// Package F17: the catalog file of `circular-type`, a template of
+/// `check-limit`, and five templates of existing codes (`f17-recursion.md` 9
+/// and 13.5).
 pub const RECURSION_SOURCE: &str = include_str!("../../suite/messages-recursion.json");
 
 pub fn catalog() -> &'static Catalog {
@@ -306,12 +307,13 @@ mod tests {
         assert!(!caught("steps-exceeded"));
     }
 
-    /// F8 3.1, F16 9.1 and F17 13.5: `messages-check.json` has 30 codes and
-    /// 72 templates, `messages-parse.json` 58 codes and 97 templates; F16's
-    /// file adds the code `name-clash`, and F17's five templates of four
-    /// existing codes: 31 check codes and 78 templates.
+    /// F8 3.1, F16 9.1 and F17 9 and 13.5: `messages-check.json` has 30 codes
+    /// and 72 templates, `messages-parse.json` 58 codes and 97 templates;
+    /// F16's file adds the code `name-clash`; F17's adds the code
+    /// `circular-type`, with two templates, a template of `check-limit`, and
+    /// five templates of four existing codes: 32 check codes and 81 templates.
     #[test]
-    fn the_check_catalog_has_31_codes_and_78_templates() {
+    fn the_check_catalog_has_32_codes_and_81_templates() {
         let count = |text: &str| {
             let d = json::parse(text).expect("valid JSON");
             let es = d.as_arr().unwrap_or_default().to_vec();
@@ -328,11 +330,15 @@ mod tests {
         assert_eq!(count(CHECK_SOURCE), (30, 72));
         assert_eq!(count(PARSE_SOURCE), (58, 97));
         assert_eq!(count(ENTRY_POINTS_SOURCE), (1, 1));
-        assert_eq!(count(RECURSION_SOURCE), (4, 5));
+        assert_eq!(count(RECURSION_SOURCE), (6, 8));
         let c = catalog();
         let check: Vec<_> = c.entries.iter().filter(|e| e.phase == "check").collect();
-        assert_eq!(check.len(), 31);
-        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 78);
+        assert_eq!(check.len(), 32);
+        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 81);
+        assert_eq!(
+            build("circular-type", "direct", &[("name", "Loop".into())]),
+            "Loop refers to itself outside any list, map or record"
+        );
         assert_eq!(
             build("call-of-parameter", "fn-hint", &[("name", "f".into())]),
             "f is a parameter; to call it, give it a function type, as f: (x: int) => int"

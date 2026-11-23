@@ -134,7 +134,10 @@ Let R1, ..., Rn be records, n at least 2.
    alternative.
 4. A union may stand wherever a type stands: as the type of a field, of a rest,
    of the elements of a list, inside another union's variant. There are no
-   recursive types (F4 3.1 item 3).
+   recursive types (F4 3.1 item 3). Package F17 adds them: a variant's field
+   may hold a reference to the union's own recursive type, and a reference is
+   an alternative of a type whose kinds are its definition's
+   (`spec/packages/f17-recursion.md` 12.1, 12.2).
 
 ### 2.3 flat
 
@@ -260,6 +263,10 @@ alternative is a union.
    that Join is commutative, associative and idempotent.
 3. So the Join of a union with one of its own variants is flat(U) joined with
    that variant, which is flat(U).
+4. With package F17, two unions may be the same by structure and print
+   apart, through recursive types of two names. They are compared by Equal,
+   references followed, and the Join is A's union
+   (`spec/packages/f17-recursion.md` 12.5 item 4).
 
 | A | B | Join |
 | --- | --- | --- |
@@ -559,7 +566,7 @@ gives, the contributors of a key).
 
 | e | It fits when | Place of a failure |
 | --- | --- | --- |
-| A `Map` with no computed key, where T's map alternative is a union U | Let t be U's tag. Some entry of e surely gives t, and the Join of the types the contributors of t give for it is a literal set within the tag set of one variant V. e then fits V by Core's table "A map literal against a record" | e, once, when no entry surely gives t. Each contributor of t, when that Join is not within one tag set: a written entry's value (a shorthand's name), a spread's operand. Otherwise the places Core's table gives for V |
+| A `Map` with no computed key, where T's map alternative is a union U | Let t be U's tag. Some entry of e surely gives t, and the Join of the types the contributors of t give for it is a literal set within the tag set of one variant V. e then fits V by Core's table "A map literal against a record" | e, once, when no entry surely gives t, with the template `missing` of `result-mismatch` (or of `arg-mismatch`) and t as its key (R319). Each contributor of t, when that Join is not within one tag set: a written entry's value (a shorthand's name), a spread's operand. Otherwise the places Core's table gives for V |
 
 1. As in Core, the row is tried only when the type of e does not fit T. A `Map`
    with a computed key is not followed.

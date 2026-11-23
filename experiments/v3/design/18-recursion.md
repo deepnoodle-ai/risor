@@ -9,14 +9,13 @@ dropped `iterate` and settled passing functions to user-defined functions
 18-11 and 18-13 are settled as stated; section 10 marks the others as rulings
 or recommendations. Built so far, in all three implementations: `match`
 guards and `walk` (step E0), and typed self-recursion on per-call frames
-(step E1), in `spec/packages/f17-recursion.md`, and function parameters (step
-E3), in that chapter's section 13. The recommendations 18-15 and 18-16, and
-those of 7.2 and 7.3, were taken, with changes: the template of rule 8 names
-the callee, not the lambda; the hints of 7.2 are given only at a parameter of
-a `const`-bound lambda; and two more templates make the messages true with
-step E3 (`15-build-rulings.md` R280 to R297). Recursive named types
-(step E2) are not built; their spec text is in section 4 in a form ready to
-move into the package chapter.
+(step E1), in `spec/packages/f17-recursion.md`, recursive named types (step
+E2), in that chapter's section 12 (R262 to R279, R301 to R315), and function
+parameters (step E3), in its section 13. The recommendations 18-15 and 18-16,
+and those of 7.2 and 7.3, were taken, with changes: the template of rule 8
+names the callee, not the lambda; the hints of 7.2 are given only at a
+parameter of a `const`-bound lambda; and two more templates make the messages
+true with step E3 (`15-build-rulings.md` R280 to R297).
 
 **Evidence.** **(R)** read in the specification or a sibling document at the
 place cited. **(ran)** run with the Go CLI built from `main` at `aeaaf1f`
@@ -228,6 +227,17 @@ the deeper of its types, so 64 bounds it", which no longer holds for a type
 with no finite depth. With the set of pairs, each computation visits at most
 the product of the two types' sizes in distinct pairs (I). The fixed bound
 and the fixed order make the cut-off the same in every implementation (R5).
+
+**As built** (step E2, F17 12.5 and 12.6). Two rows above read
+differently in the chapter, and both are for the owner. The bound counts the
+pairs a computation enters, not the pairs in progress at once (R268): a
+count of pairs in progress bounds nothing, since two families of twelve types
+take 4,095 entries to fit with twelve pairs in progress at most. And a
+reference has depth 0 (R272): the measure above depends on the path to a
+name, so it cannot be kept with a type as `05-types.md` 20.7 requires, and
+with names that refer to one another it takes exponential work. Each
+definition is tested where it is declared. The chapter also adds an error
+this plan does not have: a reference beside a type of its own kind (R265).
 
 `any` from a Join of two recursive types that neither fit nor unify in one
 step is sound, since `any` is the top type. It is rarely met (I): a

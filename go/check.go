@@ -63,7 +63,7 @@ func resultSchemaType(schema any, opts []SchemaOption) (*types.Type, error) {
 			return nil, fmt.Errorf("the option %s does not apply to an expected result", string(o))
 		}
 	}
-	return mapSchema(schema, opts)
+	return mapSchema(schema, opts, "")
 }
 
 // Condition states that the result will be tested by truthiness (15.3).
@@ -176,6 +176,87 @@ func (e *Env) typeEnv() {
 		}
 		e.methodSigs[tn] = ms
 	}
+	e.recNames()
+}
+
+// recNames collects the recursive types the environment's declarations
+// reach: those of its named types, variables and signatures (F17 12.4).
+// Two that are not one type may not share a name, and none may take the
+// name of an opaque type or of a named type that is not it: name-clash. The description lists
+// each in types.
+func (e *Env) recNames() {
+	var ts []*types.Type
+	for _, n := range sortedTypeKeys(e.namedTypes) {
+		ts = append(ts, e.namedTypes[n])
+	}
+	for _, n := range sortedTypeKeys(e.varTypes) {
+		ts = append(ts, e.varTypes[n])
+	}
+	sigTypes := func(s *types.Sig) {
+		for _, p := range s.Params {
+			ts = append(ts, p.Type)
+		}
+		ts = append(ts, s.Result)
+	}
+	for _, n := range sortedSigKeys(e.hostSigs) {
+		sigTypes(e.hostSigs[n])
+	}
+	for _, tn := range sortedSigMapKeys(e.methodSigs) {
+		for _, m := range sortedSigKeys(e.methodSigs[tn]) {
+			sigTypes(e.methodSigs[tn][m])
+		}
+	}
+	e.recTypes = nil
+	// F17 12.4: a name whose recursive types, and named type, are not all
+	// one type is name-clash, once for the name, however many types bear
+	// it. An Equal past the bound of pairs counts as not equal.
+	byName := map[string]*types.Named{}
+	clashed := map[string]bool{}
+	for _, n := range types.RecNames(ts...) {
+		if m, ok := byName[n.Name]; ok {
+			if !clashed[n.Name] && !types.SameDef(m, n) {
+				clashed[n.Name] = true
+				e.errf(diag.CodeNameClash, fmt.Sprintf("two recursive types are named %s", n.Name))
+			}
+			continue
+		}
+		byName[n.Name] = n
+		if _, ok := e.opaque[n.Name]; ok {
+			// As a named type with an opaque type's name is (F4 3.2; R315).
+			clashed[n.Name] = true
+			e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s has the name of an opaque type", n.Name))
+			continue
+		}
+		if t, ok := e.namedTypes[n.Name]; ok {
+			// Only the named type that is this recursive type may bear its
+			// name: one whose type is another name, even of the same
+			// structure, is not (R315).
+			if r, ok := t.RefOnly(); !ok || r.Name != n.Name || !types.SameDef(r, n) {
+				clashed[n.Name] = true
+				e.errf(diag.CodeNameClash, fmt.Sprintf("the recursive type %s and the named type %s are not one type", n.Name, n.Name))
+				continue
+			}
+		}
+		e.recTypes = append(e.recTypes, n)
+	}
+}
+
+func sortedSigKeys(m map[string]*types.Sig) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedSigMapKeys(m map[string]map[string]*types.Sig) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // expected reads the expected result of the options.
@@ -397,6 +478,9 @@ type envTypes struct {
 	varTypes   map[string]*types.Type
 	hostSigs   map[string]*types.Sig
 	methodSigs map[string]map[string]*types.Sig
+	// recTypes are the recursive types the declarations reach, one for
+	// each name (F17 12.4).
+	recTypes []*types.Named
 }
 
 // staticNames are the names the static rules read (05-types.md 22.2),

@@ -74,7 +74,7 @@ func mapJSON(t *testing.T, text string, o Options) (*types.Type, error) {
 	t.Helper()
 	var v any
 	assert.Nil(t, json.Unmarshal([]byte(text), &v))
-	return Map(v, o)
+	return Map(v, o, "")
 }
 
 func TestSharedRefTargets(t *testing.T) {
@@ -105,10 +105,33 @@ func TestSharedRefTargets(t *testing.T) {
 }
 
 func TestRefCycle(t *testing.T) {
-	_, err := mapJSON(t, `{"$ref": "#/$defs/a", "$defs": {"a": {"type": "array", "items": {"$ref": "#/$defs/a"}}}}`, Options{})
+	// F17 12.4: a cycle through an array item is a recursive type, named by
+	// the last token of the pointer.
+	ty, err := mapJSON(t, `{"$ref": "#/$defs/tree", "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Tree")
+	assert.Equal(t, types.Unfold(ty).String(), "Tree[]")
+	// A one-letter name is a type variable: bad-type.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/a", "$defs": {"a": {"type": "array", "items": {"$ref": "#/$defs/a"}}}}`, Options{})
 	assert.NotNil(t, err)
+	// The root, named Root with no other name.
+	ty, err = mapJSON(t, `{"type": "object", "properties": {"next": {"anyOf": [{"$ref": "#"}, {"type": "null"}]}}, "additionalProperties": false}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Root")
+	assert.Equal(t, types.Unfold(ty).String(), "{next?: Root | null}")
+	// With no guard between: bad-type.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/aa", "$defs": {"aa": {"anyOf": [{"$ref": "#/$defs/aa"}, {"type": "null"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	// allOf on a schema in progress: bad-type.
+	_, err = mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [{"$ref": "#"}, {"type": "object"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	// Mutual recursion: only the target met again is named.
+	ty, err = mapJSON(t, `{"$ref": "#/$defs/dir", "$defs": {"dir": {"type": "object", "properties": {"files": {"type": "array", "items": {"$ref": "#/$defs/file"}}}, "required": ["files"], "additionalProperties": false}, "file": {"type": "object", "properties": {"parent": {"$ref": "#/$defs/dir"}}, "additionalProperties": false}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Dir")
+	assert.Equal(t, types.Unfold(ty).String(), "{files: {parent?: Dir}[]}")
 	// One target used twice side by side is no cycle.
-	ty, err := mapJSON(t, `{"type": "object", "properties": {"x": {"$ref": "#/$defs/a"}, "y": {"$ref": "#/$defs/a"}}, "$defs": {"a": {"type": "boolean"}}}`, Options{})
+	ty, err = mapJSON(t, `{"type": "object", "properties": {"x": {"$ref": "#/$defs/a"}, "y": {"$ref": "#/$defs/a"}}, "$defs": {"a": {"type": "boolean"}}}`, Options{})
 	assert.Nil(t, err)
 	assert.Equal(t, ty.String(), "{x?: bool, y?: bool, ...}")
 }
@@ -172,7 +195,7 @@ func TestEnumIsNLogN(t *testing.T) {
 		best := time.Duration(1 << 62)
 		for k := 0; k < 3; k++ {
 			start := time.Now()
-			_, _ = Map(schema, Options{})
+			_, _ = Map(schema, Options{}, "")
 			if d := time.Since(start); d < best {
 				best = d
 			}
@@ -188,6 +211,47 @@ func TestEnumIsNLogN(t *testing.T) {
 	for i := range vals {
 		vals[i] = fmt.Sprint(i)
 	}
-	_, err := Map(map[string]any{"enum": vals}, Options{})
+	_, err := Map(map[string]any{"enum": vals}, Options{}, "")
+	assert.NotNil(t, err)
+}
+
+func TestPlaceKeys(t *testing.T) {
+	// Each place has a key of its own: a property name that holds the
+	// separator of the tokens is not a path of two places (F17 12.4 item 1).
+	text := `{"type": "object", "required": ["a", "a\u0000properties\u0000b"],
+		"properties": {
+			"a": {"type": "object", "required": ["b"], "properties": {"b": {"type": "integer"}}},
+			"a\u0000properties\u0000b": {"type": "string"}}}`
+	ty, err := mapJSON(t, text, Options{Closed: true})
+	assert.Nil(t, err)
+	got := ty.String()
+	assert.True(t, strings.Contains(got, `: string`), got)
+	// Two pointers that decode to the same tokens name one place, and the
+	// name of a recursive type is its last token.
+	ty, err = mapJSON(t, `{"$ref": "#/$defs/tr%65e", "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Tree")
+}
+
+func TestPickReadsEveryKind(t *testing.T) {
+	// F17 12.4 item 4: Pick's step 2 reads the kinds of each type, so a
+	// reference whose definition is not yet known is bad-type even after a
+	// type that is not a map.
+	_, err := mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [false, {"$ref": "#"}]}}}`, Options{})
+	assert.NotNil(t, err)
+	_, err = mapJSON(t, `{"type": "object", "properties": {"x": {"allOf": [{"$ref": "#"}, false]}}}`, Options{})
+	assert.NotNil(t, err)
+}
+
+func TestPartMetAgain(t *testing.T) {
+	// F17 12.4 item 1: a place a $ref reaches first, met again as a part
+	// of the schema that holds it, is the recursive type.
+	ty, err := mapJSON(t, `{"$ref": "#/$defs/node/items", "$defs": {"node": {"type": "array", "items": {"$ref": "#/$defs/node"}}}}`, Options{})
+	assert.Nil(t, err)
+	assert.Equal(t, ty.String(), "Items")
+	n, _ := ty.RefOnly()
+	assert.Equal(t, n.Def().String(), "Items[]")
+	// With no array item, property or map between, it is an error.
+	_, err = mapJSON(t, `{"$ref": "#/$defs/node/allOf/0", "$defs": {"node": {"allOf": [{"$ref": "#/$defs/node"}]}}}`, Options{})
 	assert.NotNil(t, err)
 }

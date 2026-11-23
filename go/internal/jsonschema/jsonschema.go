@@ -35,10 +35,26 @@ type result struct {
 }
 
 type mapper struct {
-	root   any
-	o      Options
-	cache  map[string]result
-	inprog map[string]bool
+	root  any
+	o     Options
+	cache map[string]result
+	// inprog holds each place being mapped, with the count of guards open
+	// when its mapping began (F17 12.4). A place is the root "", or the
+	// tokens of its pointer, each after a zero byte; at is the place being
+	// mapped now.
+	inprog map[string]int
+	at     string
+	// guard counts the guards open: array items, properties and maps.
+	guard int
+	// rootName names the reference to the root (F17 12.4).
+	rootName string
+	// named holds the reference of each target met while it was being
+	// mapped, names the target of each name, order the targets in the
+	// order named, and defs the type each one mapped to.
+	named    map[string]*types.Named
+	refNames map[string]string
+	order    []string
+	defs     map[string]*types.Type
 }
 
 func (m *mapper) fail(format string, args ...any) {
@@ -46,21 +62,41 @@ func (m *mapper) fail(format string, args ...any) {
 }
 
 // Map gives the type of a schema with the options (3.1). Close is applied
-// once, to the type of the root (4.1).
-func Map(root any, o Options) (t *types.Type, err error) {
-	m := &mapper{root: root, o: o, cache: map[string]result{}, inprog: map[string]bool{}}
+// once, to the type of the root (4.1). A target of $ref met again while it
+// is being mapped is a recursive type (F17 12.4); rootName names the
+// reference to the root, "Root" when empty.
+func Map(root any, o Options, rootName string) (t *types.Type, err error) {
+	if rootName == "" {
+		rootName = "Root"
+	}
+	m := &mapper{root: root, o: o, cache: map[string]result{}, inprog: map[string]int{}, rootName: rootName,
+		named: map[string]*types.Named{}, refNames: map[string]string{}, defs: map[string]*types.Type{}}
 	defer func() {
 		if r := recover(); r != nil {
-			e, ok := r.(*Error)
-			if !ok {
+			switch e := r.(type) {
+			case *Error:
+				t, err = nil, e
+			case *types.Incomplete:
+				// F17 12.4: Pick, Meet or a tag would look into a schema
+				// still being mapped.
+				t, err = nil, &Error{Msg: fmt.Sprintf("%s is combined by allOf, or tested for a tag, inside its own definition", e.Name)}
+			case *types.PairLimit:
+				t, err = nil, &Error{Msg: fmt.Sprintf("the schema needs more than %d pairs of types to compare", types.MaxPairs)}
+			default:
 				panic(r)
 			}
-			t, err = nil, e
 		}
 	}()
-	m.inprog[""] = true
-	r := m.schema(root, true)
-	t = types.Close(r.t)
+	t = m.schema(root, "").t
+	m.setDefs()
+	if len(m.order) > 0 {
+		// F17 12.4 item 5 (R316): the schema's own type follows 12.2 item 6
+		// too, so that every type a description prints reads back.
+		if n, bad := types.SharedDeep(t); bad {
+			m.fail("%s shares a kind with another type of its union; give the union a definition of its own", n.Name)
+		}
+	}
+	t = types.Close(t)
 	if types.Size(t) > types.MaxSize {
 		m.fail("the type is larger than %d", types.MaxSize)
 	}
@@ -68,6 +104,73 @@ func Map(root any, o Options) (t *types.Type, err error) {
 		m.fail("the type is deeper than %d", MaxDepth)
 	}
 	return t, nil
+}
+
+// setDefs sets the definition of each reference the mapping made: its
+// target's type, with the references at its top replaced by theirs. Each
+// is tested as a type line is (F17 12.2 items 6, 12.6).
+func (m *mapper) setDefs() {
+	if len(m.order) == 0 {
+		return
+	}
+	ns := make([]*types.Named, len(m.order))
+	defs := make([]*types.Type, len(m.order))
+	for i, k := range m.order {
+		ns[i], defs[i] = m.named[k], m.defs[k]
+	}
+	if n, bad := types.SetDefs(ns, defs); bad {
+		m.fail("%s shares a kind with another type of its union; give the union a definition of its own", n.Name)
+	}
+	for _, n := range ns {
+		if types.Size(n.Def()) > types.MaxSize {
+			m.fail("the type of %s is larger than %d", n.Name, types.MaxSize)
+		}
+		if types.Depth(n.Def()) > MaxDepth {
+			m.fail("the type of %s is deeper than %d", n.Name, MaxDepth)
+		}
+	}
+}
+
+// nameOf is the reference to a target met while it is being mapped (F17
+// 12.4): named by the last token of its pointer with its first letter
+// upper-cased, or by rootName for the root.
+func (m *mapper) nameOf(key, ref string) *types.Named {
+	if n := m.named[key]; n != nil {
+		return n
+	}
+	name := m.rootName
+	if key != "" {
+		tok := lastTok(key)
+		if tok != "" && tok[0] >= 'a' && tok[0] <= 'z' {
+			tok = string(tok[0]-'a'+'A') + tok[1:]
+		}
+		name = tok
+	}
+	if !isTypeName(name) {
+		m.fail("the $ref %q makes a recursive type, and %q is not a type name", ref, name)
+	}
+	if _, clash := m.refNames[name]; clash {
+		m.fail("two recursive types of the schema are named %s", name)
+	}
+	n := types.NewNamed(name)
+	m.named[key], m.refNames[name] = n, key
+	m.order = append(m.order, key)
+	return n
+}
+
+// isTypeName reports an upper-case letter followed by one or more of
+// [A-Za-z0-9_] (F4 3.2).
+func isTypeName(s string) bool {
+	if len(s) < 2 || s[0] < 'A' || s[0] > 'Z' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func isSchema(v any) bool {
@@ -78,8 +181,84 @@ func isSchema(v any) bool {
 	return false
 }
 
-// schema is M(S) (3.1). It returns the type and the depth of S (3.10).
-func (m *mapper) schema(s any, root bool) result {
+// schema is M(S) (3.1) of the schema s at the place key. It returns the
+// type and the depth of S (3.10). A place is mapped once, and its type is
+// shared however the mapping reaches it: through a $ref, or as a part of
+// the schema that holds it, the root included. A place that a $ref meets
+// again while it is being mapped is a recursive type (F17 12.4).
+func (m *mapper) schema(s any, key string) result {
+	if r, ok := m.cache[key]; ok {
+		return r
+	}
+	if g, ok := m.inprog[key]; ok {
+		// Met again while it is being mapped, as a part of the schema that
+		// holds it: the place a $ref reached first is the recursive type
+		// (F17 12.4 item 1).
+		ptr := pointerOf(key)
+		if m.guard == g {
+			m.fail("the schema at %q holds itself with no array item, property or map between", ptr)
+		}
+		return result{t: types.Ref(m.nameOf(key, ptr))}
+	}
+	saved := m.at
+	m.at = key
+	m.inprog[key] = m.guard
+	r := m.schemaAt(s, key == "")
+	delete(m.inprog, key)
+	m.at = saved
+	if n := m.named[key]; n != nil {
+		m.defs[key] = r.t
+		r.t = types.Ref(n)
+	}
+	m.cache[key] = r
+	return r
+}
+
+// child is the place of a schema inside the one being mapped: under the
+// keyword k, then at each member or index of tok.
+func (m *mapper) child(k string, tok ...string) string {
+	key := m.at + keyTok(k)
+	for _, t := range tok {
+		key += keyTok(t)
+	}
+	return key
+}
+
+// keyTok is one token of a place's key: a NUL, then the token with each
+// NUL and each \x01 in it escaped, so that no two paths share a key.
+func keyTok(t string) string {
+	if strings.ContainsAny(t, "\x00\x01") {
+		t = strings.NewReplacer("\x01", "\x01\x01", "\x00", "\x01\x02").Replace(t)
+	}
+	return "\x00" + t
+}
+
+// pointerOf is the JSON Pointer fragment of a place's key, for messages.
+func pointerOf(key string) string {
+	if key == "" {
+		return "#"
+	}
+	var b strings.Builder
+	b.WriteByte('#')
+	for _, t := range strings.Split(key[1:], "\x00") {
+		t = lastTok("\x00" + t)
+		b.WriteByte('/')
+		b.WriteString(strings.NewReplacer("~", "~0", "/", "~1").Replace(t))
+	}
+	return b.String()
+}
+
+// lastTok is the last token of a place's key, unescaped.
+func lastTok(key string) string {
+	t := key[strings.LastIndexByte(key, 0)+1:]
+	if strings.IndexByte(t, 1) >= 0 {
+		t = strings.NewReplacer("\x01\x01", "\x01", "\x01\x02", "\x00").Replace(t)
+	}
+	return t
+}
+
+// schemaAt is M(S) of the schema at the place being mapped.
+func (m *mapper) schemaAt(s any, root bool) result {
 	var res result
 	switch s := s.(type) {
 	case bool:
@@ -160,7 +339,7 @@ func (m *mapper) branches(k string, v any, add func(result) *types.Type) []*type
 	}
 	out := make([]*types.Type, len(arr))
 	for i, b := range arr {
-		out[i] = add(m.schema(b, false))
+		out[i] = add(m.schema(b, m.child(k, strconv.Itoa(i))))
 	}
 	return out
 }
@@ -168,18 +347,12 @@ func (m *mapper) branches(k string, v any, add func(result) *types.Type) []*type
 // branchesJoin is the part of an anyOf or oneOf (F5 8.1): when the records
 // of the branches form a tagged union, a type whose map alternative is that
 // union and whose other alternatives are the Join of the branches' others;
-// otherwise the Join of the branches.
+// otherwise the Join of the branches. A reference stands beside the
+// records, as in type text, unless it shares a kind with another branch
+// and its definition is known (F17 12.4).
 func branchesJoin(bs []*types.Type) *types.Type {
-	var recs []*types.Record
-	others := make([]*types.Type, 0, len(bs))
-	for _, b := range bs {
-		recs = append(recs, types.Variants(b)...)
-		others = append(others, types.WithoutMap(b))
-	}
-	if len(recs) >= 2 {
-		if u, ok := types.FormUnion(recs); ok {
-			return types.WithMap(types.JoinAll(others), u)
-		}
+	if t, ok := types.Alternatives3(bs); ok {
+		return t
 	}
 	return types.JoinAll(bs)
 }
@@ -328,8 +501,11 @@ func (m *mapper) kindPart(s map[string]any, add func(result) *types.Type) *types
 	return t
 }
 
-// items is the element type of an array (3.5).
+// items is the element type of an array (3.5). An item is a guarded place
+// (F17 12.4).
 func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Type {
+	m.guard++
+	defer func() { m.guard-- }()
 	e := types.Never
 	var es []*types.Type // the items of a list, joined once, not once for each item
 	schemaList := func(k string, v any) {
@@ -337,11 +513,11 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 		if !ok {
 			m.fail("%s must be an array of schemas", k)
 		}
-		for _, x := range arr {
+		for i, x := range arr {
 			if !isSchema(x) {
 				m.fail("an element of %s is not a schema", k)
 			}
-			es = append(es, add(m.schema(x, false)))
+			es = append(es, add(m.schema(x, m.child(k, strconv.Itoa(i)))))
 		}
 	}
 	if v, ok := s["prefixItems"]; ok {
@@ -352,7 +528,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 	case !ok:
 		e = types.Join(e, types.Any)
 	case isSchema(v):
-		e = types.Join(e, add(m.schema(v, false)))
+		e = types.Join(e, add(m.schema(v, m.child("items"))))
 	default:
 		if _, isArr := v.([]any); !isArr {
 			m.fail("items must be a schema or an array of schemas")
@@ -362,7 +538,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 			if !isSchema(ai) {
 				m.fail("additionalItems must be a schema")
 			}
-			e = types.Join(e, add(m.schema(ai, false)))
+			e = types.Join(e, add(m.schema(ai, m.child("additionalItems"))))
 		} else {
 			e = types.Join(e, types.Any)
 		}
@@ -370,13 +546,16 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 	return types.Join(e, types.JoinAll(es))
 }
 
-// record is the record of an object (3.8, 4).
+// record is the record of an object (3.8, 4). A property and a map's value
+// are guarded places (F17 12.4).
 func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.Record {
+	m.guard++
+	defer func() { m.guard-- }()
 	r0 := types.Any
 	ap, hasAP := s["additionalProperties"]
 	_, hasPP := s["patternProperties"]
 	if hasAP {
-		r0 = add(m.schema(ap, false))
+		r0 = add(m.schema(ap, m.child("additionalProperties")))
 		if pp, ok := s["patternProperties"]; ok {
 			obj, ok := pp.(map[string]any)
 			if !ok {
@@ -386,7 +565,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 				if !isSchema(obj[k]) {
 					m.fail("a value of patternProperties is not a schema")
 				}
-				r0 = types.Join(r0, add(m.schema(obj[k], false)))
+				r0 = types.Join(r0, add(m.schema(obj[k], m.child("patternProperties", k))))
 			}
 		}
 	}
@@ -422,7 +601,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 			if !isSchema(ps) {
 				m.fail("the property %q is not a schema", k)
 			}
-			t := add(m.schema(ps, false))
+			t := add(m.schema(ps, m.child("properties", k)))
 			f := types.Field{Key: k, Type: t, Optional: !required[k]}
 			if f.Optional {
 				def, hasDef := any(nil), false
@@ -464,25 +643,23 @@ func sortedKeys(m map[string]any) []string {
 	return ks
 }
 
-// ref resolves and maps a $ref (3.7). A target is mapped once and shared;
-// a target in progress is a cycle.
+// ref resolves and maps a $ref (3.7). A target met again while it is being
+// mapped is a recursive type, named by nameOf, when an array item, a
+// property or a map stands between; otherwise the cycle is an error (F17
+// 12.4).
 func (m *mapper) ref(v any) result {
 	s, ok := v.(string)
 	if !ok {
 		m.fail("$ref must be a string")
 	}
 	target, key := m.resolve(s)
-	if m.inprog[key] {
-		m.fail("the $ref %q is a cycle", s)
+	if g, ok := m.inprog[key]; ok {
+		if m.guard == g {
+			m.fail("the $ref %q refers to itself with no array item, property or map between", s)
+		}
+		return result{t: types.Ref(m.nameOf(key, s))}
 	}
-	if r, ok := m.cache[key]; ok {
-		return r
-	}
-	m.inprog[key] = true
-	r := m.schema(target, false)
-	delete(m.inprog, key)
-	m.cache[key] = r
-	return r
+	return m.schema(target, key)
 }
 
 // resolve reads a local JSON Pointer fragment (3.7 items 1 to 6).
@@ -507,7 +684,7 @@ func (m *mapper) resolve(ref string) (any, string) {
 		if !ok {
 			m.fail("the $ref %q has a bad escape", ref)
 		}
-		key.WriteString("\x00" + tok)
+		key.WriteString(keyTok(tok))
 		switch c := cur.(type) {
 		case map[string]any:
 			next, ok := c[tok]
@@ -614,14 +791,18 @@ func pick(ts []*types.Type) *types.Type {
 	if len(left) == 0 {
 		return types.Any
 	}
+	if len(left) == 1 { // what steps 2 and 3 give, with no look inside it
+		return left[0]
+	}
 	// Step 2 (F5 8.3): every type left is one map alternative, a record or a
 	// union: their meet, folded from the left. A meet that fails sends the
-	// whole list to step 3.
+	// whole list to step 3. The kinds of every type are read, so a
+	// reference among them is looked into even after one that is not a map
+	// (F17 12.4 item 4).
 	allMap := true
 	for _, t := range left {
 		if t.Kinds() != 1 || t.Record() == nil {
 			allMap = false
-			break
 		}
 	}
 	if allMap {

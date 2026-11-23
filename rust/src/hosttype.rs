@@ -192,19 +192,40 @@ pub(crate) fn depth(t: &Ty, memo: &mut HashMap<usize, usize>) -> usize {
     d
 }
 
-/// The opaque names a type uses, with shared parts visited once.
+/// The opaque names a type holds at any depth: in each variant of a tagged
+/// union, and through references, each definition once (F17 12.1: an opaque
+/// name in a definition is a kind of the reference). The walk keeps its own
+/// stack.
 pub(crate) fn opaque_names(t: &Ty, out: &mut BTreeSet<String>, seen: &mut BTreeSet<usize>) {
-    out.extend(t.opaque.iter().cloned());
-    if let Some(e) = &t.list {
-        if seen.insert(Arc::as_ptr(e) as usize) {
-            opaque_names(e, out, seen);
+    let mut refs: BTreeSet<(u64, u32)> = BTreeSet::new();
+    let mut stack: Vec<Ty> = vec![t.clone()];
+    // The types visited stay alive, so no address in `seen` is reused.
+    let mut kept: Vec<Ty> = Vec::new();
+    while let Some(t) = stack.pop() {
+        kept.push(t);
+        let t = kept.last().expect("just pushed");
+        out.extend(t.opaque.iter().cloned());
+        for r in &t.refs {
+            if refs.insert((r.table_id(), r.index())) {
+                if let Some(d) = r.definition() {
+                    stack.push(d);
+                }
+            }
         }
-    }
-    if let Some(r) = &t.map {
-        if seen.insert(Arc::as_ptr(r) as usize) {
-            opaque_names(&r.rest, out, seen);
-            for f in r.fields.values() {
-                opaque_names(&f.ty, out, seen);
+        if let Some(e) = &t.list {
+            if seen.insert(Arc::as_ptr(e) as usize) {
+                stack.push(e.as_ref().clone());
+            }
+        }
+        let recs: Vec<&crate::check::ty::Rec> = match (&t.variants, &t.map) {
+            (Some(vs), _) => vs.iter().collect(),
+            (None, Some(r)) => vec![r.as_ref()],
+            (None, None) => Vec::new(),
+        };
+        for r in recs {
+            if seen.insert(r as *const crate::check::ty::Rec as usize) {
+                stack.push(r.rest.clone());
+                stack.extend(r.fields.values().map(|f| f.ty.clone()));
             }
         }
     }

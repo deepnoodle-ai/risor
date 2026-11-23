@@ -1,0 +1,4 @@
+[
+  {"name": "a recursive type line", "format": "type Tree={name:string,kids:Tree[]};const t:Tree={name:\"a\",kids:[]};t", "expect": {"formatted": "type Tree = {name: string, kids: Tree[]};\nconst t: Tree = {name: \"a\", kids: []};\nt\n"}},
+  {"name": "two type lines that name each other", "format": "type Dir={files:File[],dirs:Dir[]};type File={name:string,parent:Dir|null};1", "expect": {"formatted": "type Dir = {files: File[], dirs: Dir[]};\ntype File = {name: string, parent: Dir | null};\n1\n"}}
+]

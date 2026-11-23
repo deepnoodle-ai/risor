@@ -866,7 +866,15 @@ func sameType(want, got string, opaque []string) bool {
 		if err != nil {
 			return nil
 		}
-		t, err := types.FromText(tt, set, false)
+		// A name that is not an opaque type of the case, such as a
+		// recursive type printed by its name, is compared by its spelling,
+		// as an atom (03-host.md 3.10.6; F17 12.8).
+		names := map[string]bool{}
+		for k := range set {
+			names[k] = true
+		}
+		types.TextUses(tt, func(name string, _ bool) { names[name] = true })
+		t, err := types.FromText(tt, names, false)
 		if err != nil {
 			return nil
 		}

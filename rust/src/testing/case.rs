@@ -119,8 +119,10 @@ pub enum Statics {
     /// `suite/entry-points/`: those of `ProgramTypes`, and `name-clash`
     /// (`f16-entry-points.md` 3.1 item 11).
     EntryPoints,
-    /// `suite/recursion/`: Core's twelve and `arg-mismatch`, which F17 step
-    /// E3 makes static at one place (`f17-recursion.md` 8 item 5, 13.8).
+    /// `suite/recursion/` and `suite/messages-recursion.json`: those of
+    /// `EntryPoints`, `circular-type` (`f17-recursion.md` 12.3 item 3), and
+    /// `arg-mismatch`, which step E3 makes static at one place (8 item 5,
+    /// 13.2 item 5).
     Recursion,
 }
 
@@ -145,7 +147,10 @@ pub fn is_static(code: &str, statics: Statics) -> bool {
             Statics::EntryPoints => {
                 matches!(code, "untagged-union" | "check-limit" | "name-clash")
             }
-            Statics::Recursion => code == "arg-mismatch",
+            Statics::Recursion => matches!(
+                code,
+                "untagged-union" | "check-limit" | "name-clash" | "circular-type" | "arg-mismatch"
+            ),
         }
 }
 

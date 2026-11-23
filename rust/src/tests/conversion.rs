@@ -67,11 +67,20 @@ fn the_walk_counts_steps() {
 }
 
 #[test]
-fn named_types_in_order_and_in_the_description() {
-    // A name used before it is declared is `bad-type`.
-    let e = Env::builder()
+fn named_types_as_one_list_and_in_the_description() {
+    // F17 12.4: the named types are one list, so a name may stand before
+    // its declaration; a name of nothing is `bad-type`.
+    let later = Env::builder()
         .named_type("Aa", "Bb[]")
         .named_type("Bb", "int")
+        .build()
+        .unwrap();
+    assert_eq!(
+        crate::json::to_text(later.description().get("types").unwrap()),
+        r#"{"Aa":"int[]","Bb":"int"}"#
+    );
+    let e = Env::builder()
+        .named_type("Aa", "Cc[]")
         .build()
         .err()
         .unwrap();

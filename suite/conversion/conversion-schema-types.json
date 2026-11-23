@@ -289,7 +289,32 @@
   }
  },
  {
-  "name": "a schema with a cycle of $ref",
+  "name": "a schema with a cycle of $ref is a recursive type (F17 12.4)",
+  "source": "1",
+  "types": [
+   {
+    "name": "Node",
+    "schema": {
+     "$ref": "#/$defs/node",
+     "$defs": {
+      "node": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "$ref": "#/$defs/node"
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "value": 1
+  }
+ },
+ {
+  "name": "a schema whose recursive $ref target is n, a type variable's name (F17 12.4)",
   "source": "1",
   "types": [
    {

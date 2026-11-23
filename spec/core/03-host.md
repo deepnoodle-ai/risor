@@ -1004,7 +1004,7 @@ does not.
 
 | Field of a result | Compared with | How |
 | --- | --- | --- |
-| `type` | The type the check gives | Both are parsed as type text and compared by structure (`05-types.md`) |
+| `type` | The type the check gives | Both are parsed as type text and compared by structure (`05-types.md`). With package F17, a `Name` that is not an opaque type of the case is compared by its spelling, as an atom (`spec/packages/f17-recursion.md` 12.6) |
 | `sites` | The sites the check gives, each an object with `class` and `span` | The whole list, in order |
 | `value` | The value of the run | With the language's `==` (`01-language.md`) |
 | `truthy` | The truthiness test (3.2.4) applied to the value | Equal, `true` or `false` |
@@ -1496,7 +1496,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F9, testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Cases that test a runner: the fields `runner`, `update` and `program`, and an `expect` of verdicts. Update mode. Case files written as programs. The report text. The command `risor test` | `spec/packages/f09-testing.md` |
 | F14, host facts | The declaration of a host fact: a statement about the values of an environment's variables beyond their types, part of the precondition. Its one kind, `someNotNull`. The case field `facts`, and a key of the description | `spec/packages/f14-host-facts.md` |
 | F16, entry points, slice D1 | Nothing in the host contract or the case format. Type lines and annotations. The check code `name-clash`, in a catalog file of its own, `suite/messages-entry-points.json`; with F12, the hover kind `type` | `spec/packages/f16-entry-points.md` |
-| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1. Parameters with a function type, two more deepest cases of that test, and five check templates in a catalog file of its own, `suite/messages-recursion.json`; in its directory and that file, `arg-mismatch` is a static code | `spec/packages/f17-recursion.md` |
+| F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1. Parameters with a function type, two more deepest cases of that test, and five check templates in a catalog file of its own, `suite/messages-recursion.json`; in its directory and that file, `arg-mismatch` is a static code. Recursive named types in an environment and in its description, with the check code `circular-type` and the template `check-limit` `pairs` in that file (F17 12.4, 9) | `spec/packages/f17-recursion.md` |
 | F12, tools | The formatter and the assist stage (completion and hover), each a call in every binding. The case fields `format`, `formatTemplate`, `complete` and `hover`, and the results `formatted`, `completion` and `hover`. The contract of the command line program | `spec/packages/f12-tools.md` |
 
 1. The cases of a package are in a directory of their own, and its library

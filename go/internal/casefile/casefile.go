@@ -1285,9 +1285,11 @@ var ConversionStatic = map[string]bool{"untagged-union": true, "check-limit": tr
 // EntryPointsStatic are the codes F16 adds in suite/entry-points.
 var EntryPointsStatic = map[string]bool{"untagged-union": true, "check-limit": true, "name-clash": true}
 
-// RecursionStatic are the codes F17 adds in suite/recursion: arg-mismatch
-// at a parameter with a function type of a call by name (F17 13.2 rule 3).
-var RecursionStatic = map[string]bool{"arg-mismatch": true}
+// RecursionStatic are the static codes of suite/recursion and
+// suite/messages-recursion.json (F17 8 item 5): those F16 adds, circular-type
+// (F17 12.3 item 3), and arg-mismatch, which step E3 makes static at one place
+// (F17 13.2 item 5).
+var RecursionStatic = map[string]bool{"untagged-union": true, "check-limit": true, "name-clash": true, "circular-type": true, "arg-mismatch": true}
 
 var StaticCodes = map[string]bool{
 	"undefined-name": true, "undefined-function": true, "not-a-value": true,

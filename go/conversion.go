@@ -43,7 +43,7 @@ func NamedType(name, text string) Decl {
 // with the options of F1 4.
 func NamedTypeSchema(name string, schema any, opts ...SchemaOption) Decl {
 	return declFunc(func(e *Env) {
-		t, err := mapSchema(schema, opts)
+		t, err := mapSchema(schema, opts, name)
 		d := &namedDecl{name: name, ty: t}
 		if err != nil {
 			d.err = err.Error()
@@ -85,16 +85,17 @@ func (e *Env) putNamed(d *namedDecl) {
 	e.named = append(e.named, d)
 }
 
-// namedEnv resolves the named types in their order (F4 3.1, 3.2). An
-// inherited named type keeps its type; this environment's own are resolved
-// against the opaque types and the named types before them.
+// namedEnv resolves the named types (F4 3.1, 3.2). An inherited named type
+// keeps its type. This environment's own are one list (F17 12.2): each may
+// name itself and every other of the list, and the names on a cycle are
+// recursive. A type given by schema or by Type names none of them.
 func (e *Env) namedEnv() {
 	opaque := map[string]bool{}
 	for n := range e.opaque {
 		opaque[n] = true
 	}
 	e.namedTypes = map[string]*types.Type{}
-	kept := e.named[:0:0]
+	var own []*namedDecl
 	for _, d := range e.named {
 		if opaque[d.name] {
 			e.errf(diag.CodeNameClash, fmt.Sprintf("%s is a named type and an opaque type", d.name))
@@ -102,33 +103,137 @@ func (e *Env) namedEnv() {
 		}
 		if !d.own {
 			e.namedTypes[d.name] = d.ty
-			kept = append(kept, d)
 			continue
 		}
-		t, err := e.resolveNamed(d, opaque)
-		if err != "" {
-			e.errf(diag.CodeBadType, fmt.Sprintf("named type %s: %s", d.name, err))
-			continue
+		own = append(own, d)
+	}
+	index := map[string]int{}
+	names := make([]string, len(own))
+	for i, d := range own {
+		index[d.name] = i
+		names[i] = d.name
+	}
+	// The uses of each item, and the errors of its own text.
+	uses := make([][]types.Use, len(own))
+	errs := make([]string, len(own))
+	for i, d := range own {
+		switch {
+		case d.err != "":
+			errs[i] = d.err
+		case d.text != nil:
+			types.TextUses(d.text, func(name string, guarded bool) {
+				j, ok := index[name]
+				if !ok {
+					j = -1
+					if _, inh := e.namedTypes[name]; !inh && !opaque[name] && errs[i] == "" {
+						errs[i] = name + " is not a declared opaque type or named type"
+					}
+				}
+				uses[i] = append(uses[i], types.Use{Target: j, Guarded: guarded})
+			})
 		}
-		nd := &namedDecl{name: d.name, ty: t}
-		e.namedTypes[d.name] = t
-		kept = append(kept, nd)
+	}
+	info := types.AnalyzeList(uses)
+	b := types.NewListBuild(info, names)
+	b.BuildFn = func(i int) (*types.Type, bool) {
+		d := own[i]
+		if d.text == nil {
+			t, err := e.checkGiven(d, opaque)
+			if err != "" {
+				errs[i] = err
+				return nil, false
+			}
+			return t, true
+		}
+		var t *types.Type
+		var err error
+		limit := types.Guard(func() {
+			t, err = types.FromTextList(d.text, &types.Scope{Opaque: opaque, Named: e.namedTypes},
+				func(name string, guarded bool) (*types.Type, bool) {
+					j, ok := index[name]
+					if !ok {
+						return nil, false
+					}
+					return b.Look(i, j, guarded), true
+				})
+		})
+		switch {
+		case limit:
+			errs[i] = fmt.Sprintf("the type needs more than %d pairs of types to compare", types.MaxPairs)
+			return nil, false
+		case err != nil:
+			errs[i] = err.Error()
+			return nil, false
+		}
+		return t, true
+	}
+	for _, c := range info.Order {
+		ok := true
+		for _, i := range c {
+			if info.Direct[i] && errs[i] == "" {
+				errs[i] = "it refers to itself with no list, record field or map in between"
+			}
+			if errs[i] != "" {
+				ok = false
+			}
+			for _, u := range uses[i] {
+				if u.Target >= 0 && info.Comp[u.Target] != info.Comp[i] && b.Failed[u.Target] {
+					ok = false
+				}
+			}
+		}
+		if ok && !b.Comp(c) {
+			// A definition over the size limit once the references at its
+			// top were replaced (12.2 item 4, 12.6).
+			for _, i := range c {
+				if b.Over[i] && errs[i] == "" {
+					errs[i] = fmt.Sprintf("the type is larger than %d", types.MaxSize)
+				}
+			}
+			ok = false
+		}
+		if ok {
+			// 12.2 item 6: a reference of the component beside a type of
+			// its kind.
+			for _, i := range c {
+				if n, bad := b.SharedIn(i); bad && errs[i] == "" {
+					errs[i] = fmt.Sprintf("%s shares a kind with another type of its union; give the union a named type of its own", n.Name)
+				}
+			}
+			for _, i := range c {
+				if errs[i] != "" {
+					ok = false
+				}
+			}
+		} else {
+			ok = false
+		}
+		if !ok {
+			for _, i := range c {
+				b.Failed[i] = true
+			}
+		}
+	}
+	for i, d := range own {
+		if errs[i] != "" {
+			e.errf(diag.CodeBadType, fmt.Sprintf("named type %s: %s", d.name, errs[i]))
+		}
+		if t := b.TypeOf(i); t != nil && !b.Failed[i] {
+			e.namedTypes[d.name] = t
+		}
 	}
 	// The child sees its resolved declarations as inherited ones.
+	kept := e.named[:0:0]
+	for _, d := range e.named {
+		if t, ok := e.namedTypes[d.name]; ok && !opaque[d.name] {
+			kept = append(kept, &namedDecl{name: d.name, ty: t})
+		}
+	}
 	e.named = kept
 }
 
-func (e *Env) resolveNamed(d *namedDecl, opaque map[string]bool) (*types.Type, string) {
-	if d.err != "" {
-		return nil, d.err
-	}
-	if d.text != nil {
-		t, err := types.FromTextIn(d.text, &types.Scope{Opaque: opaque, Named: e.namedTypes}, false)
-		if err != nil {
-			return nil, err.Error()
-		}
-		return t, ""
-	}
+// checkGiven tests a named type given by schema or by Type.
+func (e *Env) checkGiven(d *namedDecl, opaque map[string]bool) (*types.Type, string) {
 	if name, ok := undeclaredOpaque(d.ty, opaque); !ok {
 		return nil, name + " is not a declared opaque type"
 	}
@@ -172,17 +277,21 @@ func (e *Env) ParseType(text string) (Type, error) {
 // test x is T and x as T make. It returns nil when v conforms, else an
 // *Error with one diagnostic: phase run, code not-conforming, class value,
 // the path and the message of the first failure, and no span. It is not a
-// run: it charges nothing and has no limits, and its work is bounded by the
-// value and the type. It changes nothing.
+// run: it charges nothing, and its work is bounded by the value and the
+// type. A value nested past the default depth limit is depth-exceeded, of
+// class limit, with no path (F17 12.7). It changes nothing.
 func Conform(v any, t Type) error {
 	if p := t.problem(); p != "" {
 		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}}
 	}
-	path, msg, ok := eval.Conform(v, t.t)
+	path, code, msg, ok := eval.ConformCode(v, t.t)
 	if ok {
 		return nil
 	}
-	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "not-conforming", Class: "value",
+	if code == "depth-exceeded" { // F17 12.7: no path
+		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "limit", Message: msg, Trace: []diag.TraceEntry{}}}}
+	}
+	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "value",
 		Message: msg, Path: path, Trace: []diag.TraceEntry{}}}}
 }
 
@@ -198,7 +307,11 @@ func ConformAll(v any, t Type, max int) []Diagnostic {
 	fs := eval.ConformAll(v, t.t, max)
 	out := make([]Diagnostic, len(fs))
 	for i, f := range fs {
-		out[i] = Diagnostic{Phase: PhaseRun, Code: "not-conforming", Class: "value", Message: f.Message,
+		if f.Code == "depth-exceeded" {
+			out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "limit", Message: f.Message, Trace: []diag.TraceEntry{}}
+			continue
+		}
+		out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "value", Message: f.Message,
 			Path: f.Path, Trace: []diag.TraceEntry{}}
 	}
 	return out

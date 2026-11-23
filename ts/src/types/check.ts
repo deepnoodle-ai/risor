@@ -19,6 +19,7 @@ import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
   truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType, unite, hitVariants, allVariants, variantsType, tagSetOf,
+  unfold, PairLimit, refType,
 } from "./type.ts";
 import type { Alts, Field, Fit, Rec, Type, Union } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
@@ -145,7 +146,17 @@ interface Mark {
 
 export function check(program: A.Program, res: Resolution, env: CheckEnv, expected: Expected, staticDiags: Diagnostic[], source?: Source): CheckResult {
   const c = new Checker(res, env);
-  const t = c.program(program, expected);
+  let t: Type;
+  try {
+    t = c.program(program, expected);
+  } catch (e) {
+    if (!(e instanceof PairLimit)) throw e;
+    // f17 12.5 item 7: past the bound the check ends; its diagnostics are this one alone, and the static rules' stand.
+    const span = e.span ?? program.result.span;
+    const diags: Diagnostic[] = [...staticDiags, { phase: "check", code: "check-limit", span: sp(span), message: catalogMessage("check-limit", "pairs", {}) }];
+    diags.sort((a, b) => a.span!.start - b.span!.start || a.span!.end - b.span!.end || cmp(a.code, b.code));
+    return { type: NEVER, sites: [], diagnostics: diags, dynamicSpans: new Set(), hostSpans: new Set(), valueSpans: new Set(), types: c.typesOf(), slotTypes: c.slotTypesOf() };
+  }
   const diags: Diagnostic[] = [...staticDiags];
   const seen = new Set(staticDiags.map((d) => `${d.code}:${d.span!.start}:${d.span!.end}`));
   for (const d of c.diags) {
@@ -421,9 +432,10 @@ class Checker {
       const q = this.pathOf(e.x);
       const t = this.res.asTypes.get(e);
       if (e.form === "is" && q !== null && t !== undefined && t !== null) {
-        const nullable = !isAny(t) && t.null === true;
+        const nullable = hasNull(t);
+        // A reference whose definition is `any` is read through its unfolding (f17 12.5), as `any` is: no fact on null.
         out = {
-          t: [this.typeFact("=", q, t), ...(!nullable && !isAny(t) ? [q] : [])],
+          t: [this.typeFact("=", q, t), ...(!nullable && !isAny(unfold(t)) ? [q] : [])],
           f: [this.typeFact("!", q, t), ...(nullable ? [q] : [])],
         };
         // f14 4.2: `p is T`, T exactly null, gives null(p) beside them.
@@ -492,8 +504,10 @@ class Checker {
 
   /** Whether a test of a field about p gives facts: M is a union, or a record with such a fact in force (f05 5.2 item 3). */
   private fieldFactsHold(m: Type, _p: string): boolean {
-    if (isAny(m) || !m.map) return false;
-    if (m.union) return true;
+    // f17 12.5: a rule that reads a type's record or variants reads its unfolding.
+    const u = unfold(m);
+    if (isAny(u) || !u.map) return false;
+    if (u.union) return true;
     return this.narrowedByField.has(m);
   }
 
@@ -606,12 +620,20 @@ class Checker {
     let f: Facts = NO_FACTS;
     for (const c of p.consts) f = this.constLine(c, f);
     const t = this.synth(p.result, f);
-    if (expected.kind === "condition") this.tested(t, p.result.span);
-    else if (expected.kind === "type") this.fitForm(p.result, expected.type, () => "result-mismatch");
+    // f17 12.5 item 7: the fit of the program's result to the expected result is on the result.
+    at(p.result.span, () => {
+      if (expected.kind === "condition") this.tested(t, p.result.span);
+      else if (expected.kind === "type") this.fitForm(p.result, expected.type, () => "result-mismatch");
+    });
     return t;
   }
 
+  /** A const line; a computation past the bound in what it does after its value is checked is on the value (f17 12.5 item 7). */
   private constLine(c: A.Const, f: Facts): Facts {
+    return at(c.value.span, () => this.constLine0(c, f));
+  }
+
+  private constLine0(c: A.Const, f: Facts): Facts {
     if (c.value.kind === "Lambda") {
       const l = c.value;
       const id = this.res.lambdas.indexOf(l);
@@ -693,7 +715,9 @@ class Checker {
       v = nonnull(v);
     }
     const owners = [p.span, ...(p.kind === "MapPat" ? p.fields.map((x) => x.span) : p.elems.map((x) => x.span))];
-    if (isAny(v)) {
+    // f17 12.5: the pattern reads the unfolding; a message prints the type as it is.
+    const u = unfold(v);
+    if (isAny(u)) {
       if (this.site("dynamic", valueSpan, ...owners)) {
         this.failedPattern(p, f);
         return;
@@ -717,17 +741,17 @@ class Checker {
       if (p.rest !== null) this.setSlot(p.rest, ANY);
       return;
     }
-    if (isNever(v)) {
+    if (isNever(u)) {
       this.failedPattern(p, f);
       return;
     }
     if (p.kind === "MapPat") {
-      if (kindCount(v) !== 1 || !v.map) {
+      if (kindCount(u) !== 1 || !u.map) {
         this.kind(valueSpan, "pattern-map", { type: v });
         this.failedPattern(p, f);
         return;
       }
-      const r = v.map;
+      const r = u.map;
       for (const fl of p.fields) {
         let t: Type;
         if (fl.default !== null) {
@@ -747,12 +771,12 @@ class Checker {
       }
       return;
     }
-    if (kindCount(v) !== 1 || !v.list) {
+    if (kindCount(u) !== 1 || !u.list) {
       this.kind(valueSpan, "pattern-list", { type: v });
       this.failedPattern(p, f);
       return;
     }
-    const elem = v.list;
+    const elem = u.list;
     for (const e of p.elems) {
       if (e.default !== null) {
         const d = this.synth(e.default, f);
@@ -768,7 +792,8 @@ class Checker {
   // ---- expressions ------------------------------------------------------------
 
   synth(e: A.Expr, f: Facts): Type {
-    const t = this.synth0(e, f);
+    // f17 12.5 item 7: a computation past the bound is on the innermost node whose check is in progress.
+    const t = at(e.span, () => this.synth0(e, f));
     this.setType(e, t);
     return t;
   }
@@ -905,11 +930,12 @@ class Checker {
         this.maybeNull(it.value.span, t);
         t = nonnull(t);
       }
-      if (isAny(t)) {
+      const u = unfold(t);
+      if (isAny(u)) {
         if (!this.site("dynamic", it.value.span, it.span)) add(ANY);
-      } else if (isNever(t)) {
+      } else if (isNever(u)) {
         // nothing
-      } else if (kindCount(t) === 1 && t.list) add(t.list);
+      } else if (kindCount(u) === 1 && u.list) add(u.list);
       else this.kind(it.value.span, "spread-list", { type: t });
     }
     if (acc.size() + 1 > SIZE_LIMIT) return this.sizeFail(e.span);
@@ -929,11 +955,12 @@ class Checker {
           this.maybeNull(en.value.span, t);
           t = nonnull(t);
         }
-        if (isAny(t)) {
+        const u = unfold(t);
+        if (isAny(u)) {
           if (!this.site("dynamic", en.value.span, en.span)) r = merge(r, ANY);
-        } else if (isNever(t)) {
+        } else if (isNever(u)) {
           // nothing
-        } else if (kindCount(t) === 1 && t.map) r = merge(r, t.map);
+        } else if (kindCount(u) === 1 && u.map) r = merge(r, u.map);
         else this.kind(en.value.span, "spread-map", { type: t });
         continue;
       }
@@ -972,7 +999,7 @@ class Checker {
       this.maybeNull(e.x.span, t);
       t = nonnull(t);
     }
-    if (isAny(t)) return this.site("dynamic", e.x.span, e.span) ? NEVER : ANY;
+    if (isAny(unfold(t))) return this.site("dynamic", e.x.span, e.span) ? NEVER : ANY;
     if (fits(t, FLOAT) === 0) {
       this.kind(e.x.span, "operand", { op: "-", type: t });
       return NEVER;
@@ -997,7 +1024,8 @@ class Checker {
     let t = this.synth(x, f);
     for (let i = spine.length - 1; i >= 0; i--) {
       const n = spine[i];
-      t = n.kind === "As" ? this.asOp(n, t) : this.binaryOp(n, t, f);
+      const a = t;
+      t = at(n.span, () => (n.kind === "As" ? this.asOp(n, a) : this.binaryOp(n, a, f)));
       this.setType(n, t);
     }
     return t;
@@ -1039,9 +1067,9 @@ class Checker {
       this.maybeNull(x.span, t);
       t = nonnull(t);
     }
-    if (isAny(t)) {
+    if (isAny(unfold(t))) {
       if (this.site("dynamic", x.span, n.span)) return { t: NEVER, any: false, never: true };
-      return { t, any: true, never: false };
+      return { t: ANY, any: true, never: false };
     }
     return { t, any: false, never: isNever(t) };
   }
@@ -1120,16 +1148,17 @@ class Checker {
       this.maybeNull(n.y.span, b);
       b = nonnull(b);
     }
-    if (isAny(b)) {
+    const ub = unfold(b);
+    if (isAny(ub)) {
       this.site("dynamic", n.y.span, n.span);
       return BOOL;
     }
-    if (isNever(b)) return BOOL;
-    if (kindCount(b) === 1 && b.list) {
-      if (!overlap(a, b.list) && !isNever(a) && !isNever(b.list) && !isExactlyNull(a) && !isExactlyNull(b.list)) this.say("never-equal", n.span, "in", { left: printType(a), right: printType(b) });
+    if (isNever(ub)) return BOOL;
+    if (kindCount(ub) === 1 && ub.list) {
+      if (!overlap(a, ub.list) && !isNever(a) && !isNever(ub.list) && !isExactlyNull(a) && !isExactlyNull(ub.list)) this.say("never-equal", n.span, "in", { left: printType(a), right: printType(b) });
       return BOOL;
     }
-    if (kindCount(b) === 1 && (b.str || b.map)) {
+    if (kindCount(ub) === 1 && (ub.str || ub.map)) {
       // The left side "must fit string; null is maybe-null" (8.4): with a list
       // on the right, a null left operand is allowed (questions file, ts S4).
       if (hasNull(a)) {
@@ -1166,7 +1195,9 @@ class Checker {
     let acc = new TypeAcc();
     acc.add(this.synth(c, facts));
     for (let k = conds.length - 1; k >= 0; k--) {
-      acc.add(thens[k]);
+      // `c ? a : b` is Join(A, B) (11.1): the branch is the left operand.
+      // A computation past the bound is on the innermost Cond whose Join it is (f17 12.5 item 7).
+      at(conds[k].span, () => acc.add(thens[k], true));
       if (acc.size() > SIZE_LIMIT) {
         this.say("check-limit", conds[k].span, "size");
         acc = new TypeAcc();
@@ -1349,7 +1380,7 @@ class Checker {
           else this.maybeNull(recvSpan, cur);
           cur = nonnull(cur);
         }
-        if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
+        if (!isAny(unfold(cur)) && !isNever(cur) && kindCount(cur as Alts) !== 1) {
           this.kind(recvSpan, "receiver", { type: cur });
           cur = NEVER;
         }
@@ -1357,7 +1388,9 @@ class Checker {
         const key = s.kind === "Member" ? s.name : s.kind === "Index" && s.index.kind === "String" ? s.index.value : null;
         const nextPath = path !== null && key !== null ? path + SEP + key : null;
         const present = nextPath !== null && f.has(nextPath);
-        cur = this.step(s, cur, recvSpan, f, present);
+        const c0 = cur;
+        const rs = recvSpan;
+        cur = at(s.span, () => this.step(s, c0, rs, f, present));
         if (nextPath !== null && f.has(nextPath)) cur = nonnull(cur);
         if (nextPath !== null) cur = this.applyTypeFacts(cur, nextPath, f);
         path = nextPath;
@@ -1390,7 +1423,8 @@ class Checker {
         } else this.maybeNull(p.recvSpan, cur);
         cur = nonnull(cur);
       }
-      if (isAny(cur)) {
+      const u = unfold(cur);
+      if (isAny(u)) {
         if (this.site("dynamic", p.recvSpan, p.starSpan)) {
           failed = true;
           return null;
@@ -1401,13 +1435,13 @@ class Checker {
         }
         return ANY;
       }
-      if (isNever(cur)) {
+      if (isNever(u)) {
         if (first) neverRecv = true;
         return NEVER;
       }
-      if (kindCount(cur) === 1 && cur.list) return cur.list;
+      if (kindCount(u) === 1 && u.list) return u.list;
       // 9.1 step 4 comes first (f07 5.1): a receiver of more than one kind.
-      this.kind(p.recvSpan, kindCount(cur) !== 1 ? "receiver" : "star", { type: cur });
+      this.kind(p.recvSpan, kindCount(u) !== 1 ? "receiver" : "star", { type: cur });
       failed = true;
       return null;
     };
@@ -1435,14 +1469,16 @@ class Checker {
           else this.maybeNull(recvSpan, cur);
           cur = nonnull(cur);
         }
-        if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
+        if (!isAny(unfold(cur)) && !isNever(cur) && kindCount(cur as Alts) !== 1) {
           this.kind(recvSpan, "receiver", { type: cur });
           cur = NEVER;
           failed = true;
         }
         const before = this.diags.length;
         const wasNever = isNever(cur);
-        cur = this.step(s, cur, recvSpan, f, false);
+        const c0 = cur;
+        const rs = recvSpan;
+        cur = at(s.span, () => this.step(s, c0, rs, f, false));
         if (!wasNever && isNever(cur) && this.diags.length > before) failed = true;
         this.setType(s, cur);
         recvSpan = s.span;
@@ -1461,8 +1497,10 @@ class Checker {
     }
   }
 
-  private step(s: A.Expr, cur: Type, recvSpan: Span, f: Facts, present: boolean): Type {
-    if (s.kind === "MethodCall") return this.methodCall(s, cur, recvSpan, f);
+  private step(s: A.Expr, whole: Type, recvSpan: Span, f: Facts, present: boolean): Type {
+    if (s.kind === "MethodCall") return this.methodCall(s, whole, recvSpan, f);
+    // f17 12.5: a read reads the unfolding; a message prints the receiver as it is, a reference by its name (12.6 item 4).
+    const cur = unfold(whole);
     const optional = (s as A.Member | A.Index).optional;
     // 9.2: the last step of a coalesced read under `??` (01 6.6) reads a field of a
     // record as `?.` does: an absent key gives null, and no `maybe-absent`. On every
@@ -1482,7 +1520,7 @@ class Checker {
       }
       if (s.index.kind === "String" && cur.map) {
         this.synth(s.index, f);
-        return this.readKey(cur.map, s.index.value, absentNull, s.index.span, recvSpan, present, [s.span], cur);
+        return this.readKey(cur.map, s.index.value, absentNull, s.index.span, recvSpan, present, [s.span], whole);
       }
       let k = this.synth(s.index, f);
       const need = cur.map ? STRING : INT;
@@ -1501,8 +1539,9 @@ class Checker {
         if (fits(k, STRING) === 0 && !isNever(k)) return NEVER;
         const v = recordValues(r);
         if (optional) return withNull(v);
-        if (isAny(r.rest)) this.site("dynamic", recvSpan, s.span);
-        else this.say("maybe-absent", s.index.span, "index", { type: printType(cur) });
+        // As for a field read, a rest that is a reference to `any` is `any` (f17 12.5).
+        if (isAny(unfold(r.rest))) this.site("dynamic", recvSpan, s.span);
+        else this.say("maybe-absent", s.index.span, "index", { type: printType(whole) });
         return v;
       }
       if (cur.list) {
@@ -1515,7 +1554,7 @@ class Checker {
         this.site("index", s.span);
         return STRING;
       }
-      this.kind(recvSpan, "index-read", { type: cur });
+      this.kind(recvSpan, "index-read", { type: whole });
       return NEVER;
     }
     // Member
@@ -1528,8 +1567,8 @@ class Checker {
       return this.site("dynamic", recvSpan, s.span) ? NEVER : ANY;
     }
     if (isNever(cur)) return NEVER;
-    if (cur.map) return this.readKey(cur.map, m.name, absentNull, m.nameSpan, recvSpan, present, [s.span], cur);
-    this.kind(recvSpan, "field-read", { type: cur });
+    if (cur.map) return this.readKey(cur.map, m.name, absentNull, m.nameSpan, recvSpan, present, [s.span], whole);
+    this.kind(recvSpan, "field-read", { type: whole });
     return NEVER;
   }
 
@@ -1539,14 +1578,16 @@ class Checker {
     if (fl !== undefined && (!fl.optional || present)) return fl.type;
     // A read of a field of a union reads flat(U), and its messages print that one record (f05 4.3).
     if (!isAny(whole) && whole.union !== undefined) whole = { map: r };
-    if (fl !== undefined || (!isNever(r.rest) && !isAny(r.rest))) {
+    // The rest is classified by its unfolding (f17 12.5): a reference whose definition is `any` reads as `any`.
+    const rest = unfold(r.rest);
+    if (fl !== undefined || (!isNever(rest) && !isAny(rest))) {
       const t = fl !== undefined ? fl.type : r.rest;
       if (present) return t;
       if (optional) return withNull(t);
       this.say("maybe-absent", keySpan, "field", { key, type: printType(whole) });
       return t;
     }
-    if (isAny(r.rest)) {
+    if (isAny(rest)) {
       if (optional || present) return ANY;
       return this.site("dynamic", recvSpan, ...owners) ? NEVER : ANY;
     }
@@ -1611,7 +1652,9 @@ class Checker {
   }
 
   private methodCall(s: A.MethodCall, cur: Type, recvSpan: Span, f: Facts): Type {
-    if (isAny(cur)) {
+    // f17 12.5: the kind of the receiver is its unfolding's.
+    const u = unfold(cur);
+    if (isAny(u)) {
       // 13.3: the arguments are checked also when the `dynamic` site is rejected;
       // the rejected set changes only which findings are diagnostics (17).
       const rejected = this.site("dynamic", recvSpan, s.span);
@@ -1628,15 +1671,15 @@ class Checker {
       if ([...this.env.methods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("host", s.span);
       return ANY;
     }
-    if (isNever(cur)) {
+    if (isNever(u)) {
       this.plainArgs(s.args, f);
       return NEVER;
     }
     let sig: CheckSig | undefined;
-    if (cur.str) sig = this.env.libraryMethods.get("string")?.get(s.name);
-    else if (cur.list) sig = this.env.libraryMethods.get("list")?.get(s.name);
-    else if (cur.map) sig = this.env.libraryMethods.get("map")?.get(s.name);
-    else if (cur.opaque) sig = this.env.methods.get([...cur.opaque][0])?.get(s.name);
+    if (u.str) sig = this.env.libraryMethods.get("string")?.get(s.name);
+    else if (u.list) sig = this.env.libraryMethods.get("list")?.get(s.name);
+    else if (u.map) sig = this.env.libraryMethods.get("map")?.get(s.name);
+    else if (u.opaque) sig = this.env.methods.get([...u.opaque][0])?.get(s.name);
     if (sig === undefined) {
       this.say("no-method", s.nameSpan, "default", { type: printType(cur), name: s.name });
       this.plainArgs(s.args, f);
@@ -1824,13 +1867,15 @@ class Checker {
   }
 
   /** bind(P, A) of 13.4. */
-  private bind(p: TypeNode, a: Type, gain: (v: string, t: Type) => void): void {
+  private bind(p: TypeNode, a0: Type, gain: (v: string, t: Type) => void): void {
+    // f17 12.5: bind reads the unfolding; a type variable gains the type as it is.
+    const a = unfold(a0);
     if (isAny(a)) {
       for (const v of varsOf(p)) gain(v, ANY);
       return;
     }
     if (p.t === "var") {
-      gain(p.name, a);
+      gain(p.name, a0);
       return;
     }
     // f05 4.3 item 4: a union of records binds each variant against A's record.
@@ -1883,9 +1928,11 @@ class Checker {
       return;
     }
     if (fit === 1) return;
-    if (isAny(want)) return;
-    if (e.kind === "List" && want.list) {
-      const elem = want.list;
+    // f17 12.5: the form is fitted to the unfolding of what is wanted.
+    const uw = unfold(want);
+    if (isAny(uw)) return;
+    if (e.kind === "List" && uw.list) {
+      const elem = uw.list;
       for (const it of e.items) {
         if (it.kind === "Spread") {
           const st = this.types.get(it.value) ?? NEVER;
@@ -1896,9 +1943,9 @@ class Checker {
       }
       return;
     }
-    if (e.kind === "Map" && want.map && e.entries.every((en) => en.kind === "Spread" || en.key.kind !== "expr")) {
-      if (want.union) this.fitUnionMap(e, t, want, want.union, code, place, owners);
-      else this.fitMap(e, t, want, want.map, code, place, owners);
+    if (e.kind === "Map" && uw.map && e.entries.every((en) => en.kind === "Spread" || en.key.kind !== "expr")) {
+      if (uw.union) this.fitUnionMap(e, t, want, uw.union, code, place, owners);
+      else this.fitMap(e, t, want, uw.map, code, place, owners);
       return;
     }
     if (e.kind === "Cond") {
@@ -1933,7 +1980,7 @@ class Checker {
         cs.push({ span: en.shorthand ? (en.key as { span: Span }).span : en.value.span, type: this.types.get(en.value) ?? NEVER, sure: true });
         continue;
       }
-      const m = nonnull(this.types.get(en.value) ?? NEVER);
+      const m = unfold(nonnull(this.types.get(en.value) ?? NEVER));
       if (isAny(m)) cs.push({ span: en.value.span, type: ANY, sure: false });
       else if (!isNever(m) && kindCount(m) === 1 && m.map) {
         const fl = m.map.fields.get(tag);
@@ -1970,7 +2017,7 @@ class Checker {
     type Item = { written: A.Entry; key: string } | { spread: A.Spread; m: Rec | "any" | null };
     const items: Item[] = e.entries.map((en): Item => {
       if (en.kind === "Entry") return { written: en, key: en.key.kind === "word" ? en.key.text : (en.key as { value: string }).value };
-      const m = nonnull(this.types.get(en.value) ?? NEVER);
+      const m = unfold(nonnull(this.types.get(en.value) ?? NEVER));
       if (isAny(m)) return { spread: en, m: "any" };
       if (!isNever(m) && kindCount(m) === 1 && m.map) return { spread: en, m: m.map };
       return { spread: en, m: null };
@@ -2012,7 +2059,11 @@ class Checker {
         if ("written" in it) {
           const en = it.written;
           if (fl === undefined && isNever(r.rest)) {
-            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType({ map: r }), key: it.key });
+            // `expected` is the record; a record of a reference's definition prints as the reference, whatever
+            // stands beside it (f17 12.6 item 4).
+            const owner = isAny(want) ? undefined : want.refs?.find((x) => x.def !== undefined && !isAny(x.def) && (x.def.map === r || x.def.union?.variants.includes(r) === true));
+            const shown: Type = owner !== undefined ? refType(owner) : { map: r };
+            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType(shown), key: it.key });
             continue;
           }
           this.fitForm(en.value, rt, code, en.shorthand ? (en.key as { span: Span }).span : undefined, owners);
@@ -2313,4 +2364,14 @@ export type { Alts };
 /** Whether a parameter value is a type, to be printed (f08 3.2 item 2). */
 function isTypeLike(v: unknown): boolean {
   return typeof v === "object" && v !== null && !(v instanceof TextAt) && !Array.isArray(v);
+}
+
+/** Run f; a computation past the bound of f17 12.5 item 7 that has no place yet is on this span. */
+function at<T>(span: Span, f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    if (e instanceof PairLimit && e.span === undefined) e.span = { start: span.start, end: span.end };
+    throw e;
+  }
 }

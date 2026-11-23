@@ -97,6 +97,9 @@ type Case struct {
 	// written by the generator of package F17, step E1. It is not written to
 	// the case file.
 	E1 bool
+	// E2 is set when the program has a recursive type line, written by the
+	// generator of package F17, step E2. It is not written to the case file.
+	E2 bool
 	// E3 is set when the program has a parameter with a function type,
 	// written by the generator of package F17, step E3. It is not written
 	// to the case file.

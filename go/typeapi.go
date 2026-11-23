@@ -229,7 +229,11 @@ func Join(a, b Type) Type {
 	if bad, ok := firstErr(a, b); ok {
 		return bad
 	}
-	return limited(types.Join(a.inner(), b.inner()))
+	var j *types.Type
+	if types.Guard(func() { j = types.Join(a.inner(), b.inner()) }) {
+		return invalid("the Join needs more than %d pairs of types (F17 12.5)", types.MaxPairs)
+	}
+	return limited(j)
 }
 
 // Fits reports whether every value of t is a value of want (05-types.md
@@ -239,7 +243,8 @@ func (t Type) Fits(want Type) bool {
 	if t.err != nil || want.err != nil {
 		return false
 	}
-	ok, _ := types.Fits(t.inner(), want.inner())
+	ok := false
+	types.Guard(func() { ok, _ = types.Fits(t.inner(), want.inner()) })
 	return ok
 }
 
@@ -249,7 +254,9 @@ func (t Type) Equal(u Type) bool {
 	if t.err != nil || u.err != nil {
 		return false
 	}
-	return types.Equal(t.inner(), u.inner())
+	ok := false
+	types.Guard(func() { ok = types.Equal(t.inner(), u.inner()) })
+	return ok
 }
 
 // Kind is the kind of a type of one alternative: KindNever for never and

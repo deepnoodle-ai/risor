@@ -137,6 +137,14 @@ rule in three: the function type left out, a value at the function parameter,
 the parameter read as a value, a call with another count, or the lambda given
 to `map`. `-noe3` leaves the forms out, and `-nof16` does too.
 
+And the recursive named types of package F17, step E2
+(`spec/packages/f17-recursion.md` 12), in about one `const` line in twelve:
+type lines that name themselves and one another, values of those types, field
+reads, joins of two names with one structure, `as` and `is`, and typed
+recursive lambdas that walk the data. A loose program also writes a cycle with
+no guard, a reference beside a type of its kind, a wrong field, or a value
+that does not fit. `-noe2` leaves the forms out, and `-nof16` does too.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -188,7 +196,7 @@ The status is 1 when there was any finding, else 0.
 | `-nof6`, `-nof7` | Leave out the opt-in groups of F6, or the projection and methods of F7 |
 | `-nof17` | Leave out the guards and the calls of `walk` of F17 |
 | `-nof16` | Leave out the type lines and annotations of F16 |
-| `-noe1`, `-noe3` | Leave out the typed recursive lambdas of F17's step E1, or the function parameters of its step E3 |
+| `-noe1`, `-noe2`, `-noe3` | Leave out the typed recursive lambdas of F17's step E1, the recursive type lines of its step E2, or the function parameters of its step E3 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |

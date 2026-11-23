@@ -9,9 +9,25 @@ import (
 
 // synth checks a node and gives its type (1.1).
 func (c *checker) synth(n syntax.Node, fs facts) *types.Type {
+	defer c.catchPairs(n)
 	t := c.synth0(n, fs)
 	c.setTy(n, t)
 	return t
+}
+
+// pairStop ends a check whose computation passed the pair bound of F17
+// 12.5, at the innermost node whose check was in progress.
+type pairStop struct{ sp syntax.Span }
+
+// catchPairs turns a computation past the pair bound into the end of the
+// check, at node n.
+func (c *checker) catchPairs(n syntax.Node) {
+	if r := recover(); r != nil {
+		if _, ok := r.(*types.PairLimit); ok {
+			panic(pairStop{n.Span()})
+		}
+		panic(r)
+	}
 }
 
 func (c *checker) synth0(n syntax.Node, fs facts) *types.Type {
@@ -553,22 +569,38 @@ func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
 		n = next
 	}
 	// When the Join of every branch is within the limits, so is the Join
-	// of the branches from any Cond on: one Join serves the chain.
-	all := types.JoinAll(append(thens, last))
-	if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
-		for _, cn := range chain {
-			c.setTy(cn, all)
+	// of the branches from any Cond on: one Join serves the chain. With a
+	// reference the order of the Joins counts (F17 12.5 item 4): each Cond
+	// joins its then with the Join of the branches after it, from the
+	// innermost out, and a computation past the pair bound is on that Cond.
+	refs := types.HasDeepRefs(last)
+	for _, th := range thens {
+		refs = refs || types.HasDeepRefs(th)
+	}
+	if !refs {
+		all := types.JoinAll(append(thens, last))
+		if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
+			for _, cn := range chain {
+				c.setTy(cn, all)
+			}
+			return all
 		}
-		return all
 	}
 	t := last
 	for i := len(chain) - 1; i >= 0; i-- {
 		// Both parts were tested where they became types, so this Join
 		// works on types within the limit.
-		t = c.depthLimit(chain[i], types.Join(thens[i], t))
+		t = c.depthLimit(chain[i], c.joinAt(chain[i], thens[i], t))
 		c.setTy(chain[i], t)
 	}
 	return t
+}
+
+// joinAt is the Join of a and b made by the check of node n: past the pair
+// bound the check ends on n (F17 12.5 item 7).
+func (c *checker) joinAt(n syntax.Node, a, b *types.Type) *types.Type {
+	defer c.catchPairs(n)
+	return types.Join(a, b)
 }
 
 func litType(n syntax.Node) *types.Type {
@@ -740,6 +772,9 @@ func (c *checker) try(n *syntax.Try, fs facts) *types.Type {
 
 // constLine checks a const line (12.1).
 func (c *checker) constLine(k *syntax.Const, fs facts) {
+	// A fit or a pattern after the value is checked is on the value
+	// (F17 12.5).
+	defer c.catchPairs(k.Value)
 	if lam, ok := k.Value.(*syntax.Lambda); ok && k.Type == nil {
 		if np, ok := k.Pattern.(*syntax.NamePat); ok && !np.Discard {
 			info := &lamInfo{facts: fs, base: c.base, lamDepth: c.lamDepth, maxRel: maxRel(lam)}
@@ -851,7 +886,14 @@ func (c *checker) bindParam(p *syntax.Param, a *types.Type, given bool, fs facts
 
 // read is the read of a field of a record by 9.2. It returns the type and
 // whether the read is of an unlisted key of an open record.
-func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan syntax.Span, optional, present bool) *types.Type {
+//
+// shown is the type a message prints for the receiver: the receiver's own
+// type when it is a recursive name, so that the message names it (F17
+// 12.6); else nil, and the message prints the record.
+func (c *checker) readField(r *types.Record, shown *types.Type, key string, keySpan, recvSpan syntax.Span, optional, present bool) *types.Type {
+	if shown == nil {
+		shown = types.RecType(r)
+	}
 	if f, ok := r.Field(key); ok {
 		if !f.Optional || present {
 			return f.Type
@@ -859,7 +901,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		if optional {
 			return types.WithNull(f.Type)
 		}
-		c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
+		c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 		return f.Type
 	}
 	if present && !r.Rest.IsNever() {
@@ -875,7 +917,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		}
 		return types.Any
 	case r.Rest.IsNever():
-		c.m("", ty("type", types.RecType(r)), keyP(key)).diag("no-field", keySpan)
+		c.m("", ty("type", shown), keyP(key)).diag("no-field", keySpan)
 		return types.Never
 	}
 	if present {
@@ -884,7 +926,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 	if optional {
 		return types.WithNull(r.Rest)
 	}
-	c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
+	c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 	return r.Rest
 }
 
@@ -938,11 +980,11 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 		// A site of an unlisted key of an open record is on the field's key
 		// (12.2).
 		if f.Default != nil {
-			rt := c.readField(r, f.Key, f.KeySpan, f.KeySpan, true, false)
+			rt := c.readField(r, types.Shown(v), f.Key, f.KeySpan, f.KeySpan, true, false)
 			d := c.synth(f.Default, fs)
 			t = c.limitAt(bound, types.Join(types.Nonnull(rt), d))
 		} else {
-			t = c.readField(r, f.Key, f.KeySpan, f.KeySpan, false, false)
+			t = c.readField(r, types.Shown(v), f.Key, f.KeySpan, f.KeySpan, false, false)
 		}
 		c.setSlot(f, t)
 	}

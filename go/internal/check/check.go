@@ -402,7 +402,7 @@ func Check(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *Resu
 //
 // With first, it also records the types of the first check of each node
 // and slot (firstTy, firstSlots).
-func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect, first bool) *types.Type {
+func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect, first bool) (out *types.Type) {
 	*c = checker{
 		env: env, res: res,
 		slots:    make([]*types.Type, res.NSlots),
@@ -419,17 +419,33 @@ func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Ex
 		c.firstSlots = make([]*types.Type, res.NSlots)
 	}
 	c.findUses(prog)
+	// F17 12.5: a computation past the pair bound ends the check. Its one
+	// diagnostic is check-limit, on the innermost node in progress.
+	defer func() {
+		if r := recover(); r != nil {
+			ps, ok := r.(pairStop)
+			if !ok {
+				panic(r)
+			}
+			c.diags = nil
+			c.m("pairs").diag("check-limit", ps.sp)
+			out = types.Never
+		}
+	}()
 	var fs facts
 	for _, k := range prog.Consts {
 		c.constLine(k, fs)
 	}
 	t := c.synth(prog.Result, fs)
-	switch exp.Kind {
-	case ExpectType:
-		c.fitForm(prog.Result, t, exp.Type, formResult)
-	case ExpectCondition:
-		c.tested(prog.Result, t)
-	}
+	func() {
+		defer c.catchPairs(prog.Result)
+		switch exp.Kind {
+		case ExpectType:
+			c.fitForm(prog.Result, t, exp.Type, formResult)
+		case ExpectCondition:
+			c.tested(prog.Result, t)
+		}
+	}()
 	return t
 }
 

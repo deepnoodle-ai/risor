@@ -111,6 +111,10 @@ pub struct Program {
     /// count.
     pub(crate) var_index: Vec<u32>,
     pub(crate) vars_read: usize,
+    /// F17 12: the tables of the program's recursive types, which the types
+    /// of its conversions reach.
+    #[allow(dead_code)]
+    pub(crate) tables: Vec<std::sync::Arc<crate::check::ty::Table>>,
     /// F17 13.1: for each node, whether it is a higher-order lambda: a
     /// `Lambda` with a function parameter. A call of one binds lambdas.
     pub(crate) higher: Vec<bool>,
@@ -219,6 +223,7 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         max_depth,
         sites: None,
         ty: None,
+        tables: r.tables,
     })
 }
 
@@ -258,6 +263,9 @@ pub struct Resolution {
     /// F16 7.3: the type names that resolved, and the names of the type
     /// lines that declare.
     pub type_refs: Vec<TypeRef>,
+    /// F17 12: the tables of the program's recursive types, which the types
+    /// of a check reach.
+    pub tables: Vec<std::sync::Arc<crate::check::ty::Table>>,
     /// F17 13.2 item 4: the slots of the parameters written as a name with
     /// no default and no function type, whose hints name the fix.
     pub plain_params: HashSet<u32>,
@@ -285,6 +293,7 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         self_refs: HashMap::new(),
         annots: HashMap::new(),
         type_refs: Vec::new(),
+        tables: Vec::new(),
         open: vec![0],
         place: Vec::new(),
         frames: vec![Frame::default(); n],
@@ -297,18 +306,25 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         types,
     } = parsed.ast.kind(root)
     {
+        // F17 12.3 item 2: the type lines are resolved as one list first.
+        let declared = r.type_lines_list(types);
         // F16 3.1 item 1: the type lines and the `const` lines in the order
         // of the text, then the result.
-        let mut lines: Vec<(u32, Result<NodeId, &TypeLine>)> = consts
+        let mut lines: Vec<(u32, Result<NodeId, usize>)> = consts
             .iter()
             .map(|&c| (parsed.ast.span(c).start, Ok(c)))
-            .chain(types.iter().map(|t| (t.span.start, Err(t))))
+            .chain(
+                types
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| (t.span.start, Err(i))),
+            )
             .collect();
         lines.sort_by_key(|(s, _)| *s);
         for (_, l) in lines {
             match l {
                 Ok(c) => r.const_line(c),
-                Err(t) => r.type_line(t),
+                Err(i) => r.type_line(&types[i], declared[i].clone()),
             }
         }
         r.walk(*result);
@@ -335,6 +351,7 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         diags: d,
         annots: r.annots,
         type_refs: r.type_refs,
+        tables: r.tables,
         plain_params: r.plain_params,
     }
 }
@@ -371,6 +388,7 @@ struct Resolver<'a> {
     self_refs: HashMap<u32, (Range, String)>,
     annots: HashMap<u32, Option<Ty>>,
     type_refs: Vec<TypeRef>,
+    tables: Vec<std::sync::Arc<crate::check::ty::Table>>,
     /// The frames the walk is in, the program's first: the slots each holds
     /// so far (F17 11.5).
     open: Vec<u32>,
@@ -477,7 +495,7 @@ impl Resolver<'_> {
     fn program_type(&mut self, pt: &PType) -> Option<Ty> {
         let mut undefined = Vec::new();
         let mut found = Vec::new();
-        names_of(pt, &mut |n, span| match self.type_lookup(n) {
+        names_of(pt, true, &mut |n, span, _| match self.type_lookup(n) {
             None => undefined.push(span),
             Some((ty, declaration)) => found.push(TypeRef {
                 span,
@@ -493,85 +511,49 @@ impl Resolver<'_> {
             }
             return None;
         }
-        let mut bad = false;
-        let t = self.resolve_ptype(pt, &mut bad);
-        if bad {
+        let env = self.env;
+        let lines = std::mem::take(&mut self.type_lines);
+        let mut lookup = |n: &str, _top: bool| -> Ty {
+            env.data()
+                .names
+                .lookup(n)
+                .or_else(|| lines.get(n).map(|x| x.0.clone()))
+                .unwrap_or_default()
+        };
+        let t = self.checked_type(pt, &mut lookup);
+        self.type_lines = lines;
+        t
+    }
+
+    /// Resolve a program type whose names are known, and apply the rules of
+    /// F4 6.1 after the names: two records with no tag, the bound of pairs
+    /// (F17 12.5 item 7), then size and depth.
+    fn checked_type(&mut self, pt: &PType, lookup: &mut dyn FnMut(&str, bool) -> Ty) -> Option<Ty> {
+        let mut untagged = Vec::new();
+        let w = crate::check::ty::watch();
+        let t = ptype_ty(pt, true, lookup, &mut untagged);
+        let passed = w.passed();
+        drop(w);
+        if !untagged.is_empty() {
+            for s in untagged {
+                self.diag("untagged-union", s, "default", &[]);
+            }
+            return None;
+        }
+        if passed {
+            self.diag("check-limit", pt.span, "pairs", &[]);
+            return None;
+        }
+        // F4 3.5: depth (step 5) before size (step 6).
+        if t.depth() > 64 {
+            self.diag("check-limit", pt.span, "depth", &[]);
             return None;
         }
         if t.too_big() {
             self.diag("check-limit", pt.span, "size", &[]);
             return None;
         }
-        if t.depth() > 64 {
-            self.diag("check-limit", pt.span, "depth", &[]);
-            return None;
-        }
         Some(t)
-    }
-
-    /// One `PType`: the Join of its alternatives, with parentheses removed.
-    /// Two or more of them that are records is `untagged-union` here, and
-    /// the `PType` then counts as `never` for the one around it.
-    fn resolve_ptype(&mut self, pt: &PType, bad: &mut bool) -> Ty {
-        let mut alts: Vec<Ty> = Vec::new();
-        for a in &pt.alts {
-            let mut t = self.resolve_pprim(&a.prim, bad);
-            for _ in 0..a.suffixes {
-                t = Ty::list(t);
-            }
-            alts.push(t);
-        }
-        // F5 3.1, 3.2: two or more records form a tagged union, or are
-        // `untagged-union` on this `PType`.
-        match crate::check::ty::union_of_alts(&alts) {
-            Some(t) => t,
-            None => {
-                self.diag("untagged-union", pt.span, "default", &[]);
-                *bad = true;
-                Ty::never()
-            }
-        }
-    }
-
-    fn resolve_pprim(&mut self, p: &PPrim, bad: &mut bool) -> Ty {
-        match p {
-            PPrim::Null => Ty::null(),
-            PPrim::Bool => Ty::boolean(),
-            PPrim::Int => Ty::int(),
-            PPrim::Float => Ty::float(),
-            PPrim::String => Ty::string(),
-            PPrim::Any => Ty::any(),
-            PPrim::Never => Ty::never(),
-            PPrim::Lit(s) => Ty::lit(s),
-            PPrim::Map(inner) => Ty::map_of(self.resolve_ptype(inner, bad)),
-            PPrim::Record { fields, rest } => {
-                let mut fs = std::collections::BTreeMap::new();
-                for f in fields {
-                    let ty = self.resolve_ptype(&f.ty, bad);
-                    fs.insert(
-                        f.key.clone(),
-                        crate::check::ty::Field {
-                            ty,
-                            optional: f.optional,
-                        },
-                    );
-                }
-                let rest = match rest {
-                    None => Ty::never(),
-                    Some(None) => Ty::any(),
-                    Some(Some(t)) => self.resolve_ptype(t, bad),
-                };
-                Ty::rec(crate::check::ty::Rec::new(fs, rest))
-            }
-            PPrim::Name(n, _) => self.type_lookup(n).map(|x| x.0).unwrap_or_default(),
-            PPrim::Paren(inner) => self.resolve_paren(inner, bad),
-        }
-    }
-
-    /// A parenthesized `PType` alternative: its own alternatives count for
-    /// the records of the `PType` around it only through its Join.
-    fn resolve_paren(&mut self, inner: &PType, bad: &mut bool) -> Ty {
-        self.resolve_ptype(inner, bad)
     }
 
     /// A type name in scope (F16 3.1 item 2): a named or opaque type of the
@@ -590,8 +572,248 @@ impl Resolver<'_> {
         self.annots.insert(pt.span.start, r);
     }
 
-    /// A type line (F16 3.1 items 2 to 6).
-    fn type_line(&mut self, t: &TypeLine) {
+    /// F17 12.2, 12.3: resolve the type lines of a program as one list,
+    /// before the walk. Gives what each line declares, by its index in
+    /// `types`; `None` for a line that fails.
+    fn type_lines_list(&mut self, types: &[TypeLine]) -> Vec<Option<Ty>> {
+        use crate::check::list;
+        use crate::check::ty::{beside_its_kind, Ref, Table};
+        let n = types.len();
+        let env = self.env;
+        let names = &env.data().names;
+        // 12.2 item 1: a line that is `name-clash` names nothing.
+        let clash: Vec<bool> = types
+            .iter()
+            .map(|t| names.lookup(&t.name).is_some())
+            .collect();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| types[i].span.start);
+        let mut rank = vec![0usize; n];
+        for (r, &i) in order.iter().enumerate() {
+            rank[i] = r;
+        }
+        // The lines of each name that does not clash, in order of place.
+        let mut by_name: HashMap<&str, Vec<usize>> = HashMap::new();
+        for &j in &order {
+            if !clash[j] {
+                by_name.entry(types[j].name.as_str()).or_default().push(j);
+            }
+        }
+        // The line a name names from line i: the last of that name at or
+        // before it, else the first after it.
+        let named = |i: usize, name: &str| -> Option<usize> {
+            let lines = by_name.get(name)?;
+            let at = lines.partition_point(|&j| rank[j] <= rank[i]);
+            Some(lines[at.saturating_sub(1)])
+        };
+        #[derive(Clone)]
+        enum Target {
+            Env(Ty),
+            Line(usize),
+            Nothing,
+        }
+        // Each name of each line: its span, whether at a top place, and what
+        // it names.
+        let mut line_names: Vec<Vec<(Range, bool, Target)>> = Vec::with_capacity(n);
+        let mut uses: Vec<Vec<(usize, bool)>> = Vec::with_capacity(n);
+        for (i, t) in types.iter().enumerate() {
+            let mut ns = Vec::new();
+            let mut us = Vec::new();
+            names_of(&t.ty, true, &mut |name, span, top| {
+                let target = match names.lookup(name) {
+                    Some(ty) => Target::Env(ty),
+                    None => match named(i, name) {
+                        Some(j) => {
+                            us.push((j, top));
+                            Target::Line(j)
+                        }
+                        None => Target::Nothing,
+                    },
+                };
+                ns.push((span, top, target));
+            });
+            line_names.push(ns);
+            uses.push(us);
+        }
+        let plan = list::plan(&list::Graph { uses });
+        let mut comp_of = vec![0usize; n];
+        for (c, comp) in plan.components.iter().enumerate() {
+            for &i in comp {
+                comp_of[i] = c;
+            }
+        }
+        let mut declared: Vec<Option<Ty>> = vec![None; n];
+        let mut failed = vec![false; n];
+        // Each line's index in its component's table.
+        let mut at_in_comp = vec![0u32; n];
+        for (c, comp) in plan.components.iter().enumerate() {
+            // 12.2 items 2, 3 and 7: an undefined name, a cycle with no
+            // guard, or a name of a failed line of another component.
+            let mut bad = false;
+            for &i in comp {
+                for (span, _, target) in &line_names[i] {
+                    let undefined = match target {
+                        Target::Nothing => true,
+                        Target::Line(j) => comp_of[*j] != c && failed[*j],
+                        Target::Env(_) => false,
+                    };
+                    if undefined {
+                        let name = self.text(*span);
+                        self.diag("undefined-name", *span, "type", &[("name", name)]);
+                        bad = true;
+                    }
+                }
+            }
+            for &i in comp {
+                if plan.direct[i] {
+                    let p = [("name", types[i].name.clone())];
+                    self.diag("circular-type", types[i].name_span, "direct", &p);
+                    bad = true;
+                }
+            }
+            if bad {
+                for &i in comp {
+                    failed[i] = true;
+                }
+                continue;
+            }
+            if !plan.recursive[comp[0]] {
+                let i = comp[0];
+                let decl = &declared;
+                let mut lookup = |name: &str, _top: bool| -> Ty {
+                    match names.lookup(name) {
+                        Some(t) => t,
+                        None => named(i, name)
+                            .and_then(|j| decl[j].clone())
+                            .unwrap_or_default(),
+                    }
+                };
+                match self.checked_type(&types[i].ty, &mut lookup) {
+                    Some(t) => declared[i] = Some(t),
+                    None => failed[i] = true,
+                }
+                continue;
+            }
+            // A recursive component: a table, and each line resolved after
+            // the lines it names at top places.
+            let table = Table::new();
+            for (k, &i) in comp.iter().enumerate() {
+                at_in_comp[i] = k as u32;
+            }
+            let at = &at_in_comp;
+            let idx = |i: usize| at[i];
+            let mut seq: Vec<usize> = comp.clone();
+            seq.sort_by_key(|&i| plan.top_rank[i]);
+            let mut defs: Vec<Option<Ty>> = vec![None; comp.len()];
+            let mut text_bad = false;
+            for &i in &seq {
+                let decl = &declared;
+                let defs_now = &defs;
+                let table = &table;
+                let mut lookup = |name: &str, top: bool| -> Ty {
+                    if let Some(t) = names.lookup(name) {
+                        return t;
+                    }
+                    let Some(j) = named(i, name) else {
+                        return Ty::never();
+                    };
+                    if comp_of[j] == c {
+                        if top {
+                            return defs_now[idx(j) as usize].clone().unwrap_or_default();
+                        }
+                        return Ty {
+                            refs: [Ref::new(table, idx(j), &types[j].name)].into(),
+                            ..Ty::default()
+                        };
+                    }
+                    let d = decl[j].clone().unwrap_or_default();
+                    match (top, plan.recursive[j]) {
+                        (true, true) => d
+                            .refs
+                            .iter()
+                            .next()
+                            .and_then(|r| r.definition())
+                            .unwrap_or_default(),
+                        _ => d,
+                    }
+                };
+                match self.checked_type(&types[i].ty, &mut lookup) {
+                    Some(t) => defs[idx(i) as usize] = Some(t),
+                    None => text_bad = true,
+                }
+            }
+            if !text_bad {
+                let ds: Vec<Ty> = defs.iter().map(|d| d.clone().unwrap_or_default()).collect();
+                table.set(ds.clone());
+                // 12.2 item 6: a reference beside a type of its kind.
+                for &i in comp {
+                    if let Some(name) = beside_its_kind(&ds[idx(i) as usize]) {
+                        self.diag(
+                            "circular-type",
+                            types[i].name_span,
+                            "union",
+                            &[("name", name)],
+                        );
+                        text_bad = true;
+                        continue;
+                    }
+                    // 12.6 item 1: the definition is tested with each
+                    // reference at its top replaced (12.2 item 4), which a
+                    // reference through a line that is not recursive makes
+                    // larger than the line's text.
+                    let top = Ref::new(&table, idx(i), &types[i].name)
+                        .unfolding()
+                        .unwrap_or_default();
+                    // F4 3.5: depth (step 5) before size (step 6).
+                    let template = if top.depth() > 64 {
+                        "depth"
+                    } else if top.too_big() {
+                        "size"
+                    } else {
+                        continue;
+                    };
+                    self.diag("check-limit", types[i].ty.span, template, &[]);
+                    text_bad = true;
+                }
+            }
+            if text_bad {
+                for &i in comp {
+                    failed[i] = true;
+                }
+                continue;
+            }
+            for &i in comp {
+                declared[i] = Some(Ty {
+                    refs: [Ref::new(&table, idx(i), &types[i].name)].into(),
+                    ..Ty::default()
+                });
+            }
+            self.tables.push(table);
+        }
+        // F16 7.3: each name of a line's type that stands for a type.
+        for ns in &line_names {
+            for (span, _, target) in ns {
+                let r = match target {
+                    Target::Env(t) => Some((t.clone(), None)),
+                    Target::Line(j) => declared[*j].clone().map(|t| (t, Some(types[*j].name_span))),
+                    Target::Nothing => None,
+                };
+                if let Some((ty, declaration)) = r {
+                    self.type_refs.push(TypeRef {
+                        span: *span,
+                        ty,
+                        declaration,
+                    });
+                }
+            }
+        }
+        declared
+    }
+
+    /// A type line in the walk (F16 3.1 items 2 to 6): its own diagnostics,
+    /// and what it declares for the annotations after it. Its type was
+    /// resolved with the list (F17 12.3).
+    fn type_line(&mut self, t: &TypeLine, declared: Option<Ty>) {
         let p = [("name", t.name.clone())];
         let env_ty = self.env.data().names.lookup(&t.name);
         if env_ty.is_some() {
@@ -599,8 +821,7 @@ impl Resolver<'_> {
         } else if !self.type_line_names.insert(t.name.clone()) {
             self.diag(code::STATIC[5], t.name_span, "default", &p);
         }
-        let ty = self.program_type(&t.ty);
-        match (env_ty, ty) {
+        match (env_ty, declared) {
             (Some(e), _) => self.type_refs.push(TypeRef {
                 span: t.name_span,
                 ty: e,
@@ -1507,22 +1728,97 @@ pub(crate) fn lit_key(l: &Lit) -> LitKey {
     }
 }
 
-/// Every type name of a program type, with its span, in order.
-fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Range)) {
+/// Every type name of a program type, with its span and whether it stands
+/// at a top place (F17 12.1), in order.
+fn names_of(pt: &PType, top: bool, f: &mut dyn FnMut(&str, Range, bool)) {
     for a in &pt.alts {
+        let top = top && a.suffixes == 0;
         match &a.prim {
-            PPrim::Name(n, s) => f(n, *s),
-            PPrim::Map(inner) | PPrim::Paren(inner) => names_of(inner, f),
+            PPrim::Name(n, s) => f(n, *s, top),
+            PPrim::Paren(inner) => names_of(inner, top, f),
+            PPrim::Map(inner) => names_of(inner, false, f),
             PPrim::Record { fields, rest } => {
                 for fl in fields {
-                    names_of(&fl.ty, f);
+                    names_of(&fl.ty, false, f);
                 }
                 if let Some(Some(r)) = rest {
-                    names_of(r, f);
+                    names_of(r, false, f);
                 }
             }
             _ => {}
         }
+    }
+}
+
+/// One `PType`: the Join of its alternatives, with parentheses removed. Two
+/// or more of them that are records is `untagged-union`, whose span is
+/// added to `untagged`; the `PType` then counts as `never` for the one
+/// around it. `lookup` gives the type a name stands for, and is told
+/// whether it stands at a top place (F17 12.2 item 4).
+fn ptype_ty(
+    pt: &PType,
+    top: bool,
+    lookup: &mut dyn FnMut(&str, bool) -> Ty,
+    untagged: &mut Vec<Range>,
+) -> Ty {
+    let mut alts: Vec<Ty> = Vec::new();
+    for a in &pt.alts {
+        let mut t = pprim_ty(&a.prim, top && a.suffixes == 0, lookup, untagged);
+        for _ in 0..a.suffixes {
+            t = Ty::list(t);
+        }
+        alts.push(t);
+    }
+    // F5 3.1, 3.2: two or more records form a tagged union, or are
+    // `untagged-union` on this `PType`.
+    match crate::check::ty::union_of_alts(&alts) {
+        Some(t) => t,
+        None => {
+            untagged.push(pt.span);
+            Ty::never()
+        }
+    }
+}
+
+fn pprim_ty(
+    p: &PPrim,
+    top: bool,
+    lookup: &mut dyn FnMut(&str, bool) -> Ty,
+    untagged: &mut Vec<Range>,
+) -> Ty {
+    match p {
+        PPrim::Null => Ty::null(),
+        PPrim::Bool => Ty::boolean(),
+        PPrim::Int => Ty::int(),
+        PPrim::Float => Ty::float(),
+        PPrim::String => Ty::string(),
+        PPrim::Any => Ty::any(),
+        PPrim::Never => Ty::never(),
+        PPrim::Lit(s) => Ty::lit(s),
+        PPrim::Map(inner) => Ty::map_of(ptype_ty(inner, false, lookup, untagged)),
+        PPrim::Record { fields, rest } => {
+            let mut fs = std::collections::BTreeMap::new();
+            for f in fields {
+                let ty = ptype_ty(&f.ty, false, lookup, untagged);
+                fs.insert(
+                    f.key.clone(),
+                    crate::check::ty::Field {
+                        ty,
+                        optional: f.optional,
+                    },
+                );
+            }
+            let rest = match rest {
+                None => Ty::never(),
+                Some(None) => Ty::any(),
+                Some(Some(t)) => ptype_ty(t, false, lookup, untagged),
+            };
+            Ty::rec(crate::check::ty::Rec::new(fs, rest))
+        }
+        PPrim::Name(n, _) => lookup(n, top),
+        // A parenthesized `PType` alternative: its own alternatives count
+        // for the records of the `PType` around it only through its Join.
+        PPrim::Paren(inner) => ptype_ty(inner, top, lookup, untagged),
     }
 }
 
