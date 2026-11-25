@@ -1056,7 +1056,7 @@ else that is valid in both means the same, or is a compile error.
 
 | Group | Entries | Default | Why here |
 | --- | --- | --- | --- |
-| `core` | 16 functions, 47 methods | on | Exact, and what every consumer uses |
+| `core` | 16 functions, 47 methods: the 15 and 41 of Core (`suite/library.json`), `walk` (F17) and the 6 methods of F7 | on | Exact, and what every consumer uses |
 | `math` | 12 functions, 2 constants | off | The only implementation-defined entries |
 | `time` | 3 functions | off | No consumer today |
 | `json` | 2 functions | off | `parse` returns `any`. Under a strict host its result is used only after `as` or `is` (`07`) |
