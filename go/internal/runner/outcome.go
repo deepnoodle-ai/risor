@@ -112,8 +112,7 @@ func outcome(c *casefile.Case) string {
 				if d.Span == nil && d.Code == "not-conforming" { // F10 10.4: step 5a; F16 12.5: entry conformance
 					b.WriteString(`,"path":`)
 					writeJSON(&b, d.Path)
-				}
-				if !(c.Load && d.Span == nil && d.Code == "not-conforming") && !diag.LimitCodes[d.Code] { // F8 8; F10 10.4 keeps load path-only
+				} else if !diag.LimitCodes[d.Code] { // F8 8; host-boundary not-conforming is path-only
 					b.WriteString(`,"trace":[`)
 					for j, t := range d.Trace {
 						if j > 0 {
