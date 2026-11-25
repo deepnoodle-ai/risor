@@ -1175,6 +1175,7 @@ func (p *parser) primary() Node {
 	case TemplateHead:
 		return p.template()
 	case LParen:
+		m := p.mark()
 		p.open(LParen)
 		e := p.expr()
 		if _, isName := e.(*Ident); isName && p.tok.Kind == Colon && p.toks[p.i-2].Kind == LParen {
@@ -1182,6 +1183,7 @@ func (p *parser) primary() Node {
 		}
 		p.expect(RParen)
 		p.exit()
+		setOuter(e, Span{m.start, p.prevEnd})
 		return e
 	case LBrack:
 		return p.list()

@@ -135,7 +135,9 @@ func AsInt(v any) (int64, bool) {
 }
 
 // Text is the program's own text: the source between the start and the
-// end of its span, without the white space and comments around it. For a
+// end of its span, without surrounding white space, comments, or an optional
+// trailing `;` after a result expression (outer parentheses around a result
+// expression are kept; export-only programs keep their final `;`). For a
 // program made of a part of a larger text, such as a call argument
 // (CallSite.Args) or a template's part, it is that part alone.
 func (x *Expr) Text() string {
@@ -144,7 +146,8 @@ func (x *Expr) Text() string {
 		sp := x.tree.Span()
 		return x.file.Text(sp.Start, sp.End)
 	}
-	start, end := r.Span().Start, r.Span().End
+	sp := syntax.Outer(r)
+	start, end := sp.Start, sp.End
 	if len(x.tree.Consts) > 0 && x.tree.Consts[0].Span().Start < start {
 		start = x.tree.Consts[0].Span().Start
 	}

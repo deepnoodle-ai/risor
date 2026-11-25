@@ -128,7 +128,13 @@ fn compile_run_and_measure() {
     assert_eq!(x.text(), "n * 2");
     assert_eq!(parse("1 + 2;").unwrap().text(), "1 + 2");
     assert_eq!(parse("  1 + 2 ; ").unwrap().text(), "1 + 2");
+    assert_eq!(parse("(1 + 2);").unwrap().text(), "(1 + 2)");
+    assert_eq!(parse("((1 + 2));").unwrap().text(), "((1 + 2))");
     assert_eq!(parse("const a = 1; a;").unwrap().text(), "const a = 1; a");
+    assert_eq!(
+        parse("const a = 1; (a + 1);").unwrap().text(),
+        "const a = 1; (a + 1)"
+    );
     assert_eq!(
         parse("type Id = int; const a: Id = 1; a;").unwrap().text(),
         "type Id = int; const a: Id = 1; a"
@@ -142,6 +148,21 @@ fn compile_run_and_measure() {
             .unwrap()
             .text(),
         "export const f = (x: int) => x;"
+    );
+    assert_eq!(
+        parse("f((a + 1))").unwrap().analyze().calls[0].args[0]
+            .as_ref()
+            .unwrap()
+            .text(),
+        "(a + 1)"
+    );
+    assert_eq!(
+        parse_template("${{(a + 1)}}")
+            .unwrap()
+            .part(0)
+            .unwrap()
+            .text(),
+        "(a + 1)"
     );
     let p = env.compile(&x, CompileOptions::default()).unwrap();
     assert_eq!(p.check_result().unwrap().ty, Type::INT);

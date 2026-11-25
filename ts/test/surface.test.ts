@@ -145,10 +145,15 @@ describe("E.4: programs", () => {
     assert.equal(parse("  // note\n x + 1 ").text, "x + 1");
     assert.equal(parse("1 + 2;").text, "1 + 2");
     assert.equal(parse("  1 + 2 ; ").text, "1 + 2");
+    assert.equal(parse("(1 + 2);").text, "(1 + 2)");
+    assert.equal(parse("((1 + 2));").text, "((1 + 2))");
     assert.equal(parse("const a = 1; a;").text, "const a = 1; a");
+    assert.equal(parse("const a = 1; (a + 1);").text, "const a = 1; (a + 1)");
     assert.equal(parse("type Id = int; const a: Id = 1; a;").text, "type Id = int; const a: Id = 1; a");
     assert.equal(parse("export const f = (x: int) => x;").text, "export const f = (x: int) => x;");
     assert.equal(parse("  // note\nexport const f = (x: int) => x;  ").text, "export const f = (x: int) => x;");
+    assert.equal(parse("f((a + 1))").analyze().calls[0]?.args[0]?.text, "(a + 1)");
+    assert.equal(parseTemplate("${{(a + 1)}}").part(0)?.text, "(a + 1)");
     assert.equal(parse("g(x => f(x))").analyze().calls.find((c) => c.name === "f")?.inLambda, true);
   });
   test("check gives a Type and the sites; a failure is thrown with line spans", () => {

@@ -2672,11 +2672,15 @@ code for it.
 
 `part(i)` counts the parts only, from 0, not the segments. It gives the part's
 expression as a program, or absent when there is no part `i`. In all three
-bindings, `Expr.text` / `Text()` returns the program's own text slice between
-the start and end of its span (without surrounding white space or comments):
-for a part of a larger text (`Template.part(i)` or `CallSite.args[i]`), that
-is the part's own slice, while spans inside diagnostics from checking, compiling
-or running that `Expr` remain positions in the whole source text.
+bindings, `Expr.text` / `Text()` returns the program's own text without
+surrounding white space, comments, or an optional trailing `;` after a result
+expression (export-only programs with no result expression keep their final
+`;`). Outer parentheses around a result expression are kept, so
+`parse("(1 + 2);")` gives `"(1 + 2)"` and `parse("const a = 1; (a + 1);")`
+gives `"const a = 1; (a + 1)"`. For a part of a larger text (`Template.part(i)`
+or `CallSite.args[i]`), that is the part's own slice including any outer
+parentheses, while spans inside diagnostics from checking, compiling or running
+that `Expr` remain positions in the whole source text.
 
 ### E.6 Host functions and values
 

@@ -48,6 +48,25 @@ func TestExprText(t *testing.T) {
 	assert.True(t, tp.Part(0) == tp.Segments()[1].Expr)
 	assert.True(t, tp.Part(1) == nil)
 	assert.True(t, tp.Part(-1) == nil)
+
+	for _, tc := range []struct{ src, want string }{
+		{"1 + 2;", "1 + 2"},
+		{"  1 + 2 ; ", "1 + 2"},
+		{"(1 + 2);", "(1 + 2)"},
+		{"((1 + 2));", "((1 + 2))"},
+		{"const a = 1; (a + 1);", "const a = 1; (a + 1)"},
+		{"export const f = (x: int) => x;", "export const f = (x: int) => x;"},
+	} {
+		px, err := risor.Parse(tc.src)
+		assert.NoError(t, err)
+		assert.Equal(t, px.Text(), tc.want)
+	}
+	pcall, err := risor.Parse("f((a + 1))")
+	assert.NoError(t, err)
+	assert.Equal(t, pcall.Analyze().Calls[0].Args[0].Text(), "(a + 1)")
+	ptp, err := risor.ParseTemplate("${{(a + 1)}}")
+	assert.NoError(t, err)
+	assert.Equal(t, ptp.Part(0).Text(), "(a + 1)")
 }
 
 func TestSchemaOfGoValues(t *testing.T) {
