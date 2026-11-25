@@ -92,9 +92,9 @@ export class Run {
     if (this.steps + n > this.stepLimit) {
       throw new RunFailure("steps-exceeded", undefined, "default", { limit: this.stepLimit });
     }
-    this.steps += n;
+    this.steps = Math.min(this.steps + n, Number.MAX_SAFE_INTEGER);
     if (this.steps >= this.nextCheck) {
-      this.nextCheck = this.steps + 1024;
+      this.nextCheck = Math.min(this.steps + 1024, Number.MAX_SAFE_INTEGER);
       this.checkTime();
     }
   }
@@ -105,7 +105,7 @@ export class Run {
     if (this.units + n > this.unitLimit) {
       throw new RunFailure("allocation-exceeded", undefined, "default", { limit: this.unitLimit });
     }
-    this.units += n;
+    this.units = Math.min(this.units + n, Number.MAX_SAFE_INTEGER);
   }
 
   /** The deadline and the cancellation signal (02 8.3). */

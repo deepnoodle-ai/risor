@@ -8,7 +8,7 @@
 
 import { RunFailure } from "../eval/failure.ts";
 import { Rendering, jsonText, renderedText } from "../eval/ops.ts";
-import { decimalToDouble, norm, numberToText, parseDecimal } from "../value/number.ts";
+import { norm, numberToText, parseDecimal } from "../value/number.ts";
 import { RMap, size, div64 } from "../value/value.ts";
 import { implement } from "./registry.ts";
 import type { CallContext } from "./registry.ts";
@@ -18,13 +18,15 @@ import type { CallContext } from "./registry.ts";
 implement(null, "json.stringify", (c) => {
   const out = new Rendering();
   jsonText(c.run, c.args[0], c.span, out);
-  return renderedText(c.run, out);
+  return renderedText(c.run, out, (full) => jsonText(c.run, c.args[0], c.span, full));
 });
 
 implement(null, "json.parse", (c) => {
   const s = c.args[0] as string;
   c.run.charge(8 * size(s));
-  const r = scanJson(s);
+  // Pass 1: validate grammar, find bad numbers, depth, value count and units
+  // before allocating the parsed value tree (02 6.2 item 3).
+  const r = scanJson(s, false);
   if (r === null) throw new RunFailure("invalid-argument", c.span, "not-json", {});
   // f06 6.2.4: the first bad number in the text, then the depth.
   if (r.numberFailure === "integer-range") throw new RunFailure("invalid-argument", c.span, "integer-range", {});
@@ -32,7 +34,7 @@ implement(null, "json.parse", (c) => {
   c.run.testDepth(c.run.depth + r.depth);
   c.run.charge(r.values);
   c.run.alloc(r.units);
-  return r.value;
+  return scanJson(s, true)!.value;
 });
 
 interface Scanned {
@@ -46,15 +48,19 @@ interface Scanned {
   numberFailure: "integer-range" | "number-range" | null;
 }
 
-type Frame = { list: unknown[] } | { map: RMap; key: string };
+type Frame =
+  | { list: unknown[]; len: number }
+  | { map: RMap | null; keys: Set<string> | null; key: string };
 
 const NUMBER = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/y;
 
 /**
  * One pass over a JSON text (f06 6.2.1 to 6.2.6), with an explicit stack so
- * that the host's stack does not grow with the nesting. null: not JSON.
+ * that the host's stack does not grow with the nesting. When `build` is false,
+ * measures values, units, depth and number validity without allocating values.
+ * null: not JSON.
  */
-function scanJson(s: string): Scanned | null {
+function scanJson(s: string, build: boolean): Scanned | null {
   const n = s.length;
   let i = 0;
   let values = 0;
@@ -79,6 +85,49 @@ function scanJson(s: string): Scanned | null {
       v = v * 16 + d;
     }
     return v;
+  };
+  /** Measure a string at i (on its quote) without building it; returns UTF-16 length or -1. */
+  const strLen = (): number => {
+    i++;
+    let len = 0;
+    for (;;) {
+      if (i >= n) return -1;
+      const ch = s.charCodeAt(i);
+      if (ch === 0x22) {
+        i++;
+        return len;
+      }
+      if (ch < 0x20) return -1;
+      if (ch !== 0x5c) {
+        i++;
+        len++;
+        continue;
+      }
+      const e = s.charCodeAt(i + 1);
+      switch (e) {
+        case 0x22: case 0x5c: case 0x2f: case 0x62: case 0x66: case 0x6e: case 0x72: case 0x74:
+          i += 2;
+          len += 1;
+          break;
+        case 0x75: {
+          const v = hex4(i + 2);
+          if (v < 0) return -1;
+          i += 6;
+          if (v >= 0xd800 && v <= 0xdbff && s.charCodeAt(i) === 0x5c && s.charCodeAt(i + 1) === 0x75) {
+            const w = hex4(i + 2);
+            if (w >= 0xdc00 && w <= 0xdfff) {
+              i += 6;
+              len += 2;
+              break;
+            }
+          }
+          len += 1;
+          break;
+        }
+        default:
+          return -1;
+      }
+    }
   };
   /** A string at i (on its quote); null when it is not one. */
   const str = (): string | null => {
@@ -144,14 +193,14 @@ function scanJson(s: string): Scanned | null {
         numberFailure ??= "integer-range";
         return 0;
       }
-      return norm(Number(text));
+      return build ? norm(Number(text)) : 0;
     }
     const x = parseDecimal(text)!;
     if (!Number.isFinite(x)) {
       numberFailure ??= "number-range";
       return 0;
     }
-    return norm(x);
+    return build ? norm(x) : 0;
   };
   const key = (): string | null => {
     if (s.charCodeAt(i) !== 0x22) return null;
@@ -172,35 +221,41 @@ function scanJson(s: string): Scanned | null {
     values++;
     if (ch === 0x5b) {
       i++;
-      stack.push({ list: [] });
+      stack.push({ list: build ? [] : (null as unknown as unknown[]), len: 0 });
       if (stack.length > depth) depth = stack.length;
       ws();
       if (s.charCodeAt(i) !== 0x5d) continue;
       i++;
       stack.pop();
       units += 1;
-      v = [];
+      v = build ? [] : null;
     } else if (ch === 0x7b) {
       i++;
-      const map = new RMap();
       ws();
       if (s.charCodeAt(i) === 0x7d) {
         i++;
         units += 1;
         if (stack.length + 1 > depth) depth = stack.length + 1;
-        v = map;
+        v = build ? new RMap() : null;
       } else {
         const k = key();
         if (k === null) return null;
-        stack.push({ map, key: k });
+        stack.push(build ? { map: new RMap(), keys: null, key: k } : { map: null, keys: new Set<string>(), key: k });
         if (stack.length > depth) depth = stack.length;
         continue;
       }
     } else if (ch === 0x22) {
-      const t = str();
-      if (t === null) return null;
-      units += 1 + size(t);
-      v = t;
+      if (build) {
+        const t = str();
+        if (t === null) return null;
+        units += 1 + size(t);
+        v = t;
+      } else {
+        const len = strLen();
+        if (len < 0) return null;
+        units += 1 + div64(len);
+        v = null;
+      }
     } else if (s.startsWith("true", i)) {
       i += 4;
       v = true;
@@ -223,8 +278,9 @@ function scanJson(s: string): Scanned | null {
         break outer;
       }
       ws();
-      if ("list" in f) {
-        f.list.push(v);
+      if ("len" in f) {
+        if (build) f.list.push(v);
+        f.len++;
         if (s.charCodeAt(i) === 0x2c) {
           i++;
           ws();
@@ -233,10 +289,11 @@ function scanJson(s: string): Scanned | null {
         if (s.charCodeAt(i) !== 0x5d) return null;
         i++;
         stack.pop();
-        units += 1 + f.list.length;
-        v = f.list;
+        units += 1 + f.len;
+        v = build ? f.list : null;
       } else {
-        f.map.set(f.key, v);
+        if (build) f.map!.set(f.key, v);
+        else f.keys!.add(f.key);
         if (s.charCodeAt(i) === 0x2c) {
           i++;
           ws();
@@ -248,8 +305,8 @@ function scanJson(s: string): Scanned | null {
         if (s.charCodeAt(i) !== 0x7d) return null;
         i++;
         stack.pop();
-        units += 1 + 2 * f.map.size;
-        v = f.map;
+        units += 1 + 2 * (build ? f.map!.size : f.keys!.size);
+        v = build ? f.map : null;
       }
     }
   }
@@ -297,13 +354,28 @@ function civilFromDays(z: number): [number, number, number] {
 
 const DATE_TIME = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?(?:Z|([+-])([0-9]{2}):([0-9]{2}))$/;
 
-/** The nearest double to W + 0.digits, W whole (f06 7.2 item 4). */
+/** The nearest double to W + 0.digits, W whole (f06 7.2 item 4), in O(digits.length) time. */
 function wholePlusFraction(w: number, digits: string): number {
-  if (digits === "") return norm(w);
-  const k = digits.length;
-  const n = BigInt(w) * 10n ** BigInt(k) + BigInt(digits);
-  const x = n < 0n ? -decimalToDouble(-n, -k) : decimalToDouble(n, -k);
-  return norm(x);
+  let end = digits.length;
+  while (end > 0 && digits.charCodeAt(end - 1) === 0x30) end--;
+  if (end === 0) return norm(w);
+  const frac = digits.slice(0, end);
+  if (w >= 0) return norm(parseDecimal(`${w}.${frac}`)!);
+  // W < 0 and 0 < 0.frac < 1: W + 0.frac = -((|W| - 1) + (1 - 0.frac)).
+  const whole = -w - 1;
+  const sub = new Array<string>(frac.length);
+  let borrow = 0;
+  for (let i = frac.length - 1; i >= 0; i--) {
+    const d = frac.charCodeAt(i) - 0x30 + borrow;
+    if (d === 0) {
+      sub[i] = "0";
+      borrow = 0;
+    } else {
+      sub[i] = String(10 - d);
+      borrow = 1;
+    }
+  }
+  return norm(-parseDecimal(`${whole}.${sub.join("")}`)!);
 }
 
 implement(null, "time.parse", (c) => {
@@ -359,26 +431,66 @@ implement(null, "time.format", (c) => {
 
 const DURATION = /^-?(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h|d))+$/;
 const TERM = /([0-9]+)(?:\.([0-9]+))?(ms|s|m|h|d)/g;
-/** Each unit in thousandths of a second. */
-const UNIT_MS: Record<string, bigint> = { ms: 1n, s: 1000n, m: 60000n, h: 3600000n, d: 86400000n };
+/** Each unit in seconds, as a decimal scale and shift: ms is 1e-3, s is 1, m is 60, h is 3600, d is 86400. */
+const UNIT_SCALE: Record<string, { mul: number; shift: number }> = {
+  ms: { mul: 1, shift: -3 },
+  s: { mul: 1, shift: 0 },
+  m: { mul: 60, shift: 0 },
+  h: { mul: 3600, shift: 0 },
+  d: { mul: 86400, shift: 0 },
+};
 
 implement(null, "time.duration", (c) => {
   const s = c.args[0] as string;
   c.run.charge(size(s));
   if (!DURATION.test(s)) throw new RunFailure("invalid-argument", c.span, "not-a-duration", { text: s });
-  // f06 7.4 item 3: the exact sum, in thousandths of a second scaled by 10^k, rounded once.
-  const terms: { n: bigint; k: number; unit: bigint }[] = [];
-  let k = 0;
+  // f06 7.4 item 3: exact sum in O(len(s)) column addition, rounded once.
+  const terms: { ip: string; fp: string; mul: number; shift: number }[] = [];
+  let maxFrac = 0;
+  let maxInt = 1;
   for (const m of s.matchAll(TERM)) {
-    const frac = m[2] ?? "";
-    terms.push({ n: BigInt(m[1] + frac), k: frac.length, unit: UNIT_MS[m[3]] });
-    if (frac.length > k) k = frac.length;
+    const ip = m[1];
+    const fp = m[2] ?? "";
+    const { mul, shift } = UNIT_SCALE[m[3]];
+    terms.push({ ip, fp, mul, shift });
+    const frac = Math.max(0, fp.length - shift);
+    if (frac > maxFrac) maxFrac = frac;
+    const intLen = ip.length + Math.max(0, shift);
+    if (intLen > maxInt) maxInt = intLen;
   }
-  let sum = 0n;
-  for (const t of terms) sum += t.n * t.unit * 10n ** BigInt(k - t.k);
-  let x = decimalToDouble(sum, -(k + 3));
+  const cols = new Float64Array(maxFrac + maxInt + 12);
+  for (const t of terms) {
+    for (let i = 0; i < t.ip.length; i++) {
+      const d = t.ip.charCodeAt(t.ip.length - 1 - i) - 0x30;
+      if (d !== 0) cols[maxFrac + t.shift + i] += d * t.mul;
+    }
+    for (let i = 0; i < t.fp.length; i++) {
+      const d = t.fp.charCodeAt(i) - 0x30;
+      if (d !== 0) cols[maxFrac + t.shift - 1 - i] += d * t.mul;
+    }
+  }
+  // Propagate carries in base 10. Each column sum is at most 9 * 86400 * len(s) < 2^45, exact in float64.
+  let carry = 0;
+  for (let i = 0; i < cols.length; i++) {
+    const sum = cols[i] + carry;
+    carry = Math.floor(sum / 10);
+    cols[i] = sum - carry * 10;
+  }
+  let top = cols.length - 1;
+  while (top > maxFrac && cols[top] === 0) top--;
+  const chars: string[] = [];
+  if (s.startsWith("-")) chars.push("-");
+  for (let i = top; i >= maxFrac; i--) chars.push(String(cols[i]));
+  if (maxFrac > 0) {
+    let lo = 0;
+    while (lo < maxFrac && cols[lo] === 0) lo++;
+    if (lo < maxFrac) {
+      chars.push(".");
+      for (let i = maxFrac - 1; i >= lo; i--) chars.push(String(cols[i]));
+    }
+  }
+  const x = parseDecimal(chars.join(""))!;
   if (!Number.isFinite(x)) throw new RunFailure("number-range", c.span, "entry", { name: "time.duration" });
-  if (s.startsWith("-")) x = -x;
   return norm(x);
 });
 

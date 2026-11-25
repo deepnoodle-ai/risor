@@ -1011,25 +1011,47 @@ impl<'h> Run<'h> {
                 } else {
                     (length - n as f64) as usize
                 };
-                // Only as much of `fill` is read as the result uses: its first
-                // `missing` code points. When `fill` is shorter, all of it is
-                // used at least once, and the result is charged for it.
-                let head: Vec<char> = fill.chars().take(missing).collect();
-                let cw = |c: &char| if *c as u32 > 0xFFFF { 2u128 } else { 1 };
-                let (copies, rest) = if head.len() == missing {
-                    (0, missing)
+                // Read at most `missing` code points of `fill` without
+                // allocating (02-evaluation.md 6.2 item 3).
+                let mut fill_cps = 0usize;
+                let mut fill_w = 0u128;
+                let mut prefix_bytes = fill.len();
+                for (bi, ch) in fill.char_indices() {
+                    if fill_cps == missing {
+                        prefix_bytes = bi;
+                        break;
+                    }
+                    fill_cps += 1;
+                    fill_w += if ch as u32 > 0xFFFF { 2 } else { 1 };
+                }
+                let (copies, rem_bytes, rem_w) = if fill_cps == missing {
+                    (0usize, prefix_bytes, fill_w)
                 } else {
-                    (missing / head.len(), missing % head.len())
+                    let rem_cps = missing % fill_cps;
+                    let mut rb = 0usize;
+                    let mut rw = 0u128;
+                    for (ci, (bi, ch)) in fill.char_indices().enumerate() {
+                        if ci == rem_cps {
+                            rb = bi;
+                            break;
+                        }
+                        rw += if ch as u32 > 0xFFFF { 2 } else { 1 };
+                        rb = bi + ch.len_utf8();
+                    }
+                    (missing / fill_cps, rb, rw)
                 };
-                let w = weight(s) as u128
-                    + copies as u128 * head.iter().map(cw).sum::<u128>()
-                    + head[..rest].iter().map(cw).sum::<u128>();
+                let w = (weight(s) as u128)
+                    .saturating_add((copies as u128).saturating_mul(fill_w))
+                    .saturating_add(rem_w);
                 let sz_r = (w / 64).min(u64::MAX as u128) as u64;
                 self.charge(sz_r)?;
                 self.alloc(sz_r.saturating_add(1))?;
-                let unit: String = head.iter().collect();
-                let mut pad = unit.repeat(copies);
-                pad.extend(&head[..rest]);
+                let mut pad = if copies > 0 {
+                    fill.repeat(copies)
+                } else {
+                    String::new()
+                };
+                pad.push_str(&fill[..rem_bytes]);
                 Ok(Value::str(if rec.name == "padStart" {
                     pad + s
                 } else {
@@ -1053,7 +1075,7 @@ impl<'h> Run<'h> {
         let es = self.entries_in_order(recv)?;
         let f = self.lam(args, 0, span)?;
         let f = self.callback(f);
-        let mut out = Vec::with_capacity(es.len());
+        let mut out = Vec::with_capacity(es.len().min(256));
         for (i, (k, v)) in es.into_iter().enumerate() {
             self.charge(2)?;
             let v = self.read(v, span)?;
@@ -1239,7 +1261,7 @@ impl<'h> Run<'h> {
         let n = recv.len().unwrap_or(0);
         let f = self.lam(args, 0, span)?;
         let f = self.callback(f);
-        let mut out: Vec<Value<'h>> = Vec::with_capacity(n);
+        let mut out: Vec<Value<'h>> = Vec::with_capacity(n.min(256));
         for i in 0..n {
             let e = self.next_element(recv, i, span)?;
             out.push(self.call2(&f, name, i, e, Value::Num(i as f64), measure, span)?);
@@ -1395,9 +1417,11 @@ impl<'h> Run<'h> {
                 if r.kind() != Kind::List {
                     return Err(self.result_kind(name, &r, span));
                 }
-                for j in 0..r.len().unwrap_or(0) {
-                    g.out.push(r.elem(j));
-                }
+                // Keep the inner list and count total elements; charge steps
+                // and allocation units before flattening (02-evaluation.md 6.2
+                // item 3).
+                g.counted = g.counted.saturating_add(r.len().unwrap_or(0));
+                g.out.push(r);
             }
             Each::Some if r.truthy() => return Ok(Some(Value::Bool(true))),
             Each::Every if !r.truthy() => return Ok(Some(Value::Bool(false))),
@@ -1445,10 +1469,17 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         match op {
             Each::FlatMap => {
-                let k = g.out.len() as u64;
+                let k = g.counted as u64;
                 self.charge(k)?;
                 self.alloc(1 + k)?;
-                Ok(Value::list(g.out))
+                let mut flat = Vec::with_capacity(g.counted);
+                for inner in g.out {
+                    for j in 0..inner.len().unwrap_or(0) {
+                        flat.push(inner.elem(j));
+                    }
+                    release(inner);
+                }
+                Ok(Value::list(flat))
             }
             Each::Some => Ok(Value::Bool(false)),
             Each::Every => Ok(Value::Bool(true)),
@@ -1641,7 +1672,7 @@ impl<'h> Run<'h> {
                 }
             }
             "toMap" => {
-                let mut es: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(n);
+                let mut es: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(n.min(256));
                 for i in 0..n {
                     let e = self.read(recv.elem(i), span)?;
                     if e.kind() != Kind::Map {
@@ -1738,7 +1769,7 @@ impl<'h> Run<'h> {
                     .val(args, 0)
                     .and_then(|v| v.as_str().map(String::from))
                     .unwrap_or_default();
-                let mut parts: Vec<Str<'h>> = Vec::with_capacity(n);
+                let mut parts: Vec<Str<'h>> = Vec::with_capacity(n.min(256));
                 for i in 0..n {
                     let e = self.read(recv.elem(i), span)?;
                     match e {
@@ -1776,7 +1807,7 @@ impl<'h> Run<'h> {
     /// is tested. A failed test charges by 4.5, then fails.
     fn ordered_scan(&mut self, name: &str, recv: &Value<'h>, span: Range) -> R<'h, Vec<Value<'h>>> {
         let n = recv.len().unwrap_or(0);
-        let mut xs: Vec<Value<'h>> = Vec::with_capacity(n);
+        let mut xs: Vec<Value<'h>> = Vec::with_capacity(n.min(256));
         let mut first: Option<Kind> = None;
         for i in 0..n {
             let e = self.read(recv.elem(i), span)?;

@@ -979,11 +979,13 @@ class Compiler {
     const span = e.span;
     return (r) => {
       const out = new Rendering();
+      const vals: unknown[] = [];
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
         if (typeof p === "string") out.add(p);
         else {
           const v = p.k === 0 ? p.c(r) : ev(r, p);
+          vals.push(v);
           if (typeof v === "string") out.add(v);
           else render(r, v, span, out);
         }
@@ -991,7 +993,19 @@ class Compiler {
       const sz = div64(out.length);
       r.charge(1 + sz);
       r.alloc(1 + sz);
-      return out.text();
+      if (out.kept) return out.text();
+      const full = new Rendering(true);
+      let vi = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (typeof p === "string") full.add(p);
+        else {
+          const v = vals[vi++];
+          if (typeof v === "string") full.add(v);
+          else render(r, v, span, full);
+        }
+      }
+      return full.text();
     };
   }
 
@@ -1964,12 +1978,16 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
     },
     charge: (n) => {
       metered(() => {
-        if (n > 0) r.charge(n);
+        if (typeof n !== "number" || !(n > 0)) return;
+        const whole = Number.isFinite(n) ? Math.ceil(n) : r.stepLimit === Infinity ? Number.MAX_SAFE_INTEGER : Infinity;
+        r.charge(whole);
       });
     },
     allocate: (n) => {
       metered(() => {
-        if (n > 0) r.alloc(n);
+        if (typeof n !== "number" || !(n > 0)) return;
+        const whole = Number.isFinite(n) ? Math.ceil(n) : r.unitLimit === Infinity ? Number.MAX_SAFE_INTEGER : Infinity;
+        r.alloc(whole);
       });
     },
     remaining: () => {

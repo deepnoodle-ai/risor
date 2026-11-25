@@ -126,7 +126,7 @@ export function order(r: Run, op: OrderOp, a: unknown, b: unknown, span: Span): 
     r.charge(1);
     c = (a as number) - (b as number);
   } else if (ka === "string" && kb === "string") {
-    r.charge(1 + size(String(a).slice(0, lcpWeight(a as string, b as string))));
+    r.charge(1 + div64(lcpWeight(a as string, b as string)));
     c = compareText(a as string, b as string);
   } else {
     throw new RunFailure("wrong-kind", span, "operands", { op, left: ka, right: kb });
@@ -276,25 +276,43 @@ export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span)
 
 /**
  * Text being rendered (01 12), and its length in UTF-16 units. The string's
- * units come before it is built (02 6.2 item 3), so the JSON form of a long
- * string is put off: `text` makes it, after the charges.
+ * units come before it is built (02 6.2 item 3). Up to `RENDER_KEEP` UTF-16
+ * units are kept on the first pass; past that the first pass only measures,
+ * and `renderedText` renders a second pass (with `paid = true`, charging
+ * nothing) after the allocation budget accepts the size.
  */
+const RENDER_KEEP = 65536;
+
 export class Rendering {
-  /** The text before each long string put off, and that string. */
-  private readonly before: [string, string][] = [];
-  private last = "";
+  private readonly chunks: string[] = [];
   length = 0;
+  kept: boolean;
+  readonly paid: boolean;
+
+  constructor(paid = false) {
+    this.paid = paid;
+    this.kept = true;
+  }
 
   add(s: string): void {
-    this.last += s;
     this.length += s.length;
+    if (!this.kept) return;
+    if (!this.paid && this.length > RENDER_KEEP) {
+      this.chunks.length = 0;
+      this.kept = false;
+      return;
+    }
+    this.chunks.push(s);
   }
 
   /** The JSON form of `s`. */
   quote(s: string): void {
-    if (s.length <= 256) return this.add(jsonString(s));
-    this.before.push([this.last, s]);
-    this.last = "";
+    if (this.paid) {
+      const q = jsonString(s);
+      this.length += q.length;
+      this.chunks.push(q);
+      return;
+    }
     let n = s.length + 2;
     for (let i = 0; i < s.length; i++) {
       const c = s.charCodeAt(i);
@@ -302,13 +320,18 @@ export class Rendering {
       else if (c < 0x20) n += 5;
     }
     this.length += n;
+    if (!this.kept) return;
+    if (this.length > RENDER_KEEP) {
+      this.chunks.length = 0;
+      this.kept = false;
+      return;
+    }
+    this.chunks.push(jsonString(s));
   }
 
   /** The string, once its charges are made. */
   text(): string {
-    let out = "";
-    for (const [t, s] of this.before) out += t + jsonString(s);
-    return out + this.last;
+    return this.chunks.join("");
   }
 }
 
@@ -338,11 +361,14 @@ export function jsonText(r: Run, v: unknown, span: Span, out: Rendering): void {
 }
 
 /** The string a library entry renders: the steps of its size, then its units, then the string (04 4.4). */
-export function renderedText(r: Run, out: Rendering): string {
+export function renderedText(r: Run, out: Rendering, again?: (out: Rendering) => void): string {
   const sz = div64(out.length);
   r.charge(sz);
   r.alloc(1 + sz);
-  return out.text();
+  if (out.kept || again === undefined) return out.text();
+  const full = new Rendering(true);
+  again(full);
+  return full.text();
 }
 
 function jsonForm(r: Run, v: unknown, span: Span, level: number, out: Rendering, opaqueTemplate = "text"): void {
@@ -363,8 +389,10 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: Rendering,
       throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
     case "list": {
       const xs = v as unknown[];
-      r.testDepth(r.depth + level + 1);
-      r.charge(xs.length);
+      if (!out.paid) {
+        r.testDepth(r.depth + level + 1);
+        r.charge(xs.length);
+      }
       out.add("[");
       for (let i = 0; i < xs.length; i++) {
         if (i > 0) out.add(",");
@@ -374,10 +402,10 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: Rendering,
       return;
     }
     case "map": {
-      r.testDepth(r.depth + level + 1);
+      if (!out.paid) r.testDepth(r.depth + level + 1);
       const keys = sortKeys(mapKeys(v as object));
       const n = keys.length;
-      r.charge(n + L(n) * (n + sizeTogether(keys)));
+      if (!out.paid) r.charge(n + L(n) * (n + sizeTogether(keys)));
       out.add("{");
       keys.forEach((k, i) => {
         if (i > 0) out.add(",");

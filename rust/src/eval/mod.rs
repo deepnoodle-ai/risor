@@ -222,7 +222,13 @@ impl Fail<'_> {
             None => Diagnostic::bare(Phase::Run, self.code, self.message()),
         };
         d.class = self.class();
-        d.data = self.data.as_ref().map(|v| Box::new(v.to_data()));
+        // Bound DAG expansion when materializing `fail()` data into owned Data
+        // inside `Program::run`, so a small program with shared references
+        // cannot OOM the host while constructing the error diagnostic.
+        d.data = self
+            .data
+            .as_ref()
+            .map(|v| Box::new(v.to_data_bounded(100_000)));
         d.path = self.path.clone().map(Box::new);
         d.cause = self.cause.clone();
         if !self.trace.is_empty() {

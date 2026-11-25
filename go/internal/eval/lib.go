@@ -946,9 +946,10 @@ var implemented = map[string]libFunc{
 	},
 	"list.map": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*fn), c.n()
-		out := make([]any, n)
+		out := make([]any, 0, min(n, 256))
 		for i := 0; i < n; i++ {
-			out[i], _, _ = r.callbackAt(c, lam, i)
+			v, _, _ := r.callbackAt(c, lam, i)
+			out = append(out, v)
 		}
 		f := fenv{c: c, n: int64(n)}
 		r.libSteps(c, f, 2*int64(n))
@@ -1044,14 +1045,14 @@ var implemented = map[string]libFunc{
 	},
 	"list.sum": func(r *run, c *libCall) any {
 		n := c.n()
-		vals := make([]float64, n)
+		vals := make([]float64, 0, min(n, 256))
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
 			x, ok := e.(float64)
 			if !ok {
 				r.elemFail(i+1, fail("wrong-kind", "element", c.span, messages.Word("name", c.e.Name), messages.Val("kind", e)))
 			}
-			vals[i] = x
+			vals = append(vals, x)
 		}
 		r.charge(c, fenv{c: c, n: int64(n)})
 		total := 0.0
@@ -1089,10 +1090,11 @@ var implemented = map[string]libFunc{
 	},
 	"list.sortBy": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*fn), c.n()
-		elems, keys := make([]any, n), make([]any, n)
+		elems, keys := make([]any, 0, min(n, 256)), make([]any, 0, min(n, 256))
 		for i := 0; i < n; i++ {
-			elems[i] = c.elem(r, i)
-			keys[i] = r.callback(c, lam, elems[i], i)
+			e := c.elem(r, i)
+			elems = append(elems, e)
+			keys = append(keys, r.callback(c, lam, e, i))
 		}
 		r.ordered(c, n, func(i int) any { return keys[i] }, false)
 		f := fenv{c: c, n: int64(n), keysW: strW(keys)}
@@ -1134,7 +1136,7 @@ var implemented = map[string]libFunc{
 	},
 	"list.toMap": func(r *run, c *libCall) any {
 		n := c.n()
-		keys, vals := make([]string, n), make([]any, n)
+		keys, vals := make([]string, 0, min(n, 256)), make([]any, 0, min(n, 256))
 		var w int64
 		name := messages.Word("name", c.e.Name)
 		for i := 0; i < n; i++ {
@@ -1155,7 +1157,8 @@ var implemented = map[string]libFunc{
 			if !ok {
 				r.elemFail(i+1, fail("missing-field", "field", c.span, messages.Word("name", "value")))
 			}
-			keys[i], vals[i] = ks, v
+			keys = append(keys, ks)
+			vals = append(vals, v)
 			w += value.Weight(ks)
 		}
 		r.charge(c, fenv{c: c, n: int64(n), keysW: w})
@@ -1181,13 +1184,13 @@ var implemented = map[string]libFunc{
 	},
 	"list.flat": func(r *run, c *libCall) any {
 		n, k := c.n(), 0
-		lists := make([]any, n)
+		lists := make([]any, 0, min(n, 256))
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
 			if value.KindOf(e) != value.List {
 				r.elemFail(i+1, fail("wrong-kind", "element", c.span, messages.Word("name", c.e.Name), messages.Val("kind", e)))
 			}
-			lists[i] = e
+			lists = append(lists, e)
 			k += value.Len(e)
 		}
 		r.charge(c, fenv{c: c, n: int64(n), k: int64(k)})
@@ -1235,7 +1238,7 @@ var implemented = map[string]libFunc{
 	},
 	"list.join": func(r *run, c *libCall) any {
 		n, sep := c.n(), c.args[0].(string)
-		parts := make([]string, n)
+		parts := make([]string, 0, min(n, 256))
 		var w int64
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
@@ -1243,7 +1246,7 @@ var implemented = map[string]libFunc{
 			if !ok {
 				r.elemFail(i+1, fail("wrong-kind", "element", c.span, messages.Word("name", c.e.Name), messages.Val("kind", e)))
 			}
-			parts[i] = s
+			parts = append(parts, s)
 			w += value.Weight(s)
 		}
 		if n > 1 {
@@ -1303,9 +1306,9 @@ func (r *run) pick(c *libCall, vals []any, min bool) any {
 
 func (r *run) orderedElems(c *libCall) []any {
 	n := c.n()
-	vals := make([]any, n)
+	vals := make([]any, 0, min(n, 256))
 	for i := 0; i < n; i++ {
-		vals[i] = c.elem(r, i)
+		vals = append(vals, c.elem(r, i))
 	}
 	r.ordered(c, n, func(i int) any { return vals[i] }, true)
 	return vals
@@ -1343,13 +1346,40 @@ func (r *run) pad(c *libCall, start bool) any {
 		return r.substring(c, s)
 	}
 	m := int64(length) - int64(n)
-	fr := int64(utf8.RuneCountInString(fill))
-	fw := value.Weight(fill)
-	w := value.Weight(s) + satMul(m/fr, fw) + runePrefixW(fill, int(m%fr))
+	// Read at most m runes of fill so work is bounded by min(len(fill), m)
+	// before charging (02-evaluation.md 6.2 item 3).
+	var fr, fw int64
+	prefixBytes := len(fill)
+	for i, rn := range fill {
+		if fr == m {
+			prefixBytes = i
+			break
+		}
+		fr++
+		if rn > 0xFFFF {
+			fw += 2
+		} else {
+			fw++
+		}
+	}
+	var copies, remCount int64
+	var remW int64
+	if fr == m {
+		copies, remCount, remW = 0, m, fw
+	} else {
+		copies, remCount = m/fr, m%fr
+		remW = runePrefixW(fill, int(remCount))
+	}
+	w := value.Weight(s) + satMul(copies, fw) + remW
 	r.charge(c, fenv{c: c, resultW: w})
 	var b strings.Builder
-	padding := strings.Repeat(fill, int(m/fr))
-	rem := fill[:byteIndex(fill, int(m%fr))]
+	var padding, rem string
+	if copies > 0 {
+		padding = strings.Repeat(fill, int(copies))
+		rem = fill[:byteIndex(fill, int(remCount))]
+	} else {
+		rem = fill[:prefixBytes]
+	}
 	if !start {
 		b.WriteString(s)
 	}

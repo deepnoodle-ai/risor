@@ -428,12 +428,25 @@ impl<'h> Value<'h> {
     /// An owned copy. Nesting past 1,024 levels is cut off as null: no case
     /// file can state deeper data.
     pub fn to_data(&self) -> Data {
-        self.to_data_at(0)
+        self.to_data_at(0, None)
     }
 
-    fn to_data_at(&self, depth: usize) -> Data {
+    /// An owned copy bounded by a total node budget, so shared DAGs cannot
+    /// expand exponentially when building run diagnostics (e.g., `fail`).
+    pub(crate) fn to_data_bounded(&self, max_nodes: usize) -> Data {
+        let mut budget = max_nodes;
+        self.to_data_at(0, Some(&mut budget))
+    }
+
+    fn to_data_at(&self, depth: usize, mut budget: Option<&mut usize>) -> Data {
         if depth > 1024 {
             return Data::Null;
+        }
+        if let Some(b) = budget.as_deref_mut() {
+            if *b == 0 {
+                return Data::Null;
+            }
+            *b -= 1;
         }
         match self {
             Value::Null | Value::BadNum => Data::Null,
@@ -442,14 +455,28 @@ impl<'h> Value<'h> {
             Value::Str(s) => Data::Str(s.as_str().to_string()),
             Value::List(_) | Value::HList(_) => {
                 let n = self.len().unwrap_or(0);
-                Data::List((0..n).map(|i| self.elem(i).to_data_at(depth + 1)).collect())
+                let mut out = Vec::with_capacity(n.min(256));
+                for i in 0..n {
+                    if budget.as_deref().is_some_and(|&b| b == 0) {
+                        break;
+                    }
+                    out.push(self.elem(i).to_data_at(depth + 1, budget.as_deref_mut()));
+                }
+                Data::List(out)
             }
-            Value::Map(_) | Value::HMap(_) => Data::Map(
-                self.entries()
-                    .into_iter()
-                    .map(|(k, v)| (k.as_str().to_string(), v.to_data_at(depth + 1)))
-                    .collect(),
-            ),
+            Value::Map(_) | Value::HMap(_) => {
+                let mut out = std::collections::BTreeMap::new();
+                for (k, v) in self.entries() {
+                    if budget.as_deref().is_some_and(|&b| b == 0) {
+                        break;
+                    }
+                    out.insert(
+                        k.as_str().to_string(),
+                        v.to_data_at(depth + 1, budget.as_deref_mut()),
+                    );
+                }
+                Data::Map(out)
+            }
             Value::Opaque(o) => Data::Opaque(OpaqueRef::clone(o)),
         }
     }

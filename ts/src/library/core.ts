@@ -255,7 +255,7 @@ implement(null, "string", (c) => {
   if (c.run.kind(x) === "string") return x;
   const out = new Rendering();
   render(c.run, x, c.span, out);
-  return renderedText(c.run, out);
+  return renderedText(c.run, out, (full) => render(c.run, x, c.span, full));
 });
 
 const JSON_GRAMMAR = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
@@ -408,21 +408,33 @@ implement("string", "endsWith", (c) => {
 implement("string", "split", (c) => {
   const s = c.receiver as string;
   const sep = text(c, 0);
-  let parts: string[];
-  if (sep === "") parts = codePoints(s);
-  else {
-    const at = occurrences(s, sep);
-    parts = [];
-    let from = 0;
-    for (const i of at) {
-      parts.push(s.slice(from, i));
-      from = i + sep.length;
+  const sz = size(s);
+  c.run.charge(sz);
+  let p: number;
+  if (sep === "") {
+    p = cpLength(s);
+  } else {
+    p = 1;
+    let i = 0;
+    for (;;) {
+      const k = s.indexOf(sep, i);
+      if (k < 0) break;
+      p++;
+      i = k + sep.length;
     }
-    parts.push(s.slice(from));
   }
-  const p = parts.length;
-  c.run.charge(size(s) + p);
-  c.run.alloc(1 + 2 * p + size(s));
+  c.run.charge(p);
+  c.run.alloc(1 + 2 * p + sz);
+  if (sep === "") return codePoints(s);
+  const parts: string[] = [];
+  let from = 0;
+  for (;;) {
+    const k = s.indexOf(sep, from);
+    if (k < 0) break;
+    parts.push(s.slice(from, k));
+    from = k + sep.length;
+  }
+  parts.push(s.slice(from));
   return parts;
 });
 
@@ -431,16 +443,28 @@ implement("string", "replaceAll", (c) => {
   const old = text(c, 0);
   const rep = text(c, 1);
   if (old === "") throw new RunFailure("invalid-argument", c.span, "empty-search", {});
-  const at = occurrences(s, old);
-  const weight = s.length + at.length * (rep.length - old.length);
+  const szS = size(s);
+  c.run.charge(szS);
+  let count = 0;
+  let idx = 0;
+  for (;;) {
+    const k = s.indexOf(old, idx);
+    if (k < 0) break;
+    count++;
+    idx = k + old.length;
+  }
+  const weight = s.length + count * (rep.length - old.length);
   const sz = div64(weight);
-  c.run.charge(size(s) + sz);
+  c.run.charge(sz);
   c.run.alloc(1 + sz);
+  if (count === 0) return s;
   const out: string[] = [];
   let from = 0;
-  for (const i of at) {
-    out.push(s.slice(from, i), rep);
-    from = i + old.length;
+  for (;;) {
+    const k = s.indexOf(old, from);
+    if (k < 0) break;
+    out.push(s.slice(from, k), rep);
+    from = k + old.length;
   }
   out.push(s.slice(from));
   return out.join("");
@@ -455,12 +479,27 @@ implement("string", "indexOf", (c) => {
 
 implement("string", "slice", (c) => {
   const s = c.receiver as string;
-  const offs = cpOffsets(s);
-  const n = offs.length - 1;
+  c.run.charge(size(s));
+  const n = cpLength(s);
   const a = resolve(num(c, 0), n);
   const b = c.args.length > 1 ? resolve(num(c, 1), n) : n;
-  const r = a < b ? s.slice(offs[a], offs[b]) : "";
-  c.run.charge(size(s));
+  let r = "";
+  if (a < b) {
+    let startUnit = 0;
+    let endUnit = s.length;
+    let cp = 0;
+    for (let u = 0; u < s.length; ) {
+      if (cp === a) startUnit = u;
+      if (cp === b) {
+        endUnit = u;
+        break;
+      }
+      const code = s.charCodeAt(u);
+      u += code >= 0xd800 && code <= 0xdbff && u + 1 < s.length ? 2 : 1;
+      cp++;
+    }
+    r = s.slice(startUnit, endUnit);
+  }
   c.run.alloc(1 + size(r));
   return r;
 });
@@ -486,19 +525,37 @@ function pad(c: CallContext, atStart: boolean): string {
     return s;
   }
   const m = length - n;
-  // Read at most m + 1 code points of `fill`: work bounded by the result.
-  const fcp: string[] = [];
-  for (const cp of fill) {
-    fcp.push(cp);
-    if (fcp.length > m) break;
+  // Read at most m code points of `fill` without allocating (02 6.2 item 3).
+  let fillCps = 0;
+  let prefixUnits = fill.length;
+  for (let u = 0; u < fill.length; ) {
+    if (fillCps === m) {
+      prefixUnits = u;
+      break;
+    }
+    const code = fill.charCodeAt(u);
+    u += code >= 0xd800 && code <= 0xdbff && u + 1 < fill.length ? 2 : 1;
+    fillCps++;
   }
-  const full = fcp.length > m ? 0 : Math.floor(m / fcp.length);
-  const rest = fcp.slice(0, fcp.length > m ? m : m % fcp.length).join("");
-  const weight = s.length + full * fill.length + rest.length;
+  let full = 0;
+  let restUnits = prefixUnits;
+  if (fillCps < m) {
+    full = Math.floor(m / fillCps);
+    const remCps = m % fillCps;
+    restUnits = 0;
+    let cp = 0;
+    for (let u = 0; u < fill.length && cp < remCps; ) {
+      const code = fill.charCodeAt(u);
+      u += code >= 0xd800 && code <= 0xdbff && u + 1 < fill.length ? 2 : 1;
+      cp++;
+      restUnits = u;
+    }
+  }
+  const weight = s.length + full * fill.length + restUnits;
   const sz = div64(weight);
   c.run.charge(sz);
   c.run.alloc(1 + sz);
-  const padding = fill.repeat(full) + rest;
+  const padding = (full > 0 ? fill.repeat(full) : "") + fill.slice(0, restUnits);
   return atStart ? padding + s : s + padding;
 }
 

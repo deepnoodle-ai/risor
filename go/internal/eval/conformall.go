@@ -171,7 +171,11 @@ func (a *allWalker) allAt(v any, t *types.Type, path []any, looked bool) {
 				return
 			}
 			tt := types.TagType(u)
-			tv, _ = value.Read(tv)
+			tv, rerr := value.Read(tv)
+			if rerr != value.ReadOK {
+				a.add(cfail{path: extendPath(path, u.Tag), template: "wrong", expected: tt, number: true})
+				return
+			}
 			s, isStr := tv.(string)
 			if isStr {
 				a.m.charge(value.Size(s))
@@ -213,8 +217,9 @@ func (a *allWalker) record(v any, r *types.Record, path []any, tag string, hasTa
 		return
 	}
 	// The other keys, charged as F4 4.3 steps 4 and 5 charge them.
+	keys := value.Keys(v)
 	var m, weight int64
-	for _, k := range value.Keys(v) {
+	for _, k := range keys {
 		if _, listed := r.Field(k); listed || (hasTag && k == tag) {
 			continue
 		}
@@ -226,7 +231,7 @@ func (a *allWalker) record(v any, r *types.Record, path []any, tag string, hasTa
 	} else {
 		a.m.charge(weight / 64)
 	}
-	for _, k := range value.Keys(v) {
+	for _, k := range keys {
 		if a.full() {
 			return
 		}
