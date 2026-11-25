@@ -1,4 +1,4 @@
-// The 53 entries of the Core library (04-library.md section 5), and `walk`,
+// The 56 entries of the Core library (04-library.md section 5), and `walk`,
 // the function of the group core that package F17 adds (f17 5).
 //
 // Each entry runs after its receiver and arguments are evaluated, after the
@@ -7,7 +7,7 @@
 // Every failure an entry raises has the span of the whole call (04 2.6 item 6).
 
 import { RunFailure } from "../eval/failure.ts";
-import { L, Rendering, render, renderedText, sizeTogether } from "../eval/ops.ts";
+import { L, Rendering, indexIn, render, renderedText, sizeTogether, textIndex } from "../eval/ops.ts";
 import { isWhole, norm, parseDecimal } from "../value/number.ts";
 import { ABSENT, RMap, compareText, cpLength, mapGet, mapKeys, mapSize, size, sortKeys, truthy, div64 } from "../value/value.ts";
 import { orderedFailure } from "./args.ts";
@@ -446,6 +446,13 @@ implement("string", "replaceAll", (c) => {
   return out.join("");
 });
 
+implement("string", "indexOf", (c) => {
+  const s = c.receiver as string;
+  c.run.charge(size(s));
+  const i = textIndex(s, text(c, 0));
+  return i < 0 ? null : cpLength(s.slice(0, i));
+});
+
 implement("string", "slice", (c) => {
   const s = c.receiver as string;
   const offs = cpOffsets(s);
@@ -620,6 +627,13 @@ implement("list", "some", seekEntry(true, (_, i) => i >= 0));
 implement("list", "every", seekEntry(false, (_, i) => i < 0));
 
 implement("list", "find", seekEntry(true, (c, i) => (i < 0 ? null : readElement(c, (c.receiver as unknown[])[i]))));
+
+implement("list", "findIndex", seekEntry(true, (_, i) => (i < 0 ? null : i)));
+
+implement("list", "indexOf", (c) => {
+  const i = indexIn(c.run, c.args[0], c.receiver as unknown[], c.span);
+  return i < 0 ? null : i;
+});
 
 implement("list", "count", (c) => {
   const f = c.args[0] as Callback;

@@ -746,48 +746,7 @@ func (r *run) in(x, y any, op string, sp syntax.Span) bool {
 	case value.Null:
 		r.raise(fail("null-operand", "operand", sp, messages.Word("op", opText(op))))
 	case value.List:
-		if ys, ok := y.([]any); ok {
-			if xs, ok := x.(string); ok {
-				// A string sought in a list: only a string element can be
-				// equal, and it is charged by its common prefix.
-				for _, e := range ys {
-					e = r.read(e, sp)
-					r.step(1)
-					if es, ok := e.(string); ok {
-						r.step(value.Size(value.CommonPrefix(xs, es)))
-						if xs == es {
-							return true
-						}
-					}
-				}
-				return false
-			}
-		}
-		n := value.Len(y)
-		kx := value.KindOf(x)
-		for i := 0; i < n; i++ {
-			e := r.read(value.At(y, i), sp)
-			r.step(1)
-			ke := value.KindOf(e)
-			switch {
-			case kx == value.String && ke == value.String:
-				xs, es := x.(string), e.(string)
-				r.step(value.Size(value.CommonPrefix(xs, es)))
-				if xs == es {
-					return true
-				}
-			case kx == value.List && ke == value.List && value.Len(x) == value.Len(e),
-				kx == value.Map && ke == value.Map && value.Len(x) == value.Len(e):
-				if r.equal(x, e, sp) {
-					return true
-				}
-			default:
-				if plainEqual(x, e) {
-					return true
-				}
-			}
-		}
-		return false
+		return r.indexIn(x, y, sp) >= 0
 	case value.String, value.Map:
 		xs, ok := x.(string)
 		if !ok {
@@ -833,17 +792,70 @@ func plainEqual(a, b any) bool {
 	return false
 }
 
-// contains reports whether t occurs in s, in work linear in the length of s: a text longer than s is answered from the lengths, and the
-// search is Knuth-Morris-Pratt over the bytes of valid UTF-8.
-func contains(s, t string) bool {
+// indexIn is the index of the first element of the list y equal to x, or -1.
+// It charges what x in y charges (02-evaluation.md 5.3): list.indexOf charges
+// the same (04-library.md 5.4.24).
+func (r *run) indexIn(x, y any, sp syntax.Span) int {
+	if ys, ok := y.([]any); ok {
+		if xs, ok := x.(string); ok {
+			// A string sought in a list: only a string element can be
+			// equal, and it is charged by its common prefix.
+			for i, e := range ys {
+				e = r.read(e, sp)
+				r.step(1)
+				if es, ok := e.(string); ok {
+					r.step(value.Size(value.CommonPrefix(xs, es)))
+					if xs == es {
+						return i
+					}
+				}
+			}
+			return -1
+		}
+	}
+	n := value.Len(y)
+	kx := value.KindOf(x)
+	for i := 0; i < n; i++ {
+		e := r.read(value.At(y, i), sp)
+		r.step(1)
+		ke := value.KindOf(e)
+		switch {
+		case kx == value.String && ke == value.String:
+			xs, es := x.(string), e.(string)
+			r.step(value.Size(value.CommonPrefix(xs, es)))
+			if xs == es {
+				return i
+			}
+		case kx == value.List && ke == value.List && value.Len(x) == value.Len(e),
+			kx == value.Map && ke == value.Map && value.Len(x) == value.Len(e):
+			if r.equal(x, e, sp) {
+				return i
+			}
+		default:
+			if plainEqual(x, e) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// contains reports whether t occurs in s (textIndex).
+func contains(s, t string) bool { return textIndex(s, t) >= 0 }
+
+// textIndex is the byte offset of the first occurrence of t in s, or -1, in
+// work linear in the length of s: a text longer than s is answered from the
+// lengths, and a t of 64 bytes or more is found by Knuth-Morris-Pratt over the
+// bytes of valid UTF-8.
+func textIndex(s, t string) int {
 	if len(t) > len(s) {
-		return false
+		return -1
 	}
 	if len(t) == 0 {
-		return true
+		return 0
 	}
 	if len(t) < 64 {
-		return strings.Contains(s, t)
+		return strings.Index(s, t)
 	}
 	fail := make([]int, len(t))
 	for i, k := 1, 0; i < len(t); i++ {
@@ -863,10 +875,10 @@ func contains(s, t string) bool {
 			k++
 		}
 		if k == len(t) {
-			return true
+			return i - len(t) + 1
 		}
 	}
-	return false
+	return -1
 }
 
 // L is L(n) of 02-evaluation.md 1.2.

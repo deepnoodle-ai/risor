@@ -2519,6 +2519,121 @@
     ]
   },
   {
+    "name": "indexOf",
+    "receiver": "string",
+    "signature": "(search: string) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The position, in code points, of the first occurrence of search in s, or null.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "0",
+    "null": "search does not occur in s",
+    "fails": [],
+    "wrong": [
+      "index",
+      "find",
+      "strpos",
+      "search"
+    ],
+    "cases": [
+      {
+        "name": "indexOf of a string",
+        "source": "\"Order #1234 shipped\".indexOf(\"#\")",
+        "expect": {
+          "value": 6
+        }
+      },
+      {
+        "name": "indexOf gives the first occurrence",
+        "source": "\"a-b-c\".indexOf(\"-\")",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf of a string that does not occur",
+        "source": "\"abc\".indexOf(\"x\")",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "indexOf of the empty string",
+        "source": "\"abc\".indexOf(\"\")",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "indexOf of the empty string in the empty string",
+        "source": "\"\".indexOf(\"\")",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "indexOf of a string longer than the receiver",
+        "source": "\"ab\".indexOf(\"abc\")",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "indexOf counts code points",
+        "source": "\"😀a😀b\".indexOf(\"b\")",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "indexOf is case sensitive",
+        "source": "\"Abc\".indexOf(\"a\")",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "indexOf may give null",
+        "source": "s.indexOf(\"b\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "abc"
+        },
+        "expect": {
+          "type": "int | null",
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf charges the size of the receiver",
+        "source": "s.indexOf(\"b\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "expect": {
+          "value": 0,
+          "steps": 3,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "indexOf and slice take a number out of text",
+        "source": "const rest = s.slice((s.indexOf(\"#\") ?? fail(\"no number\")) + 1);\nint(rest.slice(0, rest.indexOf(\" \") ?? len(rest)))",
+        "env": "{s: string}",
+        "vars": {
+          "s": "Order #1234 shipped"
+        },
+        "expect": {
+          "type": "int",
+          "value": 1234
+        }
+      }
+    ]
+  },
+  {
     "name": "filter",
     "receiver": "T[]",
     "signature": "(f: (item: T, index: int) => unknown) => T[]",
@@ -4662,6 +4777,244 @@
             }
           ],
           "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "findIndex",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The index of the first element for which f is true, or null.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*v",
+    "units": "0",
+    "null": "no element makes f true, which includes an empty list",
+    "fails": [],
+    "wrong": [
+      "indexWhere",
+      "findFirstIndex",
+      "find_index"
+    ],
+    "cases": [
+      {
+        "name": "findIndex of the first match",
+        "source": "xs.findIndex(x => x % 2 == 0)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            4,
+            6
+          ]
+        },
+        "expect": {
+          "type": "int | null",
+          "value": 1,
+          "steps": 10,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "findIndex with no match",
+        "source": "[1, 3].findIndex(x => x > 5)",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "findIndex of an empty list",
+        "source": "xs.findIndex(x => x > 5)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": null,
+          "steps": 2
+        }
+      },
+      {
+        "name": "findIndex tests by truthiness",
+        "source": "[0, 5, 7].findIndex(x => x)",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "findIndex finds a null element",
+        "source": "[1, null].findIndex(x => x == null)",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "findIndex passes the index",
+        "source": "[\"a\", \"b\", \"c\"].findIndex((x, i) => i == 2)",
+        "expect": {
+          "value": 2
+        }
+      },
+      {
+        "name": "findIndex stops at the first match",
+        "source": "[1, 0].findIndex(x => 10 / x > 5)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "findIndex stops at a callback that fails",
+        "source": "[0, 1].findIndex(x => 10 / x)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero",
+              "span": [
+                1,
+                23,
+                1,
+                29
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "indexOf",
+    "receiver": "T[]",
+    "signature": "(x: T) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The index of the first element equal to x, or null.",
+    "calls": [],
+    "steps": "e",
+    "units": "0",
+    "null": "no element is equal to x, which includes an empty list",
+    "fails": [],
+    "wrong": [
+      "index",
+      "position"
+    ],
+    "cases": [
+      {
+        "name": "indexOf of a list",
+        "source": "[3, 1, 3].indexOf(3)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "indexOf of a value that is not an element",
+        "source": "[1, 2].indexOf(5)",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "indexOf of an empty list",
+        "source": "xs.indexOf(1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "type": "int | null",
+          "value": null,
+          "steps": 1
+        }
+      },
+      {
+        "name": "indexOf compares numbers by value",
+        "source": "[1, 2].indexOf(2.0)",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf compares lists by their elements",
+        "source": "[[1], [2]].indexOf([2])",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf of null",
+        "source": "xs.indexOf(null)",
+        "env": "{xs: (int | null)[]}",
+        "vars": {
+          "xs": [
+            1,
+            null
+          ]
+        },
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf on any data of mixed kinds",
+        "source": "xs.indexOf(\"1\")",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "1"
+          ]
+        },
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "indexOf charges as in does for strings",
+        "source": "xs.indexOf(\"b\")",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "a",
+            "b",
+            "c"
+          ]
+        },
+        "expect": {
+          "value": 1,
+          "steps": 3,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "indexOf charges as in does for lists",
+        "source": "xs.indexOf(x)",
+        "env": "{xs: int[][], x: int[]}",
+        "vars": {
+          "xs": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "x": [
+            1,
+            3
+          ]
+        },
+        "expect": {
+          "value": 1,
+          "steps": 11,
           "allocated": 0
         }
       }

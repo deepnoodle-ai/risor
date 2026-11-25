@@ -1,6 +1,6 @@
 # 04. Core library
 
-This chapter is normative. It defines the 53 entries of the Core library: the
+This chapter is normative. It defines the 56 entries of the Core library: the
 result of each for every input, when it fails, and the steps and allocation
 units it charges. `suite/library.json` holds the same entries as data (1.3).
 
@@ -18,8 +18,8 @@ diagnostics, the catalog `suite/messages.json`, case files) and `05-types.md`
 | --- | ---: | --- |
 | Conversion, inspection and errors | 7 functions | `len`, `string`, `int`, `float`, `bool`, `type`, `fail` |
 | Numbers | 8 functions | `abs`, `floor`, `ceil`, `round`, `min`, `max`, `range`, `fixed` |
-| Strings | 13 methods | `toUpperCase`, `toLowerCase`, `trim`, `removePrefix`, `removeSuffix`, `startsWith`, `endsWith`, `split`, `replaceAll`, `slice`, `repeat`, `padStart`, `padEnd` |
-| Lists | 22 methods | `filter`, `map`, `flatMap`, `some`, `every`, `find`, `count`, `reduce`, `sum`, `min`, `max`, `sort`, `sortBy`, `groupBy`, `toMap`, `unique`, `flat`, `reverse`, `first`, `last`, `slice`, `join` |
+| Strings | 14 methods | `toUpperCase`, `toLowerCase`, `trim`, `removePrefix`, `removeSuffix`, `startsWith`, `endsWith`, `split`, `replaceAll`, `slice`, `repeat`, `padStart`, `padEnd`, `indexOf` |
+| Lists | 24 methods | `filter`, `map`, `flatMap`, `some`, `every`, `find`, `count`, `reduce`, `sum`, `min`, `max`, `sort`, `sortBy`, `groupBy`, `toMap`, `unique`, `flat`, `reverse`, `first`, `last`, `slice`, `join`, `findIndex`, `indexOf` |
 | Maps | 3 methods | `keys`, `values`, `entries` |
 
 1. Every entry is in the library group `core`. An environment has every entry of
@@ -27,8 +27,9 @@ diagnostics, the catalog `suite/messages.json`, case files) and `05-types.md`
 2. Every entry is exact. For the same arguments, every implementation gives the
    same result or the same failure, and charges the same steps and units.
 3. An entry is named by its name and, for a method, the kind of its receiver.
-   `min`, `max` and `slice` each name two entries: `min` and `max` are a
-   function and a list method; `slice` is a string method and a list method.
+   `min`, `max`, `slice` and `indexOf` each name two entries: `min` and `max`
+   are a function and a list method; `slice` and `indexOf` are each a string
+   method and a list method.
    Where one entry is named alone, as in the removed entries of an
    environment (`03-host.md` 3.3.1), a function is written by its name, `len`,
    and a method by its receiver's kind, a dot and its name, `string.slice`,
@@ -53,7 +54,7 @@ stays.
 
 ### 1.3 The specification table
 
-`suite/library.json` is a JSON array. It has one record for each entry, 53 in
+`suite/library.json` is a JSON array. It has one record for each entry, 56 in
 all. The records and this chapter are written together and state the same rules.
 
 | Field | Holds | Present |
@@ -181,8 +182,9 @@ the environment removed.
 3. The checker reports a receiver that may be null (`05-types.md`).
 4. A parameter accepts null only when its type is `any` or a type variable with
    no bound (2.6). The parameters of type `any` are those of `string`, `bool`
-   and `type`, and the `data` of `fail`. The one parameter outside a callback
-   whose type is a type variable with no bound is the `init` of `reduce`.
+   and `type`, and the `data` of `fail`. The two parameters outside a callback
+   whose type is a type variable with no bound are the `init` of `reduce` and
+   the `x` of the list method `indexOf`.
 
 ### 2.5 Names that are also map keys
 
@@ -324,7 +326,8 @@ and `integer-range` (`json`), `not-base64` and `not-utf8` (`base64`).
 ### 3.3 Callbacks
 
 1. An entry calls its callback once for each element, in the order of the
-   elements, with the index from 0. `some`, `every` and `find` stop early (5.4).
+   elements, with the index from 0. `some`, `every`, `find` and `findIndex`
+   stop early (5.4).
 2. A callback's failure is the failure of the call: the same code, span, message
    and data. The span is in the callback, where the failure was raised. The
    entry does nothing more: it visits no later element, builds nothing and
@@ -368,7 +371,7 @@ them. That cannot be observed, because no value can be changed.
    of at most a constant times `1 + w(s)`. A search for text longer than the
    text searched is answered from the two lengths, before anything else is done
    with `x`. This binds `split`, `replaceAll`, `startsWith`, `endsWith`,
-   `removePrefix`, `removeSuffix`, and the language's `x in s`
+   `removePrefix`, `removeSuffix`, `indexOf`, and the language's `x in s`
    (`02-evaluation.md`). The charges of the entries do not change.
 6. An implementation may use its platform's search function only where that
    bound holds for it. Where it does not, it may still use it when `w(x)` is
@@ -549,9 +552,10 @@ U+0085 and U+200B are not white space.
 | `x`, `prefix`, `suffix`, … | The argument of that name |
 | `n` | The number of elements of the receiver list, or of entries of the receiver map |
 | `k` | The number of elements of the resulting list. For `flatMap` and `flat`, the total number of elements of the inner lists |
-| `v` | The number of elements visited by `some`, `every` or `find` |
+| `v` | The number of elements visited by `some`, `every`, `find` or `findIndex` |
 | `p` | The number of parts `split` gives |
 | `g` | The number of distinct keys `groupBy`'s callback gave |
+| `e` | What the comparisons of the list method `indexOf` charge: what `x in xs` charges for the same `x` and `xs` (`02-evaluation.md` 5.3) |
 | `L` | 0 when `n` is less than 2. Otherwise the least whole number with `2 ** L >= n` |
 | `w(a)` | The weight of string `a` (`02-evaluation.md`): its code points, with each code point above U+FFFF counted twice |
 | `sz(a)` | The size of string `a`: `w(a)` divided by 64, rounded down. 0 when `a` is not a string |
@@ -589,7 +593,7 @@ Term    = Factor { "*" Factor } .
 Factor  = Number | Symbol | Call | "(" Sum ")" .
 Call    = ( "sz" | "w" | "len" | "walk" ) "(" Name ")" .
 Number  = digit { digit } .
-Symbol  = "n" | "k" | "v" | "p" | "g" | "L" .
+Symbol  = "n" | "k" | "v" | "p" | "g" | "L" | "e" .
 Name    = the name of a parameter, "s", "result", "elements", "keys" or
           "arguments" .
 ```
@@ -608,9 +612,9 @@ Every call goes through these steps first (`02-evaluation.md`):
 2. The tests of 2.6.
 3. The call's 1 step.
 
-Then the entry charges and works by one of the three rules below: `string` by
-its own rule, an entry that takes a callback by the second, and every other
-entry by the first. Each entry's record repeats its order under "Order".
+Then the entry charges and works by one of the four rules below: `string` and
+the list method `indexOf` each by its own rule, an entry that takes a callback
+by the second, and every other entry by the first. Each entry's record repeats its order under "Order".
 Where the order puts the units before the build, an entry may build first
 where `02-evaluation.md` 6.2 item 3 allows it. The steps, the units, the
 failure and the order of callbacks do not change.
@@ -638,13 +642,13 @@ failure and the order of callbacks do not change.
    and `number-range` of `int`, `floor`, `ceil`, `round` and `sum`.
 
 **An entry with a callback.** `filter`, `map`, `flatMap`, `some`, `every`,
-`find`, `count`, `reduce`, `sortBy` and `groupBy`.
+`find`, `findIndex`, `count`, `reduce`, `sortBy` and `groupBy`.
 
 1. For each element in order: 2 steps, 1 for the visit and 1 for the call. Then
    the depth test (`02-evaluation.md`). Then the callback is called, and its
    body charges as it runs. Then its result is tested, where 3.3 says so.
-2. `some`, `every` and `find` stop after the call whose result decides. The
-   elements after it are not visited and not charged.
+2. `some`, `every`, `find` and `findIndex` stop after the call whose result
+   decides. The elements after it are not visited and not charged.
 3. After the last call: the ordered test of the keys, for `sortBy`. Then the
    rest of the steps formula: `L*(n + sz(keys))` for `sortBy`, `k` for
    `flatMap`, `sz(keys)` for `groupBy`. Then the units. Then the result is
@@ -656,6 +660,12 @@ of `m` elements, and `m + L(m) × (m + sz(its keys))` for a map of `m` entries,
 where `L(m)` is `L` for `n` equal to `m`. After the walk, the steps
 `sz(result)`, then the units, then the string is built. A failure met by the
 walk keeps what the walk charged before it.
+
+**The list method `indexOf`.** It compares `x` with each element in order, as
+`x in xs` does, and charges each comparison as it makes it, by the table of
+`02-evaluation.md` 5.3. It stops at the first element equal to `x`. A
+comparison of two lists or two maps is a walk, which tests the depth limit. A
+failure keeps what the comparisons charged before it.
 
 ### 4.5 A failed test is paid for
 
@@ -1158,7 +1168,7 @@ example is a case of `suite/library.json`.
 | `fixed(x, y)` | `{x: any, y: any}`, x = `"a"`, y = `2.5` | Fails: `wrong-kind`, template `argument`, message `"fixed cannot take a value of kind string"`; 0 steps, 0 units |
 | `fixed(1, y)` | `{y: any}`, y = `2.5` | Fails: `wrong-kind`, template `whole`, message `"expected a whole number, found 2.5"`; 0 steps, 0 units |
 
-### 5.3 Strings: 13 methods
+### 5.3 Strings: 14 methods
 
 The receiver is a string, named `s` in the formulas.
 
@@ -1506,7 +1516,38 @@ The receiver is a string, named `s` in the formulas.
 | `"a".padEnd(3)` |  | `"a  "` |
 | `"😀".padEnd(2, "ab")` |  | `"😀a"` |
 
-### 5.4 Lists: 22 methods
+#### 5.3.14 `indexOf`
+
+| Field | Value |
+| --- | --- |
+| Signature | `string.indexOf: (search: string) => int \| null` |
+| Receiver | `string` |
+| Steps | `sz(s)` |
+| Units | `0` |
+| Null | `search` does not occur in `s` |
+| Fails | Only as 2.6 says |
+| Order | Tests; steps; result. |
+
+1. The position of the first occurrence of `search` in `s` (3.5), in code
+   points from 0, as `len` and `slice` count them. Null when there is none.
+2. An empty `search` is found at 0, in every string. A `search` longer than `s`
+   gives null.
+3. The comparison is of code points, so case matters and nothing is normalized.
+4. The steps are `sz(s)` wherever the occurrence is, and when there is none.
+5. There is no start position argument. To search after a position `i`, search
+   `s.slice(i)` and add `i` to a position found.
+
+| Program | Data | Result |
+| --- | --- | --- |
+| `"Order #1234 shipped".indexOf("#")` |  | `6` |
+| `"a-b-c".indexOf("-")` |  | `1` |
+| `"abc".indexOf("x")` |  | `null` |
+| `"abc".indexOf("")` |  | `0` |
+| `"ab".indexOf("abc")` |  | `null` |
+| `"😀a😀b".indexOf("b")` |  | `3` |
+| `s.indexOf("b")` | `{s: string}`, s = `"b"` and 130 times `a` | `0`; 3 steps, 0 units |
+
+### 5.4 Lists: 24 methods
 
 The receiver is a list of `n` elements, of type `T[]` unless the record says
 otherwise. A callback is called with the element, `item`, and its index,
@@ -2108,6 +2149,66 @@ them.
 | `["x"].join("-")` |  | `"x"` |
 | `["a", "", "b"].join("-")` |  | `"a--b"` |
 | `xs.join(",")` | `{xs: any}`, xs = `["a", 1]` | Fails: `wrong-kind`; 3 steps, 0 units |
+
+#### 5.4.23 `findIndex`
+
+| Field | Value |
+| --- | --- |
+| Signature | `T[].findIndex: (f: (item: T, index: int) => unknown) => int \| null` |
+| Receiver | `T[]` |
+| Steps | `2*v` |
+| Units | `0` |
+| Null | No element makes f true, which includes an empty list |
+| Fails | Only as 2.6 says |
+| Order | For each element visited: 2 steps, then `f`. Stops at the first truthy result. |
+
+1. `f` is called for each element in order, until a result is truthy. The result
+   is the index of that element, and no later element is visited.
+2. Null if no result is truthy, and for an empty list. Unlike `find`, a null
+   element that makes `f` true is told apart from no match.
+3. `v` is the number of elements visited.
+4. Nothing is narrowed: the result is an index.
+
+| Program | Data | Result |
+| --- | --- | --- |
+| `xs.findIndex(x => x % 2 == 0)` | `{xs: int[]}`, xs = `[1, 4, 6]` | `1`; 10 steps, 0 units |
+| `[1, 3].findIndex(x => x > 5)` |  | `null` |
+| `[0, 5, 7].findIndex(x => x)` |  | `1` |
+| `[1, null].findIndex(x => x == null)` |  | `1` |
+| `["a", "b", "c"].findIndex((x, i) => i == 2)` |  | `2` |
+| `[1, 0].findIndex(x => 10 / x > 5)` |  | `0` |
+
+#### 5.4.24 `indexOf`
+
+| Field | Value |
+| --- | --- |
+| Signature | `T[].indexOf: (x: T) => int \| null` |
+| Receiver | `T[]` |
+| Steps | `e` |
+| Units | `0` |
+| Null | No element is equal to x, which includes an empty list |
+| Fails | Only as 2.6 says |
+| Order | Tests; for each element, in order, its comparison, charged as it is made (4.4). Stops at the first equal element. |
+
+1. The index of the first element equal to `x` by `==` (3.6), from 0. Null
+   when no element is equal, and for an empty list.
+2. `x` has the type `T` with no bound, so it accepts every value, null
+   included (2.6). A null `x` finds the first null element.
+3. The steps `e` are those of `x in xs` (`02-evaluation.md` 5.3): 1 for each
+   element compared, up to and including the first equal one, and in addition
+   the common prefix of two strings and the steps of `==` on two lists or two
+   maps of the same length or size.
+4. There is no start position argument (5.3.14).
+
+| Program | Data | Result |
+| --- | --- | --- |
+| `[3, 1, 3].indexOf(3)` |  | `0` |
+| `[1, 2].indexOf(5)` |  | `null` |
+| `[1, 2].indexOf(2.0)` |  | `1` |
+| `[[1], [2]].indexOf([2])` |  | `1` |
+| `xs.indexOf(null)` | `{xs: (int \| null)[]}`, xs = `[1, null]` | `1` |
+| `xs.indexOf("b")` | `{xs: string[]}`, xs = `["a", "b", "c"]` | `1`; 3 steps, 0 units |
+| `xs.indexOf(x)` | `{xs: int[][], x: int[]}`, xs = `[[1, 2], [1, 3]]`, x = `[1, 3]` | `1`; 11 steps, 0 units |
 
 ### 5.5 Maps: 3 methods
 

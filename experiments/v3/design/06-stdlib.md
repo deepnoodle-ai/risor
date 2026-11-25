@@ -8,8 +8,9 @@ in: `sortBy` takes a direction, and `minBy`, `maxBy`, `uniqueBy`, `indexBy`,
 `countBy` and `mapValues` are new (2.8). `fail` takes data (2.8). Recovery is
 written `try { e } catch { d }` everywhere (`10`). The messages of the library's
 failures come from the catalog `messages.json` (2.3, 2.11). A case has no
-tolerance field (2.8, `math`). The library now has 79 entries, with `walk` of
-plan `18` 5 (F17). A decision of a plan is cited by the plan's own number, such
+tolerance field (2.8, `math`). The library now has 82 entries, with `walk` of
+plan `18` 5 (F17) and the methods `indexOf` of a string and of a list and
+`findIndex` (D66). A decision of a plan is cited by the plan's own number, such
 as `13-2`.
 
 **How to read this.** Section 2 defines the library. A rule there is normative:
@@ -27,11 +28,11 @@ documents by section, and `07:` to `13:` are the plans.
 
 ## 1. Summary
 
-1. **The 3.0 library has 79 entries.** 60 are in the default set: 16 functions
-   and 44 methods, `walk` (plan `18` 5) among the functions. Four opt-in
+1. **The 3.0 library has 82 entries.** 63 are in the default set: 16 functions
+   and 47 methods, `walk` (plan `18` 5) among the functions. Four opt-in
    namespaces add 19 functions, and 2 constants that are not counted as
    entries. v2 ships 175 entries and expr 40 (section 3).
-2. **68 entries are exact and 11 are implementation-defined (T3).** The 11 are
+2. **71 entries are exact and 11 are implementation-defined (T3).** The 11 are
    the transcendental functions of `math`. Every other entry has one result in
    every implementation, stated in neutral terms: code points, a listed set of
    white space, a case table the specification owns, RFC texts.
@@ -173,7 +174,7 @@ Each v3 name beside JavaScript's:
 | Membership | `xs.includes(x)`, `s.includes(t)` | `x in xs`, `t in s` | The language's operator (`02:3.1`) |
 | Length | `x.length` | `len(x)` | A property cannot exist |
 | End elements | `xs.at(0)`, `xs.at(-1)` | `xs.first()`, `xs.last()` | `at` would be a second index beside `xs?.[i]` |
-| Position of an element | `xs.indexOf(x)` | none | 2.8 |
+| Position of an element | `xs.indexOf(x)`, `xs.findIndex(f)`, `s.indexOf(t)` | the same | Null where JavaScript gives `-1` (D66). A string position counts code points |
 | Concatenate | `xs.concat(ys)` | `[...xs, ...ys]` | Spread |
 | Keys, values | `Object.keys(m)`, `Object.values(m)` | `m.keys()`, `m.values()` | Methods; in key order |
 | Entries | `Object.entries(m)` | `m.entries()` | Records `{key, value}`, not pairs |
@@ -647,7 +648,7 @@ not clash: a type stands only after `as` or `is`, and there `int` is the type.
 - `fixed` and `padStart` are the two things `sprintf` did that a template string
   does not: `%.2f` and `%05d`.
 
-#### Strings (13 methods)
+#### Strings (14 methods)
 
 The receiver `s` is a `string`.
 
@@ -666,6 +667,7 @@ The receiver `s` is a `string`.
 | `repeat: (count: int) => string !` | `s` repeated `count` times | Fails if `count` is negative | `sz(result)` | `1 + sz(result)` |
 | `padStart: (length: int, fill?: string) => string` | If `s` has fewer than `length` code points, `fill` repeated and cut to the missing number, then `s`. `fill` defaults to one space. Unchanged if `fill` is empty | | `sz(result)` | `1 + sz(result)` |
 | `padEnd: (length: int, fill?: string) => string` | The same, with the fill after `s` | | `sz(result)` | `1 + sz(result)` |
+| `indexOf: (search: string) => int \| null` | The position, in code points, of the first occurrence of `search`. 0 for the empty string | Null if none (D66) | `sz(s)` | 0 |
 
 - `removePrefix` and `removeSuffix` have no JavaScript form. `ref.removePrefix(
   "refs/heads/")` is the everyday case, and the name cannot be mistaken for
@@ -674,7 +676,7 @@ The receiver `s` is a `string`.
   so the charge comes first.
 - A character is `s[i]` (`02:2.6`). Substring test is `in`. Length is `len`.
 
-#### Lists (27 methods)
+#### Lists (29 methods)
 
 The receiver is `T[]` unless the row says otherwise. Each callback is called
 with the element and its index, named `item` and `index`. The callback of
@@ -709,6 +711,8 @@ with the element and its index, named `item` and `index`. The callback of
 | `first: () => T \| null` | The first element | Null if empty | 0 | 0 |
 | `last: () => T \| null` | The last element | Null if empty | 0 | 0 |
 | `slice: (start: int, end?: int) => T[]` | As for strings, on elements | | `k` | `1 + k` |
+| `findIndex: (f: (item: T, index: int) => unknown) => int \| null` | The index of the first element for which `f` is true. Stops at the first | Null if none (D66) | `2v` | 0 |
+| `indexOf: (x: T) => int \| null` | The index of the first element equal to `x` by `==` | Null if none (D66) | What `x in xs` charges | 0 |
 | `join: (sep: string) => string`, receiver `string[]` | The elements with `sep` between them. Empty for an empty list | | `n + sz(result)` | `1 + sz(result)` |
 
 - **`sort` takes no comparator.** A comparator's calls depend on the sorting
@@ -989,7 +993,6 @@ but their default syntax differs, so the subset must be pinned for them too
 | Absent | Write instead, or why not |
 | --- | --- |
 | `includes`, `contains`, `has` | `in`. A check message names it (`20` 3.3) |
-| `indexOf`, `findIndex` | No consumer. JavaScript's `-1` would be a sentinel, and null would be the same text with another meaning. `find`, `in`, and `split` with a list pattern cover the uses |
 | `at(i)` | `xs?.[i]`, `first`, `last` |
 | A comparator for `sort` | `sortBy`, with a key and a direction: see the lists |
 | One `sortBy` with several keys; `thenBy` | Two stable sorts, the minor key first. One call waits for a way to type a key with a kind for each position (`13`, section 7) |
@@ -1053,7 +1056,7 @@ else that is valid in both means the same, or is a compile error.
 
 | Group | Entries | Default | Why here |
 | --- | --- | --- | --- |
-| `core` | 15 functions, 44 methods | on | Exact, and what every consumer uses |
+| `core` | 15 functions, 47 methods | on | Exact, and what every consumer uses |
 | `math` | 12 functions, 2 constants | off | The only implementation-defined entries |
 | `time` | 3 functions | off | No consumer today |
 | `json` | 2 functions | off | `parse` returns `any`. Under a strict host its result is used only after `as` or `is` (`07`) |
@@ -1634,7 +1637,7 @@ and 30 in the map methods (`13`, section 1, counts the same 200 and adds 30 in
 the checker for `filter` and `find`). `fail` with data adds none. The catalog
 loader and the generated message code are plan `10`'s lines, not these.
 
-The table itself is about 80 records: 79 entries and 2 constants. The cases are
+The table itself is about 85 records: 82 entries and 2 constants. The cases are
 data: I expect 450 to 550, plus one per code point of the case table. Each case
 for a failure now states its message. The accounting test is about 500 lines per
 implementation. The TypeScript and Rust implementations are each about the same

@@ -1,4 +1,4 @@
-//! The library entries (`04-library.md` 5): the 53 of Core and those of
+//! The library entries (`04-library.md` 5): the 56 of Core and those of
 //! the packages F6, F7, F13 and F17.
 //!
 //! Every call goes through the same steps (4.4): the argument tests of 2.6,
@@ -41,7 +41,7 @@ fn literal_set(t: &Type) -> Option<Vec<&str>> {
 
 /// The formulas each entry implements: name, receiver, steps, units. A unit
 /// test holds them equal to `suite/library.json`.
-pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 79] = [
+pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 82] = [
     ("walk", None, "2*k", "1 + k"),
     ("math.pow", None, "200", "0"),
     ("math.exp", None, "200", "0"),
@@ -136,6 +136,7 @@ pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 79] = [
         "1 + sz(result)",
     ),
     ("padEnd", Some(Kind::String), "sz(result)", "1 + sz(result)"),
+    ("indexOf", Some(Kind::String), "sz(s)", "0"),
     ("filter", Some(Kind::List), "2*n", "1 + k"),
     ("map", Some(Kind::List), "2*n", "1 + n"),
     ("flatMap", Some(Kind::List), "2*n + k", "1 + k"),
@@ -168,6 +169,8 @@ pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 79] = [
     ("last", Some(Kind::List), "0", "0"),
     ("slice", Some(Kind::List), "k", "1 + k"),
     ("join", Some(Kind::List), "n + sz(result)", "1 + sz(result)"),
+    ("findIndex", Some(Kind::List), "2*v", "0"),
+    ("indexOf", Some(Kind::List), "e", "0"),
     ("keys", Some(Kind::Map), "n + L*(n + sz(keys))", "1 + n"),
     ("values", Some(Kind::Map), "n + L*(n + sz(keys))", "1 + n"),
     (
@@ -185,6 +188,7 @@ enum Each {
     Some,
     Every,
     Find,
+    FindIndex,
     Count,
     GroupBy,
     SortBy,
@@ -309,6 +313,7 @@ fn list_entry(name: &str) -> ListEntry {
         "some" => ListEntry::Each(Each::Some),
         "every" => ListEntry::Each(Each::Every),
         "find" => ListEntry::Each(Each::Find),
+        "findIndex" => ListEntry::Each(Each::FindIndex),
         "count" => ListEntry::Each(Each::Count),
         "groupBy" => ListEntry::Each(Each::GroupBy),
         "sortBy" => ListEntry::Each(Each::SortBy),
@@ -956,6 +961,17 @@ impl<'h> Run<'h> {
                     s.replace(old, new)
                 }))
             }
+            "indexOf" => {
+                self.charge(sz_s)?;
+                let t = text(&a0);
+                // A text longer than the receiver is answered from the
+                // lengths. `str::find` is linear.
+                let at = if t.len() > s.len() { None } else { s.find(t) };
+                Ok(match at {
+                    Some(b) => Value::Num(s[..b].chars().count() as f64),
+                    None => Value::Null,
+                })
+            }
             "slice" => {
                 let n = s.chars().count();
                 let (a, b) = positions(num(&a0).unwrap_or(0.0), num(&a1), n);
@@ -1386,6 +1402,13 @@ impl<'h> Run<'h> {
             Each::Some if r.truthy() => return Ok(Some(Value::Bool(true))),
             Each::Every if !r.truthy() => return Ok(Some(Value::Bool(false))),
             Each::Find if r.truthy() => return Ok(Some(e)),
+            // `counted` is the index of the element: one more for each miss.
+            Each::FindIndex if r.truthy() => return Ok(Some(Value::Num(g.counted as f64))),
+            Each::FindIndex => {
+                g.counted += 1;
+                release(r);
+                release(e)
+            }
             Each::Count => {
                 g.counted += r.truthy() as usize;
                 release(r)
@@ -1429,7 +1452,7 @@ impl<'h> Run<'h> {
             }
             Each::Some => Ok(Value::Bool(false)),
             Each::Every => Ok(Value::Bool(true)),
-            Each::Find => Ok(Value::Null),
+            Each::Find | Each::FindIndex => Ok(Value::Null),
             Each::Count => Ok(Value::Num(g.counted as f64)),
             Each::SortBy => self.sorted_by_keys(name, n, g.keys, g.out, args, span),
             Each::GroupBy => self.grouped_by_keys(n, g.keys, g.out),
@@ -1672,6 +1695,17 @@ impl<'h> Run<'h> {
                 }
                 Ok(Value::list(out))
             }
+            "indexOf" => {
+                // Each comparison charges as `x in xs` does (`e`).
+                let x = self.val(args, 0).unwrap_or(Value::Null);
+                for i in 0..n {
+                    let e = self.read(recv.elem(i), span)?;
+                    if self.in_elem(&x, &e, span)? {
+                        return Ok(Value::Num(i as f64));
+                    }
+                }
+                Ok(Value::Null)
+            }
             "reverse" => {
                 self.charge(n as u64)?;
                 self.alloc(1 + n as u64)?;
@@ -1766,11 +1800,11 @@ mod tests {
     #[test]
     fn the_formulas_are_the_records() {
         let recs = records();
-        // 53 of Core, 8 of F6, 6 of F7, 11 of F13 and `walk` of F17
+        // 56 of Core, 8 of F6, 6 of F7, 11 of F13 and `walk` of F17
         // (`f17-recursion.md` 1.3).
-        assert_eq!(recs.len(), 79);
+        assert_eq!(recs.len(), 82);
         let core = recs.iter().filter(|r| r.group.is_none()).count();
-        assert_eq!(core, 60);
+        assert_eq!(core, 63);
         let functions = recs
             .iter()
             .filter(|r| r.group.is_none() && r.receiver.is_none())

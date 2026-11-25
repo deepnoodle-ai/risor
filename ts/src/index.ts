@@ -10,7 +10,7 @@
 //   src/host/      S1  environment declarations; S2 the host API: compile, run,
 //                      variables, host functions, opaque values, usage
 //   src/eval/      S2  static rules, the evaluator, steps, units, limits, try/catch
-//   src/library/   S3  the 53 Core entries, built from suite/library.json and
+//   src/library/   S3  the 56 Core entries, built from suite/library.json and
 //                      suite/casemap.json
 //   src/suite/     S1  strict JSON, case files (03 3.10) and the runner
 //

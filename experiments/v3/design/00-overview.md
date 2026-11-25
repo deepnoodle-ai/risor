@@ -324,7 +324,7 @@ Each line points at the document that owns the detail.
 | Evaluation | In Go: closures compiled from the AST, values as plain Go values, host data read in place through one read barrier. A simple reference layer, and a typed layer over it for speed on Go structs. In Rust: no collector, values lent from the host for the length of a run, host records through a trait. | `04` |
 | Limits | Steps, allocation units and a deadline, plus a depth limit. Steps and units are fixed by the specification version, so a program reaches a limit at the same point in every implementation. | `04`, section 2.5 |
 | Host model | Parse, analyze, check, compile, run. An immutable environment declares names and types; values arrive per run. One error type with stable codes, a trace, and messages from one catalog. Templates with `${{ }}`. Tests as data. Analysis of names, paths and calls without an environment. | `05` |
-| Library | 79 functions and methods and 2 constants. 60 are in the default core and all 60 are exact across implementations. Optional groups: `math`, `time`, `json`, `base64`. One specification table defines every entry, with its cost formulas and its examples as conformance cases. | `06` |
+| Library | 82 functions and methods and 2 constants. 63 are in the default core and all 63 are exact across implementations. Optional groups: `math`, `time`, `json`, `base64`. One specification table defines every entry, with its cost formulas and its examples as conformance cases. | `06` |
 
 This table is the design as built on `main`. D53 to D58 change it as `14`
 section 5 schedules, and the Counts table of section 4 lists what moves.
@@ -450,6 +450,7 @@ tracks A to F.
 | D62 | How the formatter writes a broken `? :` chain (#665) | **Settled by the owner, 2026-11-24:** flat. A `? :` whose `else` branch is a `? :` is one chain. When it does not fit, each link starts a line at the chain's indentation: `test ? branch`, then `: test ? branch`, then `: branch`, as an `if` with `else if` parts stands. A link that does not fit breaks alone, with `? branch` on the next line one level in. Each `else` branch used to be indented two more than the one before, so the output grew with the square of the chain's length: 22 KB of source gave 8 MB. F12 2.8 item 5; R321 |
 | D64 | Host data that shares a list or map makes the conformance function take exponential time (#678) | **Settled by the owner, 2026-11-24:** meter the walk. The conformance function and `ConformAll` charge the steps a run's walk charges (F4 5.3), against the default step limit, 1,000,000, or one the host gives through an option of each binding; past it they fail with `steps-exceeded`, class `limit`, no path. Shared values are not remembered and no identity of a host value is defined. The count is exact, so a conform case pins it with the field `limit` (F4 7.3, 9.2; F8 6.4). The environment's step limit does not apply: the function takes no environment (R322). A host that walks very large data through `Conform` must raise or turn off the limit |
 | D65 | What the suite pins, and two rules relaxed to match | **Settled by the owner, 2026-11-24.** The suite pins what an author or a host sees: values, the first diagnostic's code and span, and run failures. It does not pin every combination of errors, and no implementation does extra work to agree on one nobody meets. Two rules are relaxed. (1) A declaration whose name is refused and whose type text is also bad: whether the text is parsed and its error reported is unspecified. `reserved-namespace` and `bad-name` are always reported; with `name-clash`, at least one of the two errors is (`03-host.md` 3.3.4 item 4). A `declare` case that expects a name error is compared with any one reported diagnostic; one that expects another code still needs exactly one (3.10.7 item 6). (2) A library entry whose result creates no new text and is no larger than a constant times its receiver, such as `groupBy`, may build its result before it charges the units, with the same charges, failure and callback order. An entry whose result can outgrow its input, such as `range` or `repeat`, still charges first (`02-evaluation.md` 6.2 item 3). Fixes #648 and #653 |
+| D66 | `indexOf` and `findIndex` return null on a miss (#640, friction 7) | **Settled by the owner, 2026-11-25.** Three Core entries: `s.indexOf(t)`, the position in code points of the first occurrence of `t` in `s`; `xs.indexOf(x)`, the index of the first element `==` to `x`; and `xs.findIndex(f)`, the index of the first element for which `f` is true, stopping there as `find` does. Each gives null where JavaScript gives `-1`, so the result type is `int \| null` and the checker makes the author handle a miss, as with `find`. With `slice` they take a value out of text without regular expressions (D9, D52). Reverses the row of `06` 2.8, "Deliberately absent", that left them out. `04-library.md` 5.3.14, 5.4.23 and 5.4.24; R386 to R390 |
 
 **The evidence for D58** (measured 2026-11-19, `main` `aeaaf1fd`). Chains of
 `const` lambdas, compiled without the type rules, at depth limit 1,000. Each
@@ -484,7 +485,7 @@ others' text:
 
 | Count | Additions |
 | --- | --- |
-| Library entries | 1 (F17: `walk`, in the default group). The totals of section 3, 78 and 59, become 79 and 60 |
+| Library entries | 1 (F17: `walk`, in the default group). The totals of section 3, 78 and 59, become 79 and 60. D66 adds 3 to Core (`indexOf` of a string and of a list, `findIndex`): 79 and 60 become 82 and 63 |
 | Run codes and run templates | None: 19 codes, 64 templates |
 | Check codes | `recursion-needs-types` (Core: 27 become 28), `bad-export` (F16) and `circular-type` (F17, step E2, R264). The catalog's 29 become 32 |
 | Static codes (`05-types.md` 16.1, 22.1) | The first two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation). `circular-type` is a static code of its package, as `name-clash` is of F16, and is not in Core's count |
@@ -559,7 +560,7 @@ are built on it. Both toolchains are on the development machine (Node 22, Rust
 1.99), so neither step waits on anything.
 
 Three of everything is the main cost of C1. The checker is about 2,935 lines and
-the library 79 entries, each written three times and kept in step by the suite.
+the library 82 entries, each written three times and kept in step by the suite.
 R9 is the fallback if that proves too much for the third checker.
 
 ### 5.3 What happens to v2 and expr

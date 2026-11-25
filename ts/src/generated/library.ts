@@ -504,6 +504,20 @@ export const LIBRARY: LibraryRecord[] = [
     "fails": []
   },
   {
+    "name": "indexOf",
+    "receiver": "string",
+    "signature": "(search: string) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The position, in code points, of the first occurrence of search in s, or null.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "0",
+    "null": "search does not occur in s",
+    "fails": []
+  },
+  {
     "name": "filter",
     "receiver": "T[]",
     "signature": "(f: (item: T, index: int) => unknown) => T[]",
@@ -927,6 +941,36 @@ export const LIBRARY: LibraryRecord[] = [
         "template": "element"
       }
     ]
+  },
+  {
+    "name": "findIndex",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The index of the first element for which f is true, or null.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*v",
+    "units": "0",
+    "null": "no element makes f true, which includes an empty list",
+    "fails": []
+  },
+  {
+    "name": "indexOf",
+    "receiver": "T[]",
+    "signature": "(x: T) => int | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The index of the first element equal to x, or null.",
+    "calls": [],
+    "steps": "e",
+    "units": "0",
+    "null": "no element is equal to x, which includes an empty list",
+    "fails": []
   },
   {
     "name": "keys",

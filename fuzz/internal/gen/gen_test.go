@@ -24,7 +24,7 @@ func loadLib(t *testing.T) *Library {
 
 func TestLibrary(t *testing.T) {
 	lib := loadLib(t)
-	if len(lib.Entries) != 53 || len(lib.Functions) != 15 || len(lib.Methods) != 38 {
+	if len(lib.Entries) != 56 || len(lib.Functions) != 15 || len(lib.Methods) != 41 {
 		t.Fatalf("entries %d, functions %d, methods %d", len(lib.Entries), len(lib.Functions), len(lib.Methods))
 	}
 	for _, e := range lib.Entries {

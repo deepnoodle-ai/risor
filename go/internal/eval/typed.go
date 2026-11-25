@@ -306,7 +306,7 @@ func elemStruct(t reflect.Type) reflect.Type {
 // elementParam is the parameter of a list method's lambda that is given
 // the element (04-library.md): the first, or the second for reduce.
 var elementParam = map[string]int{
-	"filter": 0, "map": 0, "flatMap": 0, "some": 0, "every": 0, "find": 0, "count": 0,
+	"filter": 0, "map": 0, "flatMap": 0, "some": 0, "every": 0, "find": 0, "findIndex": 0, "count": 0,
 	"sortBy": 0, "groupBy": 0, "minBy": 0, "maxBy": 0, "uniqueBy": 0, "indexBy": 0, "countBy": 0,
 	"reduce": 1,
 }

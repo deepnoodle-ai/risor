@@ -50,10 +50,10 @@ environment).
    same steps and units, on every platform.
 3. `suite/library-groups.json` has 10 records: one for each entry and one for
    each constant (3).
-4. With this package an implementation offers 61 library entries: the 53 of
+4. With this package an implementation offers 64 library entries: the 56 of
    Core and these 8.
 5. Package F13 adds eleven entries to the group `math` (8.1). With it an
-   implementation offers 72.
+   implementation offers 75.
 
 ### 1.3 What this package changes in Core's rules
 
@@ -258,7 +258,7 @@ environment (`f01-host-types.md` 5.3) gains one key.
    and the 2 constants of 1.2, in the order of that table, each group's
    constants after its functions.
 2. It is a part of the specification table of `04-library.md` 1.3, kept in its
-   own file. `suite/library.json` holds the 53 records of the default group and
+   own file. `suite/library.json` holds the 56 records of the default group and
    is not changed. An implementation that offers F6 loads both files. An
    implementation that does not offer F6 loads `library.json` only.
 3. No name is in both files. The loader's rules of `04-library.md` 1.3 apply to
