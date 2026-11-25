@@ -52,6 +52,24 @@ func isComparison(e Expr) bool {
 	return ok && (BinaryLevel(b.Op) == LevelEqual || BinaryLevel(b.Op) == LevelRel)
 }
 
+// cmpUnder reports whether e is a comparison, or an as or is whose left
+// operand, written without parentheses, is one. On the right of a
+// comparison such an operand needs parentheses (3.4 rule 13).
+func cmpUnder(e Expr) bool {
+	for {
+		a, ok := e.(*As)
+		if !ok {
+			break
+		}
+		if u, ok := a.X.(*Unary); (ok && u.Op == "!") || Level(a.X) < LevelRel {
+			return false
+		}
+		e = a.X
+	}
+	b, ok := e.(*Binary)
+	return ok && (BinaryLevel(b.Op) == LevelEqual || BinaryLevel(b.Op) == LevelRel)
+}
+
 // Level gives the level of an expression node.
 func Level(e Expr) int {
 	switch e := e.(type) {
@@ -563,7 +581,7 @@ func (w *printer) binary(e *Binary) {
 		w.expr(e.X, l)
 	}
 	w.s(" " + e.Op + " ")
-	if cmp && isComparison(e.Y) {
+	if cmp && cmpUnder(e.Y) {
 		w.paren(e.Y)
 	} else {
 		w.expr(e.Y, l+1)

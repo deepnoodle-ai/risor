@@ -875,8 +875,24 @@ class Formatter {
     if (parent.op === "??") return ly < 7 || (y.kind === "Binary" && y.op === "??");
     if (parent.op === "**") return ly < 9;
     let need = ly <= p || (y.kind === "Binary" && y.op === "??");
-    if (isComparison(parent) && isComparison(y)) need = true;
+    // On the right, also one under `as` or `is` (01 3.4 rule 13).
+    if (isComparison(parent) && this.comparisonUnder(y)) need = true;
     return need;
+  }
+
+  /**
+   * Whether e is a comparison, or an `as` or `is` whose left operand, written
+   * without parentheses, is one: its text holds a comparison operator outside
+   * parentheses (01 3.4 rule 13).
+   */
+  private comparisonUnder(e: A.Expr): boolean {
+    let x = e;
+    while (x.kind === "As") {
+      const left = x.x;
+      if (this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!")) return false;
+      x = left;
+    }
+    return isComparison(x);
   }
 
   /**

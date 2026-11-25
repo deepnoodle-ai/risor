@@ -59,6 +59,19 @@ func isCmp(n syntax.Node) bool {
 	return ok && (binLevel[b.Op] == 5 || binLevel[b.Op] == 6)
 }
 
+// cmpUnder reports whether n is a comparison, or an as or is whose left
+// operand, written without parentheses, is one: the text of n then holds a
+// comparison operator outside parentheses (01-language.md 3.4 rule 13).
+func cmpUnder(n syntax.Node) bool {
+	for {
+		a, ok := n.(*syntax.As)
+		if !ok || needParens(a, rLeft, a.X) {
+			return isCmp(n)
+		}
+		n = a.X
+	}
+}
+
 func isNot(n syntax.Node) bool {
 	u, ok := n.(*syntax.Unary)
 	return ok && u.Op == "!"
@@ -99,10 +112,10 @@ func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 		if r == rLeft && lx < p || r == rRight && lx <= p {
 			return true
 		}
-		// A comparison inside a comparison (01-language.md 3.4 rule 13). as
-		// and is stand at level 6 but are not comparisons: a < b as bool
-		// needs no pair.
-		if op != "as" && (p == 5 || p == 6) && isCmp(x) {
+		// A comparison inside a comparison, and on the right one under as
+		// or is (01-language.md 3.4 rule 13). as and is stand at level 6 but
+		// are not comparisons: a < b as bool needs no pair.
+		if op != "as" && (p == 5 || p == 6) && (isCmp(x) || r == rRight && cmpUnder(x)) {
 			return true
 		}
 		return false

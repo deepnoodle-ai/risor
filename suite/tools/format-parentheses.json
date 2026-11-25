@@ -445,10 +445,38 @@
   }
  },
  {
-  "name": "a comparison as the left operand of is needs none",
+  "name": "is binds tighter than ==: a == b is bool is a == (b is bool), and needs no pair",
   "format": "a == b is bool",
   "expect": {
    "formatted": "a == b is bool\n"
+  }
+ },
+ {
+  "name": "an as on the right of a comparison, over a comparison, keeps its pair",
+  "format": "x == (a < b as bool)",
+  "expect": {
+   "formatted": "x == (a < b as bool)\n"
+  }
+ },
+ {
+  "name": "an as on the left of a comparison, over a comparison, needs no pair: the as ends the comparison",
+  "format": "(a < b as bool) == x",
+  "expect": {
+   "formatted": "a < b as bool == x\n"
+  }
+ },
+ {
+  "name": "a comparison on the right of ==, holding an is, keeps its pair: x == (a == (b is bool))",
+  "format": "x == (a == b is bool)",
+  "expect": {
+   "formatted": "x == (a == b is bool)\n"
+  }
+ },
+ {
+  "name": "an is over a comparison of level 5 on the right of ==: the pair goes around the ==",
+  "format": "x == ((a == b) is bool)",
+  "expect": {
+   "formatted": "x == (a == b) is bool\n"
   }
  }
 ]

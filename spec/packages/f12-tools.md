@@ -275,7 +275,7 @@ has level 6; a prefix operator 9; a chain and a primary 11.
 | The left operand of `**` | x has a level below 11 |
 | The right operand of `**` | x has a level below 9 |
 | The left operand of `in`, `not in`, `as` and `is` | By the rows above; and when x is a prefix `!` (`01-language.md` 3.4 rule 2, F4 2.5) |
-| An operand of a comparison operator: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` | By the rows above; and when x is a comparison (`01-language.md` 3.3, 3.4 rule 13). So `(a < b) == c` and `a == (b < c)` keep their pairs |
+| An operand of a comparison operator: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` | By the rows above; and when x is a comparison (`01-language.md` 3.3, 3.4 rule 13). The right operand also when x is an `as` or `is` whose left operand is written without parentheses and is, by this test, one. So `(a < b) == c`, `a == (b < c)` and `x == (a < b as bool)` keep their pairs, and `a < b as bool == x` has none |
 | The operand of a prefix `!` or `-` | x has a level below 9, or x is `**` (`01-language.md` 3.4 rule 1) |
 | The receiver of a step of a chain | x has a level below 11; or x is a chain that holds a `?.`, `?.[` or `?.[*]` step, or a star (F7), since `(a?.b).c` and `a?.b.c` are different trees |
 | The test of `? :` | x has level 1 |

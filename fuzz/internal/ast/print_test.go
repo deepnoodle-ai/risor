@@ -39,6 +39,7 @@ func TestPrintPrecedence(t *testing.T) {
 		{bin("<", bin("<", id("a"), id("b")), id("c")), "(a < b) < c"}, // 3.4 rule 13
 		{bin("==", bin("<", id("a"), id("b")), id("c")), "(a < b) == c"},
 		{bin("==", id("a"), bin("in", id("b"), id("c"))), "a == (b in c)"},
+		{bin("==", id("a"), &As{Form: "as", X: bin("<", id("b"), id("c")), Type: "bool"}), "a == (b < c as bool)"},
 		{bin("==", id("a"), bin("==", id("b"), id("c"))), "a == (b == c)"},
 		{&Cond{Test: &Cond{Test: id("a"), Then: id("b"), Else: id("c")}, Then: id("d"), Else: id("e")}, "(a ? b : c) ? d : e"},
 		{&Cond{Test: id("a"), Then: id("b"), Else: &Cond{Test: id("c"), Then: id("d"), Else: id("e")}}, "a ? b : c ? d : e"},

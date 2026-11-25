@@ -1307,6 +1307,65 @@
    "env": "{x: any, y: any, c: any}"
   },
   {
+   "name": "a comparison under as on the right of == is still a comparison: x == y < 3 as bool",
+   "source": "x == y < 3 as bool",
+   "vars": {
+    "x": true,
+    "y": 1
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "on the left of ==, an as ends the comparison: y < 3 as bool == x is ((y < 3) as bool) == x",
+   "source": "y < 3 as bool == x",
+   "vars": {
+    "x": true,
+    "y": 1
+   },
+   "expect": {
+    "value": true
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "parentheses around the as on the right: x == (y < 3 as bool)",
+   "source": "x == (y < 3 as bool)",
+   "vars": {
+    "x": true,
+    "y": 1
+   },
+   "expect": {
+    "value": true
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "parentheses around the comparison under as: (y < 3) as bool == x",
+   "source": "(y < 3) as bool == x",
+   "vars": {
+    "x": true,
+    "y": 1
+   },
+   "expect": {
+    "value": true
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
    "name": "as groups with < from the left: (3 < x) as bool",
    "source": "3 < x as bool",
    "vars": {

@@ -1071,7 +1071,12 @@ impl<'a> B<'a> {
                 // A comparison inside a comparison (`01-language.md` 3.4
                 // rule 13).
                 let cmp = |o: BinaryOp| matches!(op_level(o), 5 | 6);
-                let extra = cmp(op) && cop.is_some_and(cmp);
+                // On the right, also one under `as` or `is`.
+                let extra = cmp(op)
+                    && match role {
+                        Role::Left => cop.is_some_and(cmp),
+                        Role::Right => self.cmp_under(c),
+                    };
                 match role {
                     Role::Left => {
                         lc < p
@@ -1111,6 +1116,20 @@ impl<'a> B<'a> {
     /// table of 2.6, or for the reader.
     fn paren_bin_at(&self, op: BinaryOp, c: NodeId, role: Role, depth: u32) -> bool {
         self.paren_bin(op, c, role) || self.reader(op, c, role, depth)
+    }
+
+    /// Whether `c` is a comparison, or an `as` or `is` whose value, written
+    /// without parentheses, is one: its text holds a comparison operator
+    /// outside parentheses (`01-language.md` 3.4 rule 13).
+    fn cmp_under(&self, c: NodeId) -> bool {
+        let mut n = c;
+        while let NodeKind::As { x, .. } = self.kind(n) {
+            if self.paren_as(*x) {
+                return false;
+            }
+            n = *x;
+        }
+        self.bin_op(n).is_some_and(|o| matches!(op_level(o), 5 | 6))
     }
 
     fn paren_receiver(&self, c: NodeId) -> bool {
@@ -2577,7 +2596,11 @@ pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Er
     Ok(format_template_pass(&s, all, true).map_or(s, |(t, _)| t))
 }
 
-fn format_template_pass(text: &str, opts: ParseOptions, readers: bool) -> Result<(String, bool), Error> {
+fn format_template_pass(
+    text: &str,
+    opts: ParseOptions,
+    readers: bool,
+) -> Result<(String, bool), Error> {
     let mut saw_any = false;
     let t = parse_template_with(text, opts)?;
     let src: &Source = t.source();
