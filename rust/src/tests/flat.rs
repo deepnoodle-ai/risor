@@ -581,14 +581,9 @@ fn operators_of_the_limit() {
             ),
             Form::new(|n| vec!["b"; n].join(" && "), "bool", "false", 0, 0),
             Form::new(|n| vec!["o"; n].join(" ?? "), "int | null", "null", 0, 0),
-            // The formatter writes each `else` branch of a `? :` that it
-            // breaks one indent deeper than the branch before, so its text
-            // for `n` branches has about 2 `n` squared code points: 20 GB
-            // at 100,000 (measured: 2,010,002 at 1,000).
-            Form {
-                format: 1_000,
-                ..Form::new(|n| format!("{}n", "b ? n : ".repeat(n)), "int", "1", 0, 0)
-            },
+            // The formatter writes a broken `? :` chain at one indentation
+            // (F12 2.8 item 5), so its text grows linearly.
+            Form::new(|n| format!("{}n", "b ? n : ".repeat(n)), "int", "1", 0, 0),
         ]
     });
 }

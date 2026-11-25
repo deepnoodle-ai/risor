@@ -64,6 +64,8 @@ type builder struct {
 	// first of an element other than the first.
 	first, last int
 	elemStart   bool
+	// lineEnds[i] is the number of line ends in src[:i] (lineEndsIn).
+	lineEnds []int
 }
 
 func newBuilder(src []rune, toks []syntax.Token, from int) *builder {
@@ -132,6 +134,30 @@ func (b *builder) reset() {
 	b.first, b.last, b.elemStart = -1, -1, false
 }
 
+// lineEndsIn counts the line ends in src[a:b], CR LF as one, in constant
+// time from a prefix count. Counting from a each time made attach take time
+// that grew with the square of the number of comments after one token.
+func (b *builder) lineEndsIn(a, c int) int {
+	if a >= c {
+		return 0
+	}
+	if b.lineEnds == nil {
+		b.lineEnds = make([]int, len(b.src)+1)
+		for i, r := range b.src {
+			n := b.lineEnds[i]
+			if r == '\r' || (r == '\n' && (i == 0 || b.src[i-1] != '\r')) {
+				n++
+			}
+			b.lineEnds[i+1] = n
+		}
+	}
+	n := b.lineEnds[c] - b.lineEnds[a]
+	if b.src[a] == '\n' && a > 0 && b.src[a-1] == '\r' {
+		n++ // the LF of a CR LF that the count gave to the CR before a
+	}
+	return n
+}
+
 // attach attaches each comment to a kept unit (2.12 items 2 and 3).
 func (b *builder) attach() {
 	var keptIdx []int
@@ -144,7 +170,7 @@ func (b *builder) attach() {
 	for _, c := range b.comments {
 		// The unit before the comment.
 		pi := sort.SearchInts(b.starts, c.start) - 1
-		if pi >= 0 && countLineEnds(b.src[b.us[pi].end:c.start]) == 0 {
+		if pi >= 0 && b.lineEndsIn(b.us[pi].end, c.start) == 0 {
 			// The last kept unit that ends before it: units are in order,
 			// and so are their ends.
 			k := sort.Search(len(keptIdx), func(k int) bool { return b.us[keptIdx[k]].end > c.start }) - 1
@@ -568,14 +594,7 @@ func (b *builder) node(n syntax.Node) part {
 		if n.Form == "if" {
 			return b.ifChain(n)
 		}
-		test := b.sub(n, rTest, n.Test)
-		q := b.next(n.Test.Span().End, syntax.Question)
-		qd := b.tok(q)
-		then := b.node(n.Then)
-		c := b.next(n.Then.Span().End, syntax.Colon)
-		cd := b.tok(c)
-		els := b.node(n.Else)
-		return grp(test, ind(pLine, qd, pSpace, then, pLine, cd, pSpace, els))
+		return b.condChain(n)
 	case *syntax.Try:
 		tt := b.at(n.Span().Start)
 		lb := tt + 1
@@ -693,6 +712,29 @@ func (b *builder) branch(content syntax.Node, lb, rb int) part {
 	cl := b.closeLead(rb, true)
 	inner := append(append([]part{pLine}, bd...), cl)
 	return []part{o, &indent{d: inner}, pLine, b.bare(rb)}
+}
+
+// condChain is a `? :` and the `? :` in its else branch, and in that one's,
+// as one chain (2.8 item 5). Every link stands at one indentation, so the
+// output grows with the chain's length, not with its square.
+func (b *builder) condChain(n *syntax.Cond) part {
+	out := []part{b.sub(n, rTest, n.Test)}
+	var links []part
+	cur := n
+	for {
+		q := b.next(cur.Test.Span().End, syntax.Question)
+		links = append(links, pLine, b.tok(q), pSpace, b.node(cur.Then))
+		c := b.next(cur.Then.Span().End, syntax.Colon)
+		links = append(links, pLine, b.tok(c), pSpace)
+		if c2, ok := cur.Else.(*syntax.Cond); ok && c2.Form == "?:" {
+			links = append(links, b.sub(c2, rTest, c2.Test))
+			cur = c2
+			continue
+		}
+		links = append(links, b.node(cur.Else))
+		break
+	}
+	return grp(append(out, ind(links...))...)
 }
 
 func (b *builder) ifChain(n *syntax.Cond) part {

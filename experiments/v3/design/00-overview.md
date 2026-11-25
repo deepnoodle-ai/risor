@@ -357,7 +357,8 @@ timing of imports, the message catalog and the direction for queries by name.
 D52 to D56 are five plans from the review of issues #640 and #641; the owner
 settled the direction of each on 2026-11-14, then withdrew D52 and trimmed D54
 to D56 on 2026-11-19. D57 and D58 were put and settled the same day. D59 is a
-recommendation the owner has not confirmed, and D60 is open.
+recommendation the owner has not confirmed, and D60 is open. D62 was settled
+on 2026-11-24.
 
 ### 4.1 Strategy
 
@@ -445,6 +446,7 @@ tracks A to F.
 | D58 | The largest depth limit a host may set | **Settled by the owner, 2026-11-19:** 400, down from 1,000 (R20). The default stays 200. The fallback of 300 was not needed: after the stack work each binding runs its deepest forms at 400 with 1.5 times headroom, the TypeScript binding in a browser Web Worker among them (R214). With it goes a rule for `03-host.md` 3.9.1: each binding's stack test covers calls that a library entry makes of a lambda (`map`, `flatMap`), not only direct calls, and passes with 1.5 times headroom. The evidence is below |
 | D59 | Scope: what v3 is (`21` 1) | **A recommendation the owner has not confirmed.** Write it into `AGENTS.md` and this file as a constraint: v3 is an embedded expression language; a file may hold several named entry points; nothing outlives a run (no closure kept by the host, no event loop, no mutation, no loops). The two tests of `21` 1 come with it: does a proposal make writing, checking or running an expression over host data better; and does a TypeScript programmer read it without an explanation |
 | D60 | Keep the name "Risor v3", or rename v3 as expr's successor | **Open.** No recommendation. `21` 4 notes the case for a rename: if the Risor name keeps bringing requests for scripting |
+| D62 | How the formatter writes a broken `? :` chain (#665) | **Settled by the owner, 2026-11-24:** flat. A `? :` whose `else` branch is a `? :` is one chain, in one group and one indent, so when it breaks every `?` and `:` starts a line at the same indentation, as an `if` with `else if` parts does. Each `else` branch used to be indented two more than the one before, so the output grew with the square of the chain's length: 22 KB of source gave 8 MB. F12 2.8 item 5; R320 |
 
 **The evidence for D58** (measured 2026-11-19, `main` `aeaaf1fd`). Chains of
 `const` lambdas, compiled without the type rules, at depth limit 1,000. Each

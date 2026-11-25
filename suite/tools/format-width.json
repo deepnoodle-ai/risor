@@ -94,7 +94,7 @@
   "name": "a nested conditional that does not fit",
   "format": "const size = n > 1000 ? \"a large number of things\" : n > 100 ? \"a medium number\" : \"a small number\";\nsize",
   "expect": {
-   "formatted": "const size =\n  n > 1000\n    ? \"a large number of things\"\n    : n > 100 ? \"a medium number\" : \"a small number\";\nsize\n"
+   "formatted": "const size =\n  n > 1000\n    ? \"a large number of things\"\n    : n > 100\n    ? \"a medium number\"\n    : \"a small number\";\nsize\n"
   }
  },
  {

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 
@@ -139,4 +140,31 @@ func TestFormatLawsOverSuite(t *testing.T) {
 	}
 	t.Logf("%d texts, %d formatted", len(texts), n)
 	assert.True(t, n > 5000)
+}
+
+// TestFormatManyCommentsAfterOneToken checks that attaching comments takes
+// time linear in their number (issue #675). Counting the line ends from the
+// token for each comment took 3.3 s for 40,000 comments, and four times as
+// long for twice as many.
+func TestFormatManyCommentsAfterOneToken(t *testing.T) {
+	src := "1 " + strings.Repeat("/* c */ ", 80000)
+	start := time.Now()
+	out, err := risor.Format(src)
+	took := time.Since(start)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(out, "1 /* c */ /* c */"))
+	assert.True(t, took < 3*time.Second, "took %v", took)
+}
+
+// TestFormatLongConditionalChain checks that a broken `? :` chain is
+// written flat, so its output grows linearly with its length (issue #665).
+func TestFormatLongConditionalChain(t *testing.T) {
+	const n = 20000
+	src := strings.Repeat("true ? 1 : ", n) + "2"
+	out, err := risor.Format(src)
+	assert.NoError(t, err)
+	// Each link is the 15 bytes "  ? 1\n  : true\n".
+	assert.True(t, len(out) <= 16*n, "%d bytes", len(out))
+	assert.True(t, strings.HasPrefix(out, "true\n  ? 1\n  : true\n  ? 1\n"))
+	assert.True(t, strings.HasSuffix(out, "  ? 1\n  : 2\n"))
 }

@@ -417,28 +417,9 @@ struct Cmt {
     after: u32,
 }
 
-fn line_ends(ch: &[char], a: usize, b: usize) -> u32 {
-    let mut n = 0;
-    let mut i = a;
-    while i < b.min(ch.len()) {
-        match ch[i] {
-            '\n' => n += 1,
-            '\r' => {
-                n += 1;
-                if ch.get(i + 1) == Some(&'\n') && i + 1 < b {
-                    i += 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    n
-}
-
-/// For each offset of a text, and its end, the line ends before it, as
-/// `line_ends` counts them from the start: a `\n` after a `\r` is part of
-/// that line end.
+/// For each offset of a text, and its end, the line ends before it,
+/// counted from the start: a `\r`, a `\n`, and a `\r\n` are each one line
+/// end, so a `\n` after a `\r` is part of that line end.
 fn line_ends_before(ch: &[char]) -> Vec<u32> {
     let mut out = Vec::with_capacity(ch.len() + 1);
     let mut n = 0;
@@ -454,8 +435,9 @@ fn line_ends_before(ch: &[char]) -> Vec<u32> {
     out
 }
 
-/// `line_ends(ch, a, b)` in constant time, from `line_ends_before(ch)`. A
-/// `\n` at `a` after a `\r` before `a` is a line end of its own there.
+/// The line ends in `ch[a..b]`, in constant time, from
+/// `line_ends_before(ch)`. A `\n` at `a` after a `\r` before `a` is a line
+/// end of its own there.
 fn line_ends_at(ch: &[char], before: &[u32], a: usize, b: usize) -> u32 {
     let b = b.min(ch.len());
     if a >= b {
@@ -513,6 +495,8 @@ enum El {
 
 struct B<'a> {
     ch: &'a [char],
+    /// `line_ends_before(ch)`, so a count of line ends is constant time.
+    before: &'a [u32],
     ast: &'a Ast,
     raw: &'a [Token],
     t: Vec<FTok>,
@@ -536,7 +520,7 @@ impl<'a> B<'a> {
     /// again for each part.
     fn new(
         ch: &'a [char],
-        before: &[u32],
+        before: &'a [u32],
         ast: &'a Ast,
         raw: &'a [Token],
         comments: &[Range],
@@ -640,6 +624,7 @@ impl<'a> B<'a> {
         }
         B {
             ch,
+            before,
             ast,
             raw,
             t,
@@ -664,8 +649,15 @@ impl<'a> B<'a> {
         for ci in 0..self.cm.len() {
             let c = self.cm[ci].span;
             let p = self.t.partition_point(|x| x.span.end <= c.start);
-            let trailing =
-                p > 0 && line_ends(self.ch, self.t[p - 1].span.end as usize, c.start as usize) == 0;
+            // From the prefix count: counting from the token for each comment
+            // took time that grew with the square of the comments after it.
+            let trailing = p > 0
+                && line_ends_at(
+                    self.ch,
+                    self.before,
+                    self.t[p - 1].span.end as usize,
+                    c.start as usize,
+                ) == 0;
             if trailing {
                 let q = self
                     .kidx
@@ -1648,9 +1640,12 @@ impl<'a> B<'a> {
         self.group(l)
     }
 
+    /// A `? :` and the `? :` down its `else` branches, as one chain (2.8
+    /// item 5): one group and one indent, so a broken chain stands at one
+    /// indentation and its text grows linearly with its length.
     fn ternary(&mut self, id: NodeId) -> DocId {
-        // The chain of `? :` in its `else`, built from the innermost.
-        let mut chain = Vec::new();
+        let mut first = None;
+        let mut links = Vec::new();
         let mut n = id;
         while let NodeKind::Cond {
             form: CondForm::Ternary,
@@ -1659,32 +1654,32 @@ impl<'a> B<'a> {
             else_,
         } = self.kind(n)
         {
-            chain.push((*test, *then, *else_));
-            n = *else_;
-        }
-        let mut parts = Vec::new();
-        for &(test, then, else_) in &chain {
+            let (test, then, else_) = (*test, *then, *else_);
             let tp = self.level(test) == 1;
             let td = self.sub(test, tp);
+            if first.is_none() {
+                first = Some(td);
+            } else {
+                links.push(td);
+            }
             let q = self.tb(self.outer(then).start);
             let qd = self.tk(q);
             let thd = self.sub(then, false);
             let c = self.tb(self.outer(else_).start);
             let cd = self.tk(c);
-            parts.push((td, qd, thd, cd));
-        }
-        let mut below = self.sub(n, false);
-        for (td, qd, thd, cd) in parts.into_iter().rev() {
             let l1 = self.line();
             let s1 = self.sp();
             let l2 = self.line();
             let s2 = self.sp();
-            let il = self.list(vec![l1, qd, s1, thd, l2, cd, s2, below]);
-            let i = self.indent(il);
-            let gl = self.list(vec![td, i]);
-            below = self.group(gl);
+            links.extend([l1, qd, s1, thd, l2, cd, s2]);
+            n = else_;
         }
-        below
+        let last = self.sub(n, false);
+        links.push(last);
+        let il = self.list(links);
+        let i = self.indent(il);
+        let gl = self.list(vec![first.expect("a ternary"), i]);
+        self.group(gl)
     }
 
     /// Parentheses around the value of an `as` or `is` (F4 7).

@@ -49,11 +49,9 @@ export interface FlatForm {
    * What the formatter does with the form at 100,000 links. `text`: the
    * formatted text parses to the same tree. `nested`: the formatter writes a
    * pair of parentheses for the reader around each left operand (f12 2.6), so
-   * its text nests deeper than 100 levels and does not parse again. `quadratic`:
-   * the document of f12 2.8 indents each `else` branch two more, so the text
-   * grows with the square of the length and is not made at this length.
+   * its text nests deeper than 100 levels and does not parse again.
    */
-  format: "text" | "nested" | "quadratic";
+  format: "text" | "nested";
   /** The kind and the type of hover's record on the last word, where the form states them. */
   hover?: { kind: string; type: string };
 }
@@ -298,7 +296,7 @@ export const FORMS: FlatForm[] = [
     type: "int",
     steps: () => 0,
     units: () => 0,
-    format: "quadratic",
+    format: "text",
   },
   {
     name: "else if",

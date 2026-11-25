@@ -804,25 +804,29 @@ class Formatter {
   }
 
   /**
-   * `test ? then : else` (f12 2.8). The `else` branch opens no level (01 13.1),
-   * so a run of them is built by a loop: the last `else` first, then each
-   * conditional outward.
+   * `test ? then : else` (f12 2.8). A conditional whose `else` branch is a
+   * conditional is one chain with it (item 5): every link goes into one group
+   * and one indent, so a broken chain stands at one indentation and its text
+   * grows linearly with its length. The `else` branch opens no level (01 13.1),
+   * so the chain is walked by a loop.
    */
   private ternary(e: A.Cond): Doc {
-    const conds: A.Cond[] = [];
-    let x: A.Expr = e;
-    while (x.kind === "Cond" && x.form === "?:") {
-      conds.push(x);
-      x = x.else;
-    }
-    let d: Doc = this.expr(x);
-    for (let i = conds.length - 1; i >= 0; i--) {
-      const n = conds[i];
+    const links: Doc[] = [];
+    let n: A.Cond = e;
+    for (;;) {
       const q = this.find("?", this.outer(n.test).end);
       const c = this.find(":", this.outer(n.then).end);
-      d = group([this.paren(n.test, this.level(n.test) === 1), indent([L, this.tok(q), SP, this.expr(n.then), L, this.tok(c), SP, d])]);
+      links.push(L, this.tok(q), SP, this.expr(n.then), L, this.tok(c), SP);
+      const x = n.else;
+      if (x.kind === "Cond" && x.form === "?:") {
+        links.push(this.paren(x.test, this.level(x.test) === 1));
+        n = x;
+        continue;
+      }
+      links.push(this.expr(x));
+      break;
     }
-    return d;
+    return group([this.paren(e.test, this.level(e.test) === 1), indent(links)]);
   }
 
   private ifExpr(e: A.Cond): Doc {
