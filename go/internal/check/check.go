@@ -46,6 +46,9 @@ type Env struct {
 	// Removed is the set of removed library entries, by the names of
 	// 03-host.md 3.3.1 (len, string.repeat).
 	Removed map[string]bool
+	// Library are the library functions the environment has, by full
+	// name, for the lookup of package F19 (f19-author-feedback.md 3.4).
+	Library map[string]*library.Entry
 	// Facts are the host facts someNotNull of package F14, each the
 	// indexes of its members in VarTypes.
 	Facts [][]int
@@ -352,6 +355,9 @@ type lamInfo struct {
 }
 
 type checker struct {
+	// inPattern is set while a field of a map pattern with no default is
+	// read (F19 2).
+	inPattern  bool
 	curCall    syntax.Node
 	pend       pending
 	siteNode   syntax.Node

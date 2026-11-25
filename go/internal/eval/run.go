@@ -522,6 +522,9 @@ func (f *failure) diagnostic(file *syntax.File, whole syntax.Span) diag.Diagnost
 	}
 	if f.code == "function-error" {
 		d.Cause = f.cause
+		if f.hasData { // the inner diagnostic's data (package F19 5.1)
+			d.Data, d.HasData = f.data, true
+		}
 	}
 	if f.hasPath {
 		d.Path = f.path

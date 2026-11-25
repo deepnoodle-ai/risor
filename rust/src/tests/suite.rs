@@ -268,13 +268,14 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f13-math.json", true),
         ("until-f16-scope.json", true),
         ("until-f17-complete.json", true),
+        ("until-f19-x.json", true),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
         ("check-until-f02-a.json", false),
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(crate::PACKAGES.len(), 16);
+    assert_eq!(crate::PACKAGES.len(), 17);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -444,6 +445,26 @@ fn a_stub_with_no_type_reads_the_base() {
     );
 }
 
+/// F19 5.3: a `failed` stub error's `data` is read as `vars` are, so an
+/// opaque value in it names a declared type.
+#[test]
+fn a_failed_stub_errors_data_names_declared_opaque_types() {
+    let file = |opaque: &str, data: &str| {
+        format!(
+            r#"{{{opaque}"cases": [{{"name": "a", "source": "try {{ f() }} catch (e) {{ 1 }}",
+            "functions": {{"f": {{"type": "() => int !", "calls": [{{"error":
+            {{"code": "failed", "message": "m", "data": {data}}}}}]}}}},
+            "expect": {{"value": 1}}}}]}}"#
+        )
+    };
+    let env = crate::env::Env::default();
+    let ghost = r#"{"$opaque": {"type": "Ghost", "id": 0}}"#;
+    assert!(crate::testing::from_text(&file("", ghost), false, &env).is_err());
+    let declared = r#""opaque": ["Ghost"], "#;
+    assert!(crate::testing::from_text(&file(declared, ghost), false, &env).is_ok());
+    assert!(crate::testing::from_text(&file("", r#"{"a": [1]}"#), false, &env).is_ok());
+}
+
 /// Package F10: `suite/config/` (`f10-config.md` 10.3).
 #[test]
 fn config_package() {
@@ -573,6 +594,42 @@ fn recursion_package() {
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
     assert!(total.pass > 0, "no case ran");
+}
+
+/// Package F19: `suite/feedback/`, after `suite/recursion/` and before
+/// `suite/tools/` (`f19-author-feedback.md` 6 item 1).
+#[test]
+fn feedback_package() {
+    let total = run(&suite_dir().join("feedback"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+    assert!(total.pass > 0, "no case ran");
+}
+
+/// Package F19: the cases of `suite/messages-feedback.json`, each run once,
+/// checked (`f19-author-feedback.md` 6 item 1).
+#[test]
+fn catalog_feedback_cases() {
+    let mut total = Counts::default();
+    let mut failed = Vec::new();
+    for (entry, cases) in crate::messages::catalog().feedback_cases.clone() {
+        let cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
+        for c in &cases {
+            let v = crate::testing::run_case_in(c, true);
+            if let Verdict::Fail(diffs) = &v {
+                failed.push(c.name.clone());
+                println!("  fail: {entry}: {}", c.name);
+                for d in diffs {
+                    println!("    {}: expected {}, found {}", d.name, d.expected, d.found);
+                }
+            }
+            total.add(&v);
+        }
+    }
+    println!("suite/messages-feedback.json, checked: {total}");
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert!(failed.is_empty(), "cases failed: {failed:?}");
+    assert_eq!(total.pass, 9);
 }
 
 /// Package F12: `suite/tools/` (`f12-tools.md` 7.6).

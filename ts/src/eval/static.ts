@@ -15,6 +15,8 @@ import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Source, Span } from "../syntax/source.ts";
 import { catalogMessage } from "./failure.ts";
+import { functionHint, nameHint } from "../library/feedback.ts";
+import type { Offered } from "../library/feedback.ts";
 
 /** The counts of a signature (05 22.3). `fns[i]` is the parameter count of an `Fn` parameter i, or null. */
 export interface Counts {
@@ -46,6 +48,8 @@ export interface StaticEnv {
   typeNames?: TypeNames;
   /** Package F6: the constants of the groups that are on, by full name (f06 2.5). */
   constants?: ReadonlyMap<string, number>;
+  /** Package F19: the library methods offered, by receiver kind (f19 3.4 row 3). */
+  methods?: ReadonlyMap<string, ReadonlyMap<string, unknown>>;
 }
 
 /**
@@ -491,7 +495,7 @@ class Walker {
    * lambda to its own name is tested also where rule 8 of f17 13.2 reports
    * the argument: that rule is the lambda's, not the argument's (13.2 item 1).
    */
-  private ident(id: A.Ident, asLambdaArg: boolean): void {
+  private ident(id: A.Ident, asLambdaArg: boolean, step: string | null = null): void {
     const b = this.lookup(id.name);
     if (b !== undefined) {
       if (b.k === "value") this.res.refs.set(id, { k: "slot", slot: b.slot });
@@ -511,7 +515,24 @@ class Walker {
     }
     if (this.env.namespaces.has(id.name)) this.diag("not-a-value", id.span, "namespace", { name: id.name });
     else if (this.env.hostFunctions.has(id.name) || this.env.library.has(id.name)) this.diag("not-a-value", id.span, "function", { name: id.name });
-    else this.diag("undefined-name", id.span, "name", { name: id.name });
+    else {
+      // Package F19: a fix from the tables (f19 3.4 rows 1 and 2), with the step `.f` or `?.f` after the name.
+      const fix = nameHint(this.offered(), id.name, step);
+      if (fix === null) this.diag("undefined-name", id.span, "name", { name: id.name });
+      else this.diag("undefined-name", id.span, "hint", { name: id.name, fix });
+    }
+  }
+
+  /** Package F19: the entries the environment offers (f19 1.1). */
+  private offered(): Offered {
+    return { functions: this.env.library, methods: this.env.methods ?? new Map() };
+  }
+
+  /** `undefined-function`, with a fix from the tables when the lookup gives one (f19 3.4 rows 1 and 3). */
+  private undefinedFunction(span: Span, name: string): void {
+    const fix = functionHint(this.offered(), name);
+    if (fix === null) this.diag("undefined-function", span, "default", { name });
+    else this.diag("undefined-function", span, "hint", { name, fix });
   }
 
   /** 05 22.4, with f17 13.1: a `Lambda`, or an `Ident` whose innermost binding is a `const`-bound lambda or a function binding. */
@@ -588,7 +609,7 @@ class Walker {
         // f06 2.5 item 1: an entry of a group that is on.
         target = { k: "library", name: full };
         counts = l;
-      } else this.diag("undefined-function", nameSpan, "default", { name: full });
+      } else this.undefinedFunction(nameSpan, full);
     } else {
       const b = this.lookup(name);
       if (b !== undefined && b.k === "lambda") {
@@ -609,7 +630,7 @@ class Walker {
         target = { k: "library", name };
         counts = this.env.library.get(name)!;
       } else {
-        this.diag("undefined-function", nameSpan, "default", { name });
+        this.undefinedFunction(nameSpan, name);
       }
     }
     this.res.targets.set(node, target);
@@ -775,6 +796,8 @@ class Walker {
     // The nodes whose first operand is being walked, outermost first.
     const nodes: A.Expr[] = [];
     let x: A.Expr = e;
+    // Package F19: the name of the step `.f` or `?.f` (a field read or a method call) whose receiver is x (f19 3.3).
+    let step: string | null = null;
     descend: for (;;) {
       switch (x.kind) {
         case "Binary":
@@ -782,11 +805,13 @@ class Walker {
           if (x.op === "??") this.coalesce(x);
           nodes.push(x);
           x = x.x;
+          step = null;
           continue;
         case "As":
         case "Index":
           nodes.push(x);
           x = x.x;
+          step = null;
           continue;
         case "OptChain":
           // An OptChain holds its chain and nothing else.
@@ -797,6 +822,7 @@ class Walker {
           // A later star has no receiver: its reads are all it holds (f07 2.3).
           if (x.x === null) break descend;
           x = x.x;
+          step = null;
           continue;
         case "Member": {
           const value = this.constantOf(x);
@@ -805,6 +831,7 @@ class Walker {
             this.res.constants.set(x, value);
             break descend;
           }
+          step = x.name;
           x = x.x;
           continue;
         }
@@ -816,11 +843,13 @@ class Walker {
             break descend;
           }
           nodes.push(x);
+          step = x.name;
           x = x.x;
           continue;
         default:
           // The innermost operand: a primary, or an expression that opens a level.
-          this.expr(x);
+          if (x.kind === "Ident") this.ident(x, false, step);
+          else this.expr(x);
           break descend;
       }
     }

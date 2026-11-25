@@ -641,9 +641,22 @@ fn stub_impl(
                 Answer::Error(e) => Err(HostError::Text(e.clone())),
                 // 3.10.4: the failure of a run, in this binding's own type,
                 // with one diagnostic of phase `run` and no span.
-                Answer::Failure { code, message } => Err(HostError::from(Error::one(
-                    Diagnostic::bare(Phase::Run, static_code(code), message.clone()),
-                ))),
+                Answer::Failure {
+                    code,
+                    message,
+                    data,
+                } => {
+                    let mut d = Diagnostic::bare(Phase::Run, static_code(code), message.clone());
+                    // F19 5.3 item 1: `failed` carries the object's data, or
+                    // null.
+                    if code == "failed" {
+                        let v = data
+                            .as_ref()
+                            .map_or(crate::host::Data::Null, |x| interner.data(x));
+                        d.data = Some(Box::new(v));
+                    }
+                    Err(HostError::from(Error::one(d)))
+                }
             },
             charge: r.charge,
             allocate: r.allocate,
@@ -1623,6 +1636,7 @@ fn views_of(ds: &[Owned]) -> Vec<View<'_>> {
                 .iter()
                 .map(|(s, n, i)| (*s, n.as_str(), *i))
                 .collect(),
+            cause: None,
         })
         .collect()
 }

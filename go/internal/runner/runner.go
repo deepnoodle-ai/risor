@@ -270,9 +270,13 @@ func (st *stubState) native(name string, s *casefile.Stub) risor.Native {
 				return nil, errors.New(*row.Error)
 			}
 			if d := row.Diag; d != nil {
-				// 3.10.4 item 5: the failure of a nested run.
-				return nil, &risor.Error{Diagnostics: []risor.Diagnostic{
-					{Phase: risor.PhaseRun, Code: d.Code, Message: d.Message}}}
+				// 3.10.4 item 5: the failure of a nested run. A failed one has
+				// data, null when the object has none (F19 5.3).
+				dd := risor.Diagnostic{Phase: risor.PhaseRun, Code: d.Code, Message: d.Message}
+				if d.Code == "failed" {
+					dd.Data, dd.HasData = d.Data, true
+				}
+				return nil, &risor.Error{Diagnostics: []risor.Diagnostic{dd}}
 			}
 			return row.Result, nil
 		}

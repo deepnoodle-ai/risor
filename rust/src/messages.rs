@@ -36,6 +36,9 @@ pub struct Catalog {
     /// F17: the cases of `suite/messages-recursion.json` (`f17-recursion.md`
     /// 9 and 13.5).
     pub recursion_cases: Vec<(String, Json)>,
+    /// F19: the cases of `suite/messages-feedback.json`
+    /// (`f19-author-feedback.md` 7).
+    pub feedback_cases: Vec<(String, Json)>,
 }
 
 /// Package F8: the catalog files of the `parse` and `check` phases
@@ -80,6 +83,11 @@ pub const ENTRY_POINTS_SOURCE: &str = include_str!("../../suite/messages-entry-p
 /// `check-limit`, and five templates of existing codes (`f17-recursion.md` 9
 /// and 13.5).
 pub const RECURSION_SOURCE: &str = include_str!("../../suite/messages-recursion.json");
+
+/// Package F19: the catalog file of the hint templates, the template
+/// `pattern` of `maybe-absent`, and two `parse` codes
+/// (`f19-author-feedback.md` 7).
+pub const FEEDBACK_SOURCE: &str = include_str!("../../suite/messages-feedback.json");
 
 pub fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
@@ -142,7 +150,16 @@ pub fn catalog() -> &'static Catalog {
                     out.push((entry.code.clone(), c.clone()));
                 }
                 match entries.iter_mut().find(|x| x.code == entry.code) {
-                    Some(x) => x.templates.extend(entry.templates),
+                    Some(x) => {
+                        x.templates.extend(entry.templates);
+                        // F19 3.5: a template may take a parameter the
+                        // entry did not have, `fix`.
+                        for p in entry.params {
+                            if !x.params.iter().any(|(n, _)| *n == p.0) {
+                                x.params.push(p);
+                            }
+                        }
+                    }
                     None => entries.push(entry),
                 }
             }
@@ -151,6 +168,8 @@ pub fn catalog() -> &'static Catalog {
         added(ENTRY_POINTS_SOURCE, &mut entry_point_cases);
         let mut recursion_cases = Vec::new();
         added(RECURSION_SOURCE, &mut recursion_cases);
+        let mut feedback_cases = Vec::new();
+        added(FEEDBACK_SOURCE, &mut feedback_cases);
         Catalog {
             entries,
             cases,
@@ -159,6 +178,7 @@ pub fn catalog() -> &'static Catalog {
             check_cases,
             entry_point_cases,
             recursion_cases,
+            feedback_cases,
         }
     })
 }
@@ -232,6 +252,10 @@ pub fn build(code: &str, template: &str, params: &[(&str, String)]) -> String {
             Some(j) => {
                 let name = &after[..j];
                 match params.iter().find(|(n, _)| *n == name) {
+                    // F19 3.1: a parameter of kind `fix` is never cut.
+                    Some((_, v)) if e.params.iter().any(|(n, k)| n == name && k == "fix") => {
+                        out.push_str(v)
+                    }
                     Some((_, v)) => out.push_str(&cut(v)),
                     None => {
                         out.push('{');
@@ -312,6 +336,33 @@ mod tests {
     /// F16's file adds the code `name-clash`; F17's adds the code
     /// `circular-type`, with two templates, a template of `check-limit`, and
     /// five templates of four existing codes: 32 check codes and 81 templates.
+    /// F19 7 item 1: 62 parse codes with 103 templates, 32 check codes with
+    /// 86 templates, and 113 codes in all.
+    #[test]
+    fn the_feedback_catalog_adds_two_parse_codes_and_nine_templates() {
+        let c = catalog();
+        let of = |ph: &str| -> (usize, usize) {
+            let es: Vec<_> = c.entries.iter().filter(|e| e.phase == ph).collect();
+            (es.len(), es.iter().map(|e| e.templates.len()).sum())
+        };
+        assert_eq!(of("parse"), (62, 103));
+        assert_eq!(of("check"), (32, 86));
+        assert_eq!(
+            c.entries
+                .iter()
+                .filter(|e| matches!(e.phase.as_str(), "run" | "parse" | "check"))
+                .count(),
+            113
+        );
+        let fix = "x".repeat(100);
+        let m = build(
+            "undefined-name",
+            "hint",
+            &[("name", "Math".into()), ("fix", fix.clone())],
+        );
+        assert_eq!(m, format!("Math is not defined; {fix}"));
+    }
+
     #[test]
     fn the_check_catalog_has_32_codes_and_81_templates() {
         let count = |text: &str| {
@@ -334,7 +385,8 @@ mod tests {
         let c = catalog();
         let check: Vec<_> = c.entries.iter().filter(|e| e.phase == "check").collect();
         assert_eq!(check.len(), 32);
-        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 81);
+        // F19 adds five templates (`f19-author-feedback.md` 7 item 1).
+        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 86);
         assert_eq!(
             build("circular-type", "direct", &[("name", "Loop".into())]),
             "Loop refers to itself outside any list, map or record"

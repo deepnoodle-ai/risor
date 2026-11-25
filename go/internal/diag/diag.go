@@ -58,7 +58,9 @@ type Diagnostic struct {
 	// Path is the place of a not-conforming failure in the tested value. Each
 	// step is a string key or an int index. Nil for every other code.
 	Path []any
-	// Data is the second argument of fail, for the code "failed".
+	// Data is the second argument of fail, for the code "failed". For
+	// "function-error" whose cause is a Risor failure, it is the inner
+	// diagnostic's data (package F19 5.1).
 	Data any
 	// HasData reports whether Data is present. A failed run with no second
 	// argument has HasData true and Data holding the null value.
@@ -74,8 +76,8 @@ type Diagnostic struct {
 	// host puts around the failure, as in fmt.Errorf("fetch order: %w",
 	// err), is not in Message: it stays here, in Cause. A host that wants
 	// its own text as the message returns an error that does not wrap the
-	// failure. Nil for every other code. No rendering writes it (package
-	// F8 5.1).
+	// failure. Nil for every other code. Only the JSON form writes it, and
+	// only when it is a Risor failure (package F19 5.2).
 	Cause error
 }
 

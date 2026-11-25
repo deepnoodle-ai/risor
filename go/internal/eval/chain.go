@@ -673,10 +673,11 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 		r.raise(p)
 	}
 	var msg string
+	var inner *diag.Diagnostic
 	if crashed == nil && err != nil {
 		// Reading the error runs the host's own methods (Error, Unwrap, As),
 		// so a crash in one of them is a crash in host code too.
-		msg, crashed = safeErrorMessage(err)
+		msg, inner, crashed = safeErrorMessage(err)
 	}
 	if crashed != nil {
 		ff := fail("function-panic", "", sp, messages.Word("name", name))
@@ -685,6 +686,11 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 	}
 	if err != nil {
 		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: msg, ownMsg: true, cause: err}
+		// A Risor diagnostic as the error carries its data (package F19
+		// 5.1), read in the same protected lookup as the message.
+		if inner != nil && inner.HasData {
+			ff.data, ff.hasData = inner.Data, true
+		}
 		r.raise(ff)
 	}
 	return r.read(res, sp)
@@ -692,13 +698,14 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 
 // safeErrorMessage is hostErrorMessage, with a crash in the host's error
 // caught and reported.
-func safeErrorMessage(err error) (msg string, crashed any) {
+func safeErrorMessage(err error) (msg string, inner *diag.Diagnostic, crashed any) {
 	defer func() {
 		if x := recover(); x != nil {
 			crashed = x
 		}
 	}()
-	return hostErrorMessage(err), nil
+	msg, inner = hostErrorMessage(err)
+	return msg, inner, nil
 }
 
 // hostErrorMessage is the message of a function-error (03-host.md 3.5.3):
@@ -707,13 +714,14 @@ func safeErrorMessage(err error) (msg string, crashed any) {
 // The message of a Risor failure is taken with nothing added (3.5.3), so
 // the text of an error that wraps one is not in it; the cause keeps it.
 // A nested function-error already holds the message below it, so one level
-// of unwrapping gives the innermost message.
-func hostErrorMessage(err error) string {
+// of unwrapping gives the innermost message. inner is that diagnostic, or
+// nil.
+func hostErrorMessage(err error) (msg string, inner *diag.Diagnostic) {
 	var de *diag.Error
 	if errors.As(err, &de) && de != nil && len(de.Diagnostics) > 0 {
-		return de.Diagnostics[0].Message
+		return de.Diagnostics[0].Message, &de.Diagnostics[0]
 	}
-	return err.Error()
+	return err.Error(), nil
 }
 
 func (r *run) safeCall(f HostFunc, c *Call, args []any) (res any, err error, crashed any) {

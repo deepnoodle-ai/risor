@@ -60,7 +60,7 @@ func (e *Env) cached() *envCache {
 
 func (e *Env) fillCache(c *envCache) {
 	names := &static.Names{Vars: make(map[string]int, len(e.vars)), Funcs: map[string]*static.Func{},
-		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope()}
+		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope(), Removed: e.removed}
 	varNames := make([]string, 0, len(e.vars))
 	for n := range e.vars {
 		varNames = append(varNames, n)

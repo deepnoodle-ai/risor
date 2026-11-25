@@ -545,7 +545,8 @@ with `depth-exceeded`. No walk over host data loops for ever.
    result that does not fit the declared result type fails where it is read,
    as 3.4.8 says.
 2. A host function's error carries no `data`, also when it is a Risor
-   diagnostic whose own `data` is not null.
+   diagnostic whose own `data` is not null. With package F19 it carries the
+   inner diagnostic's `data` (`spec/packages/f19-author-feedback.md` 5.1).
 3. What counts as an error and what counts as a crash is the binding's matter.
 4. The mark `!` is a promise. A function or method whose signature has no `!`
    returns no error. When one does, the run fails with `function-error` as
@@ -559,8 +560,8 @@ with `depth-exceeded`. No walk over host data loops for ever.
    from any other is the binding's matter, as in item 3.
 6. Only the message changes. The code stays `function-error`, `catch` catches
    it, and its class, span and `data` are those of the row "Returns any other
-   error". The inner diagnostic's code, class, span, path and data do not
-   reach the run.
+   error", but for the `data` of package F19 (item 2). The inner
+   diagnostic's code, class, span and path do not reach the run.
 7. The message is taken from the inner diagnostic, one level down. When the
    inner diagnostic is itself a `function-error` of a nested run, its message
    is already the message below it, so a chain of nested runs gives the
@@ -883,6 +884,8 @@ The file is a JSON array. Each element is an entry for one code.
 2. A parameter is taken from a value, or from the text of the program or of
    the environment. It is never taken from an inferred type.
 3. A message does not hold a path, a span, or a suggestion found by search.
+   A fix taken by exact text from a table of the specification is not a
+   suggestion found by search (`spec/packages/f19-author-feedback.md` 3.4).
 
 ### 3.8.4 Stability
 
@@ -1101,6 +1104,8 @@ a function name to a stub.
    "message": "unknown city \"Atlantis\""}}`. It stands for the failure of a
    nested run, so a case can test 3.5.3 items 5 to 7. The code need not be a
    code of 3.7.3: it does not reach the run.
+   Package F19 adds a third key, `data` (`spec/packages/f19-author-feedback.md`
+   5.3).
 
 ### 3.10.5 How a case is run
 
@@ -1622,6 +1627,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F14, host facts | The declaration of a host fact: a statement about the values of an environment's variables beyond their types, part of the precondition. Its one kind, `someNotNull`. The case field `facts`, and a key of the description | `spec/packages/f14-host-facts.md` |
 | F16, entry points, slices D1 and D3 | Slice D1: nothing in the host contract or the case format. Type lines and annotations. The check code `name-clash`, in a catalog file of its own, `suite/messages-entry-points.json`; with F12, the hover kind `type`. Slice D3: doc comments as descriptions; `SchemaOf`; a `Doc` on a host function, a method and an opaque type. The case field `docs` and the result field `schema` (F16 11.8) | `spec/packages/f16-entry-points.md` |
 | F17, recursion and guards | Nothing in the host contract or the case format. A guard on a `match` arm, and the library function `walk`, whose record is in `suite/library-recursion.json`. A typed lambda that calls itself, and three deepest cases of the stack test of 3.9.1. Parameters with a function type, two more deepest cases of that test, and five check templates in a catalog file of its own, `suite/messages-recursion.json`; in its directory and that file, `arg-mismatch` is a static code. Recursive named types in an environment and in its description, with the check code `circular-type` and the template `check-limit` `pairs` in that file (F17 12.4, 9) | `spec/packages/f17-recursion.md` |
+| F19, feedback to authors | Hints in four check messages, from the `wrong` lists of the library and the table `suite/foreign-names.json`; the parse codes `async-await` and `statement-sequence`; the templates of `maybe-absent` `pattern`, in a catalog file of its own, `suite/messages-feedback.json`. The `data` of a host error that is a Risor diagnostic, the key `cause` in the JSON form, and the key `data` of a stub's diagnostic object (3.10.4 item 5) | `spec/packages/f19-author-feedback.md` |
 | F12, tools | The formatter and the assist stage (completion and hover), each a call in every binding. The case fields `format`, `formatTemplate`, `complete` and `hover`, and the results `formatted`, `completion` and `hover`. The contract of the command line program | `spec/packages/f12-tools.md` |
 
 1. The cases of a package are in a directory of their own, and its library
@@ -1630,8 +1636,8 @@ above. A package's chapter is the home of its rules: this table only points.
 2. A runner runs only the directories of the packages its implementation
    offers. The packages are offered in a fixed order, each only with all
    before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16
-   slice D1, F17, F16 slice D3, F12. So a package's cases may use what an
-   earlier package adds. F16 holds slices D1 and D3 of its plan.
+   slice D1, F17, F16 slice D3, F19, F12. So a package's cases may use what
+   an earlier package adds. F16 holds slices D1 and D3 of its plan.
    A later slice of F16 takes a place of its own after F17, in the order the
    slices are built, and a later step of F17 extends F17 in its place
    (`spec/packages/f16-entry-points.md` 1.4,

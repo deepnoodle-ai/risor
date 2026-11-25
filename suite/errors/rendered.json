@@ -340,7 +340,7 @@
    ],
    "rendered": {
     "line": "error[function-error] 1:1-1:20: unknown city \"Atlantis\"\n",
-    "json": "{\"class\":\"host\",\"code\":\"function-error\",\"message\":\"unknown city \\\"Atlantis\\\"\",\"phase\":\"run\",\"span\":[1,1,1,20],\"trace\":[]}\n"
+    "json": "{\"cause\":{\"code\":\"failed\",\"data\":null,\"message\":\"unknown city \\\"Atlantis\\\"\",\"phase\":\"run\",\"trace\":[]},\"class\":\"host\",\"code\":\"function-error\",\"message\":\"unknown city \\\"Atlantis\\\"\",\"phase\":\"run\",\"span\":[1,1,1,20],\"trace\":[]}\n"
    }
   }
  }

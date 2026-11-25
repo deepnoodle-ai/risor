@@ -1192,7 +1192,7 @@ The name of `catch (name)` is bound to a map with exactly these four keys.
 | `code` | The code of the failure, as a string. It is one of the eleven codes of 11.3 |
 | `message` | The message of the diagnostic. For `failed`, the first argument of `fail`, the same value. For `function-error`, the text of the host's error. For every other code, the message built from the catalog `messages.json` (`03-host.md`) |
 | `path` | For `not-conforming`, the path of the failure (`03-host.md`). For every other code, null. No form of Core raises `not-conforming`, so in Core it is null |
-| `data` | For `failed`, the second argument of `fail`, or null when there was none. For every other code, null |
+| `data` | For `failed`, the second argument of `fail`, or null when there was none. With package F19, for `function-error`, the data of `spec/packages/f19-author-feedback.md` 5.1. For every other code, null |
 
 1. The error value is an ordinary map. It may be read, compared, spread,
    rendered, returned and passed on.

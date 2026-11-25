@@ -61,7 +61,7 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
-pub(crate) const PACKAGES: [u32; 16] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16, 17, 12];
+pub(crate) const PACKAGES: [u32; 17] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16, 17, 19, 12];
 
 mod analysis;
 mod api;
@@ -76,6 +76,7 @@ mod describe;
 mod diag;
 mod env;
 mod eval;
+mod feedback;
 mod format;
 mod host;
 mod hosttype;

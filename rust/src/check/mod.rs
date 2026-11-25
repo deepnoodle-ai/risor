@@ -504,6 +504,16 @@ impl<'a> Checker<'a> {
         self.diag(code, span, template, &params);
     }
 
+    /// `maybe-absent` at a field of a map pattern with no default: template
+    /// `pattern` (`f19-author-feedback.md` 2).
+    fn pattern_absent(&mut self, span: Range, key: &str, t: &Ty) {
+        let params = [
+            ("type", print(t)),
+            ("key", crate::messages::json_string(key)),
+        ];
+        self.diag("maybe-absent", span, "pattern", &params);
+    }
+
     /// The name of a call as written: the namespace, `.` and the name, or
     /// the name (`f08-errors.md` 3.2 item 3).
     fn call_name(&self, id: NodeId) -> String {
@@ -2396,7 +2406,7 @@ impl<'a> Checker<'a> {
                         None => match rec.fields.get(&f.key) {
                             Some(fl) if !fl.optional => fl.ty.clone(),
                             Some(fl) => {
-                                self.field_diag("maybe-absent", f.key_span, &f.key, &flat_v);
+                                self.pattern_absent(f.key_span, &f.key, &flat_v);
                                 fl.ty.clone()
                             }
                             None if rec.rest.view().any => {
@@ -2412,7 +2422,7 @@ impl<'a> Checker<'a> {
                                 Ty::never()
                             }
                             None => {
-                                self.field_diag("maybe-absent", f.key_span, &f.key, &flat_v);
+                                self.pattern_absent(f.key_span, &f.key, &flat_v);
                                 rec.rest.clone()
                             }
                         },
@@ -2888,7 +2898,14 @@ impl<'a> Checker<'a> {
     ) -> Ty {
         let view = cur.view();
         let Some(rec) = view.record() else {
-            self.kind_at(rs, "field-read", cur);
+            // F19 3.4 row 5: a field named in the `wrong` list of a function.
+            match crate::feedback::field_read_fix(self.env, key) {
+                Some(fix) => {
+                    let p = [("type", print(cur)), ("fix", fix)];
+                    self.diag("kind", rs, "field-read-hint", &p);
+                }
+                None => self.kind_at(rs, "field-read", cur),
+            }
             return Ty::never();
         };
         // The record read: flat(U) for a union (F5 2.3). A receiver that is
@@ -3066,8 +3083,39 @@ impl<'a> Checker<'a> {
                 return self.call(Callee::Host(sig, sig.fails), None, args, s, true);
             }
         }
-        let p = [("type", print(&cur)), ("name", name.to_string())];
-        self.diag("no-method", name_span, "default", &p);
+        // F19 3.4 rows 1 and 4: the one kind of the receiver, null left out.
+        let one = {
+            let kinds = [
+                (view.num.is_some(), "number"),
+                (view.str.is_some(), "string"),
+                (view.list.is_some(), "list"),
+                (view.map.is_some(), "map"),
+                (view.boolean, "bool"),
+                (
+                    !view.opaque.is_empty() || !view.refs.is_empty() || view.any,
+                    "other",
+                ),
+            ];
+            let mut on = kinds.iter().filter(|(b, _)| *b);
+            match (on.next(), on.next()) {
+                (Some((_, k)), None) => Some(*k),
+                _ => None,
+            }
+        };
+        match crate::feedback::method_fix(self.env, one, name) {
+            Some(fix) => {
+                let p = [
+                    ("type", print(&cur)),
+                    ("name", name.to_string()),
+                    ("fix", fix),
+                ];
+                self.diag("no-method", name_span, "hint", &p);
+            }
+            None => {
+                let p = [("type", print(&cur)), ("name", name.to_string())];
+                self.diag("no-method", name_span, "default", &p);
+            }
+        }
         self.plain_args(args);
         Ty::never()
     }

@@ -367,6 +367,9 @@ func (p *parser) targetToken(e *Error) *Error {
 	case opWord("export"):
 		setSpan(prev.Start, prev.End)
 		return set("export-statement", "")
+	case opWord("await", "async"): // F19 4.1, E26
+		setSpan(prev.Start, prev.End)
+		return set("async-await", prev.Text)
 	case t.Kind == Lt && e.Rule == "operand" && t.End < len(p.src) && p.src[t.End] == '<':
 		return set("heredoc", "")
 	case t.Kind == Lt && e.Rule == "operand":
@@ -399,6 +402,15 @@ func (p *parser) targetToken(e *Error) *Error {
 	}
 	if t.Kind == Bang && j > 0 && p.operandEndAt(j-1) && next.isWord("is") {
 		return set("negated-is", "")
+	}
+	// F19 4.1: E27, a token after the ; that ends a program's Expr, with the
+	// span of that ;; E28, a ; after the Expr of a Block or a Branch.
+	switch e.Rule {
+	case "E27":
+		setSpan(prev.Start, prev.End)
+		return set("statement-sequence", "program")
+	case "E28":
+		return set("statement-sequence", "block")
 	}
 	return e
 }

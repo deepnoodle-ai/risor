@@ -146,7 +146,11 @@ func (c *checker) readKey(cur *types.Type, key string, keySpan, recvSpan syntax.
 		}
 		return t
 	}
-	c.m("field-read", ty("type", cur)).diag("kind", recvSpan)
+	if fix := c.offer().FieldFix(key); fix != "" { // F19 3.4 row 5
+		c.m("field-read-hint", ty("type", cur), word("fix", fix)).diag("kind", recvSpan)
+	} else {
+		c.m("field-read", ty("type", cur)).diag("kind", recvSpan)
+	}
 	return types.Never
 }
 
@@ -377,7 +381,11 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		sig = LibSig(entry)
 	}
 	if sig == nil {
-		c.m("", ty("type", recv), word("name", m.Name)).diag("no-method", m.NameSpan)
+		if fix := c.offer().MethodFix(recvKind(recv), m.Name); fix != "" { // F19 3.4
+			c.m("hint", ty("type", recv), word("name", m.Name), word("fix", fix)).diag("no-method", m.NameSpan)
+		} else {
+			c.m("", ty("type", recv), word("name", m.Name)).diag("no-method", m.NameSpan)
+		}
 		c.synthPlain(m.Args, fs)
 		return types.Never
 	}
@@ -1167,6 +1175,30 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 
 // libMethod is the library method of a kind by name, unless the environment
 // removed it (03-host.md 3.3.1).
+// offer is what the environment offers, for the lookup of package F19.
+func (c *checker) offer() library.Offer {
+	return library.Offer{Funcs: c.env.Library, Removed: c.env.Removed}
+}
+
+// recvKind is the one kind of a receiver's type at a no-method, for the
+// lookup of package F19: string, list, map or number; else Null, which
+// takes no hint (f19-author-feedback.md 3.4 item 5).
+func recvKind(t *types.Type) value.Kind {
+	switch {
+	case t.Kinds() != 1 || len(t.OpaqueNames()) > 0:
+		return value.Null
+	case t.HasString():
+		return value.String
+	case t.Elem() != nil:
+		return value.List
+	case t.Record() != nil:
+		return value.Map
+	case t.HasNumber():
+		return value.Number
+	}
+	return value.Null
+}
+
 func (c *checker) libMethod(k value.Kind, name string) *library.Entry {
 	e, ok := library.Method(k, name)
 	if !ok || c.env.Removed[library.KindWord(k)+"."+name] {

@@ -75,7 +75,7 @@ version number and no version marker.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F16 slice D1, F17, F16 slice D3, F12. Slice D1 stands before
+   F13, F14, F16 slice D1, F17, F16 slice D3, F19, F12. Slice D1 stands before
    F17, and each later slice takes a place of its own after F17, in the order
    the slices are built: F16 slice D1, F17, F16 slice D3 (`15-build-rulings.md` R211,
    R261, R371). Slice D2 takes its place after slice D3 when it is built.

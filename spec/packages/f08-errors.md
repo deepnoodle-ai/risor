@@ -311,6 +311,8 @@ item 2 keeps. They are tried in this order.
    of a form: `a.if = 1` and `a.try = 1` are E7, `a.if !is int` is E2's
    `negated-is` (F4 2.6), and `a.try x` and `a.if x` stay `unexpected-token`,
    where E6 and E4 name the word `try` of a `Try` and the word `if` of an `If`.
+9. Package F19 adds rows E26 to E28, for `await`, `async` and `;` between
+   expressions, with their spans (`spec/packages/f19-author-feedback.md` 4).
 
 ### 2.8 Spans
 
@@ -422,6 +424,8 @@ With this package the `parse` phase has 60 codes: the 16 of `01-language.md`
    `bad-type-text` is F4's. This package gives them templates (3.4).
 2. A minor version that gives one of these texts a meaning stops reporting its
    code. A code is never renamed or reused (`03-host.md` 3.7.3).
+3. Package F19 adds two codes, `async-await` and `statement-sequence`, by
+   rows E26 to E28: 62 in all (`spec/packages/f19-author-feedback.md` 4).
 
 ## 3. Messages of the parse and check phases
 
@@ -438,6 +442,10 @@ With this package the `parse` phase has 60 codes: the 16 of `01-language.md`
    template `pairs` of `check-limit`, and five templates of existing codes, in
    another (`spec/packages/f17-recursion.md` 9 and 13.5): 81 check templates
    in all.
+   Package F19 adds 2 parse codes with 4 templates, and 5 check templates,
+   in `suite/messages-feedback.json`
+   (`spec/packages/f19-author-feedback.md` 7): 62 parse codes with 103
+   templates, and 86 check templates, in all.
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -475,7 +483,8 @@ These rows join the table of `03-host.md` 3.8.3.
 | `text` | In the `check` phase: the source text at the span the template names, as visible text |
 
 1. Each rendering is cut by `03-host.md` 3.8.3 item 1: one longer than 64 code
-   points is its first 61 code points and `...`. A `token` and a `text` are cut
+   points is its first 61 code points and `...`. Package F19 adds the kind
+   `fix`, which is never cut (`spec/packages/f19-author-feedback.md` 3.1). A `token` and a `text` are cut
    after they are made visible.
 2. **Types in a `check` message.** `03-host.md` 3.8.3 item 2, that a parameter
    is never taken from an inferred type, is a rule of `run` messages. A
@@ -503,7 +512,8 @@ These rows join the table of `03-host.md` 3.8.3.
    built for each diagnostic of the list.
 4. A message holds no path, no span, and no suggestion found by search
    (`03-host.md` 3.8.3 item 3). A fixed fix written in a template is not a
-   suggestion found by search.
+   suggestion found by search. Neither is a fix taken by exact text from a
+   table of package F19 (`spec/packages/f19-author-feedback.md` 3.4).
 5. Building a message charges nothing: neither phase is a run.
 
 ### 3.4 Parse templates
@@ -693,8 +703,8 @@ is the type the checker gives at that place, as named.
 | `duplicate-key` | `default` | `key {key} is written twice in this map` |  |
 | `no-field` | `default` | `{type} has no field {key}` |  |
 | `no-method` | `default` | `a value of type {type} has no method {name}` |  |
-| `maybe-absent` | `field` | `field {key} may be absent from {type}` | A field or a String key. type is the record read |
-|  | `index` | `the key may be absent from {type}` | An index read of a record with any other index. type is the record read |
+| `maybe-absent` | `field` | `field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first` | A field or a String key. type is the record read. With F19, not a field of a map pattern |
+|  | `index` | `the key may be absent from {type}: read it with ?.[ ], and add ?? and a default` | An index read of a record with any other index. type is the record read |
 | `maybe-null` | `default` | `{text} may be null; its type is {type}` |  |
 | `kind` | `operand` | `{op} cannot take a value of type {type}` | An operand of -, *, /, %, unary -, or the left operand of **, that does not fit float; an operand of +, <, <=, > or >= that fits neither float nor string. type is the operand's type without null |
 |  | `exponent` | `the exponent of ** must be of type int, found {type}` | The right operand of ** does not fit int. type is its type without null |
@@ -759,7 +769,11 @@ Packages F16 and F17 add templates in catalog files of their own:
 `lambda-to-lambda` `higher-order` and `fn-hint`, and `not-a-value`
 `higher-order` (`spec/packages/f17-recursion.md` 13.5). The texts of
 `recursion-needs-types` and `lambda-to-lambda` above are F17's
-(`spec/packages/f17-recursion.md` 9).
+(`spec/packages/f17-recursion.md` 9). Package F19 adds the hint templates of
+`undefined-name`, `undefined-function`, `no-method` and `kind`, and
+`maybe-absent` `pattern`, in `suite/messages-feedback.json`; the texts of
+`maybe-absent` above are F19's (`spec/packages/f19-author-feedback.md` 2,
+3.5).
 
 The parameters of each code, with their kinds:
 
@@ -928,6 +942,8 @@ with index 2, `total` `[2, 17, 2, 25]` with index null, and `map` `[1, 20, 1,
    `expected`, `found`, `cause` and an offset are never written in it. A
    `cause` that is a Risor diagnostic (`03-host.md` 3.5.3 item 5) is not
    written either: the message of `function-error` is already its message.
+   With package F19 the JSON form writes it (5.5;
+   `spec/packages/f19-author-feedback.md` 5.2).
 4. **A position** is written `L:C`, the line and the column (`03-host.md`
    3.7.7). **A span** is written `L1:C1-L2:C2`, always with all four numbers.
 5. **A path** is written from its steps, in order: a key that is a `Word`
@@ -1018,6 +1034,9 @@ The detail form of one diagnostic is these lines, each ending with U+000A.
 
 So `{"class":"divide","code":"divide-by-zero","message":"the divisor of / is
 zero","phase":"run","span":[1,5,1,10],"trace":[]}` is one line.
+
+Package F19 adds the key `cause`, which holds the JSON object of a cause that
+is a Risor diagnostic (`spec/packages/f19-author-feedback.md` 5.2).
 
 ### 5.6 `data` in the JSON form
 

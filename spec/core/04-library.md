@@ -74,7 +74,7 @@ all. The records and this chapter are written together and state the same rules.
 | `units` | The units formula, in the text of 4.3 | Always |
 | `null` | When the result is null, in words. `null` when it never is | Always |
 | `fails` | The failures particular to the entry, each a record (below). The failures of 2.6 that every entry shares are not listed | Always |
-| `wrong` | Names people try, for hints. Not normative | Always |
+| `wrong` | Names people try. Normative with package F19, whose hints use them (`spec/packages/f19-author-feedback.md` 3.2) | Always |
 | `cases` | The entry's conformance cases: a case file with no header (`03-host.md`) | Always |
 
 A record of `fails` has these fields.
@@ -169,9 +169,9 @@ gives `[2, 3]` in every implementation.
 | The same, where the receiver's type is `any` | At run time, `wrong-kind` (2.2) |
 
 The field `wrong` of a record holds names that people try, such as `upper` for
-`toUpperCase`. A diagnostic may give the right name in its `help`, which is not
-specified and which no case compares. A suggestion never names an entry that
-the environment removed.
+`toUpperCase`. With package F19, a diagnostic names the right entry in its
+message, by a lookup in these lists (`spec/packages/f19-author-feedback.md`
+3.4). A suggestion never names an entry that the environment removed.
 
 ### 2.4 Null receivers
 

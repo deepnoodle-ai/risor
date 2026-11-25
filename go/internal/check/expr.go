@@ -894,6 +894,11 @@ func (c *checker) readField(r *types.Record, shown *types.Type, key string, keyS
 	if shown == nil {
 		shown = types.RecType(r)
 	}
+	// A field of a map pattern takes the template pattern (F19 2).
+	absent := "field"
+	if c.inPattern {
+		absent = "pattern"
+	}
 	if f, ok := r.Field(key); ok {
 		if !f.Optional || present {
 			return f.Type
@@ -901,7 +906,7 @@ func (c *checker) readField(r *types.Record, shown *types.Type, key string, keyS
 		if optional {
 			return types.WithNull(f.Type)
 		}
-		c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
+		c.m(absent, ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 		return f.Type
 	}
 	if present && !r.Rest.IsNever() {
@@ -926,7 +931,7 @@ func (c *checker) readField(r *types.Record, shown *types.Type, key string, keyS
 	if optional {
 		return types.WithNull(r.Rest)
 	}
-	c.m("field", ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
+	c.m(absent, ty("type", shown), keyP(key)).diag("maybe-absent", keySpan)
 	return r.Rest
 }
 
@@ -984,7 +989,9 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 			d := c.synth(f.Default, fs)
 			t = c.limitAt(bound, types.Join(types.Nonnull(rt), d))
 		} else {
+			c.inPattern = true
 			t = c.readField(r, types.Shown(v), f.Key, f.KeySpan, f.KeySpan, false, false)
+			c.inPattern = false
 		}
 		c.setSlot(f, t)
 	}

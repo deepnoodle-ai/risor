@@ -41,6 +41,7 @@ import type { Classifier } from "../value/value.ts";
 import { ENTRY_POINTS_STATIC, RECURSION_STATIC, loadCaseFile, staticCodesOf, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
 import { pathText, renderDetail, renderJSON, renderLine } from "../host/render.ts";
+import { isRisorDiagnostic, renderForm } from "../host/error.ts";
 import type { RenderDiagnostic } from "../host/render.ts";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
@@ -155,7 +156,10 @@ function stubFunction(st: Stub, cls: () => Classifier, unmatched: Unmatched[], n
         if (typeof r.error === "string") throw new HostError(r.error);
         // 3.10.4: a diagnostic object is the failure of a run, in this binding's type for one:
         // one diagnostic of phase `run`, with its code and message, and no span.
-        if (r.error !== undefined) throw new RisorError([{ phase: "run", code: r.error.code, message: r.error.message }]);
+        // Package F19: for `failed`, its data, read as vars are (f19 5.3).
+        if (r.error !== undefined) {
+          throw new RisorError([{ phase: "run", code: r.error.code, message: r.error.message, ...(r.error.code === "failed" ? { data: hostValue(r.error.data ?? null), trace: [] } : { trace: [] }) }]);
+        }
         return r.hostResult;
       }
       unmatched.push({ name, args });
@@ -1051,6 +1055,9 @@ function renderable(d: Diagnostic, source?: Source): RenderDiagnostic {
   if (d.path !== undefined) r.path = d.path;
   if (d.code === "failed") r.data = d.data;
   if (d.phase === "run") r.trace = (d.trace ?? []).map((t) => ({ span: source!.lineSpan(t.span), name: t.name, index: t.index }));
+  // Package F19: a cause that is a Risor diagnostic (f19 5.2).
+  const cause = (d as { cause?: unknown }).cause;
+  if (isRisorDiagnostic(cause)) r.cause = renderForm(cause);
   return r;
 }
 
@@ -1132,6 +1139,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     if (basename(path) === "messages-entry-points.json") opts = { ...opts, checkOnly: true, staticCodes: ENTRY_POINTS_STATIC };
     // f17 8 item 5: the cases of messages-recursion.json run checked, with the static codes of suite/recursion/.
     if (basename(path) === "messages-recursion.json") opts = { ...opts, checkOnly: true, staticCodes: RECURSION_STATIC };
+    // f19 6 item 1: the cases of messages-feedback.json run checked.
+    if (basename(path) === "messages-feedback.json") opts = { ...opts, checkOnly: true };
     const out: Verdict[] = [];
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;
@@ -1161,8 +1170,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F14, F16 as far as slice D3 (f16 1.4, 11), and F17 (f17 1.4). */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17]);
+/** The packages this implementation offers: F1 to F14, F16 as far as slice D3 (f16 1.4, 11), F17 (f17 1.4), and F19. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

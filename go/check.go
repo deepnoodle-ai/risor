@@ -301,7 +301,7 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 }
 
 func (e *Env) checkEnv(names *static.Names, varNames []string) *check.Env {
-	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}, Removed: e.removed,
+	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}, Removed: e.removed, Library: names.Library,
 		Facts: e.factIndexes(varNames)}
 	for _, n := range varNames {
 		ce.VarTypes = append(ce.VarTypes, e.varTypes[n])

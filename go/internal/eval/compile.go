@@ -773,7 +773,7 @@ func (c *compiler) try(n *syntax.Try) code {
 			if f.hasPath {
 				ev["path"] = append([]any{}, f.path...)
 			}
-			if f.code == "failed" {
+			if f.code == "failed" || f.hasData { // F19 5.1: a function-error's data
 				ev["data"] = f.data
 			}
 			if slot >= 0 {

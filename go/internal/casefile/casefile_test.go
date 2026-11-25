@@ -77,7 +77,7 @@ func TestStubDiagnostic(t *testing.T) {
 	assert.Equal(t, *row.Diag, StubDiag{Code: "failed", Message: "no"})
 	assert.True(t, row.HasError())
 	for _, bad := range []string{
-		`{"code": "failed"}`, `{"message": "no"}`, `{"code": "failed", "message": "no", "data": 1}`,
+		`{"code": "failed"}`, `{"message": "no"}`, `{"code": "index-range", "message": "no", "data": 1}`, `{"code": "failed", "message": "no", "class": "host"}`,
 		`{"code": "Failed", "message": "no"}`, `{"code": "failed", "message": 1}`, `["no"]`,
 	} {
 		_, err := load(t, `[{"name": "a", "source": "f()", "expect": {},

@@ -5,7 +5,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, execute, HostError, jsonText, jsonTextOf, parse, RisorError, truthy } from "../src/host/api.ts";
+import { createEnv, execute, HostError, jsonText, jsonTextOf, parse, renderJSON, renderLine, RisorError, truthy } from "../src/host/api.ts";
 import { Rendering } from "../src/eval/ops.ts";
 import { jsonString } from "../src/value/value.ts";
 import { tryCheck } from "./helpers.ts";
@@ -144,7 +144,7 @@ describe("03 3.4.4: a NaN or an infinity from the host cannot enter", () => {
   }
 });
 
-describe("03 3.5.3 items 5 to 7: a host function that fails with a RisorError", () => {
+describe("03 3.5.3 items 5 to 7, f19 5: a host function that fails with a RisorError", () => {
   // `city` fails with `failed`; `weather` runs it as a nested run, and `outer` runs a program that calls `weather`.
   const city = createEnv({ varRecord: "{name: string}" }).compile(parse('fail(`unknown city "${name}"`, {code: 7})'));
   const weatherEnv = createEnv({
@@ -163,16 +163,34 @@ describe("03 3.5.3 items 5 to 7: a host function that fails with a RisorError", 
     assert.equal(d.code, "function-error");
     assert.equal(d.message, 'unknown city "Atlantis"');
     assert.equal(d.class, "host");
-    assert.equal(d.data, undefined);
+    // f19 5.1: the outer diagnostic carries the inner diagnostic's data.
+    assert.equal(jsonText(d.data), '{"code":7}');
     const cause = d.cause as { code: string; message: string; data: unknown };
     assert.equal(cause.code, "failed");
     assert.equal(cause.message, 'unknown city "Atlantis"');
-    // The inner diagnostic keeps its data; the outer one has none (item 2).
     assert.equal(jsonText(cause.data), '{"code":7}');
   });
-  test("catch catches it; its code, path and data are not the inner diagnostic's", () => {
+  test("catch catches it; its code and path are not the inner diagnostic's, its data is (f19 5.1)", () => {
     const v = weatherEnv.compile(parse('try { weather("Atlantis") } catch (e) { [e.code, e.message, e.path, e.data] }')).run();
-    assert.equal(jsonText(v), '["function-error","unknown city \\"Atlantis\\"",null,null]');
+    assert.equal(jsonText(v), '["function-error","unknown city \\"Atlantis\\"",null,{"code":7}]');
+  });
+  test("a chain of nested runs keeps the innermost data (f19 5.1 item 2)", () => {
+    const v = outerEnv.compile(parse("try { outer() } catch (e) { e.data }")).run();
+    assert.equal(jsonText(v), '{"code":7}');
+  });
+  test("the JSON form writes the cause, recursively (f19 5.2)", () => {
+    let ds: readonly import("../src/host/error.ts").Diagnostic[] = [];
+    try {
+      outerEnv.compile(parse("outer()")).run();
+    } catch (e) {
+      assert.ok(e instanceof RisorError);
+      ds = e.diagnostics;
+    }
+    assert.equal(
+      renderJSON(ds),
+      '{"cause":{"cause":{"class":"value","code":"failed","data":{"code":7},"message":"unknown city \\"Atlantis\\"","phase":"run","span":[1,1,1,42],"trace":[]},"class":"host","code":"function-error","message":"unknown city \\"Atlantis\\"","phase":"run","span":[1,1,1,20],"trace":[]},"class":"host","code":"function-error","message":"unknown city \\"Atlantis\\"","phase":"run","span":[1,1,1,8],"trace":[]}\n',
+    );
+    assert.equal(renderLine(ds), 'error[function-error] 1:1-1:8: unknown city "Atlantis"\n');
   });
   test("a chain of nested runs gives the innermost message", () => {
     try {
@@ -465,7 +483,7 @@ describe("a star on a receiver of two kinds, and a read of a union (f07 5.1, f05
   });
   test("no-field and maybe-absent print flat(U)", () => {
     assert.deepEqual(msgs("u.z"), ['{id: int, kind: "a" | "b", n?: int} has no field "z"']);
-    assert.deepEqual(msgs("u.n"), ['field "n" may be absent from {id: int, kind: "a" | "b", n?: int}']);
+    assert.deepEqual(msgs("u.n"), ['field "n" may be absent from {id: int, kind: "a" | "b", n?: int}: read it with ?., add ?? and a default, or test for it first']);
   });
 });
 

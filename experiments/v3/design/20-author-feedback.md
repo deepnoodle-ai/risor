@@ -1,6 +1,6 @@
 # Risor v3 design: feedback to authors
 
-Status: plan, D56 in `00-overview.md`. The owner settled its direction on
+Status: built, D56 in `00-overview.md`. The owner settled its direction on
 2026-11-14, from the evidence of issues #640 and #641, and trimmed it on
 2026-11-19: the brief rendering (20-8) and layouts for `time.format` (20-10)
 are dropped (section 6). Decisions are numbered `20-1` to `20-11`. Each is
@@ -8,11 +8,13 @@ marked **settled** where the owner chose it, and **recommended** where this
 plan chose a detail the owner has not seen. Built in all three
 implementations, in track B: 20-1 and 20-2 (`15` R212, R215, R216, R260), and
 the settled part of 20-9, the inner message with the inner diagnostic kept as
-the cause (`15` R217). The recommended part of 20-9 is not built: `data`
-stays null, and no rendering writes the cause. Nothing of package F19 is
-built. Counts
-marked *ran* were taken from the suite files at `main` `aeaaf1f` with a short
-script.
+the cause (`15` R217). The rest is built in all three implementations, as
+package F19, in track F: `spec/packages/f19-author-feedback.md`, with the
+recommended details of 20-4, 20-5, 20-9 and 20-11 as recommended (`15` R351
+to R359). Where the chapter differs from this plan, the chapter is right:
+the row `indexOf` of 3.3 is left out (R355), and E28 also takes a `Branch`
+(R356). Counts marked *ran* were taken from the suite files at `main`
+`aeaaf1f` with a short script.
 
 **Where it lands.** 20-1 and 20-2 (absence under `??`) and 20-9 (a nested
 Risor error's message) change outcomes of Core, so they are Core amendments,
@@ -174,7 +176,7 @@ its parameters do not change.
 | --- | --- | --- |
 | `field` | `field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first` | A plain read, as today |
 | `index` | `the key may be absent from {type}: read it with ?.[ ], and add ?? and a default` | An index read of a record, as today |
-| `pattern` | `field {key} may be absent from {type}: give it a default in the pattern, as {key} = ...` | A field of a map pattern with no default (`05:` 12.2) |
+| `pattern` | `field {key} may be absent from {type}: give the field a default in the pattern, with = and a value` (the chapter, R358) | A field of a map pattern with no default (`05:` 12.2) |
 
 `{key}` is a `string` (`03:` 3.8.3), so it prints with its quotes: `as "limit" =
 ...`. *Why the quotes are kept:* a key need not be a `Word`, and a second kind
@@ -227,7 +229,8 @@ fix. The first rows:
 | `has` | method of a list or a map | `use the operator in: x in xs, or key in m` |
 | `push` | method of a list | `values never change: build a new list with [...xs, x]` |
 | `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
-| `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `pop` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `shift` | method of a list | `values never change: use xs.first() and xs.slice(1)` (the chapter, R355) |
 | `concat` | method of a list | `use spread: [...xs, ...ys]` |
 
 A row of place "name" applies to an `undefined-name`; "name and field" to an

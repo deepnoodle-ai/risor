@@ -48,7 +48,7 @@ import type { SigNode, TypeNode } from "../types/typetext.ts";
 import { parseType as parseTypeText, parseReceiver, parseEnvRecord } from "../types/typetext.ts";
 import { METHODS } from "../library/registry.ts";
 import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
-import { declareError, failure, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
+import { declareError, failure, isRisorDiagnostic, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
 import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
 import type { ChildNames, ChildVars, HostVars, Infer, Marked, VarsOf } from "./infer.ts";
@@ -617,7 +617,12 @@ export class Env<V = any, N = any> {
     const on = environment.groups;
     const groupEntries = [...GROUP_FUNCTIONS].filter(([k, e]) => on.has(e.group) && !environment.removed.has(k));
     const constants = new Map([...GROUP_CONSTANTS].filter(([k, c]) => on.has(c.group) && !environment.removed.has(k)).map(([k, c]) => [k, c.value]));
+    const libraryMethods =
+      environment.removed.size === 0
+        ? LIBRARY_METHODS
+        : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(`${kind}.${k}`)))]));
     this.staticEnv = {
+      methods: libraryMethods,
       variables: new Set(environment.variables.keys()),
       hostFunctions: hostCounts,
       namespaces: on.size === 0 ? environment.namespaces : new Set([...environment.namespaces, ...on]),
@@ -641,10 +646,7 @@ export class Env<V = any, N = any> {
       library: environment.removed.size === 0 && groupEntries.length === 0
         ? LIBRARY_FUNCTIONS
         : new Map([...LIBRARY_FUNCTIONS].filter(([k]) => !environment.removed.has(k)).concat(groupEntries.map(([k]) => [k, GROUP_SIGS.get(k)!]))),
-      libraryMethods:
-        environment.removed.size === 0
-          ? LIBRARY_METHODS
-          : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(`${kind}.${k}`)))])),
+      libraryMethods,
       methods: methodSigs,
       reject: environment.reject,
       facts: environment.facts,
@@ -1163,6 +1165,8 @@ export class Program<V = any> {
     }
     if (cls !== undefined) d.class = cls;
     if (f.code === "failed") d.data = f.data;
+    // Package F19: a host error that is a Risor diagnostic carries its data (f19 5.1).
+    else if (f.code === "function-error" && isRisorDiagnostic(f.cause)) d.data = f.data;
     if (f.path !== undefined) d.path = [...f.path];
     d.trace = [...f.trace];
     if (f.cause !== undefined) (d as InnerDiagnostic & { cause?: unknown }).cause = f.cause;
@@ -1492,15 +1496,15 @@ function sourceOfFailure(ds: InnerDiagnostic[], text: string, keepBom: boolean):
 
 /** The one-line form (f08 5.2): one line for each diagnostic. */
 export function renderLine(ds: readonly Diagnostic[]): string {
-  return renderLineOf(ds.map(renderForm));
+  return renderLineOf(ds.map((d) => renderForm(d)));
 }
 
 /** The detail form (f08 5.3): each line with an excerpt of the source and the calls in progress. */
 export function renderDetail(ds: readonly Diagnostic[], source: string | null): string {
-  return renderDetailOf(ds.map(renderForm), source);
+  return renderDetailOf(ds.map((d) => renderForm(d)), source);
 }
 
 /** The JSON form (f08 5.5): one JSON object a line, keys in code point order. */
 export function renderJSON(ds: readonly Diagnostic[]): string {
-  return renderJSONOf(ds.map(renderForm));
+  return renderJSONOf(ds.map((d) => renderForm(d)));
 }

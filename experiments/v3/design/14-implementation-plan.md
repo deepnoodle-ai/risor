@@ -461,6 +461,9 @@ slice; `17` 3.3, 3.5).
    hint templates, the texts of `maybe-absent`, and the parse codes
    `async-await` and `statement-sequence`. The hints for `interface` and for
    an unannotated callback parameter come with D1 and E3 (`20` 3.3).
+   **Built** in all three implementations, with the data and the JSON
+   `cause` of a host error that is a Risor diagnostic
+   (`spec/packages/f19-author-feedback.md`; `15` R351 to R359).
 2. **Expression features** (`21` 2.5 to 2.8): an explanation of a result
    ("why was this false?"), `glob(text, pattern)`, a guide for moving off
    expr, and compile and run benchmarks against expr. Each new feature needs
