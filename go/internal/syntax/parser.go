@@ -287,7 +287,7 @@ func (p *parser) typeLineStart() bool {
 // typeLine parses "type Name = T;". A name of one letter is bad-type-text
 // at the name (2.4).
 func (p *parser) typeLine() *TypeLine {
-	start := p.tok.Start
+	start, doc := p.tok.Start, p.tok.Doc
 	p.next() // type
 	nt := p.tok
 	if !IsTypeName(nt.Text) {
@@ -298,11 +298,11 @@ func (p *parser) typeLine() *TypeLine {
 	t := p.ptype()
 	p.mark1(p.i-1, mAnnEnd)
 	p.expect(Semi)
-	return &TypeLine{Span: Span{start, p.prevEnd}, Name: nt.Text, NameSpan: Span{nt.Start, nt.End}, Type: t}
+	return &TypeLine{Span: Span{start, p.prevEnd}, Name: nt.Text, NameSpan: Span{nt.Start, nt.End}, Type: t, Doc: doc}
 }
 
 func (p *parser) constLine() *Const {
-	m := p.mark()
+	m, doc := p.mark(), p.tok.Doc
 	p.next() // const
 	pat := p.pattern()
 	p.mark1(p.i-1, mPatEnd)
@@ -323,7 +323,7 @@ func (p *parser) constLine() *Const {
 		val = p.argOrExpr(ok && !np.Discard)
 	}
 	p.expect(Semi)
-	return &Const{base: p.base(m), Pattern: pat, Type: ann, Value: val}
+	return &Const{base: p.base(m), Pattern: pat, Type: ann, Value: val, Doc: doc}
 }
 
 // argOrExpr parses the place of an Arg or of a const value (3.2 rule 5).
@@ -399,15 +399,15 @@ func (p *parser) lambda(allow bool) *Lambda {
 		if np.Discard {
 			np.Name = ""
 		}
-		params = []*Param{{base: np.base, Pattern: np}}
+		params = []*Param{{base: np.base, Pattern: np, Doc: t.Doc}}
 	} else {
 		p.open(LParen)
 		if p.tok.Kind != RParen {
 			for {
-				pm := p.mark()
+				pm, doc := p.mark(), p.tok.Doc
 				pat := p.pattern()
 				p.mark1(p.i-1, mPatEnd)
-				prm := &Param{Pattern: pat}
+				prm := &Param{Pattern: pat, Doc: doc}
 				if p.tok.Kind == Colon { // F16 2.1
 					p.next()
 					if np, ok := pat.(*NamePat); ok && !np.Discard && p.fnStart() {

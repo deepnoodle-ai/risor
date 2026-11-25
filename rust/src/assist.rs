@@ -106,6 +106,7 @@ fn mk(tok: Tok, at: usize) -> Token {
         span,
         diag: span,
         code: None,
+        doc: None,
     }
 }
 
@@ -1405,8 +1406,14 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
         } else {
             r.ty.clone()
         };
+        // F16 11.7: a type line's description, or an opaque type's Doc.
+        let doc = match r.declaration {
+            Some(sp) => type_line_doc(tree, sp),
+            None => d.opaque_docs.get(word).map(|x| x.to_string()),
+        };
         return Some(RawHover {
             declaration: r.declaration,
+            doc,
             ..rec("type", Some(print(&shown)))
         });
     }
@@ -1416,14 +1423,19 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
             NodeKind::Ident { name } if n.span == w => {
                 let t = Some(print(&tree.ty(id)));
                 return match tree.res(id) {
-                    Res::Slot(s) => Some(RawHover {
-                        declaration: binding_site(tree, *s),
-                        ..rec("name", t)
-                    }),
+                    Res::Slot(s) => {
+                        let declaration = binding_site(tree, *s);
+                        Some(RawHover {
+                            declaration,
+                            doc: declaration.and_then(|sp| name_doc(tree, sp)),
+                            ..rec("name", t)
+                        })
+                    }
                     Res::Var(_) => Some(rec("variable", t)),
                     // R245: a lambda argument, or a place that needs a value.
                     Res::LambdaRef(l) | Res::SelfRef(l) | Res::NotValue(l) => Some(RawHover {
                         declaration: lambda_site(tree, *l),
+                        doc: lambda_doc(tree, *l),
                         ..rec("lambda", None)
                     }),
                     // F17 13.7 item 3: a function parameter's name as a
@@ -1431,6 +1443,7 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
                     Res::FnRef(_, p) => Some(RawHover {
                         signature: tree.fn_type_text(*p),
                         declaration: tree.param_name_span(*p),
+                        doc: node_doc(tree.kind(*p)),
                         ..rec("lambda", None)
                     }),
                     _ if env.is_namespace(name) => Some(rec("namespace", None)),
@@ -1473,6 +1486,7 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
                 for o in &r.opaque {
                     if let Some(m) = env.method(o, &name.name) {
                         h.signature = Some(print_sig(&d.methods[m].sig, &d.names));
+                        h.doc = d.methods[m].doc.as_deref().map(String::from);
                         return Some(h);
                     }
                 }
@@ -1493,7 +1507,20 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
                         ..rec("constant", Some(print(&tree.ty(id))))
                     });
                 }
-                return Some(rec("field", Some(print(&tree.ty(id)))));
+                // F16 11.7: the description of the field the check read,
+                // in the receiver's record alternative, null taken out and
+                // a reference unfolded.
+                let recv = tree.ty(*x).nonnull();
+                let doc = recv
+                    .view()
+                    .map
+                    .as_ref()
+                    .and_then(|r| r.fields.get(name.as_str()))
+                    .and_then(|f| f.doc.0.as_deref().map(String::from));
+                return Some(RawHover {
+                    doc,
+                    ..rec("field", Some(print(&tree.ty(id))))
+                });
             }
             NodeKind::NamePat { .. } | NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
                 for (_, s, sp) in tree.pattern_names(id) {
@@ -1506,11 +1533,13 @@ fn hover_in(tree: &Tree<'_>, w: Range, word: &str) -> Option<RawHover> {
                         return Some(RawHover {
                             signature: tree.fn_type_text(p),
                             declaration: Some(w),
+                            doc: node_doc(tree.kind(p)),
                             ..rec("lambda", None)
                         });
                     }
                     return Some(RawHover {
                         declaration: Some(w),
+                        doc: name_doc(tree, w),
                         ..rec("name", s.map(|s| print(&tree.slot_ty(s, false))))
                     });
                 }
@@ -1540,21 +1569,69 @@ fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: RawHover) -> Option<RawHover> 
             h.doc = r.doc.clone();
         }
         Res::CallHost(i) => {
-            h.signature = Some(print_sig(&d.functions[*i as usize].sig, &d.names));
+            let f = &d.functions[*i as usize];
+            h.signature = Some(print_sig(&f.sig, &d.names));
+            h.doc = f.doc.as_deref().map(String::from);
         }
         Res::CallLambda(l) | Res::SelfRef(l) => {
             h.kind = "lambda";
             h.declaration = lambda_site(tree, *l);
+            h.doc = lambda_doc(tree, *l);
         }
         // F17 13.7 item 3: the type of the `Call`, and the function type.
         Res::CallFn(_, p) => {
             h.kind = "lambda";
             h.signature = tree.fn_type_text(*p);
             h.declaration = tree.param_name_span(*p);
+            h.doc = node_doc(tree.kind(*p));
         }
         _ => {}
     }
     Some(h)
+}
+
+/// The description of a `Const` or a `Param` node (F16 11.3).
+fn node_doc(k: &NodeKind) -> Option<String> {
+    match k {
+        NodeKind::Const { doc, .. } | NodeKind::Param { doc, .. } => {
+            doc.as_deref().map(String::from)
+        }
+        _ => None,
+    }
+}
+
+/// F16 11.7: the description of the `const` line or parameter whose
+/// pattern is the one name bound at `sp`; none for a name inside another
+/// pattern.
+fn name_doc(tree: &Tree<'_>, sp: Range) -> Option<String> {
+    tree.ast.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Const { pattern, .. } | NodeKind::Param { pattern, .. }
+            if matches!(tree.kind(*pattern), NodeKind::NamePat { name: Some(_) })
+                && tree.ast.span(*pattern) == sp =>
+        {
+            Some(node_doc(&n.kind))
+        }
+        _ => None,
+    })?
+}
+
+/// The description of the `const` line that binds the lambda `l`.
+fn lambda_doc(tree: &Tree<'_>, l: NodeId) -> Option<String> {
+    tree.ast.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Const { value, doc, .. } if *value == l => Some(doc.as_deref().map(String::from)),
+        _ => None,
+    })?
+}
+
+/// The description of the type line whose name is at `sp`.
+fn type_line_doc(tree: &Tree<'_>, sp: Range) -> Option<String> {
+    tree.ast.nodes.iter().find_map(|n| match &n.kind {
+        NodeKind::Program { types, .. } => types
+            .iter()
+            .find(|t| t.name_span == sp)
+            .map(|t| t.doc.as_deref().map(String::from)),
+        _ => None,
+    })?
 }
 
 /// The span of a `const`-bound lambda's name in its `const` line.

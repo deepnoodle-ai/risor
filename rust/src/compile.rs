@@ -940,7 +940,10 @@ impl Resolver<'_> {
     }
 
     fn const_line(&mut self, id: NodeId) {
-        let NodeKind::Const { pattern, value, ty } = self.kind(id).clone() else {
+        let NodeKind::Const {
+            pattern, value, ty, ..
+        } = self.kind(id).clone()
+        else {
             return;
         };
         if let Some(t) = &ty {
@@ -1123,6 +1126,7 @@ impl Resolver<'_> {
                             default,
                             ty,
                             fn_,
+                            ..
                         } = self.kind(p).clone()
                         {
                             if let Some(t) = &ty {
@@ -1840,6 +1844,7 @@ fn pprim_ty(
                     crate::check::ty::Field {
                         ty,
                         optional: f.optional,
+                        doc: crate::check::ty::Doc(f.doc.clone()),
                     },
                 );
             }

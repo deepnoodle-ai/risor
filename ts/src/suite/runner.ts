@@ -13,6 +13,11 @@ import type { Analysis } from "../host/api.ts";
 import { lineSpanOf } from "../host/error.ts";
 import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedType } from "../host/api.ts";
+import type { Type as HostType } from "../host/type.ts";
+import { innerType } from "../host/type.ts";
+import { schemaOf as innerSchemaOf, jsonText as schemaJsonText, SchemaRefused } from "../types/schemaof.ts";
+import { typeOfSchema } from "../types/schema.ts";
+import { hasRefDeep, sameType, PairLimit } from "../types/type.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
@@ -95,7 +100,7 @@ export interface RunnerOptions {
 
 export type Outcome =
   | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[] }
-  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[] };
+  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[]; checked?: HostType };
 
 /** An opaque value of a case file (03 3.10.3 item 7): one object for each type and id. */
 export class OpaqueRef {
@@ -173,6 +178,133 @@ function needsRun(c: Case): boolean {
   );
 }
 
+/** Package F16 slice D3: the case field `docs` gives each declaration its Doc (f16 11.8). */
+function applyDocs(c: Case, functions: Record<string, HostFunction>, opaque: Record<string, OpaqueType>): void {
+  for (const [k, doc] of Object.entries(c.docs ?? {})) {
+    if (functions[k] !== undefined) functions[k] = { ...functions[k], doc };
+    const dot = k.indexOf(".");
+    if (dot > 0) {
+      const m = opaque[k.slice(0, dot)]?.methods?.[k.slice(dot + 1)];
+      if (m !== undefined) opaque[k.slice(0, dot)].methods![k.slice(dot + 1)] = { ...m, doc };
+    } else if (opaque[k] !== undefined) opaque[k] = { ...opaque[k], doc };
+  }
+}
+
+type SchemaJson = Parameters<typeof schemaJsonText>[0];
+
+/** The schema a case's checked type gives (f16 11.8), null when SchemaOf refuses it, and why the law fails, or null. */
+function schemaFound(checked: HostType | undefined): { found: Json; law: string | null } {
+  if (checked === undefined) return { found: null, law: "no checked type" };
+  let found: SchemaJson;
+  const t = innerType(checked);
+  try {
+    found = innerSchemaOf(t);
+  } catch (e) {
+    if (!(e instanceof SchemaRefused)) throw e;
+    return { found: null, law: null };
+  }
+  const foundJson = JSON.parse(schemaJsonText(found)) as Json;
+  // The law (11.8 item 2).
+  let back: Type;
+  try {
+    back = typeOfSchema(foundJson, []);
+  } catch (e) {
+    return { found: foundJson, law: `the law: the schema found maps to no type (${(e as Error).message})` };
+  }
+  let equal: boolean;
+  try {
+    equal = hasRefDeep(back) || hasRefDeep(t) ? sameType(back, t) : typeEqual(back, t);
+  } catch (e) {
+    if (!(e instanceof PairLimit)) throw e;
+    equal = false;
+  }
+  if (!equal) return { found: foundJson, law: "the law: the type of the schema found is not Equal to the checked type" };
+  let again: SchemaJson;
+  try {
+    again = innerSchemaOf(back);
+  } catch (e) {
+    if (!(e instanceof SchemaRefused)) throw e;
+    return { found: foundJson, law: "the law: SchemaOf refuses the type of the schema found" };
+  }
+  const held = new Set(isObject(again as Json) && isObject((again as JsonObject)["$defs"]) ? Object.keys((again as JsonObject)["$defs"] as JsonObject) : []);
+  const want = writeOut(found, held);
+  if (lawText(again) !== lawText(want)) return { found: foundJson, law: `the law: SchemaOf of the type of the schema found is ${schemaJsonText(again)}` };
+  return { found: foundJson, law: null };
+}
+
+/**
+ * f16 11.8: the result field `schema`. SchemaOf of the checked type, compared
+ * as JSON data (null: refused); then the law (11.8 item 2).
+ */
+function schemaLaw(checked: HostType | undefined, expected: Json): { ok: boolean; found: Json } {
+  const r = schemaFound(checked);
+  if (canonicalJson(r.found) !== canonicalJson(expected)) return { ok: false, found: r.found };
+  if (r.law !== null) return { ok: false, found: r.law };
+  return { ok: true, found: r.found };
+}
+
+/** Set an own key, `__proto__` among them. */
+function putKey(o: { [k: string]: SchemaJson }, k: string, v: SchemaJson): void {
+  Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+}
+
+/** The text of a schema for the law's comparison: the alternatives of each `anyOf` in any order (f16 11.8 item 2). */
+function lawText(s: SchemaJson): string {
+  const norm = (x: SchemaJson): SchemaJson => {
+    if (Array.isArray(x)) return x.map(norm);
+    if (typeof x !== "object") return x;
+    const out: { [k: string]: SchemaJson } = {};
+    for (const [k, v] of Object.entries(x)) {
+      let w = norm(v);
+      if (k === "anyOf" && Array.isArray(w)) w = [...w].sort((a, b) => compareText(schemaJsonText(a), schemaJsonText(b)));
+      putKey(out, k, w);
+    }
+    return out;
+  };
+  return schemaJsonText(norm(s));
+}
+
+/**
+ * A schema with each `$ref` to a root `$defs` entry not in `held` replaced by
+ * that entry (a `description` beside the `$ref` kept), and those entries
+ * dropped (f16 11.8 item 2). Only the root's `$defs` is read or dropped.
+ */
+function writeOut(s: SchemaJson, held: ReadonlySet<string>): SchemaJson {
+  if (typeof s !== "object" || Array.isArray(s)) return s;
+  const defs = isObject(s["$defs"] as Json) ? (s["$defs"] as { [k: string]: SchemaJson }) : {};
+  const has = (n: string) => Object.prototype.hasOwnProperty.call(defs, n);
+  const go = (x: SchemaJson, depth: number): SchemaJson => {
+    if (depth > 200) return x;
+    if (Array.isArray(x)) return x.map((y) => go(y, depth + 1));
+    if (typeof x !== "object") return x;
+    const ref = x["$ref"];
+    if (typeof ref === "string" && ref.startsWith("#/$defs/")) {
+      const n = ref.slice("#/$defs/".length);
+      if (!held.has(n) && has(n)) {
+        const body = go(defs[n], depth + 1);
+        if (typeof x.description !== "string" || typeof body !== "object" || Array.isArray(body)) return body;
+        const out: { [k: string]: SchemaJson } = {};
+        for (const [k, v] of Object.entries(body)) putKey(out, k, v);
+        putKey(out, "description", x.description);
+        return out;
+      }
+    }
+    const out: { [k: string]: SchemaJson } = {};
+    for (const [k, v] of Object.entries(x)) putKey(out, k, go(v, depth + 1));
+    return out;
+  };
+  const root: { [k: string]: SchemaJson } = {};
+  for (const [k, v] of Object.entries(s)) if (k !== "$defs") putKey(root, k, v);
+  const out = go(root, 0);
+  const kept = Object.keys(defs).filter((n) => held.has(n));
+  if (kept.length > 0 && typeof out === "object" && !Array.isArray(out)) {
+    const d: { [k: string]: SchemaJson } = {};
+    for (const n of kept) putKey(d, n, go(defs[n], 1));
+    putKey(out, "$defs", d);
+  }
+  return out;
+}
+
 /** Run one case and give its verdict. */
 export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdict {
   const v = (verdict: VerdictKind, extra: Partial<Verdict> = {}): Verdict => ({ file, name: c.name, verdict, ...extra });
@@ -194,8 +326,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
     // 03 3.11: a file that is run checked only is not run with the static rules alone.
     if (opts.checkOnly === true) return v("skip", { reason: "run checked only" });
     if (c.load === true) return v("skip", { reason: "a load is run once, checked" });
-    // 03 3.10.8 item 5: a runner with no type checker.
-    if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) {
+    // 03 3.10.8 item 5: a runner with no type checker; f16 11.8 item 1: `schema` too.
+    if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined)) {
       return v("skip", { reason: "needs the type checker (type or sites)" });
     }
     if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
@@ -209,7 +341,7 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
     opts.checkOnly === true ||
     // f10 10.2 item 3: a load case is run once, checked.
     c.load === true ||
-    (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) ||
+    (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined)) ||
     (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code)));
   const runs: { checker: boolean; allClasses: boolean }[] =
     c.check === false ? [{ checker: false, allClasses: true }]
@@ -258,7 +390,7 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
 }
 
 /** The order of the names of differences (03 3.10.8 item 2, with the names packages add). */
-const FIELD_ORDER = ["outcome", "analysis", "description", "type", "sites", "value", "json", "truthy", "diagnostics", "rendered", "steps", "allocated", "functions"];
+const FIELD_ORDER = ["outcome", "analysis", "description", "type", "schema", "sites", "value", "json", "truthy", "diagnostics", "rendered", "steps", "allocated", "functions"];
 
 function fieldRank(f: string): number {
   const i = FIELD_ORDER.indexOf(f);
@@ -314,6 +446,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
   }
   const functions: Record<string, HostFunction> = {};
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k, baseSig(be?.functions.get(k)?.sig));
+  applyDocs(c, functions, opaque);
   const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
   let compiled: ReturnType<typeof tryCompile>;
   let loadType: Type | null = null;
@@ -351,7 +484,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
   const prog = compiled.program;
-  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })) };
+  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, checked: prog.checkResult?.type, sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })) };
   // Step 5: run.
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
   if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
@@ -552,6 +685,10 @@ function withForms(c: Case, o: Outcome, d: Difference, checked: boolean): Differ
     case "type":
       e = raw("type");
       f = o.type == null ? "null" : jsonString(o.type);
+      break;
+    case "schema":
+      e = raw("schema");
+      f = jsonForm((d.found ?? null) as Json);
       break;
     case "sites":
       e = raw("sites");
@@ -784,6 +921,10 @@ function compare(c: Case, o: Outcome): Difference[] {
         same = false;
       }
       if (!same) d.push({ field: "type", expected: ex.type, found: o.type });
+    }
+    if (ex.schema !== undefined) {
+      const r = schemaLaw(o.checked, ex.schema.value);
+      if (!r.ok) d.push({ field: "schema", expected: ex.schema.value, found: r.found });
     }
     if (ex.sites !== undefined) {
       const found = o.sites ?? [];
@@ -1029,7 +1170,7 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F14, F16 as far as slice D1 (f16 1.4), F17 as far as step E0 (f17 1.4), and F19. */
+/** The packages this implementation offers: F1 to F14, F16 as far as slice D3 (f16 1.4, 11), F17 (f17 1.4), and F19. */
 export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19]);
 
 /** Every `.json` file under a directory, in sorted order. */
@@ -1099,6 +1240,13 @@ function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): 
         case "sites":
           out.sites = (o.sites ?? []).map((x) => ({ class: x.class, span: x.span })) as Json;
           break;
+        case "schema": {
+          // f16 11.8: made anew from the checked type; a case whose law fails is not updated.
+          const r = schemaFound(o.checked);
+          if (r.law !== null) return null;
+          out.schema = r.found;
+          break;
+        }
         case "value": {
           if (!o.ran) break;
           const w = writable(o.value);
@@ -1482,6 +1630,7 @@ export function assistOutcome(c: Case): { ok: true; completion?: CompletionResul
   }
   const functions: Record<string, HostFunction> = {};
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = { type: st.type ?? "() => any", call: () => null };
+  applyDocs(c, functions, opaque);
   let env: Env;
   try {
     env = buildEnv({ version: c.version, varRecord: c.env, opaque, opaqueNames: c.opaque ?? [], functions, without: c.removed, groups: c.groups, namedTypes: c.types as NamedType[] | undefined });

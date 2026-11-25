@@ -161,7 +161,7 @@ func (p *parser) precord(pr *PPrim) {
 			break
 		}
 		kt := p.tok
-		f := &PField{KeySpan: Span{kt.Start, kt.End}}
+		f := &PField{KeySpan: Span{kt.Start, kt.End}, Doc: kt.Doc}
 		switch {
 		case kt.Kind == Word:
 			f.Key = kt.Text

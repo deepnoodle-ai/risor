@@ -180,7 +180,7 @@ func (r *presolver) alt(a *syntax.PAlt) (*Type, int) {
 		defer func() { r.guard-- }()
 		fs := make([]Field, 0, len(p.Fields))
 		for _, f := range p.Fields {
-			fs = append(fs, Field{Key: f.Key, Type: r.typ(f.Type), Optional: f.Optional})
+			fs = append(fs, Field{Key: f.Key, Type: r.typ(f.Type), Optional: f.Optional, Doc: f.Doc})
 		}
 		rest := Never
 		if p.HasRest {

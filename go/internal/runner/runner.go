@@ -320,7 +320,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 		decls = append(decls, risor.VarSchema(k, sv.Schema, opts...))
 	}
 	for _, o := range c.Opaque {
-		decls = append(decls, risor.OpaqueType{Name: o})
+		decls = append(decls, risor.OpaqueType{Name: o, Doc: c.Docs[o]})
 	}
 	if c.Groups != nil { // F6 11.1
 		decls = append(decls, risor.Groups(c.Groups...))
@@ -344,7 +344,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 	for _, k := range names {
 		typ, m, _ := strings.Cut(k, ".")
 		s := c.Methods[k]
-		decls = append(decls, risor.Method(typ, m, risor.Function{Type: stubType(base, k, s), Impl: st.native(k, s)}))
+		decls = append(decls, risor.Method(typ, m, risor.Function{Type: stubType(base, k, s), Impl: st.native(k, s), Doc: c.Docs[k]}))
 	}
 	names = names[:0]
 	for k := range c.Functions {
@@ -353,7 +353,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 	sort.Strings(names)
 	for _, k := range names {
 		s := c.Functions[k]
-		decls = append(decls, risor.Function{Name: k, Type: stubType(base, k, s), Impl: st.native(k, s)})
+		decls = append(decls, risor.Function{Name: k, Type: stubType(base, k, s), Impl: st.native(k, s), Doc: c.Docs[k]})
 	}
 	if c.HasReject {
 		decls = append(decls, risor.Reject(c.Reject...))
@@ -478,7 +478,7 @@ func runCase(cr *caseRun) Result {
 	// The case is also run with the static rules alone (3.10.8 item 5),
 	// unless it needs the checker.
 	e := c.Expect
-	if e.Type != nil || e.HasSites || c.Schemas != nil || e.HasDescription { // F5 11.2 item 2
+	if e.Type != nil || e.HasSites || c.Schemas != nil || e.HasDescription || e.HasSchema { // F5 11.2 item 2; F16 11.8
 		return r
 	}
 	if e.Phase == "check" {
@@ -635,6 +635,11 @@ func compareResult(c *casefile.Case, env *risor.Env, v any, ran bool, u *risor.U
 		}
 		if cr == nil || !sameType(*e.Type, cr.Type.String(), c.Opaque) {
 			diffs = append(diffs, Diff{"type", jsonForm(rawField(c, "type")), found})
+		}
+	}
+	if e.HasSchema {
+		if d := compareSchema(e.Schema, cr); d != nil {
+			diffs = append(diffs, *d)
 		}
 	}
 	if e.HasSites {
@@ -859,6 +864,152 @@ func RunEntries(path, key string) []Result {
 		}
 	}
 	return out
+}
+
+// compareSchema compares SchemaOf of the checked type with the expected
+// schema, and tests the law (package F16 11.8): the schema found maps back
+// to an Equal type with the same schema. Nil when they agree.
+func compareSchema(want any, cr *risor.CheckResult) *Diff {
+	if cr == nil {
+		return &Diff{"schema", jsonForm(want), "no type"}
+	}
+	text, err := risor.SchemaOf(cr.Type)
+	if err != nil {
+		if want == nil {
+			return nil
+		}
+		return &Diff{"schema", jsonForm(want), "refused: " + err.Error()}
+	}
+	got, derr := casefile.DecodeJSON(text)
+	if derr != nil || want == nil || !value.Equal(got, want) {
+		return &Diff{"schema", jsonForm(want), string(text)}
+	}
+	back, err := risor.TypeFromSchema(text)
+	if err != nil {
+		return &Diff{"schema", jsonForm(want), "the law: " + err.Error()}
+	}
+	again, err := risor.SchemaOf(back)
+	if err != nil || !back.Equal(cr.Type) {
+		return &Diff{"schema", jsonForm(want), "the law: maps back to " + back.String()}
+	}
+	// A recursive type the mapping does not meet again comes back written
+	// out (F17 12.4 item 3): the schema found, with such a $ref replaced by
+	// its entry, must be the schema of the type it gives.
+	g2, _ := casefile.DecodeJSON(again)
+	if !value.Equal(sortAnyOf(inlineDefs(got, g2)), sortAnyOf(g2)) {
+		return &Diff{"schema", jsonForm(want), "the law: maps back to the schema " + string(again)}
+	}
+	return nil
+}
+
+// inlineDefs replaces in s each $ref to an entry of its $defs that back's
+// $defs does not hold by that entry, and drops those entries.
+func inlineDefs(s, back any) any {
+	sm, ok := s.(map[string]any)
+	if !ok {
+		return s
+	}
+	defs, _ := sm["$defs"].(map[string]any)
+	keep := map[string]bool{}
+	if bm, ok := back.(map[string]any); ok {
+		if bd, ok := bm["$defs"].(map[string]any); ok {
+			for k := range bd {
+				keep[k] = true
+			}
+		}
+	}
+	var walk func(v any) any
+	walk = func(v any) any {
+		if m, ok := v.(map[string]any); ok && m["properties"] != nil {
+			// A property named $defs is a field: walk its schema as any.
+			out := map[string]any{}
+			for k, e := range m {
+				if k == "properties" {
+					ps := map[string]any{}
+					for pk, pv := range e.(map[string]any) {
+						ps[pk] = walk(pv)
+					}
+					out[k] = ps
+				} else {
+					out[k] = walk(e)
+				}
+			}
+			return out
+		}
+		switch x := v.(type) {
+		case []any:
+			out := make([]any, len(x))
+			for i, e := range x {
+				out[i] = walk(e)
+			}
+			return out
+		case map[string]any:
+			if r, ok := x["$ref"].(string); ok {
+				name := strings.TrimPrefix(r, "#/$defs/")
+				if d, ok := defs[name]; ok && !keep[name] {
+					in := walk(d)
+					if desc, ok := x["description"]; ok {
+						if im, ok := in.(map[string]any); ok {
+							c := map[string]any{}
+							for k, v := range im {
+								c[k] = v
+							}
+							c["description"] = desc
+							in = c
+						}
+					}
+					return in
+				}
+			}
+			out := map[string]any{}
+			for k, e := range x {
+				out[k] = walk(e)
+			}
+			return out
+		}
+		return v
+	}
+	root := map[string]any{}
+	for k, e := range sm {
+		if k != "$defs" { // only the root's $defs
+			root[k] = e
+		}
+	}
+	out := walk(root).(map[string]any)
+	if len(keep) > 0 {
+		nd := map[string]any{}
+		for k := range keep {
+			if d, ok := defs[k]; ok {
+				nd[k] = walk(d)
+			}
+		}
+		out["$defs"] = nd
+	}
+	return out
+}
+
+// sortAnyOf puts the alternatives of each anyOf in the order of their JSON
+// text, so that two schemas are compared with their alternatives in any
+// order (F16 11.8 item 2).
+func sortAnyOf(v any) any {
+	switch x := v.(type) {
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = sortAnyOf(e)
+		}
+		return out
+	case map[string]any:
+		out := map[string]any{}
+		for k, e := range x {
+			out[k] = sortAnyOf(e)
+		}
+		if alts, ok := out["anyOf"].([]any); ok {
+			sort.Slice(alts, func(i, j int) bool { return jsonForm(alts[i]) < jsonForm(alts[j]) })
+		}
+		return out
+	}
+	return v
 }
 
 // sameType compares two type texts by structure (3.10.6).

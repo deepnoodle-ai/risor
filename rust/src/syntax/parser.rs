@@ -648,6 +648,7 @@ impl<'a> Parser<'a> {
     /// name and the `=` open no level (2.4).
     fn type_line(&mut self) -> R<TypeLine> {
         let kw = self.bump();
+        let doc = kw.doc.clone();
         let nt = self.peek();
         let name = nt.word().unwrap_or_default().to_string();
         if !is_type_name(&name) {
@@ -662,11 +663,13 @@ impl<'a> Parser<'a> {
             name_span: nt.span,
             ty,
             span: kw.span.to(semi.span),
+            doc,
         })
     }
 
     fn const_line(&mut self) -> R<NodeId> {
         let kw = self.bump();
+        let doc = kw.doc.clone();
         let pattern = self.pattern()?;
         // F16 2.2 rule 4: an annotated line's value is an `Expr`.
         if self.at_punct(P::Colon) {
@@ -680,6 +683,7 @@ impl<'a> Parser<'a> {
                     pattern,
                     value,
                     ty: Some(Box::new(ty)),
+                    doc,
                 },
                 kw.span.to(semi.span),
             ));
@@ -698,6 +702,7 @@ impl<'a> Parser<'a> {
                 pattern,
                 value,
                 ty: None,
+                doc,
             },
             kw.span.to(semi.span),
         ))
@@ -1263,6 +1268,7 @@ impl<'a> Parser<'a> {
                 Tok::Str(s, f) if f.is_line() && t.code.is_none() => s.clone(),
                 _ => return Err(self.bad_type_text(t, "record")),
             };
+            let doc = t.doc.clone();
             if !keys.insert(key.clone()) {
                 return Err(self.bad_type_text(t, "duplicate"));
             }
@@ -1278,7 +1284,12 @@ impl<'a> Parser<'a> {
             }
             self.bump();
             let ty = self.ptype()?;
-            fields.push(PField { key, optional, ty });
+            fields.push(PField {
+                key,
+                optional,
+                ty,
+                doc,
+            });
             let n = self.peek();
             if n.is_punct(P::Comma) {
                 self.bump();
@@ -1992,6 +2003,7 @@ impl<'a> Parser<'a> {
         let mut result = None;
         if let Some(w) = self.peek().word() {
             let nt = self.bump_word()?;
+            let doc = nt.doc.clone();
             let name = if w == "_" { None } else { Some(w.to_string()) };
             let pattern = self.node(NodeKind::NamePat { name }, nt.span);
             params.push(self.node(
@@ -2000,6 +2012,7 @@ impl<'a> Parser<'a> {
                     default: None,
                     ty: None,
                     fn_: None,
+                    doc,
                 },
                 nt.span,
             ));
@@ -2048,6 +2061,7 @@ impl<'a> Parser<'a> {
     }
 
     fn param(&mut self) -> R<NodeId> {
+        let doc = self.peek().doc.clone();
         let pattern = self.pattern()?;
         let mut span = self.ast.span(pattern);
         let mut ty = None;
@@ -2072,6 +2086,7 @@ impl<'a> Parser<'a> {
                         default: None,
                         ty: None,
                         fn_: Some(Box::new(f)),
+                        doc,
                     },
                     span,
                 ));
@@ -2093,6 +2108,7 @@ impl<'a> Parser<'a> {
                 default,
                 ty,
                 fn_: None,
+                doc,
             },
             span,
         ))

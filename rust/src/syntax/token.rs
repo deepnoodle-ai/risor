@@ -144,6 +144,10 @@ pub struct Token {
     /// A code the parser reports when it reaches this token, with its span:
     /// `text-block-open`, `text-block-close` or `text-block-indent` (F3 6).
     pub code: Option<(&'static str, Range)>,
+    /// F16 11.2: the text of the doc comment that stands just before this
+    /// token, with only white space between, when that text is not empty.
+    /// The parser reads it where the token begins a holder.
+    pub doc: Option<std::sync::Arc<str>>,
 }
 
 impl Token {

@@ -18,6 +18,13 @@ export interface Field {
   /** Package F1 (f01 4.4): a fill kept apart from the base until the meets are done. */
   fill?: Type;
   base?: Type;
+  /**
+   * Package F16 slice D3: the field's description (f16 11.4). It travels with
+   * a field passed on unchanged and with nothing else: a field a Join, a Meet
+   * or a Merge of two sources builds has none. No rule that compares or
+   * prints types reads it.
+   */
+  desc?: string;
 }
 
 /** A record (2.2). `rest` is NEVER for an exact record, ANY for an open one. */
@@ -482,6 +489,35 @@ export function variantsPrinted(t: Alts): readonly Rec[] {
 
 // ---- Join (4.1) -----------------------------------------------------------------
 
+const descMemo = new WeakMap<object, boolean>();
+
+/**
+ * Package F16 slice D3: whether a field of a record of the type, at any depth
+ * short of a reference, has a description. A Join of such a type with itself
+ * builds its records, which have none (f16 11.4).
+ */
+export function hasDesc(t: Type): boolean {
+  if (isAny(t)) return false;
+  const m = descMemo.get(t);
+  if (m !== undefined) return m;
+  descMemo.set(t, false);
+  let out = false;
+  if (t.list !== undefined && hasDesc(t.list)) out = true;
+  if (!out && t.map !== undefined) out = recHasDesc(t.map) || (t.union !== undefined && t.union.variants.some(recHasDesc));
+  descMemo.set(t, out);
+  return out;
+}
+
+function recHasDesc(r: Rec): boolean {
+  const m = descMemo.get(r);
+  if (m !== undefined) return m;
+  descMemo.set(r, false);
+  let out = hasDesc(r.rest);
+  if (!out) for (const f of r.fields.values()) if (f.desc !== undefined || hasDesc(f.type)) { out = true; break; }
+  descMemo.set(r, out);
+  return out;
+}
+
 /** A key in both records of a Join; a fill is kept apart (f01 4.4 item 3). */
 function joinField(fa: Field, fb: Field): Field {
   const type = join(fa.type, fb.type);
@@ -533,7 +569,8 @@ const joinMemo = new WeakMap<object, WeakMap<object, Type>>();
  */
 export function join(a: Type, b: Type): Type {
   if (isAny(a) || isAny(b)) return ANY;
-  if (a === b) return a;
+  // f16 11.4: the Join of a type with itself builds its records anew, with no descriptions.
+  if (a === b && !hasDesc(a)) return a;
   if (hasRefDeep(a) || hasRefDeep(b)) return compute((c) => joinG(c, a, b));
   // A type is held with shared parts: the Join of two is kept, so joining
   // two records that share parts does no work twice (05 20.7: no work grows with the expansion of a type).
@@ -584,7 +621,7 @@ function nullAlone(t: Alts): boolean {
 function* joinG(c: Comp, a: Type, b: Type): G<Type> {
   // 1.
   if (isAny(a) || isAny(b)) return ANY;
-  if (a === b) return a;
+  if (a === b && !hasDesc(a)) return a;
   if (isNever(a)) return b;
   if (isNever(b)) return a;
   if (!hasRefDeep(a) && !hasRefDeep(b)) return join(a, b);
@@ -1032,12 +1069,19 @@ export function merge(r: Rec, m: Rec | AnyType): Rec {
   }
   for (const [k, mf] of mm.fields) {
     if (!mf.optional) {
-      fields.set(k, { type: mf.type, optional: false });
+      // f16 11.4: a required field of the right operand is given by it alone, with its description.
+      const f: Field = { type: mf.type, optional: false };
+      if (mf.desc !== undefined) f.desc = mf.desc;
+      fields.set(k, f);
       continue;
     }
     const rf = r.fields.get(k);
     const rt = rf !== undefined ? rf.type : r.rest;
-    fields.set(k, { type: join(mf.type, rt), optional: !(rf !== undefined && !rf.optional) });
+    const f: Field = { type: join(mf.type, rt), optional: !(rf !== undefined && !rf.optional) };
+    // f16 11.4: an optional field of the right operand that the left does not list, beside a left rest of never,
+    // comes from one source and keeps its description.
+    if (rf === undefined && isNever(r.rest) && mf.desc !== undefined) f.desc = mf.desc;
+    fields.set(k, f);
   }
   return { fields, rest: join(r.rest, mm.rest) };
 }
@@ -1515,7 +1559,9 @@ export function fromNode(n: TypeNode, ctx: FromContext, guarded = false): Type {
       for (const f of n.fields) {
         if (seen.has(f.key)) throw new TypeError(`the key ${f.key} is written twice in one record`);
         seen.add(f.key);
-        fields.push([f.key, { type: fromNode(f.type, ctx, true), optional: f.optional }]);
+        const field: Field = { type: fromNode(f.type, ctx, true), optional: f.optional };
+        if (f.desc !== undefined) field.desc = f.desc;
+        fields.push([f.key, field]);
       }
       const rest = n.rest === "exact" ? NEVER : n.rest === "any" ? ANY : fromNode(n.rest, ctx, true);
       return record(fields, rest);

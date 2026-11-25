@@ -341,6 +341,7 @@ impl<'a> Checker<'a> {
             Field {
                 ty: Ty::lits(codes),
                 optional: false,
+                doc: Default::default(),
             },
         );
         fields.insert(
@@ -348,6 +349,7 @@ impl<'a> Checker<'a> {
             Field {
                 ty: Ty::any(),
                 optional: false,
+                doc: Default::default(),
             },
         );
         fields.insert(
@@ -355,6 +357,7 @@ impl<'a> Checker<'a> {
             Field {
                 ty: Ty::string(),
                 optional: false,
+                doc: Default::default(),
             },
         );
         let mut path_elem = Ty::int();
@@ -364,6 +367,7 @@ impl<'a> Checker<'a> {
             Field {
                 ty: Ty::list(path_elem).with_null(),
                 optional: false,
+                doc: Default::default(),
             },
         );
         Checker {
@@ -1207,7 +1211,10 @@ impl<'a> Checker<'a> {
     }
 
     fn const_line(&mut self, c: NodeId) {
-        let NodeKind::Const { pattern, value, ty } = self.kind(c) else {
+        let NodeKind::Const {
+            pattern, value, ty, ..
+        } = self.kind(c)
+        else {
             return;
         };
         if let (
@@ -1766,6 +1773,7 @@ impl<'a> Checker<'a> {
                             Field {
                                 ty: t,
                                 optional: false,
+                                doc: Default::default(),
                             },
                         );
                     }

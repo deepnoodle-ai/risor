@@ -75,7 +75,8 @@ env.complete(text, { line: 1, column: 4 }, undefined, { sourceLimit: 10_000 });
 | --- | --- |
 | `format(text)` | The one formatted text of a program |
 | `env.complete(text, { line, column })` | Completion candidates at a position of a text that need not parse |
-| `env.hover(text, { line, column })` | The type, signature and doc of the name at a position |
+| `env.hover(text, { line, column })` | The type, signature and doc of the name at a position: a host function's, method's or opaque type's `doc`, or the description a `/** ... */` comment gives a field, a `const` line, a parameter or a type line |
+| `schemaOf(type)`, `schemaText(type)` | A type as a JSON Schema, with each field's description, and its canonical JSON text |
 | `env.describe()`, `Env.fromDescription(json)` | An environment as JSON, so a browser can check text against a server's environment |
 | `tokens(text)`, from `@deepnoodle/risor/tokens` | Coloured ranges for an editor, from the lexer only (about 12 KB gzipped). A call of this binding, not of the specification |
 

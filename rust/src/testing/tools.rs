@@ -86,6 +86,7 @@ pub(super) fn read(
             "opaque",
             "methods",
             "functions",
+            "docs",
             "removed",
             "groups",
             "types",

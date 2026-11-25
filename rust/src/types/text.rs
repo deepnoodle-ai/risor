@@ -61,6 +61,8 @@ pub struct Field {
     pub key: String,
     pub optional: bool,
     pub ty: Type,
+    /// F16 11.2: the field's description, or none.
+    pub doc: Option<std::sync::Arc<str>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +86,8 @@ pub struct Param {
     pub name: String,
     pub optional: bool,
     pub ty: ParamType,
+    /// F16 11.2: its description, read and not used in this slice.
+    pub doc: Option<std::sync::Arc<str>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -232,6 +236,11 @@ impl TypeParser {
 
     fn peek(&self) -> &Tok {
         &self.toks[self.pos].tok
+    }
+
+    /// The description of the doc comment before the next token (F16 11.2).
+    fn doc(&self) -> Option<std::sync::Arc<str>> {
+        self.toks[self.pos].doc.clone()
     }
 
     fn peek_n(&self, n: usize) -> &Tok {
@@ -408,6 +417,7 @@ impl TypeParser {
                 }
                 break;
             }
+            let doc = self.doc();
             let key = match self.peek().clone() {
                 Tok::Word(w) => w,
                 Tok::Str(s, f) if f.is_line() => s,
@@ -421,7 +431,12 @@ impl TypeParser {
             self.expect(P::Colon)?;
             let ty = self.ty()?;
             max = max.max(self.d);
-            fields.push(Field { key, optional, ty });
+            fields.push(Field {
+                key,
+                optional,
+                ty,
+                doc,
+            });
             if self.at(P::Comma) {
                 self.bump();
             } else {
@@ -500,6 +515,7 @@ impl TypeParser {
 
     /// `Param = [ "..." ] Word [ "?" ] ":" ( Fn | Type )`
     fn param(&mut self) -> R<Param> {
+        let doc = self.doc();
         let rest = self.at(P::Ellipsis);
         if rest {
             self.bump();
@@ -525,6 +541,7 @@ impl TypeParser {
             name,
             optional,
             ty,
+            doc,
         })
     }
 

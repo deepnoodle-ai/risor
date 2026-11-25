@@ -75,7 +75,7 @@ F19 is part of version `3.0`. It adds no version number. Each entry of
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10,
-   F11, F13, F14, F16 slice D1, F17, F19, F12.
+   F11, F13, F14, F16 slice D1, F17, F16 slice D3, F19, F12.
 2. An implementation that offers F19 offers F8, whose templates it adds to,
    and F6, F7, F13 and F17, whose library tables the lookup of 3.4 reads.
 3. F19 is offered whole. All three implementations offered it in the change
