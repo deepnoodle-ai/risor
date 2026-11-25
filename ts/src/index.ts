@@ -101,7 +101,7 @@ export type { TemplateMode, Segment } from "./host/api.ts";
 
 // E.6 Host functions and values.
 export { HostError, truthy, jsonText } from "./host/api.ts";
-export type { Call } from "./host/api.ts";
+export type { Call, Remaining } from "./host/api.ts";
 
 // E.7 Types, conformance and config files.
 export { Type, typeNever, typeAny, typeNull, typeBool, typeInt, typeFloat, typeString, listType, mapType, nullable, literalType, recordType, exactRecordType, unionType, taggedUnionType, opaqueTypeNamed, join } from "./host/type.ts";
