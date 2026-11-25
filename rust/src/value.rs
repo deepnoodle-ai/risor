@@ -451,22 +451,22 @@ impl<'h> Value<'h> {
         self.to_data_at(0, None)
     }
 
-    /// An owned copy bounded by a total node budget, so shared DAGs cannot
-    /// expand exponentially when building run diagnostics (e.g., `fail`).
+    /// An owned copy bounded by a total emitted node and container-slot budget,
+    /// so shared DAGs and wide host containers cannot expand unboundedly when
+    /// building run diagnostics (e.g., `fail`). Any container whose length
+    /// exceeds the remaining slot budget collapses as a whole subtree to
+    /// `Data::Null`, rather than returning a truncated list or partial map.
     pub(crate) fn to_data_bounded(&self, max_nodes: usize) -> Data {
-        let mut budget = max_nodes;
+        if max_nodes == 0 {
+            return Data::Null;
+        }
+        let mut budget = max_nodes - 1;
         self.to_data_at(0, Some(&mut budget))
     }
 
     fn to_data_at(&self, depth: usize, mut budget: Option<&mut usize>) -> Data {
         if depth > 1024 {
             return Data::Null;
-        }
-        if let Some(b) = budget.as_deref_mut() {
-            if *b == 0 {
-                return Data::Null;
-            }
-            *b -= 1;
         }
         match self {
             Value::Null | Value::BadNum => Data::Null,
@@ -475,6 +475,12 @@ impl<'h> Value<'h> {
             Value::Str(s) => Data::Str(s.as_str().to_string()),
             Value::List(_) | Value::HList(_) => {
                 let n = self.len().unwrap_or(0);
+                if let Some(b) = budget.as_deref_mut() {
+                    if n > *b {
+                        return Data::Null;
+                    }
+                    *b -= n;
+                }
                 let mut out = Vec::with_capacity(n.min(256));
                 for i in 0..n {
                     out.push(self.elem(i).to_data_at(depth + 1, budget.as_deref_mut()));
@@ -482,8 +488,21 @@ impl<'h> Value<'h> {
                 Data::List(out)
             }
             Value::Map(_) | Value::HMap(_) => {
+                let n = self.len().unwrap_or(0);
+                if let Some(b) = budget.as_deref_mut() {
+                    if n > *b {
+                        return Data::Null;
+                    }
+                }
+                let entries = self.entries();
+                if let Some(b) = budget.as_deref_mut() {
+                    if entries.len() > *b {
+                        return Data::Null;
+                    }
+                    *b -= entries.len();
+                }
                 let mut out = std::collections::BTreeMap::new();
-                for (k, v) in self.entries() {
+                for (k, v) in entries {
                     out.insert(
                         k.as_str().to_string(),
                         v.to_data_at(depth + 1, budget.as_deref_mut()),

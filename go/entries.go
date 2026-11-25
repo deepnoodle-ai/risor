@@ -246,7 +246,7 @@ func (p *Program) CallMeasure(ctx context.Context, name string, args []any, vars
 	if d != nil {
 		return nil, u, p.fail(d)
 	}
-	return v, u, nil
+	return value.Unwrap(v), u, nil
 }
 
 // CallRecord calls the named entry point with one input record conformed to
@@ -293,5 +293,5 @@ func (p *Program) CallRecordMeasure(ctx context.Context, name string, input any,
 	if d != nil {
 		return nil, u, p.fail(d)
 	}
-	return v, u, nil
+	return value.Unwrap(v), u, nil
 }

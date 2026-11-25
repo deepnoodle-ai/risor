@@ -3,7 +3,7 @@
 
 use risor::{
     conform, conform_all, format, json_text, list_type, parse, parse_template, CompileOptions,
-    Data, Env, Error, Expected, Limits, Pos, RunOptions, Type,
+    Data, Env, Error, Expected, HostList, HostMap, Limits, Pos, RunOptions, Type, View,
 };
 use std::collections::BTreeMap;
 use std::sync::{
@@ -105,6 +105,77 @@ fn limits_exponential_and_oom_before_charge() {
     pvars.insert("s".into(), Data::Str("a".repeat(100_000)));
     pvars.insert("xs".into(), Data::List(vec![]));
     assert_eq!(err_code(p_pad.run(&pvars)), "allocation-exceeded");
+
+    // json.parse with many duplicate keys deduplicates in place during build
+    // and keeps the last value with allocation charged only for distinct keys.
+    let dup_json = format!("{{{}\"a\":42}}", "\"a\":0,".repeat(20_000));
+    let mut dvars = BTreeMap::new();
+    dvars.insert("s".into(), Data::Str(dup_json));
+    dvars.insert("xs".into(), Data::List(vec![]));
+    let p_dup = env
+        .compile(&parse("json.parse(s)").unwrap(), CompileOptions::default())
+        .unwrap();
+    let (dup_res, dup_usage) = p_dup.measure(&dvars);
+    assert_eq!(
+        dup_res.unwrap().to_data(),
+        Data::Map(BTreeMap::from([("a".into(), Data::Float(42.0))]))
+    );
+    assert_eq!(dup_usage.allocated, 3);
+
+    // flatMap with a HostList reporting len == usize::MAX (or two lists whose
+    // lengths overflow usize) fails cleanly with allocation-exceeded without
+    // wrapping 1 + k or panicking in Vec::with_capacity.
+    struct HugeList(usize);
+    impl HostList for HugeList {
+        fn len(&self) -> usize {
+            self.0
+        }
+        fn get(&self, _index: usize) -> Option<View<'_>> {
+            None
+        }
+    }
+    struct HugeVars<'a> {
+        huge: &'a HugeList,
+    }
+    impl risor::Vars for HugeVars<'_> {
+        fn get(&self, name: &str) -> Option<View<'_>> {
+            match name {
+                "xs" => Some(View::List(self.huge)),
+                _ => None,
+            }
+        }
+    }
+    let no_steps = Env::builder()
+        .var("xs", "any[]")
+        .limits(Limits {
+            steps: None,
+            allocation: Some(10),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    let p_one = no_steps
+        .compile(
+            &parse("[1].flatMap(_ => xs)").unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let huge_max = HugeList(usize::MAX);
+    assert_eq!(
+        err_code(p_one.run(&HugeVars { huge: &huge_max })),
+        "allocation-exceeded"
+    );
+    let p_two = no_steps
+        .compile(
+            &parse("[1, 2].flatMap(_ => xs)").unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let huge_half = HugeList(usize::MAX / 2 + 1);
+    assert_eq!(
+        err_code(p_two.run(&HugeVars { huge: &huge_half })),
+        "allocation-exceeded"
+    );
 }
 
 #[test]
@@ -134,7 +205,7 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
         t0.elapsed()
     );
 
-    // Huge fraction uses O(1) scratch memory and charges 0 allocation units.
+    // Huge fraction uses fixed-column scratch memory and charges 0 allocation units.
     let zero_alloc = env
         .with()
         .limits(Limits {
@@ -196,9 +267,21 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
     );
 }
 
+fn count_data_nodes(d: &Data) -> usize {
+    match d {
+        Data::List(items) => 1 + items.iter().map(count_data_nodes).sum::<usize>(),
+        Data::Map(entries) => 1 + entries.values().map(count_data_nodes).sum::<usize>(),
+        _ => 1,
+    }
+}
+
 #[test]
 fn fail_with_shared_dag_is_bounded_inside_program_run() {
-    let env = Env::builder().var("xs", "any[]").build().unwrap();
+    let env = Env::builder()
+        .var("xs", "any[]")
+        .var("m", "map<any>")
+        .build()
+        .unwrap();
     let mut src = String::from("const a0 = [1, 1];\n");
     for i in 1..=30 {
         src.push_str(&format!("const a{i} = [a{}, a{}];\n", i - 1, i - 1));
@@ -209,6 +292,7 @@ fn fail_with_shared_dag_is_bounded_inside_program_run() {
         .unwrap();
     let mut empty: BTreeMap<String, Data> = BTreeMap::new();
     empty.insert("xs".into(), Data::List(vec![]));
+    empty.insert("m".into(), Data::Map(BTreeMap::new()));
     let t0 = Instant::now();
     let err = p.run(&empty).expect_err("expected fail error");
     assert_eq!(err.first().code, "failed");
@@ -217,52 +301,128 @@ fn fail_with_shared_dag_is_bounded_inside_program_run() {
         "fail(DAG) took {:?}",
         t0.elapsed()
     );
-    match err.first().data.as_deref() {
-        Some(Data::List(top)) => assert_eq!(top.len(), 2),
+    let dag_data = err.first().data.as_deref().expect("expected data");
+    assert!(count_data_nodes(dag_data) <= 100_000);
+    match dag_data {
+        Data::List(top) => assert_eq!(top.len(), 2),
         other => panic!("expected 2-element top list, got {other:?}"),
     }
 
-    // Excess subtrees past the 100,000-node budget become Data::Null without
-    // truncating list length or dropping map keys.
+    // A container that fits within the 100,000-node/slot budget converts
+    // completely without truncation.
     let p_big = env
         .compile(
             &parse(r#"fail("big", xs)"#).unwrap(),
             CompileOptions::default(),
         )
         .unwrap();
-    let mut vars = BTreeMap::new();
-    vars.insert("xs".into(), Data::List(vec![Data::Int(1); 100_005]));
-    let err_big = p_big.run(&vars).expect_err("expected fail error");
-    assert_eq!(err_big.first().code, "failed");
-    match err_big.first().data.as_deref() {
-        Some(Data::List(list)) => {
-            assert_eq!(list.len(), 100_005);
+    let mut fits_vars = BTreeMap::new();
+    fits_vars.insert("xs".into(), Data::List(vec![Data::Int(1); 99_999]));
+    fits_vars.insert("m".into(), Data::Map(BTreeMap::new()));
+    let err_fits = p_big.run(&fits_vars).expect_err("expected fail error");
+    match err_fits.first().data.as_deref() {
+        Some(d @ Data::List(list)) => {
+            assert_eq!(list.len(), 99_999);
             assert_eq!(list[0], Data::Float(1.0));
             assert_eq!(list[99_998], Data::Float(1.0));
-            assert_eq!(list[99_999], Data::Null);
-            assert_eq!(list[100_004], Data::Null);
+            assert_eq!(count_data_nodes(d), 100_000);
         }
-        other => panic!("expected Data::List, got {other:?}"),
+        other => panic!("expected complete 99,999-element Data::List, got {other:?}"),
     }
 
+    // A container wider than the remaining slot budget collapses as a whole
+    // subtree to Data::Null instead of emitting >100,000 slots or a truncated list.
+    let mut over_vars = BTreeMap::new();
+    over_vars.insert("xs".into(), Data::List(vec![Data::Int(1); 100_005]));
+    over_vars.insert("m".into(), Data::Map(BTreeMap::new()));
+    let err_over = p_big.run(&over_vars).expect_err("expected fail error");
+    assert_eq!(err_over.first().code, "failed");
+    assert_eq!(err_over.first().data.as_deref(), Some(&Data::Null));
+
+    // Shared wide-container DAG: 100 references to a 5,000-element list emit
+    // at most 100,000 total slots; the first 19 expand completely and the rest
+    // collapse cleanly as Data::Null.
+    let p_wide = env
+        .compile(
+            &parse(r#"const wide = range(5000); fail("wide", range(100).map(_ => wide))"#).unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let t_wide = Instant::now();
+    let err_wide = p_wide.run(&empty).expect_err("expected fail error");
+    assert!(t_wide.elapsed() < Duration::from_secs(2));
+    let wide_data = err_wide.first().data.as_deref().expect("expected data");
+    assert!(count_data_nodes(wide_data) <= 100_000);
+    match wide_data {
+        Data::List(outer) => {
+            assert_eq!(outer.len(), 100);
+            assert!(matches!(&outer[0], Data::List(inner) if inner.len() == 5_000));
+            assert!(matches!(&outer[18], Data::List(inner) if inner.len() == 5_000));
+            assert_eq!(outer[19], Data::Null);
+            assert_eq!(outer[99], Data::Null);
+        }
+        other => panic!("expected 100-element outer Data::List, got {other:?}"),
+    }
+
+    // Map with an expanding subtree keeps all keys and collapses any container
+    // child whose slots exceed the remaining budget.
     let mut map_src = String::from("const a0 = [1, 1];\n");
     for i in 1..=17 {
         map_src.push_str(&format!("const a{i} = [a{}, a{}];\n", i - 1, i - 1));
     }
-    map_src.push_str(r#"fail("bigm", {a: a17, b: 2})"#);
+    map_src.push_str(r#"fail("bigm", {a: a17, b: [1, 2]})"#);
     let p_map = env
         .compile(&parse(&map_src).unwrap(), CompileOptions::default())
         .unwrap();
     let err_map = p_map.run(&empty).expect_err("expected fail error");
     assert_eq!(err_map.first().code, "failed");
-    match err_map.first().data.as_deref() {
-        Some(Data::Map(m)) => {
+    let map_data = err_map.first().data.as_deref().expect("expected data");
+    assert!(count_data_nodes(map_data) <= 100_000);
+    match map_data {
+        Data::Map(m) => {
             assert_eq!(m.len(), 2);
             assert!(m.contains_key("a"));
             assert_eq!(m.get("b"), Some(&Data::Null));
         }
         other => panic!("expected Data::Map, got {other:?}"),
     }
+
+    // Oversized host map collapses to Data::Null without enumerating its keys.
+    struct PanicKeysMap(usize);
+    impl HostMap for PanicKeysMap {
+        fn len(&self) -> usize {
+            self.0
+        }
+        fn get(&self, _key: &str) -> Option<View<'_>> {
+            None
+        }
+        fn keys(&self) -> Vec<&str> {
+            panic!("oversized host map keys() should not be enumerated")
+        }
+    }
+    struct BigMapVars<'a> {
+        map: &'a PanicKeysMap,
+    }
+    impl risor::Vars for BigMapVars<'_> {
+        fn get(&self, name: &str) -> Option<View<'_>> {
+            match name {
+                "m" => Some(View::Map(self.map)),
+                _ => None,
+            }
+        }
+    }
+    let p_big_map = env
+        .compile(
+            &parse(r#"fail("bigm", m)"#).unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let big_map = PanicKeysMap(100_005);
+    let err_big_map = p_big_map
+        .run(&BigMapVars { map: &big_map })
+        .expect_err("expected fail error");
+    assert_eq!(err_big_map.first().code, "failed");
+    assert_eq!(err_big_map.first().data.as_deref(), Some(&Data::Null));
 }
 
 #[test]

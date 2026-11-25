@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // Kind is one of the seven kinds of value (01-language.md 6.1).
@@ -56,6 +57,115 @@ const MaxWhole = 9007199254740991
 // Go pointer (e.g., var x any; x = &x) cannot overflow the stack.
 const maxPtrDepth = 64
 
+// deepPointer wraps a pointer that reached maxPtrDepth in Read so subsequent
+// KindOf / Equal / typed dispatch sees OpaqueKind directly instead of
+// dereferencing the remaining pointer chain again. It holds the original host
+// pointer so Unwrap restores it at the host boundary.
+type deepPointer struct {
+	v any
+}
+
+// Unwrap removes any internal deepPointer wrapper before a value crosses back
+// to the host.
+func Unwrap(v any) any {
+	if d, ok := v.(deepPointer); ok {
+		return d.v
+	}
+	return v
+}
+
+// IsDeepPointer reports whether v is wrapped in a deepPointer.
+func IsDeepPointer(v any) bool {
+	_, ok := v.(deepPointer)
+	return ok
+}
+
+type containerKey struct {
+	ptr uintptr
+	n   int // -1 for map[string]any, len(s) for []any
+}
+
+type unwrapEntry struct {
+	v       any
+	changed bool
+}
+
+// UnwrapDeep removes deepPointer wrappers from v and, copy-on-write, from any
+// []any or map[string]any containers reachable from v. Containers without a
+// deepPointer are returned untouched; cyclic containers are visited once.
+func UnwrapDeep(v any) any {
+	switch x := v.(type) {
+	case deepPointer:
+		return x.v
+	case []any, map[string]any:
+		u, _ := unwrapDeep(v, map[containerKey]unwrapEntry{})
+		return u
+	default:
+		return v
+	}
+}
+
+func unwrapDeep(v any, seen map[containerKey]unwrapEntry) (any, bool) {
+	switch x := v.(type) {
+	case deepPointer:
+		return x.v, true
+	case []any:
+		if len(x) == 0 {
+			return v, false
+		}
+		key := containerKey{ptr: uintptr(unsafe.Pointer(unsafe.SliceData(x))), n: len(x)}
+		if prev, ok := seen[key]; ok {
+			return prev.v, prev.changed
+		}
+		seen[key] = unwrapEntry{v: v}
+		var cp []any
+		for i, elem := range x {
+			u, changed := unwrapDeep(elem, seen)
+			if cp != nil {
+				cp[i] = u
+			} else if changed {
+				cp = make([]any, len(x))
+				copy(cp, x[:i])
+				cp[i] = u
+			}
+		}
+		if cp != nil {
+			seen[key] = unwrapEntry{v: cp, changed: true}
+			return cp, true
+		}
+		return v, false
+	case map[string]any:
+		if len(x) == 0 {
+			return v, false
+		}
+		key := containerKey{ptr: reflect.ValueOf(x).Pointer(), n: -1}
+		if prev, ok := seen[key]; ok {
+			return prev.v, prev.changed
+		}
+		seen[key] = unwrapEntry{v: v}
+		var cp map[string]any
+		for k, elem := range x {
+			u, changed := unwrapDeep(elem, seen)
+			if cp != nil {
+				cp[k] = u
+			} else if changed {
+				cp = make(map[string]any, len(x))
+				for k2, v2 := range x {
+					cp[k2] = v2
+				}
+				cp[k] = u
+			}
+		}
+		if cp != nil {
+			seen[key] = unwrapEntry{v: cp, changed: true}
+			return cp, true
+		}
+		return v, false
+	default:
+		return v, false
+	}
+}
+
 // KindOf returns the kind of a value.
 func KindOf(v any) Kind {
 	return kindOf(v, 0)
@@ -75,7 +185,7 @@ func kindOf(v any, ptrDepth int) Kind {
 		return List
 	case map[string]any:
 		return Map
-	case Opaque:
+	case Opaque, deepPointer:
 		return OpaqueKind
 	default:
 		return reflectKind(v, ptrDepth)
@@ -138,10 +248,10 @@ const (
 // operation yields them. A host integer whose magnitude is over 2^53 - 1, a
 // NaN and an infinity give ReadRange (03-host.md 3.4.4).
 func Read(v any) (any, ReadError) {
-	return readAt(v, 0)
+	return readAt(v, v, 0)
 }
 
-func readAt(v any, ptrDepth int) (any, ReadError) {
+func readAt(orig, v any, ptrDepth int) (any, ReadError) {
 	switch x := v.(type) {
 	case nil, bool, []any, map[string]any:
 		return v, ReadOK
@@ -180,7 +290,7 @@ func readAt(v any, ptrDepth int) (any, ReadError) {
 		return Num(float64(x)), ReadOK
 	case float32:
 		return Read(float64(x))
-	case Opaque:
+	case Opaque, deepPointer:
 		return v, ReadOK
 	case encoding.TextMarshaler:
 		if s, ok := marshalText(x); ok {
@@ -194,9 +304,9 @@ func readAt(v any, ptrDepth int) (any, ReadError) {
 			return nil, ReadOK
 		}
 		if ptrDepth >= maxPtrDepth {
-			return v, ReadOK
+			return deepPointer{orig}, ReadOK
 		}
-		return readAt(rv.Elem().Interface(), ptrDepth+1)
+		return readAt(orig, rv.Elem().Interface(), ptrDepth+1)
 	// F1 6.2: a value of a named bool, string or number type, such as
 	// time.Duration, is read as one of its kind.
 	case reflect.Bool:

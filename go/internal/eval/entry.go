@@ -8,6 +8,7 @@ import (
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/static"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
 )
 
 // entryPoint is one compiled exported entry point (package F16 slice D2,
@@ -237,7 +238,12 @@ func (p *Program) CallEntry(ctx context.Context, name string, args []any, presen
 	usage = Usage{Steps: r.steps, Allocated: r.units}
 	var trace []diag.TraceEntry
 	if f != nil {
+		if f.hasData && r.hasDeepPtr {
+			f.data = value.UnwrapDeep(f.data)
+		}
 		trace = r.trace(p.file)
+	} else if r.hasDeepPtr {
+		v = value.UnwrapDeep(v)
 	}
 	p.putRun(r)
 	if f != nil {

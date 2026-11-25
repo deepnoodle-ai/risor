@@ -47,7 +47,8 @@ Regression tests added by this review live in:
      4,000,000 `Value`s (147.8 ms) before returning `allocation-exceeded`. A
      10,000-element host list would allocate ~2.4 GB before failing.
    - *Fix:* Store each returned list `Value` in `g.out`, accumulate the total
-     element count `k` with `saturating_add`, charge `k` steps and `1 + k`
+     element count `k` with checked arithmetic (failing with
+     `allocation-exceeded` on overflow), charge `k` steps and checked `1 + k`
      units, and flatten only if the budget covers `k`.
    - *Verification (`ran`, `cargo test --test adversarial`):*
      `limits_exponential_and_oom_before_charge` passes in <15 ms.
@@ -64,8 +65,10 @@ Regression tests added by this review live in:
    - *Fix:* Replaced both TS and Rust `time.duration` summation loops with a
      single-pass, fixed-width O(N) column accumulator (1,120 fractional columns
      plus 320 integer columns, with a fixed-window exact midpoint tiebreaker).
-     This bounds scratch memory to O(1) even on multi-megabyte fractions while
-     preserving exact IEEE 754 round-to-nearest-even and normative `units = 0`.
+     This keeps scratch memory to O(1) for the fixed columns and windows, plus
+     O(k) term records on the exact-comparison path (where `k` is the number of
+     terms with nonzero truncated tails), while preserving exact IEEE 754
+     round-to-nearest-even and normative `units = 0`.
    - *After (`ran`):* 10,000 terms dropped from 1,633.5 ms to **5.2 ms** in TS
      (50,000 terms: 23.6 ms) and from 872.0 ms to **<5 ms** in Rust. Verified by
      `time.duration and time.parse stay linear on pathological inputs` (TS) and
@@ -177,10 +180,13 @@ Regression tests added by this review live in:
      infinitely, killing the Go process with an unrecoverable
      `fatal error: stack overflow`.
    - *Fix:* Bounded `reflect.Pointer` dereferencing in `kindOf` and `readAt` to
-     `maxPtrDepth = 64` indirections, treating deeper/cyclic pointer chains as
-     `OpaqueKind` instead of recursing indefinitely.
+     `maxPtrDepth = 64` indirections, wrapping deeper/cyclic pointer chains in
+     a dedicated opaque `deepPointer` value whose `KindOf` is immediately
+     `OpaqueKind` (preventing kind/value mismatch panics on subsequent `Equal`
+     or typed dispatch).
    - *Verification (`ran`, `go test`):* `TestAdversarialOpaqueAndHostBoundary`
-     confirms `type(x)` on a self-referential pointer returns `"opaque"`.
+     confirms `type(x)` returns `"opaque"` and `x == x` / `x == 1` do not panic
+     on both self-referential pointers and 65-level pointer chains.
 
 10. **Rust `Fail::diagnostic()` expanded shared DAGs exponentially inside
     `Program::run` (Fixed).**
@@ -194,11 +200,17 @@ Regression tests added by this review live in:
       on depth 30 = 10^9 nodes). Go and TS share references in `Diagnostic.data`
       and returned in ~0.1 ms.
     - *Fix:* Added `Value::to_data_bounded(max_nodes)` and bounded
-      `Fail::diagnostic()` at 100,000 nodes (cutting off excess subtrees as
-      `Data::Null`, matching the existing 1,024-level cutoff in `to_data`).
+      `Fail::diagnostic()` at 100,000 total emitted `Data` nodes and container
+      slots. Before iterating a list or copying a map's entries, `to_data_at`
+      reserves all `n` child slots from the remaining budget; any container
+      whose length exceeds the remaining budget collapses as a whole subtree to
+      `Data::Null` (so emitted lists never silently lose elements, emitted maps
+      never drop keys, and total emitted nodes and slots stay at most 100,000).
     - *Verification (`ran`, `cargo test --test adversarial`):*
-      `fail_with_shared_dag_is_bounded_inside_program_run` tests depth 30
-      (2^30 logical nodes) and finishes in milliseconds.
+      `fail_with_shared_dag_is_bounded_inside_program_run` tests depth 30 (2^30
+      logical nodes), shared wide-container DAGs, and >100,000-element host
+      lists and maps, verifying total emitted nodes stay <= 100,000 and finish
+      in milliseconds.
 
 11. **TS `call.charge` and `call.allocate` accepted fractional and non-finite
     numbers (Fixed).**
@@ -346,9 +358,9 @@ them:
 All commands below were run after the final edits and exited with code 0:
 
 ```bash
-cd go && go build ./... && go vet ./... && go test -count=1 ./...
-cd ts && npm run typecheck && npm run build && npm test && npm run suite
-cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings \
-  && cargo test
-cd fuzz && GOWORK=off go test ./...
+(cd go && go build ./... && go vet ./... && go test -count=1 ./...)
+(cd ts && npm run typecheck && npm run build && npm test && npm run suite)
+(cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings \
+  && cargo test)
+(cd fuzz && GOWORK=off go test ./...)
 ```

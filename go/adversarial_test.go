@@ -199,7 +199,8 @@ func TestAdversarialOpaqueAndHostBoundary(t *testing.T) {
 	assert.Equal(t, got, false)
 
 	// Regression: cyclic Go pointer (var cyc any; cyc = &cyc) must not stack-overflow
-	// in value.KindOf / value.Read.
+	// in value.KindOf / value.Read, and a 65-level pointer chain ending at int(1)
+	// must stay consistently opaque across type(x), x == x, and x == 1.
 	var cyc any
 	cyc = &cyc
 	cEnv, err := risor.NewEnv(risor.Var("x", "any"))
@@ -211,6 +212,104 @@ func TestAdversarialOpaqueAndHostBoundary(t *testing.T) {
 	kindStr, err := pX.Run(ctx, risor.Map{"x": cyc})
 	assert.NoError(t, err)
 	assert.Equal(t, kindStr, "opaque")
+
+	var p65 any = int(1)
+	for range 65 {
+		p := new(any)
+		*p = p65
+		p65 = p
+	}
+	kindStr, err = pX.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	assert.Equal(t, kindStr, "opaque")
+
+	astSelfEq, err := risor.Parse(`[x == x, x == 1]`)
+	assert.NoError(t, err)
+	pSelfEq, err := cEnv.Compile(astSelfEq)
+	assert.NoError(t, err)
+	eqRes, err := pSelfEq.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	assert.Equal(t, eqRes, []any{true, false})
+	cycEqRes, err := pSelfEq.Run(ctx, risor.Map{"x": cyc})
+	assert.NoError(t, err)
+	assert.Equal(t, cycEqRes, []any{true, false})
+
+	// Host boundary unwraps deepPointer back to the original pointer across
+	// Program.Run/Measure, containers, entry-point Call/CallRecord, host
+	// function arguments (native and Func-bound), and fail() diagnostic data.
+	astRetX, err := risor.Parse(`x`)
+	assert.NoError(t, err)
+	pRetX, err := cEnv.Compile(astRetX)
+	assert.NoError(t, err)
+	retP65, err := pRetX.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	assert.True(t, retP65 == p65)
+	retCyc, err := pRetX.Run(ctx, risor.Map{"x": cyc})
+	assert.NoError(t, err)
+	assert.True(t, retCyc == cyc)
+
+	astWrap, err := risor.Parse(`{ list: [x], single: x }`)
+	assert.NoError(t, err)
+	pWrap, err := cEnv.Compile(astWrap)
+	assert.NoError(t, err)
+	wrapped, err := pWrap.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	wm := wrapped.(map[string]any)
+	assert.True(t, wm["single"] == p65)
+	assert.True(t, wm["list"].([]any)[0] == p65)
+
+	astEntry, err := risor.Parse(`export const id = (v: any) => v;`)
+	assert.NoError(t, err)
+	pEntry, err := cEnv.Compile(astEntry)
+	assert.NoError(t, err)
+	callRes, err := pEntry.Call(ctx, "id", []any{p65}, nil)
+	assert.NoError(t, err)
+	assert.True(t, callRes == p65)
+	callRecRes, err := pEntry.CallRecord(ctx, "id", map[string]any{"v": p65}, nil)
+	assert.NoError(t, err)
+	assert.True(t, callRecRes == p65)
+
+	var seenNative, seenNativeElem, seenBound any
+	hEnv, err := risor.NewEnv(
+		risor.Var("x", "any"),
+		risor.Function{
+			Name: "echo",
+			Type: "(a: any, b: any[]) => any",
+			Impl: func(_ *risor.Call, args []any) (any, error) {
+				seenNative = args[0]
+				seenNativeElem = args[1].([]any)[0]
+				return args[0], nil
+			},
+		},
+		risor.Func("boundEcho", func(a any) any {
+			seenBound = a
+			return a
+		}),
+	)
+	assert.NoError(t, err)
+	astEcho, err := risor.Parse(`const y = echo(x, [x]); const z = boundEcho(x); [y == x, z == x, type(y), y]`)
+	assert.NoError(t, err)
+	pEcho, err := hEnv.Compile(astEcho)
+	assert.NoError(t, err)
+	echoOut, err := pEcho.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	echoList := echoOut.([]any)
+	assert.Equal(t, echoList[0], true)
+	assert.Equal(t, echoList[1], true)
+	assert.Equal(t, echoList[2], "opaque")
+	assert.True(t, echoList[3] == p65)
+	assert.True(t, seenNative == p65)
+	assert.True(t, seenNativeElem == p65)
+	assert.True(t, seenBound == p65)
+
+	astFailData, err := risor.Parse(`fail("deep", x)`)
+	assert.NoError(t, err)
+	pFailData, err := cEnv.Compile(astFailData)
+	assert.NoError(t, err)
+	_, err = pFailData.Run(ctx, risor.Map{"x": p65})
+	var failErr *risor.Error
+	assert.True(t, errors.As(err, &failErr))
+	assert.True(t, failErr.Diagnostics[0].Data == p65)
 
 	// Host function panic is uncatchable and nested RisorError cause depth caps at 8 in JSON.
 	pEnv, err := risor.NewEnv(risor.Function{
