@@ -723,7 +723,7 @@ is the type the checker gives at that place, as named.
 |  | `rendered` | `a value of type {type} cannot be rendered as text, because it holds an opaque type` | A rendered expression whose type has an opaque type. type is its type |
 |  | `star` | `a projection needs a list, found {type}` | The receiver of a star of F7 is not a list. type is the receiver's type without null |
 | `never-equal` | `equality` | `a value of type {left} is never equal to a value of type {right}` | == or !=. left and right are the operands' types |
-|  | `in` | `a value of type {left} is never an element of a list of type {right}` | in or not in on a list. left is the left operand's type, right the right operand's |
+|  | `in` | `a value of type {left} is never an element of a list of type {right}` | in or not in on a list, or the list method indexOf. left is the left operand's or argument's type, right the list's (after null is removed) |
 |  | `match` | `the subject, of type {type}, is never equal to {text}` | A literal of a match. type is the subject's type; text is the literal |
 | `always-truthy` | `default` | `{text} is always truthy: its type is {type}` | type is the tested expression's type, as narrowed |
 |  | `test` | `{text} is always true for a value of type {type}` | An x is T that the types decide (F4 6.3). type is the subject's type |
@@ -839,8 +839,10 @@ The parameters of each code, with their kinds:
    `test`. For a `host` site, name is the host function's name with its
    namespace, or the method's name.
 9. **`never-equal`.** `match` for a literal of a `match`, whose text is the
-   literal with its `-`; `in` for `in` and `not in` on a list; `equality` for
-   `==` and `!=`.
+   literal with its `-`; `in` for `in` and `not in` on a list and for the list
+   method `indexOf`, with `left` the searched value's type and `right` the
+   list's type after steps 2 to 4 of `05-types.md` 9.1 (for `indexOf`) or after
+   the null rule of `05-types.md` 8.4 (for `in`); `equality` for `==` and `!=`.
 
 ### 3.6 Stability
 

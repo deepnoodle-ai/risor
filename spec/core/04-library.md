@@ -2201,6 +2201,9 @@ them.
    the common prefix of two strings and the steps of `==` on two lists or two
    maps of the same length or size.
 4. There is no start position argument (5.3.14).
+5. In the checker, the argument is compared as by `==` with the receiver's
+   element type: an argument that can never be equal to an element is
+   `never-equal` on the call (`05-types.md` 13.11).
 
 | Program | Data | Result |
 | --- | --- | --- |

@@ -3149,6 +3149,13 @@ impl<'a> Checker<'a> {
                 if *f { Some("host") } else { None },
             ),
         };
+        let list_index_of = matches!(
+            &callee,
+            Callee::Lib(r)
+                if r.name == "indexOf"
+                    && r.receiver == Some(crate::value::Kind::List)
+                    && r.group.is_none()
+        );
         let sig: Sig = sig.clone();
         let recv_text = recv_text.cloned();
         let name = self.call_name(call);
@@ -3178,7 +3185,7 @@ impl<'a> Checker<'a> {
         if let (Some(rt), Some((_, rty))) = (&recv_text, &recv) {
             bind(rt, rty, &mut sol);
         }
-        let mut plain: Vec<(NodeId, text::Type)> = Vec::new();
+        let mut plain: Vec<(NodeId, text::Type, Ty)> = Vec::new();
         let mut lambdas: Vec<(NodeId, Cb, text::FnType)> = Vec::new();
         for (i, &a) in args.iter().enumerate() {
             let Some(p) = sig.param_at(i) else { continue };
@@ -3238,7 +3245,7 @@ impl<'a> Checker<'a> {
                         _ => t.clone(),
                     };
                     bind(&pt, &at, &mut sol);
-                    plain.push((a, pt));
+                    plain.push((a, pt, at));
                 }
                 // 13.9: a reference of a lambda to its own name is not
                 // checked.
@@ -3418,9 +3425,27 @@ impl<'a> Checker<'a> {
             let t = substitute(rt, self.opaque(), &sol);
             self.fit_form(*rn, &t, Fit::Arg);
         }
-        for (a, pt) in plain {
-            let t = substitute(&pt, self.opaque(), &sol);
-            self.fit_form(a, &t, Fit::Arg);
+        for (a, pt, _) in &plain {
+            let t = substitute(pt, self.opaque(), &sol);
+            self.fit_form(*a, &t, Fit::Arg);
+        }
+        // 13.11: Core's list method `indexOf` compares its plain argument with
+        // the receiver's element type as by `==` (8.2, 8.4).
+        if list_index_of {
+            if let (Some((_, rty)), Some((_, _, at))) = (&recv, plain.first()) {
+                let rv = rty.view();
+                if let (1, Some(e)) = (rv.kinds(), &rv.list) {
+                    if !overlap(at, e)
+                        && !at.is_never()
+                        && !e.is_never()
+                        && !at.is_exactly_null()
+                        && !e.is_exactly_null()
+                    {
+                        let p = [("left", print(at)), ("right", print(rty))];
+                        self.diag("never-equal", cs, "in", &p);
+                    }
+                }
+            }
         }
         // 6. Result.
         if let (Some(nt), Some(text::Type::List(e))) = (&narrowed, &recv_text) {

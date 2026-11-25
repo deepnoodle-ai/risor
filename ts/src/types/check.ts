@@ -1850,6 +1850,15 @@ class Checker {
       if (p === null) return;
       this.fitForm(a as A.Expr, inst(p), argCode, undefined, [span]);
     });
+    // 13.11: `indexOf` on a list compares its plain argument with the element type as by `==`.
+    if (isMethod && sig.kind === "library" && sig.name === "indexOf" && sig.recv?.t === "list" && recvType !== null && argTypes[0] != null) {
+      const ur = unfold(recvType);
+      const elem = !isAny(ur) ? ur.list : undefined;
+      const a = argTypes[0];
+      if (elem !== undefined && !overlap(a, elem) && !isNever(a) && !isNever(elem) && !isExactlyNull(a) && !isExactlyNull(elem)) {
+        this.say("never-equal", span, "in", { left: printType(a), right: printType(recvType) });
+      }
+    }
     // 6. Result.
     let result = inst(sig.sig.result);
     if (sig.sig.canFail) {

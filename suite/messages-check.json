@@ -1036,7 +1036,7 @@
     },
     "when": {
       "equality": "== or !=. left and right are the operands' types",
-      "in": "in or not in on a list. left is the left operand's type, right the right operand's",
+      "in": "in or not in on a list, or the list method indexOf. left is the left operand's or argument's type, right the list's (after null is removed)",
       "match": "A literal of a match. type is the subject's type; text is the literal"
     },
     "cases": [
@@ -1074,6 +1074,65 @@
                 14
               ],
               "message": "a value of type \"a\" is never an element of a list of type int[]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: indexOf on a list",
+        "source": "[1, 2].indexOf(\"a\")",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                1,
+                1,
+                20
+              ],
+              "message": "a value of type \"a\" is never an element of a list of type int[]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: indexOf with optional chaining",
+        "env": "{xs: int[] | null}",
+        "source": "xs?.indexOf(\"a\")",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                1,
+                1,
+                17
+              ],
+              "message": "a value of type \"a\" is never an element of a list of type int[]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: indexOf with nullable argument",
+        "env": "{xs: int[], ns: string | null}",
+        "source": "xs.indexOf(ns)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                1,
+                1,
+                15
+              ],
+              "message": "a value of type string | null is never an element of a list of type int[]"
             }
           ]
         }
