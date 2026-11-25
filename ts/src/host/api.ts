@@ -1743,7 +1743,19 @@ export class Expr {
    * such as `Template.part(i)` or `CallSite.args[i]`, it is that part alone.
    */
   get text(): string {
-    return this.#source.slice(this.#program.span.start, this.#program.span.end);
+    const p = this.#program;
+    if (p.result === null) {
+      return this.#source.slice(p.span.start, p.span.end);
+    }
+    const r = p.result.outer ?? p.result.span;
+    let start = r.start;
+    if (p.consts.length > 0 && p.consts[0].span.start < start) {
+      start = p.consts[0].span.start;
+    }
+    if (p.types.length > 0 && p.types[0].span.start < start) {
+      start = p.types[0].span.start;
+    }
+    return this.#source.slice(start, r.end);
   }
 
   /** The analysis of this program (f02 3). */

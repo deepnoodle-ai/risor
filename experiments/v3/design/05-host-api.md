@@ -2404,18 +2404,18 @@ let cfg: Config = env.load(&parse(src)?, &vars)?;
 The helper for case files is the module `risor::testing` (A.11).
 
 ```rust
-pub fn load(path: impl AsRef<Path>) -> Result<CaseFile, Error>;   // an error: invalid
+pub fn load(path: impl AsRef<Path>, base: &Env) -> Result<CaseFile, FileError>; // an error: invalid
 impl CaseFile {
     pub fn cases(&self) -> &[Case];
-    pub fn run(&self, base: &Env, vars: &dyn Vars) -> Report;     // every case
+    pub fn run(&self, vars: &dyn Vars) -> Report;                 // every case
 }
-impl Case   { pub fn run(&self, base: &Env, vars: &dyn Vars) -> Verdict; }
+impl Case   { pub fn run(&self, vars: &dyn Vars) -> Verdict; }
 impl Report { pub fn assert_ok(&self); }  // panics, and lists the cases that failed
 
 #[test]
 fn discount() {
-    let file = risor::testing::load("tests/discount.test.json").unwrap();
-    file.run(&env(), &NoVars).assert_ok();
+    let file = risor::testing::load("tests/discount.test.json", &env()).unwrap();
+    file.run(&NoVars).assert_ok();
 }
 ```
 

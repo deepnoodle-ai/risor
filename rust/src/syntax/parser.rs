@@ -34,7 +34,26 @@ impl Expr {
     /// larger text, such as [`Template::part`](crate::Template::part) or
     /// [`CallSite::args`](crate::CallSite::args), it is that part alone.
     pub fn text(&self) -> String {
-        self.source.slice(self.ast.span(self.ast.root))
+        let NodeKind::Program {
+            consts,
+            result: Some(r),
+            types,
+        } = self.ast.kind(self.ast.root)
+        else {
+            return self.source.slice(self.ast.span(self.ast.root));
+        };
+        let r_span = self.ast.node(*r).outer;
+        let mut start = r_span.start;
+        if let Some(&c) = consts.first() {
+            start = start.min(self.ast.span(c).start);
+        }
+        if let Some(t) = types.first() {
+            start = start.min(t.span.start);
+        }
+        self.source.slice(Range {
+            start,
+            end: r_span.end,
+        })
     }
 
     /// The analysis of the program (F2 3.1): the names it reads, the paths

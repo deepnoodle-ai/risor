@@ -126,6 +126,23 @@ fn compile_run_and_measure() {
     let env = Env::builder().var("n", "int").build().unwrap();
     let x = parse("n * 2").unwrap();
     assert_eq!(x.text(), "n * 2");
+    assert_eq!(parse("1 + 2;").unwrap().text(), "1 + 2");
+    assert_eq!(parse("  1 + 2 ; ").unwrap().text(), "1 + 2");
+    assert_eq!(parse("const a = 1; a;").unwrap().text(), "const a = 1; a");
+    assert_eq!(
+        parse("type Id = int; const a: Id = 1; a;").unwrap().text(),
+        "type Id = int; const a: Id = 1; a"
+    );
+    assert_eq!(
+        parse("export const f = (x: int) => x;").unwrap().text(),
+        "export const f = (x: int) => x;"
+    );
+    assert_eq!(
+        parse("  // note\nexport const f = (x: int) => x;  ")
+            .unwrap()
+            .text(),
+        "export const f = (x: int) => x;"
+    );
     let p = env.compile(&x, CompileOptions::default()).unwrap();
     assert_eq!(p.check_result().unwrap().ty, Type::INT);
     let mut vars = BTreeMap::new();
