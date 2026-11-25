@@ -2643,14 +2643,17 @@ fn outcome_core(case: &Case) -> String {
                 out.push_str(",\"message\":");
                 out.push_str(&json_text(&d.message));
             }
-            // F10 10.4, F16 12.10: a load step 5a or entry argument conformance failure has path and no trace.
-            if phase == Phase::Run && d.span.is_none() && d.code == "not-conforming" {
+            // F10 10.4: step 5a load failure is path-only; F16 12.5: entry conformance has path and an empty trace.
+            let host_conform =
+                phase == Phase::Run && d.span.is_none() && d.code == "not-conforming";
+            if host_conform {
                 out.push_str(",\"path\":");
                 out.push_str(&crate::json::to_text(&path_json(
                     d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
                 )));
-            } else if phase == Phase::Run && d.class != Some("limit") {
-                // F8 8: the trace of a run diagnostic, but for class `limit`.
+            }
+            if phase == Phase::Run && d.class != Some("limit") && !(case.load && host_conform) {
+                // F8 8: the trace of a run diagnostic, but for class `limit` and load step 5a.
                 out.push_str(",\"trace\":[");
                 for (i, e) in d.trace().iter().enumerate() {
                     if i > 0 {
