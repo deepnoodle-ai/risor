@@ -202,3 +202,12 @@ describe("03 3.2.5: the nested run keeps its own depth limit", () => {
     }
   });
 });
+
+describe("with() and a limit given as undefined", () => {
+  test("an undefined limit keeps the parent's", () => {
+    const env = createEnv({ vars: { xs: "int[]" }, limits: { steps: 5 } });
+    const child = env.with({ limits: { steps: undefined, allocation: undefined } });
+    const o = execute(child.compile(parse(INNER), { check: false }), innerVars);
+    assert.equal(limitCode(o), "steps-exceeded");
+  });
+});

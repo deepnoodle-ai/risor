@@ -906,6 +906,11 @@ export class Env<V = any, N = any> {
 }
 
 /** Internal: a child environment, with the declarations the runner gives. */
+/** The keys of `o` whose value is not undefined. */
+function definedOnly<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
   const p = parent.declared;
   const pe = parent.environment;
@@ -952,7 +957,8 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
     opaqueNames,
     reject: options.reject ?? (p.reject !== undefined ? p.reject : [...pe.reject]),
     // Field by field: a limit the child does not give is the parent's (03 3.3.2).
-    limits: options.limits === undefined ? p.limits : { ...p.limits, ...options.limits },
+    // A key whose value is undefined is not given, as in createEnv.
+    limits: options.limits === undefined ? p.limits : { ...p.limits, ...definedOnly(options.limits) },
     without: [...pe.removed, ...(options.without ?? [])],
     // f06 2.6 item 1: the parent's groups and the child's own.
     groups: [...pe.groups, ...(options.groups ?? [])],
