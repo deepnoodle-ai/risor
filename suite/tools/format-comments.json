@@ -411,5 +411,19 @@
   "expect": {
    "formatted": "f(/* a */ /* b */)\n"
   }
+ },
+ {
+  "name": "a block comment after the brace of a record pattern",
+  "format": "const {/* x */ a, b} = m; a",
+  "expect": {
+   "formatted": "const {/* x */ a, b} = m;\na\n"
+  }
+ },
+ {
+  "name": "a block comment after the bracket of a list pattern",
+  "format": "const [/* x */ a, b] = l; a",
+  "expect": {
+   "formatted": "const [/* x */ a, b] = l;\na\n"
+  }
  }
 ]

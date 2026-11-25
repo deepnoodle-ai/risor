@@ -516,8 +516,8 @@ it, and is written there. No comment is lost or written twice.
    | --- | --- |
    | `(` of a call, a lambda's parameters or a function type's | `f(/* why */ c)`, `(/* none */) => int` |
    | `(` of an `if` test, a `match` guard or a `catch` | `if (/* why */ c)`, `catch (/* e */ e)` |
-   | `[` of a list, an index, an optional index or a computed key | `[/* first */ 1, 2]`, `a[/* why */ 0]`, `a?.[/* why */ 0]` |
-   | `{` of a map or a record type | `{/* why */ a: 1}` |
+   | `[` of a list, a list pattern, an index, an optional index or a computed key | `[/* first */ 1, 2]`, `a[/* why */ 0]`, `a?.[/* why */ 0]` |
+   | `{` of a map, a record type or a record pattern | `{/* why */ a: 1}`, `const {/* x */ a, b} = m` |
    | `<` of a map type | `map</* v */ int>` |
    | `(` and `[` of a program type | `(/* why */ int \| null)[]` |
 
