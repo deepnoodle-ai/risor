@@ -432,15 +432,10 @@ pub fn all(v: &Value<'_>, t: &Ty, max: usize, limit: Option<u64>) -> Vec<Failure
     };
     // 6.4 step 1. A value that conforms within the limit has no failure,
     // and All would charge the same steps (6.4 item 2): the list is empty.
-    // With no step limit (the decode, R324) the first walk is not made: its
-    // rest loop tests every key after a failure, so on shared data it could
-    // do far more work than All, which stops at the maximum.
-    if limit.is_some() {
-        match test(v, t, &mut Free::new(limit)) {
-            Err(code) => return vec![limit_failure(if code == DEEP { DEEP } else { STEPS })],
-            Ok(None) => return Vec::new(),
-            Ok(Some(_)) => {}
-        }
+    match test(v, t, &mut Free::new(limit)) {
+        Err(code) => return vec![limit_failure(if code == DEEP { DEEP } else { STEPS })],
+        Ok(None) => return Vec::new(),
+        Ok(Some(_)) => {}
     }
     let mut a = All {
         path: Vec::new(),
