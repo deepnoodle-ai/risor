@@ -110,12 +110,31 @@ export function declareError(code: string, message: string): RisorError {
   return new RisorError([{ phase: "declare", code, message }]);
 }
 
+/**
+ * Internal: whether a diagnostic's cause is a Risor diagnostic (03 3.5.3 item
+ * 5): the first diagnostic of a RisorError, a plain object, not an Error.
+ */
+export function isRisorDiagnostic(v: unknown): v is Diagnostic {
+  if (typeof v !== "object" || v === null || v instanceof Error) return false;
+  const d = v as Record<string, unknown>;
+  return typeof d.phase === "string" && typeof d.code === "string" && typeof d.message === "string";
+}
+
+/** A diagnostic in the form the renderings read: spans as four numbers; a cause that is a Risor diagnostic, to depth 8 (f19 5.2). */
+export interface RenderForm extends Omit<Diagnostic, "span" | "trace" | "cause"> {
+  span?: LineSpan;
+  trace?: { span: LineSpan; name: string; index: number | null }[];
+  cause?: RenderForm;
+}
+
 /** Internal: a diagnostic as the renderings read it, its spans written as four numbers. */
-export function renderForm(d: Diagnostic): Omit<Diagnostic, "span" | "trace"> & { span?: LineSpan; trace?: { span: LineSpan; name: string; index: number | null }[] } {
-  const { span, trace, ...rest } = d;
+export function renderForm(d: Diagnostic, depth = 0): RenderForm {
+  const { span, trace, cause, ...rest } = d;
   return {
     ...rest,
     ...(span !== undefined ? { span: lineSpanOf(span) } : {}),
     ...(trace !== undefined ? { trace: trace.map((t) => ({ span: lineSpanOf(t.span), name: t.name, index: t.index })) } : {}),
+    // Package F19: the JSON form writes a cause that is a Risor diagnostic, to a depth of 8 (f19 5.2).
+    ...(depth < 8 && isRisorDiagnostic(cause) ? { cause: renderForm(cause, depth + 1) } : {}),
   };
 }

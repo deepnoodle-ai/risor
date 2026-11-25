@@ -1966,11 +1966,13 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
     if (x instanceof RunFailure) throw x;
     // 03 3.5.3 items 5 to 7: a failure of this binding (a nested run's, say) is
     // `function-error` whose message is its first diagnostic's message, whole,
-    // and whose cause is that diagnostic. Its code, class, span, path and data
-    // do not reach the run.
+    // and whose cause is that diagnostic. Its code, class, span and path do not
+    // reach the run. Package F19: its data does (f19 5.1): for `failed`, and for
+    // a `function-error` that carries data, that data; for any other code, null.
     if (x instanceof RisorError && x.diagnostics.length > 0) {
       const inner = x.diagnostics[0];
-      throw new RunFailure("function-error", span, null, {}, { text: inner.message, cause: inner });
+      const data = inner.code === "failed" || inner.code === "function-error" ? (inner.data ?? null) : null;
+      throw new RunFailure("function-error", span, null, {}, { text: inner.message, cause: inner, data });
     }
     if (x instanceof Error) throw new RunFailure("function-error", span, null, {}, { text: x.message, cause: x });
     throw new RunFailure("function-panic", span, "default", { name });

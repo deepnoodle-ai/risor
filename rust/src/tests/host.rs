@@ -450,9 +450,12 @@ fn a_nested_failure_is_a_function_error_with_its_cause() {
     let d = e.first();
     assert_eq!(d.code, "function-error");
     assert_eq!(d.class, Some("host"));
-    // The message is the inner diagnostic's, whole; the data stays null.
+    // The message is the inner diagnostic's, whole; the data is the inner
+    // diagnostic's (`f19-author-feedback.md` 5.1).
     assert_eq!(d.message, "unknown city");
-    assert!(d.data.is_none());
+    let mut want = std::collections::BTreeMap::new();
+    want.insert("n".to_string(), Data::Float(1.0));
+    assert_eq!(d.data.as_deref(), Some(&Data::Map(want)));
     let cause = d.cause.as_deref().expect("a cause");
     assert_eq!(
         (cause.code, cause.message.as_str()),
@@ -480,18 +483,32 @@ fn a_nested_failure_is_a_function_error_with_its_cause() {
     let cause = e.first().cause.as_deref().expect("a cause");
     assert_eq!(cause.phase, crate::Phase::Parse);
     assert_eq!(e.first().message, cause.message);
-    // A rendering writes neither the cause nor its code (`f08-errors.md` 6).
+    // The line and detail forms write neither the cause nor its code
+    // (`f08-errors.md` 6); the JSON form writes the cause first (F19 5.2).
     let p = program(&env, "city()");
     let e = p.run(&NoVars).unwrap_err();
     for r in [
         crate::render_line(&e.diagnostics),
-        crate::render_json(&e.diagnostics),
         crate::render_detail(&e.diagnostics, Some("city()")),
     ] {
         assert!(r.contains("function-error"), "{r}");
         assert!(r.contains("unknown city"), "{r}");
         assert!(!r.contains("failed") && !r.contains("cause"), "{r}");
     }
+    let j = crate::render_json(&e.diagnostics);
+    assert!(
+        j.starts_with(r#"{"cause":{"class":"value","code":"failed","data":{"n":1},"#),
+        "{j}"
+    );
+    // F19 5.2 item 2: a cause is written to a depth of 8.
+    let mut d = e.first().clone();
+    for _ in 0..12 {
+        let mut outer = d.clone();
+        outer.cause = Some(Box::new(d));
+        d = outer;
+    }
+    let j = crate::render_json(std::slice::from_ref(&d));
+    assert_eq!(j.matches("\"cause\"").count(), 8, "{j}");
     // A plain error has no cause.
     let env = Env::builder()
         .function("err", "() => int !", |_, _| Err("no".into()))

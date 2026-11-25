@@ -900,11 +900,13 @@ export const CATALOG: CatalogEntry[] = [
     "phase": "check",
     "caught": null,
     "params": {
-      "name": "word"
+      "name": "word",
+      "fix": "fix"
     },
     "templates": {
       "name": "{name} is not defined",
-      "type": "no type is named {name}"
+      "type": "no type is named {name}",
+      "hint": "{name} is not defined; {fix}"
     }
   },
   {
@@ -912,10 +914,12 @@ export const CATALOG: CatalogEntry[] = [
     "phase": "check",
     "caught": null,
     "params": {
-      "name": "word"
+      "name": "word",
+      "fix": "fix"
     },
     "templates": {
-      "default": "no function is named {name}"
+      "default": "no function is named {name}",
+      "hint": "no function is named {name}; {fix}"
     }
   },
   {
@@ -1010,10 +1014,12 @@ export const CATALOG: CatalogEntry[] = [
     "caught": null,
     "params": {
       "type": "type",
-      "name": "word"
+      "name": "word",
+      "fix": "fix"
     },
     "templates": {
-      "default": "a value of type {type} has no method {name}"
+      "default": "a value of type {type} has no method {name}",
+      "hint": "a value of type {type} has no method {name}; {fix}"
     }
   },
   {
@@ -1025,8 +1031,9 @@ export const CATALOG: CatalogEntry[] = [
       "key": "string"
     },
     "templates": {
-      "field": "field {key} may be absent from {type}",
-      "index": "the key may be absent from {type}"
+      "field": "field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first",
+      "index": "the key may be absent from {type}: read it with ?.[ ], and add ?? and a default",
+      "pattern": "field {key} may be absent from {type}: give it a default in the pattern, as {key} = ..."
     }
   },
   {
@@ -1049,7 +1056,8 @@ export const CATALOG: CatalogEntry[] = [
       "op": "word",
       "type": "type",
       "left": "type",
-      "right": "type"
+      "right": "type",
+      "fix": "fix"
     },
     "templates": {
       "operand": "{op} cannot take a value of type {type}",
@@ -1067,7 +1075,8 @@ export const CATALOG: CatalogEntry[] = [
       "pattern-list": "a list pattern needs a list, found {type}",
       "pattern-map": "a map pattern needs a map, found {type}",
       "rendered": "a value of type {type} cannot be rendered as text, because it holds an opaque type",
-      "star": "a projection needs a list, found {type}"
+      "star": "a projection needs a list, found {type}",
+      "field-read-hint": "a value of type {type} has no fields to read; {fix}"
     }
   },
   {
@@ -1311,6 +1320,26 @@ export const CATALOG: CatalogEntry[] = [
     "templates": {
       "direct": "{name} refers to itself outside any list, map or record",
       "union": "{name} shares a kind with another type of its union; give the union a type line of its own"
+    }
+  },
+  {
+    "code": "async-await",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "await": "there is no await: a host call gives its value directly; remove await",
+      "async": "there is no async: a lambda gives its value directly; remove async"
+    }
+  },
+  {
+    "code": "statement-sequence",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "program": "a program is const lines and then one expression; bind earlier values with const, and remember that values never change",
+      "block": "a block is const lines and then one expression, with no ; after it"
     }
   }
 ];

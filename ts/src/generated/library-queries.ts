@@ -31,6 +31,13 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "order"
       }
+    ],
+    "wrong": [
+      "sort_by",
+      "orderBy",
+      "toSorted",
+      "sortOn",
+      "sortByDescending"
     ]
   },
   {
@@ -54,6 +61,12 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "min_by",
+      "minOf",
+      "minimumBy",
+      "minByOrNull"
     ]
   },
   {
@@ -77,6 +90,12 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "max_by",
+      "maxOf",
+      "maximumBy",
+      "maxByOrNull"
     ]
   },
   {
@@ -100,6 +119,11 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "unique_by",
+      "distinctBy",
+      "uniqBy"
     ]
   },
   {
@@ -123,6 +147,11 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "result"
       }
+    ],
+    "wrong": [
+      "keyBy",
+      "associateBy",
+      "index_by"
     ]
   },
   {
@@ -146,6 +175,11 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "result"
       }
+    ],
+    "wrong": [
+      "count_by",
+      "groupingBy",
+      "tally"
     ]
   },
   {
@@ -162,6 +196,12 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "steps": "2*n + L*(n + sz(keys))",
     "units": "1 + 2*n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "map_values",
+      "mapObject",
+      "transformValues",
+      "with_entries"
+    ]
   }
 ];

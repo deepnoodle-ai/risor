@@ -23,6 +23,8 @@ export interface RenderDiagnostic {
   path?: (string | number)[];
   data?: unknown;
   trace?: RenderTrace[];
+  /** Package F19: the inner diagnostic, when the cause is a Risor diagnostic (f19 5.2). */
+  cause?: RenderDiagnostic;
 }
 
 const WORD = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -170,21 +172,27 @@ function dataJSON(v: unknown, cls: Classifier): string {
 
 /** The JSON form (f08 5.5): keys in code point order. */
 export function renderJSON(ds: readonly RenderDiagnostic[], cls: Classifier = new Classifier()): string {
-  return ds
-    .map((d) => {
-      const parts: string[] = [];
-      if (d.class !== undefined) parts.push(`"class":${jsonString(d.class)}`);
-      parts.push(`"code":${jsonString(d.code)}`);
-      if (d.code === "failed" && d.phase === "run") parts.push(`"data":${dataJSON(d.data ?? null, cls)}`);
-      parts.push(`"message":${jsonString(d.message)}`);
-      if (d.path !== undefined) parts.push(`"path":[${d.path.map((p) => (typeof p === "number" ? numberToText(p) : jsonString(p))).join(",")}]`);
-      parts.push(`"phase":${jsonString(d.phase)}`);
-      if (d.span !== undefined) parts.push(`"span":[${d.span.join(",")}]`);
-      if (d.phase === "run") {
-        const tr = (d.trace ?? []).map((t) => `{"index":${t.index === null ? "null" : t.index},"name":${jsonString(t.name)},"span":[${t.span.join(",")}]}`);
-        parts.push(`"trace":[${tr.join(",")}]`);
-      }
-      return `{${parts.join(",")}}\n`;
-    })
-    .join("");
+  return ds.map((d) => jsonObject(d, cls, 0) + "\n").join("");
+}
+
+/**
+ * One diagnostic's JSON object (f08 5.5). Package F19: the key `cause` holds
+ * the inner diagnostic's object; the diagnostic rendered is at depth 0, its
+ * cause at depth 1, and the object at depth 8 has no cause (f19 5.2).
+ */
+function jsonObject(d: RenderDiagnostic, cls: Classifier, depth: number): string {
+  const parts: string[] = [];
+  if (d.cause !== undefined && depth < 8) parts.push(`"cause":${jsonObject(d.cause, cls, depth + 1)}`);
+  if (d.class !== undefined) parts.push(`"class":${jsonString(d.class)}`);
+  parts.push(`"code":${jsonString(d.code)}`);
+  if (d.code === "failed" && d.phase === "run") parts.push(`"data":${dataJSON(d.data ?? null, cls)}`);
+  parts.push(`"message":${jsonString(d.message)}`);
+  if (d.path !== undefined) parts.push(`"path":[${d.path.map((p) => (typeof p === "number" ? numberToText(p) : jsonString(p))).join(",")}]`);
+  parts.push(`"phase":${jsonString(d.phase)}`);
+  if (d.span !== undefined) parts.push(`"span":[${d.span.join(",")}]`);
+  if (d.phase === "run") {
+    const tr = (d.trace ?? []).map((t) => `{"index":${t.index === null ? "null" : t.index},"name":${jsonString(t.name)},"span":[${t.span.join(",")}]}`);
+    parts.push(`"trace":[${tr.join(",")}]`);
+  }
+  return `{${parts.join(",")}}`;
 }

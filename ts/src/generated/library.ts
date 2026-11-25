@@ -19,7 +19,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(x)",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "length",
+      "size"
+    ]
   },
   {
     "name": "string",
@@ -47,6 +51,11 @@ export const LIBRARY: LibraryRecord[] = [
         "kind": "limit",
         "code": "depth-exceeded"
       }
+    ],
+    "wrong": [
+      "String",
+      "toString",
+      "str"
     ]
   },
   {
@@ -79,6 +88,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "parseInt",
+      "Number",
+      "toInt"
     ]
   },
   {
@@ -105,6 +119,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "invalid-argument",
         "template": "not-finite"
       }
+    ],
+    "wrong": [
+      "parseFloat",
+      "Number",
+      "toFloat"
     ]
   },
   {
@@ -121,7 +140,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "0",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Boolean",
+      "truthy"
+    ]
   },
   {
     "name": "type",
@@ -134,7 +157,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "0",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "typeof",
+      "kind"
+    ]
   },
   {
     "name": "fail",
@@ -153,6 +180,12 @@ export const LIBRARY: LibraryRecord[] = [
         "kind": "value",
         "code": "failed"
       }
+    ],
+    "wrong": [
+      "error",
+      "raise",
+      "panic",
+      "throw"
     ]
   },
   {
@@ -166,7 +199,10 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "0",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.abs"
+    ]
   },
   {
     "name": "floor",
@@ -186,6 +222,9 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "Math.floor"
     ]
   },
   {
@@ -206,6 +245,10 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "Math.ceil",
+      "ceiling"
     ]
   },
   {
@@ -226,6 +269,9 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "Math.round"
     ]
   },
   {
@@ -246,6 +292,10 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "Math.min",
+      "least"
     ]
   },
   {
@@ -266,6 +316,10 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "Math.max",
+      "greatest"
     ]
   },
   {
@@ -279,7 +333,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "k",
     "units": "1 + k",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "seq",
+      "upto"
+    ]
   },
   {
     "name": "fixed",
@@ -305,6 +363,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "invalid-argument",
         "template": "too-large"
       }
+    ],
+    "wrong": [
+      "toFixed",
+      "sprintf",
+      "format"
     ]
   },
   {
@@ -319,7 +382,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(s)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "upper",
+      "to_upper",
+      "toUpper"
+    ]
   },
   {
     "name": "toLowerCase",
@@ -333,7 +401,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(s)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "lower",
+      "to_lower",
+      "toLower"
+    ]
   },
   {
     "name": "trim",
@@ -347,7 +420,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "trim_space",
+      "strip",
+      "trimSpace"
+    ]
   },
   {
     "name": "removePrefix",
@@ -361,7 +439,13 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "trimPrefix",
+      "trim_prefix",
+      "removeprefix",
+      "stripPrefix"
+    ]
   },
   {
     "name": "removeSuffix",
@@ -375,7 +459,13 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "trimSuffix",
+      "trim_suffix",
+      "removesuffix",
+      "stripSuffix"
+    ]
   },
   {
     "name": "startsWith",
@@ -389,7 +479,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(prefix)",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "has_prefix",
+      "starts_with",
+      "hasPrefix"
+    ]
   },
   {
     "name": "endsWith",
@@ -403,7 +498,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(suffix)",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "has_suffix",
+      "ends_with",
+      "hasSuffix"
+    ]
   },
   {
     "name": "split",
@@ -417,7 +517,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s) + p",
     "units": "1 + 2*p + sz(s)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "explode",
+      "splitN"
+    ]
   },
   {
     "name": "replaceAll",
@@ -438,6 +542,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "invalid-argument",
         "template": "empty-search"
       }
+    ],
+    "wrong": [
+      "replace",
+      "replace_all",
+      "gsub"
     ]
   },
   {
@@ -452,7 +561,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(s)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "substring",
+      "substr",
+      "slice_"
+    ]
   },
   {
     "name": "repeat",
@@ -473,6 +587,10 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "invalid-argument",
         "template": "negative-count"
       }
+    ],
+    "wrong": [
+      "times",
+      "replicate"
     ]
   },
   {
@@ -487,7 +605,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(result)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "lpad",
+      "padLeft",
+      "rjust"
+    ]
   },
   {
     "name": "padEnd",
@@ -501,7 +624,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "sz(result)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "rpad",
+      "padRight",
+      "ljust"
+    ]
   },
   {
     "name": "filter",
@@ -518,7 +646,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*n",
     "units": "1 + k",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "select",
+      "where"
+    ]
   },
   {
     "name": "map",
@@ -534,7 +666,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*n",
     "units": "1 + n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "collect",
+      "select",
+      "forEach"
+    ]
   },
   {
     "name": "flatMap",
@@ -557,6 +694,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "result"
       }
+    ],
+    "wrong": [
+      "concatMap",
+      "flat_map",
+      "selectMany"
     ]
   },
   {
@@ -573,7 +715,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*v",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "any",
+      "anyMatch",
+      "exists"
+    ]
   },
   {
     "name": "every",
@@ -589,7 +736,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*v",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "all",
+      "allMatch",
+      "forall"
+    ]
   },
   {
     "name": "find",
@@ -606,7 +758,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*v",
     "units": "0",
     "null": "no element makes f true, which includes an empty list",
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "first",
+      "detect",
+      "findFirst"
+    ]
   },
   {
     "name": "count",
@@ -622,7 +779,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*n",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "countIf",
+      "count_if"
+    ]
   },
   {
     "name": "reduce",
@@ -638,7 +799,13 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "2*n",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "fold",
+      "foldl",
+      "inject",
+      "aggregate"
+    ]
   },
   {
     "name": "sum",
@@ -665,6 +832,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "element"
       }
+    ],
+    "wrong": [
+      "sumBy",
+      "sumOf",
+      "total"
     ]
   },
   {
@@ -686,6 +858,9 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "minimum"
     ]
   },
   {
@@ -707,6 +882,9 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "maximum"
     ]
   },
   {
@@ -728,6 +906,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "sorted",
+      "toSorted",
+      "order"
     ]
   },
   {
@@ -751,6 +934,12 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "sort_by",
+      "orderBy",
+      "toSorted",
+      "sortOn"
     ]
   },
   {
@@ -774,6 +963,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "result"
       }
+    ],
+    "wrong": [
+      "group_by",
+      "Object.groupBy",
+      "partition"
     ]
   },
   {
@@ -807,6 +1001,12 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "missing-field",
         "template": "field"
       }
+    ],
+    "wrong": [
+      "fromEntries",
+      "Object.fromEntries",
+      "toDict",
+      "associate"
     ]
   },
   {
@@ -828,6 +1028,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "unordered"
       }
+    ],
+    "wrong": [
+      "distinct",
+      "uniq",
+      "dedupe"
     ]
   },
   {
@@ -849,6 +1054,11 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "element"
       }
+    ],
+    "wrong": [
+      "flatten",
+      "concat",
+      "join"
     ]
   },
   {
@@ -863,7 +1073,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "n",
     "units": "1 + n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "reversed",
+      "toReversed"
+    ]
   },
   {
     "name": "first",
@@ -877,7 +1091,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "0",
     "units": "0",
     "null": "the list is empty",
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "at",
+      "head"
+    ]
   },
   {
     "name": "last",
@@ -891,7 +1109,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "0",
     "units": "0",
     "null": "the list is empty",
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "at",
+      "tail"
+    ]
   },
   {
     "name": "slice",
@@ -905,7 +1127,12 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "k",
     "units": "1 + k",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "take",
+      "drop",
+      "subList"
+    ]
   },
   {
     "name": "join",
@@ -926,6 +1153,10 @@ export const LIBRARY: LibraryRecord[] = [
         "code": "wrong-kind",
         "template": "element"
       }
+    ],
+    "wrong": [
+      "implode",
+      "mkString"
     ]
   },
   {
@@ -940,7 +1171,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "n + L*(n + sz(keys))",
     "units": "1 + n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Object.keys",
+      "keySet"
+    ]
   },
   {
     "name": "values",
@@ -954,7 +1189,10 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "n + L*(n + sz(keys))",
     "units": "1 + n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Object.values"
+    ]
   },
   {
     "name": "entries",
@@ -968,6 +1206,11 @@ export const LIBRARY: LibraryRecord[] = [
     "steps": "n + L*(n + sz(keys))",
     "units": "1 + 6*n",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Object.entries",
+      "items",
+      "pairs"
+    ]
   }
 ];

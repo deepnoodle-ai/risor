@@ -298,6 +298,7 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         place: Vec::new(),
         frames: vec![Frame::default(); n],
         plain_params: HashSet::new(),
+        follow: None,
     };
     let root = parsed.ast.root;
     if let NodeKind::Program {
@@ -395,6 +396,9 @@ struct Resolver<'a> {
     place: Vec<Place>,
     frames: Vec<Frame>,
     plain_params: HashSet<u32>,
+    /// F19 3.4 item 1: the name of the step `.f` or `?.f` after the primary
+    /// the walk is about to resolve, when it is an `Ident`.
+    follow: Option<String>,
 }
 
 /// A lambda argument (`05-types.md` 22.4, F17 13.1): a lambda, written in
@@ -460,6 +464,21 @@ impl Resolver<'_> {
         let msg = crate::messages::build(c, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
+    }
+
+    /// `undefined-function`, with the hint of F19 3.4 when the lookup gives
+    /// a fix.
+    fn undefined_function(&mut self, span: Range, full: &str) {
+        match crate::feedback::function_fix(self.env, full) {
+            Some(fix) => {
+                let p = [("name", full.to_string()), ("fix", fix)];
+                self.diag(code::STATIC[1], span, "hint", &p);
+            }
+            None => {
+                let p = [("name", full.to_string())];
+                self.diag(code::STATIC[1], span, "default", &p);
+            }
+        }
     }
 
     /// The source text at a span, as visible text (`f08-errors.md` 3.2).
@@ -1218,7 +1237,15 @@ impl Resolver<'_> {
                 } else if self.is_function_name(name) {
                     self.diag(code::STATIC[2], span, "function", &p);
                 } else {
-                    self.diag(code::STATIC[0], span, "name", &p);
+                    let follow = self.follow.take();
+                    match crate::feedback::name_fix(self.env, name, follow.as_deref()) {
+                        // F19 3.5: the hint, with the fix of the lookup.
+                        Some(fix) => {
+                            let p = [("name", name.to_string()), ("fix", fix)];
+                            self.diag(code::STATIC[0], span, "hint", &p)
+                        }
+                        None => self.diag(code::STATIC[0], span, "name", &p),
+                    }
                 }
             }
         }
@@ -1286,6 +1313,16 @@ impl Resolver<'_> {
                 let span = self.span(n);
                 let ns_span = self.span(x);
                 self.call(n, Some((ns, ns_span)), &name.name, name.span, &args, span);
+            }
+            NodeKind::Ident { .. } => {
+                // F19 3.4 item 1: the step `.f` or `?.f` after the name.
+                self.follow = steps.last().and_then(|&f| match self.kind(f) {
+                    NodeKind::Member { name, .. } => Some(name.clone()),
+                    NodeKind::MethodCall { name, .. } => Some(name.name.clone()),
+                    _ => None,
+                });
+                self.walk(n);
+                self.follow = None;
             }
             _ => self.walk(n),
         }
@@ -1444,8 +1481,7 @@ impl Resolver<'_> {
                         .expect("an entry"),
                 ),
                 None => {
-                    let p = [("name", full.clone())];
-                    self.diag(code::STATIC[1], s.to(name_span), "default", &p);
+                    self.undefined_function(s.to(name_span), &full);
                     Callee::Unknown
                 }
             },
@@ -1473,8 +1509,7 @@ impl Resolver<'_> {
                     } else if let Some(i) = self.env.lib_function(name) {
                         Callee::Lib(i)
                     } else {
-                        let p = [("name", full.clone())];
-                        self.diag(code::STATIC[1], name_span, "default", &p);
+                        self.undefined_function(name_span, &full);
                         Callee::Unknown
                     }
                 }

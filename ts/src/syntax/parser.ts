@@ -120,6 +120,11 @@ class Parser {
   private lastCall: { name: string; word: Token; after: Token } | null = null;
   /** Set while the parser needs the start of an operand (f08 2.2). */
   private operandStart = false;
+  /** Package F19: the `;` that ends the program's Expr, and the token after it (f19 4.1 E27). */
+  private programSemi: Token | null = null;
+  private afterProgramSemi: Token | null = null;
+  /** Package F19: the token after the Expr of the last Block or Branch read (f19 4.1 E28). */
+  private afterBlockExpr: Token | null = null;
 
   constructor(tokens: Token[], level = 0, source?: Source) {
     this.toks = tokens;
@@ -313,6 +318,8 @@ class Parser {
       if (isWord(word, "typeof")) this.fail("typeof-operator", word);
       if (isWord(word, "interface", "enum", "type")) this.fail("type-declaration", word, "default", { token: word.text });
       if (isWord(word, "export")) this.fail("export-statement", word);
+      // Package F19, E26: `await` or `async`, at the span of the word (f19 4.1, 4.2).
+      if (isWord(word, "await", "async")) this.fail("async-await", word, word.text);
     }
     if (this.isP(t, "{") && this.lastCall !== null && this.lastCall.name === "switch" && t === this.lastCall.after) this.fail("switch-statement", this.lastCall.word);
     if (below <= 19) return;
@@ -350,6 +357,10 @@ class Parser {
     }
     // E25
     if (this.isP(t, "!") && complete && isWord(next, "is")) this.fail("negated-is", t);
+    // Package F19, E27: a token after the `;` that ends the program's Expr, at the span of the `;` (f19 4.1, 4.2).
+    if (t === this.afterProgramSemi && t.kind !== "eof" && this.programSemi !== null) this.fail("statement-sequence", this.programSemi, "program");
+    // Package F19, E28: a `;` after the Expr of a Block or a Branch (f19 4.1).
+    if (this.isP(t, ";") && t === this.afterBlockExpr) this.fail("statement-sequence", t, "block");
   }
 
   private blockFail(t: Token): never {
@@ -415,7 +426,10 @@ class Parser {
       else break;
     }
     const result = this.expr();
-    if (this.isP(this.cur, ";")) this.advance();
+    if (this.isP(this.cur, ";")) {
+      this.programSemi = this.advance();
+      this.afterProgramSemi = this.cur;
+    }
     if (this.cur.kind !== "eof") this.unexpected(this.cur);
     return { kind: "Program", consts, types, result, span: { start, end: this.prevEnd } };
   }
@@ -503,6 +517,7 @@ class Parser {
     }
     const consts = this.consts();
     const result = this.expr();
+    this.afterBlockExpr = this.cur;
     if (this.isP(this.cur, ":") || this.isP(this.cur, ",")) {
       this.fail("branch-like-map", lb);
     }
@@ -517,6 +532,7 @@ class Parser {
     this.open(lb);
     const consts = this.consts();
     const result = this.expr();
+    this.afterBlockExpr = this.cur;
     this.expect("}");
     this.close();
     return { kind: "Block", consts, result, span: this.span(lb.start) };

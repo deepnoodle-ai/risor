@@ -24,6 +24,8 @@ export interface StubRow {
 export interface StubDiagnostic {
   code: string;
   message: string;
+  /** Package F19: for `failed`, the object's `data`, or null when it has none (f19 5.3). */
+  data?: Json;
 }
 
 export interface Stub {
@@ -441,11 +443,15 @@ function checkStub(v: Json, where: string): void {
   }
 }
 
-/** 3.10.4 item 5: an object with exactly the keys `code`, a code by the pattern of 3.10.11, and `message`, a string. */
+/**
+ * 3.10.4 item 5: an object with the keys `code`, a code by the pattern of 3.10.11, and `message`, a string.
+ * Package F19: it may have a third key, `data`, when its code is `failed` (f19 5.3).
+ */
 function isStubDiagnostic(v: Json | undefined): boolean {
   if (!isObject(v)) return false;
   const keys = Object.keys(v);
-  if (keys.length !== 2 || !("code" in v) || !("message" in v)) return false;
+  if (!("code" in v) || !("message" in v)) return false;
+  if (keys.length !== 2 && !(keys.length === 3 && "data" in v && v.code === "failed")) return false;
   return typeof v.code === "string" && /^[a-z]+(-[a-z0-9]+)*$/.test(v.code) && typeof v.message === "string";
 }
 
@@ -457,7 +463,10 @@ function toStub(v: Json): Stub {
     const out: StubRow = { charge: (row.charge as number | undefined) ?? 0, allocate: (row.allocate as number | undefined) ?? 0 };
     if ("args" in row) out.args = row.args as Json[];
     if ("result" in row) out.result = { value: row.result };
-    if ("error" in row) out.error = typeof row.error === "string" ? row.error : { code: (row.error as JsonObject).code as string, message: (row.error as JsonObject).message as string };
+    if ("error" in row) {
+      const er = row.error as JsonObject;
+      out.error = typeof row.error === "string" ? row.error : { code: er.code as string, message: er.message as string, ...(er.code === "failed" ? { data: er.data ?? null } : {}) };
+    }
     return out;
   });
   return { type: o.type as string | undefined, calls };

@@ -25,6 +25,8 @@ pub enum Answer {
     Failure {
         code: String,
         message: String,
+        /// F19 5.3: for `failed`, the object's `data`, or null.
+        data: Option<Json>,
     },
 }
 
@@ -1029,6 +1031,7 @@ fn read_row(r: &Json) -> Row {
                 Answer::Failure {
                     code: s("code"),
                     message: s("message"),
+                    data: e.and_then(|e| e.get("data")).cloned(),
                 }
             }
             (None, e) => Answer::Error(e.and_then(|e| e.as_str()).unwrap_or_default().to_string()),
@@ -2021,7 +2024,8 @@ fn check_stub(v: &Json) -> V<()> {
 }
 
 /// A row's `error`: a string, or a diagnostic object of exactly `code`, a
-/// code, and `message`, a string (3.10.4 item 5, 3.10.10 item 10).
+/// code, and `message`, a string (3.10.4 item 5, 3.10.10 item 10), and for
+/// `failed` maybe `data` (F19 5.3).
 fn check_error(x: &Json) -> V<()> {
     if x.as_str().is_some() {
         return Ok(());
@@ -2036,8 +2040,11 @@ fn check_error(x: &Json) -> V<()> {
         .iter()
         .find(|(k, _)| k == "message")
         .and_then(|(_, v)| v.as_str());
+    // F19 5.3: a third key `data`, only with the code `failed`.
+    let data = m.iter().any(|(k, _)| k == "data");
+    let size = if data { 3 } else { 2 };
     match (code, message) {
-        (Some(c), Some(_)) if m.len() == 2 && is_code(c) => Ok(()),
+        (Some(c), Some(_)) if m.len() == size && is_code(c) && (!data || c == "failed") => Ok(()),
         _ => Err(bad()),
     }
 }

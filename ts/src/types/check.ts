@@ -9,6 +9,8 @@
 import type * as A from "../syntax/ast.ts";
 import type { Source } from "../syntax/source.ts";
 import { catalogMessage } from "../eval/failure.ts";
+import { fieldReadHint, methodHint } from "../library/feedback.ts";
+import type { HintKind, Offered } from "../library/feedback.ts";
 import { compareText } from "../value/value.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Span } from "../syntax/source.ts";
@@ -326,6 +328,11 @@ class Checker {
     if (template !== undefined) d.template = template;
     if (params !== undefined) d.params = params;
     this.diags.push(d);
+  }
+
+  /** Package F19: the library entries the environment offers (f19 1.1). */
+  private offered(): Offered {
+    return { functions: this.env.library, methods: this.env.libraryMethods };
   }
 
   /** A diagnostic of no class, with its template (f08 3.5). */
@@ -760,7 +767,7 @@ class Checker {
           t = this.sizeLimit(join(nonnull(read), d), valueSpan);
         } else {
           // 12.4: the dynamic site of an unlisted key is on the key in the pattern.
-          t = this.readKey(r, fl.key, false, fl.keySpan, fl.keySpan, false, [p.span, fl.span]);
+          t = this.readKey(r, fl.key, false, fl.keySpan, fl.keySpan, false, [p.span, fl.span], undefined, true);
         }
         this.setSlot(fl, t);
       }
@@ -1568,12 +1575,15 @@ class Checker {
     }
     if (isNever(cur)) return NEVER;
     if (cur.map) return this.readKey(cur.map, m.name, absentNull, m.nameSpan, recvSpan, present, [s.span], whole);
-    this.kind(recvSpan, "field-read", { type: whole });
+    // Package F19: a field named in the `wrong` list of an offered function (f19 3.4 row 5).
+    const fix = fieldReadHint(this.offered(), m.name);
+    if (fix === null) this.kind(recvSpan, "field-read", { type: whole });
+    else this.kind(recvSpan, "field-read-hint", { type: whole, fix });
     return NEVER;
   }
 
   /** Read a field of a record (9.2), plain or as by `?.`. */
-  private readKey(r: Rec, key: string, optional: boolean, keySpan: Span, recvSpan: Span, present: boolean, owners: Span[], whole: Type = { map: r }): Type {
+  private readKey(r: Rec, key: string, optional: boolean, keySpan: Span, recvSpan: Span, present: boolean, owners: Span[], whole: Type = { map: r }, pattern = false): Type {
     const fl = r.fields.get(key);
     if (fl !== undefined && (!fl.optional || present)) return fl.type;
     // A read of a field of a union reads flat(U), and its messages print that one record (f05 4.3).
@@ -1584,7 +1594,8 @@ class Checker {
       const t = fl !== undefined ? fl.type : r.rest;
       if (present) return t;
       if (optional) return withNull(t);
-      this.say("maybe-absent", keySpan, "field", { key, type: printType(whole) });
+      // Package F19: a field of a map pattern with no default names its fix (f19 2).
+      this.say("maybe-absent", keySpan, pattern ? "pattern" : "field", { key, type: printType(whole) });
       return t;
     }
     if (isAny(rest)) {
@@ -1681,7 +1692,11 @@ class Checker {
     else if (u.map) sig = this.env.libraryMethods.get("map")?.get(s.name);
     else if (u.opaque) sig = this.env.methods.get([...u.opaque][0])?.get(s.name);
     if (sig === undefined) {
-      this.say("no-method", s.nameSpan, "default", { type: printType(cur), name: s.name });
+      // Package F19: a fix from the tables, for a receiver of one kind of four (f19 3.4 rows 1 and 4).
+      const k = hintKind(u);
+      const fix = k === null ? null : methodHint(this.offered(), k, s.name);
+      if (fix === null) this.say("no-method", s.nameSpan, "default", { type: printType(cur), name: s.name });
+      else this.say("no-method", s.nameSpan, "hint", { type: printType(cur), name: s.name, fix });
       this.plainArgs(s.args, f);
       return NEVER;
     }
@@ -2360,6 +2375,19 @@ function checkMessage(d: DiagRec, source: Source | undefined): string {
 
 export { mapOf, opaque, alternatives, joinAll };
 export type { Alts };
+
+/** Package F19: the receiver kind of a type (f19 1.1), null left out, when it has one kind of the four of 3.4 row 4. */
+function hintKind(t: Type): HintKind | null {
+  if (isAny(t)) return null;
+  const a = t as Alts;
+  if (a.bool || a.opaque !== undefined || a.refs !== undefined) return null;
+  const ks: HintKind[] = [];
+  if (a.num !== undefined) ks.push("number");
+  if (a.str !== undefined) ks.push("string");
+  if (a.list !== undefined) ks.push("list");
+  if (a.map !== undefined) ks.push("map");
+  return ks.length === 1 ? ks[0] : null;
+}
 
 /** Whether a parameter value is a type, to be printed (f08 3.2 item 2). */
 function isTypeLike(v: unknown): boolean {

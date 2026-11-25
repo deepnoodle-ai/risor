@@ -68,6 +68,8 @@ pub struct Record {
     /// runner runs as that file's.
     #[cfg_attr(not(test), allow(dead_code))]
     pub recursion: bool,
+    /// F19 3.2: the names an author may write for the entry.
+    pub wrong: Vec<String>,
     /// The record's formulas, as written.
     #[cfg_attr(not(test), allow(dead_code))]
     pub steps: String,
@@ -200,6 +202,15 @@ fn record(e: &Json) -> Record {
             .and_then(|g| g.as_str())
             .filter(|g| *g != "core")
             .map(String::from),
+        wrong: e
+            .get("wrong")
+            .and_then(|t| t.as_arr())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
         steps: s("steps").to_string(),
         units: s("units").to_string(),
         cases: e.get("cases").cloned(),

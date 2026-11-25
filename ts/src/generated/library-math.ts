@@ -27,6 +27,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "Math.pow",
+      "power"
     ]
   },
   {
@@ -47,6 +51,9 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "Math.exp"
     ]
   },
   {
@@ -67,6 +74,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-real"
       }
+    ],
+    "wrong": [
+      "ln",
+      "Math.log"
     ]
   },
   {
@@ -87,6 +98,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-real"
       }
+    ],
+    "wrong": [
+      "Math.log10",
+      "lg"
     ]
   },
   {
@@ -100,7 +115,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
     "steps": "200",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.sin"
+    ]
   },
   {
     "name": "math.cos",
@@ -113,7 +131,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
     "steps": "200",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.cos"
+    ]
   },
   {
     "name": "math.tan",
@@ -126,7 +147,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
     "steps": "200",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.tan"
+    ]
   },
   {
     "name": "math.asin",
@@ -146,6 +170,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-real"
       }
+    ],
+    "wrong": [
+      "Math.asin",
+      "arcsin"
     ]
   },
   {
@@ -166,6 +194,10 @@ export const MATH_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-real"
       }
+    ],
+    "wrong": [
+      "Math.acos",
+      "arccos"
     ]
   },
   {
@@ -179,7 +211,11 @@ export const MATH_LIBRARY: GroupRecord[] = [
     "steps": "200",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.atan",
+      "arctan"
+    ]
   },
   {
     "name": "math.atan2",
@@ -192,6 +228,9 @@ export const MATH_LIBRARY: GroupRecord[] = [
     "steps": "200",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "Math.atan2"
+    ]
   }
 ];

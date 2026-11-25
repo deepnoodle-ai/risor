@@ -487,8 +487,9 @@ fn traced<'h>(mut f: Box<Fail<'h>>, span: Range, entry: &str, index: usize) -> B
 
 /// `function-error` from a host function's error (`03-host.md` 3.5.3): the
 /// text, or the message of the inner diagnostic, which is kept as the
-/// cause. Nothing else of the inner diagnostic reaches the run, and the
-/// error carries no `data`.
+/// cause. The error carries the inner diagnostic's `data` (F19 5.1): for
+/// `failed` and for a `function-error` that carries data, that data; else
+/// null.
 #[cold]
 #[inline(never)]
 fn function_error<'h>(e: crate::host::HostError, span: Range) -> Box<Fail<'h>> {
@@ -496,6 +497,11 @@ fn function_error<'h>(e: crate::host::HostError, span: Range) -> Box<Fail<'h>> {
     f.text = Some(e.message());
     if let crate::host::HostError::Risor(inner) = e {
         f.cause = inner.diagnostics.into_iter().next().map(Box::new);
+        if let Some(c) = f.cause.as_deref() {
+            if matches!(c.code, "failed" | "function-error") {
+                f.data = c.data.as_deref().map(Value::from_data);
+            }
+        }
     }
     f
 }

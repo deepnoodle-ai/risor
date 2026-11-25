@@ -351,6 +351,8 @@ const MARK_PAREN: u8 = 4;
 const MARK_IF_TEST: u8 = 5;
 const MARK_OPERAND_WORD: u8 = 6;
 const MARK_LAMBDA_ARROW: u8 = 7;
+/// F19 4.1, E27: the `;` that ends the `Expr` of a `Program`.
+const MARK_PROGRAM_SEMI: u8 = 8;
 
 const PREC_OR: u8 = 3;
 const PREC_REL: u8 = 6;
@@ -379,6 +381,9 @@ struct Parser<'a> {
     if_end: usize,
     type_end: usize,
     arm_start: usize,
+    /// F19 4.1, E28: the token after the `Expr` of the last `Block` or
+    /// `Branch`, where its `}` should stand.
+    block_end: usize,
     /// Give the Core diagnostic, unmapped.
     core: bool,
     /// Where the parser stood at its last error (F12 3.3).
@@ -441,6 +446,7 @@ impl<'a> Parser<'a> {
             if_end: usize::MAX,
             type_end: usize::MAX,
             arm_start: usize::MAX,
+            block_end: usize::MAX,
             core: false,
             err_pos: std::cell::Cell::new(0),
             limit: usize::MAX,
@@ -596,6 +602,7 @@ impl<'a> Parser<'a> {
         let result = self.expr()?;
         let mut end = self.outer(result).end as usize;
         if self.at_punct(P::Semi) {
+            self.mark[self.pos] = MARK_PROGRAM_SEMI;
             end = self.bump().span.end as usize;
         }
         if !matches!(self.peek().tok, Tok::Eof) {
@@ -719,6 +726,7 @@ impl<'a> Parser<'a> {
         if self.at_punct(P::Colon) || self.at_punct(P::Comma) {
             return Err(self.perr(code::UNEXPECTED_TOKEN, lb.span, Rule::BranchMap));
         }
+        self.block_end = self.pos;
         let rb = self.expect(P::RBrace)?;
         self.close();
         if consts.is_empty() {
@@ -738,6 +746,7 @@ impl<'a> Parser<'a> {
             consts.push(self.const_line()?);
         }
         let result = self.expr()?;
+        self.block_end = self.pos;
         let rb = self.expect(P::RBrace)?;
         self.close();
         Ok(self.node(NodeKind::Block { consts, result }, lb.span.to(rb.span)))
@@ -2622,6 +2631,12 @@ impl<'a> Parser<'a> {
         if operand_word(1, &["export"]) {
             return at_span("export-statement", self.t[ti - 1].span);
         }
+        // E26 (F19 4.1): the span is the word.
+        if operand_word(1, &["await", "async"]) {
+            let w = &self.t[ti - 1];
+            let template = if w.is_word("await") { "await" } else { "async" };
+            return ("async-await", template, w.span, Vec::new());
+        }
         if t.is_punct(P::Lt) && e.rule == Rule::Operand {
             return if char_at(t.span.end) == Some('<') {
                 at("heredoc", "default")
@@ -2682,6 +2697,20 @@ impl<'a> Parser<'a> {
         }
         if t.is_punct(P::Bang) && ti == self.expr_end && next.is_some_and(|n| n.is_word("is")) {
             return at("negated-is", "default");
+        }
+        // E27 (F19 4.1): a token after the `;` that ends the program's
+        // `Expr`, at the span of the `;`.
+        if ti >= 1 && self.mark[ti - 1] == MARK_PROGRAM_SEMI && !matches!(t.tok, Tok::Eof) {
+            return (
+                "statement-sequence",
+                "program",
+                self.t[ti - 1].span,
+                Vec::new(),
+            );
+        }
+        // E28: a `;` after the `Expr` of a `Block` or a `Branch`.
+        if t.is_punct(P::Semi) && ti == self.block_end {
+            return at("statement-sequence", "block");
         }
         if e.rule == Rule::Key {
             return at(e.code, "key");

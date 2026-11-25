@@ -36,6 +36,13 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "kind": "limit",
         "code": "depth-exceeded"
       }
+    ],
+    "wrong": [
+      "JSON.stringify",
+      "toJSON",
+      "encode",
+      "dumps",
+      "marshal"
     ]
   },
   {
@@ -73,6 +80,13 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "kind": "limit",
         "code": "depth-exceeded"
       }
+    ],
+    "wrong": [
+      "JSON.parse",
+      "parseJSON",
+      "decode",
+      "loads",
+      "unmarshal"
     ]
   },
   {
@@ -93,6 +107,12 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-a-time"
       }
+    ],
+    "wrong": [
+      "Date.parse",
+      "parseTime",
+      "strptime",
+      "toTimestamp"
     ]
   },
   {
@@ -113,6 +133,12 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "year-range"
       }
+    ],
+    "wrong": [
+      "toISOString",
+      "formatTime",
+      "strftime",
+      "toRFC3339"
     ]
   },
   {
@@ -139,6 +165,11 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "code": "number-range",
         "template": "entry"
       }
+    ],
+    "wrong": [
+      "parseDuration",
+      "ms",
+      "timedelta"
     ]
   },
   {
@@ -159,6 +190,10 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-real"
       }
+    ],
+    "wrong": [
+      "sqrt",
+      "Math.sqrt"
     ]
   },
   {
@@ -172,7 +207,8 @@ export const GROUP_LIBRARY: GroupRecord[] = [
     "steps": "0",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": []
   },
   {
     "name": "math.e",
@@ -185,7 +221,8 @@ export const GROUP_LIBRARY: GroupRecord[] = [
     "steps": "0",
     "units": "0",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": []
   },
   {
     "name": "base64.encode",
@@ -198,7 +235,12 @@ export const GROUP_LIBRARY: GroupRecord[] = [
     "steps": "sz(s) + sz(result)",
     "units": "1 + sz(result)",
     "null": null,
-    "fails": []
+    "fails": [],
+    "wrong": [
+      "btoa",
+      "b64encode",
+      "encodeBase64"
+    ]
   },
   {
     "name": "base64.decode",
@@ -224,6 +266,11 @@ export const GROUP_LIBRARY: GroupRecord[] = [
         "code": "invalid-argument",
         "template": "not-utf8"
       }
+    ],
+    "wrong": [
+      "atob",
+      "b64decode",
+      "decodeBase64"
     ]
   }
 ];

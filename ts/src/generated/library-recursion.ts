@@ -28,6 +28,7 @@ export const RECURSION_LIBRARY: LibraryRecord[] = [
         "kind": "limit",
         "code": "depth-exceeded"
       }
-    ]
+    ],
+    "wrong": []
   }
 ];

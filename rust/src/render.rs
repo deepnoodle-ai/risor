@@ -17,11 +17,28 @@ pub struct View<'a> {
     pub data: Option<&'a Data>,
     /// The trace, from the outermost in: the span, the name and the index.
     pub trace: Vec<([u32; 4], &'a str, Option<usize>)>,
+    /// F19 5.2: a cause that is a Risor diagnostic, which only the JSON form
+    /// writes, to a depth of 8.
+    pub cause: Option<Box<View<'a>>>,
 }
+
+/// F19 5.2 item 2: the depth of the deepest cause the JSON form writes.
+const CAUSE_DEPTH: u32 = 8;
 
 impl<'a> View<'a> {
     pub fn of(d: &'a Diagnostic) -> View<'a> {
+        View::at_depth(d, 0)
+    }
+
+    fn at_depth(d: &'a Diagnostic, depth: u32) -> View<'a> {
         View {
+            cause: if depth < CAUSE_DEPTH {
+                d.cause
+                    .as_deref()
+                    .map(|c| Box::new(View::at_depth(c, depth + 1)))
+            } else {
+                None
+            },
             phase: d.phase.as_str(),
             code: d.code,
             class: d.class,
@@ -267,64 +284,76 @@ fn data_json(d: &Data) -> Option<String> {
 pub fn json(ds: &[View<'_>]) -> String {
     let mut out = String::new();
     for d in ds {
-        out.push('{');
-        if let Some(c) = d.class {
-            out.push_str("\"class\":");
-            json_str(&mut out, c);
-            out.push(',');
-        }
-        out.push_str("\"code\":");
-        json_str(&mut out, d.code);
-        if d.code == "failed" {
-            out.push_str(",\"data\":");
-            match d.data.and_then(data_json) {
-                Some(j) => out.push_str(&j),
-                None => out.push_str("null"),
-            }
-        }
-        out.push_str(",\"message\":");
-        json_str(&mut out, d.message);
-        if d.code == "not-conforming" {
-            out.push_str(",\"path\":[");
-            for (i, step) in d.path.unwrap_or_default().iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                match step {
-                    PathStep::Key(k) => json_str(&mut out, k),
-                    PathStep::Index(n) => out.push_str(&n.to_string()),
-                }
-            }
-            out.push(']');
-        }
-        out.push_str(",\"phase\":");
-        json_str(&mut out, d.phase);
-        if let Some(s) = d.span {
-            out.push_str(&format!(",\"span\":[{},{},{},{}]", s[0], s[1], s[2], s[3]));
-        }
-        if d.phase == "run" {
-            out.push_str(",\"trace\":[");
-            for (i, (s, name, index)) in d.trace.iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push_str("{\"index\":");
-                match index {
-                    Some(n) => out.push_str(&n.to_string()),
-                    None => out.push_str("null"),
-                }
-                out.push_str(",\"name\":");
-                json_str(&mut out, name);
-                out.push_str(&format!(
-                    ",\"span\":[{},{},{},{}]}}",
-                    s[0], s[1], s[2], s[3]
-                ));
-            }
-            out.push(']');
-        }
-        out.push_str("}\n");
+        json_object(&mut out, d);
+        out.push('\n');
     }
     out
+}
+
+/// One diagnostic's JSON object, its cause first (F19 5.2: `cause` is the
+/// least key in code point order).
+fn json_object(out: &mut String, d: &View<'_>) {
+    out.push('{');
+    if let Some(c) = &d.cause {
+        out.push_str("\"cause\":");
+        json_object(out, c);
+        out.push(',');
+    }
+    if let Some(c) = d.class {
+        out.push_str("\"class\":");
+        json_str(out, c);
+        out.push(',');
+    }
+    out.push_str("\"code\":");
+    json_str(out, d.code);
+    if d.code == "failed" {
+        out.push_str(",\"data\":");
+        match d.data.and_then(data_json) {
+            Some(j) => out.push_str(&j),
+            None => out.push_str("null"),
+        }
+    }
+    out.push_str(",\"message\":");
+    json_str(out, d.message);
+    if d.code == "not-conforming" {
+        out.push_str(",\"path\":[");
+        for (i, step) in d.path.unwrap_or_default().iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            match step {
+                PathStep::Key(k) => json_str(out, k),
+                PathStep::Index(n) => out.push_str(&n.to_string()),
+            }
+        }
+        out.push(']');
+    }
+    out.push_str(",\"phase\":");
+    json_str(out, d.phase);
+    if let Some(s) = d.span {
+        out.push_str(&format!(",\"span\":[{},{},{},{}]", s[0], s[1], s[2], s[3]));
+    }
+    if d.phase == "run" {
+        out.push_str(",\"trace\":[");
+        for (i, (s, name, index)) in d.trace.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"index\":");
+            match index {
+                Some(n) => out.push_str(&n.to_string()),
+                None => out.push_str("null"),
+            }
+            out.push_str(",\"name\":");
+            json_str(out, name);
+            out.push_str(&format!(
+                ",\"span\":[{},{},{},{}]}}",
+                s[0], s[1], s[2], s[3]
+            ));
+        }
+        out.push(']');
+    }
+    out.push('}');
 }
 
 /// The one-line form of diagnostics a stage gave.

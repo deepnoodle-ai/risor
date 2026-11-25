@@ -79,6 +79,7 @@ grouped by the sections E.3 to E.8.
 | `src/check/mod.rs` | S4 | The checker: the type rules of sections 5 to 18 over the resolution that `compile::resolve` gives, sites, classes, the expected result, and `compile_checked` |
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
+| `src/feedback.rs` | F19 | The fixes of four check messages, from `suite/foreign-names.json` and the `wrong` lists of the library tables (`f19-author-feedback.md` 3.4) |
 | `src/bin/outcome.rs` | S2 | The outcome command of `suite/README.md` |
 | `src/schema.rs` | F1 | The type of a JSON Schema (`f01-host-types.md` 3, 4): Pick, Meet, the mark *closable*, Close |
 | `src/describe.rs` | F1 | Descriptions of types, signatures and environments; an environment from a description (5) |
@@ -526,8 +527,11 @@ its type, which `03-host.md` 3.5.3 item 5 leaves to the binding:
 The cause is a public field, `cause: Option<Box<Diagnostic>>`, named as the
 specification names it (3.7.1). `std::error::Error::source` gives the same
 diagnostic, on `Diagnostic` and on `Error`, so a chain of nested runs walks
-with the standard trait. The renderings never write it (`f08-errors.md` 6).
-A plain text error has no cause: its text is already the message.
+with the standard trait. The line and detail forms never write it
+(`f08-errors.md` 6); with F19 the JSON form writes it as `cause`, to a depth
+of 8, and the `function-error` carries the inner diagnostic's `data`
+(`f19-author-feedback.md` 5). A plain text error has no cause: its text is
+already the message.
 
 ## Package F1, host types
 
@@ -1032,6 +1036,28 @@ A plain text error has no cause: its text is already the message.
   `name-clash`, `untagged-union` and `check-limit` are static codes beside
   Core's twelve. The place of D1 before F17 is the recommendation of R211,
   not yet confirmed (F16 1.5).
+
+## Package F19, feedback to authors
+
+- **Hints** (`src/feedback.rs`): each lookup of 3.4 is a scan of the foreign
+  rows and of the records the environment offers, by exact text, run only
+  when a diagnostic is reported. The resolver gives `undefined-name` and
+  `undefined-function` their hint, so a compile with the static rules alone
+  has the same message (3.4 item 8). For `undefined-name`, `chain` hands the
+  name of the step `.f` after the primary to the walk of the `Ident`. The
+  checker gives `no-method` and `kind` theirs; the receiver kind is the one
+  kind of the receiver's type, null left out, and any other receiver takes
+  none.
+- **Messages**: `messages.rs` loads `suite/messages-feedback.json` after
+  F17's file. An entry of an existing code adds its templates and the
+  parameter `fix`, which `build` writes whole.
+- **Parse rows**: the parser marks the `;` that ends the program's `Expr`
+  (E27), and keeps the token where the `}` of the last `Block` or `Branch`
+  should stand (E28). E26 reads the mark of an operand word, as E16 to E18
+  do.
+- **Host errors**: `function_error` takes the inner diagnostic's `data` for
+  `failed` and `function-error`; a stub's `failed` object builds its
+  diagnostic with its `data`, or null.
 
 ## Package F12, tools
 

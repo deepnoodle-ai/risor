@@ -112,13 +112,18 @@ function renderParam(kind: string, v: unknown, cls: Classifier): string {
   return String(v);
 }
 
+/** A parameter rendered by its kind and cut; package F19: a `fix` is written as it stands, never cut (f19 3.1). */
+function rendered(kind: string, v: unknown, cls: Classifier): string {
+  return kind === "fix" ? String(v) : cut(renderParam(kind, v, cls));
+}
+
 /** A message from the catalog: a code's template with its parameters, each rendered by its kind and cut (03 3.8.3, f08 3.3). */
 export function catalogMessage(code: string, template: string, params: Record<string, unknown>, cls: Classifier = new Classifier()): string {
   const entry = BY_CODE.get(code);
   if (entry === undefined) return code;
   const text = entry.templates[template];
   if (text === undefined) throw new Error(`no template ${template} for ${code}`);
-  return text.replace(/\{([a-z]+)\}/g, (_, name: string) => cut(renderParam(entry.params[name], params[name], cls)));
+  return text.replace(/\{([a-z]+)\}/g, (_, name: string) => rendered(entry.params[name], params[name], cls));
 }
 
 /** The message of a failure, built from the catalog (03 3.8). */
@@ -128,7 +133,7 @@ export function messageOf(f: RunFailure, cls: Classifier): string {
   if (entry === undefined || f.template === null) return f.code;
   const text = entry.templates[f.template];
   if (text === undefined) throw new Error(`no template ${f.template} for ${f.code}`);
-  return text.replace(/\{([a-z]+)\}/g, (_, name: string) => cut(renderParam(entry.params[name], f.params[name], cls)));
+  return text.replace(/\{([a-z]+)\}/g, (_, name: string) => rendered(entry.params[name], f.params[name], cls));
 }
 
 /** The class of a run diagnostic in a program compiled without a check (03 3.7.6). */
