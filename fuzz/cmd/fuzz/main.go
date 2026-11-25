@@ -80,6 +80,7 @@ func run() int {
 		noE1       = flag.Bool("noe1", false, "leave out the typed recursive lambdas of package F17, step E1")
 		noE2       = flag.Bool("noe2", false, "leave out the recursive type lines of package F17, step E2")
 		noE3       = flag.Bool("noe3", false, "leave out the function parameters of package F17, step E3")
+		noD2       = flag.Bool("nod2", false, "leave out the export const entry points and Call stage of package F16, slice D2")
 		soundMode  = flag.Bool("sound", false, "the soundness mode: test the promise of 05-types.md 18.4 (-cases is programs a round)")
 		only       = flag.String("case", "", "R:I: make and run only case I of round R (with -seed and the mode weights)")
 		verbose    = flag.Bool("v", false, "print each round, and the outcomes by code")
@@ -109,7 +110,7 @@ func run() int {
 		seed: *seed, cases: *cases, rounds: *rounds, timeout: *timeout,
 		out: *out, shrink: !*noShrink, maxPerKind: *maxPerKind, lib: lib,
 		verbose: *verbose, libNames: map[string]bool{}, useKnown: *useKnown,
-		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, FlatShare: *flatShare, NoF3: *noF3, NoF4: *noF4, NoF6: *noF6, NoF7: *noF7, NoF17: *noF17, NoF16: *noF16, NoE1: *noE1, NoE2: *noE2, NoE3: *noE3, Exclude: map[string]bool{}},
+		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, FlatShare: *flatShare, NoF3: *noF3, NoF4: *noF4, NoF6: *noF6, NoF7: *noF7, NoF17: *noF17, NoF16: *noF16, NoE1: *noE1, NoE2: *noE2, NoE3: *noE3, NoD2: *noD2, Exclude: map[string]bool{}},
 	}
 	for _, e := range lib.Entries {
 		cfg.libNames[e.Name] = true

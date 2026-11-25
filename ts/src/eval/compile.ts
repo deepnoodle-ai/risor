@@ -52,6 +52,7 @@ import type { Kind } from "../value/value.ts";
 import type { ArithOp } from "./ops.ts";
 import type { Run } from "./run.ts";
 import type { Counts, Resolution, Target } from "./static.ts";
+import { isEntryConst, lambdaCounts } from "./static.ts";
 import { libraryFunction, method as libraryMethod } from "../library/registry.ts";
 import type { CallContext, Callback, Entry, Impl } from "../library/registry.ts";
 import { paramAt, testArgs } from "../library/args.ts";
@@ -192,8 +193,20 @@ const SHORT: unique symbol = Symbol("short");
  */
 const NEST_MAX = 4;
 
+/** Package F16 slice D2: a compiled entry point for the Call stage (f16 12.4). */
+export interface CompiledEntry {
+  name: string;
+  /** Evaluate needed non-lambda top-level consts, then call the entry point with raw host args (ABSENT for omitted). */
+  call: (r: Run, args: unknown[]) => unknown;
+  minArgs: number;
+  maxArgs: number;
+}
+
 export interface Compiled {
-  run: Code;
+  /** Null when the program has no result expression (f16 12.2). */
+  run: Code | null;
+  /** Compiled entry points, by name (f16 12.4). */
+  entries: Map<string, CompiledEntry>;
   /** Library entries the program names that have no implementation yet. */
   missing: Set<string>;
   /** The number of variables of the environment the program reads. */
@@ -228,11 +241,208 @@ function sequence(consts: Code[], result: Code): Code {
   }
 }
 
+/**
+ * Package F16 slice D2 (f16 12.4 item 1): for each top-level `const` line, find
+ * the indices of other top-level `const` lines it directly refers to (by lexical
+ * resolution). Then for an entry point at index `entryIdx`, return the indices
+ * of its transitive non-lambda needs in text order.
+ */
+function computeTopDirectRefs(p: A.Program, res: Resolution): Set<number>[] {
+  const slotToConst = new Map<number, number>();
+  const lambdaToConst = new Map<number, number>();
+  const recordPattern = (pat: A.Pattern, idx: number): void => {
+    if (pat.kind === "NamePat") {
+      const s = res.slots.get(pat);
+      if (s !== undefined && s >= 0) slotToConst.set(s, idx);
+    } else if (pat.kind === "MapPat") {
+      for (const f of pat.fields) {
+        const s = res.slots.get(f);
+        if (s !== undefined && s >= 0) slotToConst.set(s, idx);
+      }
+      if (pat.rest !== null) {
+        const s = res.slots.get(pat.rest);
+        if (s !== undefined && s >= 0) slotToConst.set(s, idx);
+      }
+    } else {
+      for (const e of pat.elems) {
+        const s = res.slots.get(e.pat);
+        if (s !== undefined && s >= 0) slotToConst.set(s, idx);
+      }
+      if (pat.rest !== null) {
+        const s = res.slots.get(pat.rest);
+        if (s !== undefined && s >= 0) slotToConst.set(s, idx);
+      }
+    }
+  };
+  p.consts.forEach((k, i) => {
+    if (k.value.kind === "Lambda") {
+      const id = res.lambdas.indexOf(k.value);
+      if (id >= 0) lambdaToConst.set(id, i);
+    } else {
+      recordPattern(k.pattern, i);
+    }
+  });
+  return p.consts.map((k) => {
+    const refs = new Set<number>();
+    const stack: A.Node[] = [k.pattern, k.value];
+    while (stack.length > 0) {
+      const n = stack.pop()!;
+      switch (n.kind) {
+        case "Ident": {
+          const r = res.refs.get(n);
+          if (r !== undefined) {
+            if (r.k === "slot") {
+              const target = slotToConst.get(r.slot);
+              if (target !== undefined) refs.add(target);
+            } else if (r.k === "lambda") {
+              const target = lambdaToConst.get(r.id);
+              if (target !== undefined) refs.add(target);
+            }
+          }
+          break;
+        }
+        case "Call": {
+          const t = res.targets.get(n);
+          if (t !== undefined && t.k === "lambda") {
+            const target = lambdaToConst.get(t.id);
+            if (target !== undefined) refs.add(target);
+          }
+          for (const a of n.args) stack.push(a);
+          break;
+        }
+        case "MethodCall":
+          stack.push(n.x);
+          for (const a of n.args) stack.push(a);
+          break;
+        case "Const":
+          stack.push(n.pattern, n.value);
+          break;
+        case "Block":
+          for (const c of n.consts) stack.push(c);
+          stack.push(n.result);
+          break;
+        case "Template":
+          for (const part of n.parts) if (typeof part !== "string") stack.push(part);
+          break;
+        case "List":
+          for (const it of n.items) stack.push(it);
+          break;
+        case "Map":
+          for (const en of n.entries) stack.push(en);
+          break;
+        case "Entry":
+          if (n.key.kind === "expr") stack.push(n.key.expr);
+          stack.push(n.value);
+          break;
+        case "Spread":
+          stack.push(n.value);
+          break;
+        case "Unary":
+        case "Member":
+        case "OptChain":
+        case "As":
+          stack.push(n.x);
+          break;
+        case "Binary":
+          stack.push(n.x, n.y);
+          break;
+        case "Cond":
+          stack.push(n.test, n.then, n.else);
+          break;
+        case "Index":
+          stack.push(n.x, n.index);
+          break;
+        case "Lambda":
+          for (const param of n.params) stack.push(param);
+          stack.push(n.body);
+          break;
+        case "Param":
+          stack.push(n.pattern);
+          if (n.default !== null) stack.push(n.default);
+          break;
+        case "Match":
+          stack.push(n.subject);
+          for (const arm of n.arms) stack.push(arm);
+          break;
+        case "Arm":
+          if (n.guard !== null) stack.push(n.guard);
+          stack.push(n.result);
+          break;
+        case "Try":
+          stack.push(n.body, n.handler);
+          break;
+        case "MapPat":
+          for (const f of n.fields) if (f.default !== null) stack.push(f.default);
+          break;
+        case "ListPat":
+          for (const e of n.elems) if (e.default !== null) stack.push(e.default);
+          break;
+        case "Each":
+          if (n.x !== null) stack.push(n.x);
+          for (const r of n.reads) {
+            if (r.kind === "Index") stack.push(r.index);
+            else if (r.kind === "Each") stack.push(r);
+          }
+          break;
+      }
+    }
+    return refs;
+  });
+}
+
 export function compileProgram(p: A.Program, res: Resolution, env: CompileEnv): Compiled {
   const c = new Compiler(res, env);
   const consts = p.consts.map((k) => c.constLine(k));
-  const result = c.expr(p.result);
-  return { run: sequence(consts, result), missing: c.missing, varCount: c.varCount };
+  const run = p.result === null ? null : sequence(consts, c.expr(p.result));
+  const entries = new Map<string, CompiledEntry>();
+  if (p.consts.some(isEntryConst)) {
+    const direct = computeTopDirectRefs(p, res);
+    p.consts.forEach((k, idx) => {
+      if (!isEntryConst(k)) return;
+      const name = (k.pattern as A.NamePat).name!;
+      const lam = k.value as A.Lambda;
+      const lc = c.codeOf(lam);
+      // Transitive closure of direct references, excluding `idx` itself.
+      const visited = new Set<number>();
+      const queue = [...direct[idx]];
+      while (queue.length > 0) {
+        const j = queue.pop()!;
+        if (j === idx || visited.has(j)) continue;
+        visited.add(j);
+        for (const next of direct[j]) if (next !== idx && !visited.has(next)) queue.push(next);
+      }
+      // f16 12.4 item 2.1: only non-lambda top-level const lines, in text order.
+      const needCodes = [...visited]
+        .filter((j) => p.consts[j].value.kind !== "Lambda")
+        .sort((a, b) => a - b)
+        .map((j) => consts[j]);
+      const paramSpans = lam.params.map((param) => param.span);
+      const counts = lambdaCounts(lam);
+      const call = (r: Run, args: unknown[]): unknown => {
+        for (let j = 0; j < needCodes.length; j++) needCodes[j](r);
+        // f16 12.4 item 2.2: 1 step and +1 depth for calling the entry point.
+        r.charge(1);
+        r.depth += 1;
+        r.testDepth(r.depth);
+        const caller = r.frame;
+        r.frame = newFrame(lc.size, null);
+        // f16 12.4 item 2.3: read each supplied host argument and bind in parameter order.
+        const ps = lc.params;
+        for (let j = 0; j < ps.length; j++) {
+          const raw = j < args.length ? args[j] : ABSENT;
+          const val = raw === ABSENT ? null : r.read(raw, paramSpans[j]);
+          bindParam(r, ps[j], val);
+        }
+        // f16 12.4 item 2.4, 2.5, 3: evaluate body, restore depth/frame, add no trace entry.
+        const out = lc.body(r);
+        r.frame = caller;
+        r.depth -= 1;
+        return out;
+      };
+      entries.set(name, { name, call, minArgs: counts.min, maxArgs: counts.max });
+    });
+  }
+  return { run, entries, missing: c.missing, varCount: c.varCount };
 }
 
 // ---- fast paths ---------------------------------------------------------------
@@ -554,6 +764,10 @@ class Compiler {
 
   get varCount(): number {
     return this.varIndex.size;
+  }
+
+  codeOf(l: A.Lambda): LambdaCode {
+    return this.codes.get(l)!;
   }
 
   constructor(res: Resolution, env: CompileEnv) {

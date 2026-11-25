@@ -63,10 +63,10 @@ func (v *validator) buildF10(c *Case, m map[string]any, where string) error {
 			return v.invalid("%s: a load case always checks", where)
 		}
 	}
-	if !c.Load && c.Expect != nil {
+	if !c.Load && c.Entry == nil && c.Expect != nil {
 		for _, d := range c.Expect.Diagnostics {
 			if d.SpanNull {
-				return v.invalid("%s: \"span\": null outside a load case", where)
+				return v.invalid("%s: \"span\": null outside a load or entry case", where)
 			}
 		}
 	}

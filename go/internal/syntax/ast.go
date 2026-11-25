@@ -110,13 +110,15 @@ type TypeLine struct {
 	Doc string
 }
 
-// Const is "const pattern = value;". Value is a *Lambda for a const-bound
-// lambda. Type is the annotation of package F16, or nil.
+// Const is "const pattern = value;" or "export const pattern = value;".
+// Value is a *Lambda for a const-bound lambda. Type is the annotation of
+// package F16, or nil. Exported is set for an export const line (F16 12.2).
 type Const struct {
 	base
-	Pattern Pattern
-	Type    *PType
-	Value   Node
+	Exported bool
+	Pattern  Pattern
+	Type     *PType
+	Value    Node
 	// Doc is the line's description (F16 11.3), or "".
 	Doc string
 }

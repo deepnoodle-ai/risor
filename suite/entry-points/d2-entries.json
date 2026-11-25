@@ -1,0 +1,244 @@
+[
+  {
+    "name": "program with no exports has empty entries list",
+    "source": "const f = (x: int) => x; f(1)",
+    "expect": {
+      "value": 1,
+      "type": "int",
+      "entries": []
+    }
+  },
+  {
+    "name": "multiple entry points in text order, skipping private helpers",
+    "source": "const helper = (x: int) => x + 1;\nexport const first = (a: int) => helper(a);\nconst another = 10;\nexport const second = () => another;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "first",
+          "doc": null,
+          "params": [{"name": "a", "type": "int", "doc": null, "optional": false}],
+          "input": "{a: int}",
+          "inputSchema": {"additionalProperties": false, "properties": {"a": {"type": "integer"}}, "required": ["a"], "type": "object"},
+          "result": "int"
+        },
+        {
+          "name": "second",
+          "doc": null,
+          "params": [],
+          "input": "{}",
+          "inputSchema": {"additionalProperties": false, "type": "object"},
+          "result": "int"
+        }
+      ]
+    }
+  },
+  {
+    "name": "doc comment before export attaches; doc comment between export and const does not",
+    "source": "/** First doc. */\nexport const a = () => 1;\nexport /** Between. */ const b = () => 2;\n/** Earlier. */\n/** Winner. */\nexport const c = () => 3;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {"name": "a", "doc": "First doc.", "result": "int"},
+        {"name": "b", "doc": null, "result": "int"},
+        {"name": "c", "doc": "Winner.", "result": "int"}
+      ]
+    }
+  },
+  {
+    "name": "Row 2 multi-param input schema carries parameter descriptions and optionality",
+    "source": "type Units = \"metric\" | \"imperial\";\n/** Get weather for a city. */\nexport const weather = (\n  /** The city name. */\n  city: string,\n  /** Temperature units. */\n  units: Units = \"metric\",\n): {city: string, units: string} => ({city, units});",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "weather",
+          "doc": "Get weather for a city.",
+          "params": [
+            {"name": "city", "type": "string", "doc": "The city name.", "optional": false},
+            {"name": "units", "type": "\"imperial\" | \"metric\"", "doc": "Temperature units.", "optional": true}
+          ],
+          "input": "{city: string, units?: \"imperial\" | \"metric\"}",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "city": {"description": "The city name.", "type": "string"},
+              "units": {"description": "Temperature units.", "enum": ["imperial", "metric"], "type": "string"}
+            },
+            "required": ["city"],
+            "type": "object"
+          },
+          "result": "{city: string, units: string}"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 1 single record parameter uses its record type and preserves field descriptions",
+    "source": "type Query = {\n  /** City name. */\n  city: string,\n  /** Max results. */\n  limit?: int,\n};\n/** Search places. */\nexport const search = (q: Query) => q.city;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "search",
+          "doc": "Search places.",
+          "params": [
+            {"name": "q", "type": "{city: string, limit?: int}", "doc": null, "optional": false}
+          ],
+          "input": "{city: string, limit?: int}",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "city": {"description": "City name.", "type": "string"},
+              "limit": {"description": "Max results.", "type": "integer"}
+            },
+            "required": ["city"],
+            "type": "object"
+          },
+          "result": "string"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 1 destructured record parameter has param name null but keeps its record input type",
+    "source": "export const show = ({city, units = \"metric\"}: {city: string, units?: string}) => `${city}:${units}`;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "show",
+          "params": [
+            {"name": null, "type": "{city: string, units?: string}", "doc": null, "optional": false}
+          ],
+          "input": "{city: string, units?: string}",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "city": {"type": "string"},
+              "units": {"type": "string"}
+            },
+            "required": ["city"],
+            "type": "object"
+          },
+          "result": "string"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 1 map<int> qualifies as a single record input type",
+    "source": "export const sum = (m: map<int>) => m.values().sum();",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "sum",
+          "params": [{"name": "m", "type": "map<int>", "optional": false}],
+          "input": "map<int>",
+          "inputSchema": {"additionalProperties": {"type": "integer"}, "type": "object"},
+          "result": "int"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 1 recursive record keeps its $defs/$ref in inputSchema",
+    "source": "type Node = {v: int, next: Node | null};\nexport const depth = (n: Node): int => n.next == null ? 1 : 1 + depth(n.next);",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "depth",
+          "inputSchema": {
+            "$defs": {
+              "Node": {
+                "additionalProperties": false,
+                "properties": {
+                  "next": {"anyOf": [{"$ref": "#/$defs/Node"}, {"type": "null"}]},
+                  "v": {"type": "integer"}
+                },
+                "required": ["next", "v"],
+                "type": "object"
+              }
+            },
+            "$ref": "#/$defs/Node"
+          },
+          "result": "int"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 2 nullable record and tagged union are wrapped by parameter name",
+    "source": "type Ev = {kind: \"a\", n: int} | {kind: \"b\", s: string};\nexport const opt = (r: {a: int} | null) => r?.a ?? 0;\nexport const onEv = (ev: Ev) => ev.kind;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "opt",
+          "input": "{r: {a: int} | null}",
+          "result": "int"
+        },
+        {
+          "name": "onEv",
+          "input": "{ev: {kind: \"a\", n: int} | {kind: \"b\", s: string}}",
+          "result": "\"a\" | \"b\""
+        }
+      ]
+    }
+  },
+  {
+    "name": "Row 3 no input record when a parameter is a discard or pattern in a non-Row-1 list",
+    "source": "export const a = (_: int) => 1;\nexport const b = ({x}: {x: int}, y: int) => x + y;\nexport const c = ([first]: int[]) => first;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "a",
+          "params": [{"name": null, "type": "int", "doc": null, "optional": false}],
+          "input": null,
+          "inputSchema": null,
+          "result": "int"
+        },
+        {
+          "name": "b",
+          "params": [
+            {"name": null, "type": "{x: int}", "doc": null, "optional": false},
+            {"name": "y", "type": "int", "doc": null, "optional": false}
+          ],
+          "input": null,
+          "inputSchema": null,
+          "result": "int"
+        },
+        {
+          "name": "c",
+          "params": [{"name": null, "type": "int[]", "doc": null, "optional": false}],
+          "input": null,
+          "inputSchema": null,
+          "result": "int"
+        }
+      ]
+    }
+  },
+  {
+    "name": "opaque parameter keeps input type but inputSchema is null",
+    "opaque": ["Token"],
+    "source": "export const check = (t: Token, role: string) => role;",
+    "expect": {
+      "type": "never",
+      "entries": [
+        {
+          "name": "check",
+          "params": [
+            {"name": "t", "type": "Token", "doc": null, "optional": false},
+            {"name": "role", "type": "string", "doc": null, "optional": false}
+          ],
+          "input": "{t: Token, role: string}",
+          "inputSchema": null,
+          "result": "string"
+        }
+      ]
+    }
+  }
+]

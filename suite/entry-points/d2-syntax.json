@@ -1,0 +1,180 @@
+[
+  {
+    "name": "an export const entry point with a result expression",
+    "source": "export const double = (x: int) => x * 2; double(3)",
+    "expect": {"value": 6, "type": "int"}
+  },
+  {
+    "name": "a program with one export const and no result expression",
+    "source": "export const double = (x: int) => x * 2;",
+    "entry": "double",
+    "args": [5],
+    "expect": {"value": 10, "type": "never"}
+  },
+  {
+    "name": "several export const lines with interleaved type and const lines and no result",
+    "source": "type Pair = {a: int, b: int};\nconst offset = 10;\nexport const add = (p: Pair): int => p.a + p.b + offset;\nexport const ping = () => \"pong\";",
+    "entry": "add",
+    "args": [{"a": 2, "b": 3}],
+    "expect": {"value": 15, "type": "never"}
+  },
+  {
+    "name": "contextual export: bound as a const name",
+    "source": "const export = 1; export",
+    "expect": {"value": 1, "type": "int"}
+  },
+  {
+    "name": "contextual export: called as a host function",
+    "functions": {"export": {"type": "(n: int) => int", "calls": [{"result": 7}]}},
+    "source": "export(1)",
+    "expect": {"value": 7, "type": "int"}
+  },
+  {
+    "name": "contextual export: read as a variable with member access",
+    "env": "{export: {a: int}}",
+    "vars": {"export": {"a": 4}},
+    "source": "export.a",
+    "expect": {"value": 4, "type": "int"}
+  },
+  {
+    "name": "contextual export: map key and destructured name",
+    "source": "const {export} = {export: 9}; export",
+    "expect": {"value": 9, "type": "int"}
+  },
+  {
+    "name": "export default is export-statement",
+    "source": "export default 1",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "export-statement",
+        "span": [1, 1, 1, 7],
+        "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
+      }]
+    }
+  },
+  {
+    "name": "export followed by another name is export-statement",
+    "source": "export foo = 1",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "export-statement",
+        "span": [1, 1, 1, 7],
+        "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
+      }]
+    }
+  },
+  {
+    "name": "export const inside a block is export-statement",
+    "source": "{ const x = 1; export const a = (y: int) => x + y; a(1) }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "export-statement",
+        "span": [1, 16, 1, 22],
+        "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
+      }]
+    }
+  },
+  {
+    "name": "export const directly after opening brace starts a map literal and is unexpected-token",
+    "source": "{ export const a = 1; a }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "unexpected-token",
+        "span": [1, 10, 1, 15]
+      }]
+    }
+  },
+  {
+    "name": "export const inside an if branch is export-statement",
+    "source": "if (true) { export const a = () => 1; a() } else { 0 }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "export-statement",
+        "span": [1, 13, 1, 19],
+        "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
+      }]
+    }
+  },
+  {
+    "name": "export = 1 stays assignment",
+    "source": "export = 1",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "assignment",
+        "span": [1, 8, 1, 9]
+      }]
+    }
+  },
+  {
+    "name": "export const discard pattern with lambda is lambda-in-pattern",
+    "source": "export const _ = (x: int) => x;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "lambda-in-pattern",
+        "span": [1, 27, 1, 29]
+      }]
+    }
+  },
+  {
+    "name": "export const map pattern with lambda is lambda-in-pattern",
+    "source": "export const {a} = (x: int) => x;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "lambda-in-pattern",
+        "span": [1, 29, 1, 31]
+      }]
+    }
+  },
+  {
+    "name": "export const with type annotation before lambda is unexpected-token",
+    "source": "export const f: int = x => x;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "unexpected-token",
+        "span": [1, 25, 1, 27]
+      }]
+    }
+  },
+  {
+    "name": "const line alone with no export and no result is unexpected-token at EOF",
+    "source": "const a = 1;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "unexpected-token",
+        "span": [1, 13, 1, 13]
+      }]
+    }
+  },
+  {
+    "name": "type line alone with no export and no result is unexpected-token at EOF",
+    "source": "type Foo = int;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "unexpected-token",
+        "span": [1, 16, 1, 16]
+      }]
+    }
+  },
+  {
+    "name": "extra trailing semicolon after export const with no result is unexpected-token",
+    "source": "export const f = (x: int) => x;;",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [{
+        "code": "unexpected-token",
+        "span": [1, 32, 1, 33]
+      }]
+    }
+  }
+]

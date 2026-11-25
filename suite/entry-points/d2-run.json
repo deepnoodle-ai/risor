@@ -1,0 +1,544 @@
+[
+  {
+    "name": "positional call with zero parameters and omitted args",
+    "source": "export const ping = () => \"pong\";",
+    "entry": "ping",
+    "expect": {"value": "pong", "steps": 1, "allocated": 0}
+  },
+  {
+    "name": "positional call with explicit empty args",
+    "source": "export const ping = () => \"pong\";",
+    "entry": "ping",
+    "args": [],
+    "expect": {"value": "pong", "steps": 1, "allocated": 0}
+  },
+  {
+    "name": "positional call with two parameters",
+    "source": "export const add = (a: int, b: int) => a + b;",
+    "entry": "add",
+    "args": [3, 4],
+    "expect": {"value": 7, "steps": 2, "allocated": 0}
+  },
+  {
+    "name": "positional call with omitted default parameter",
+    "source": "export const greet = (name: string, prefix: string = \"Hello\") => `${prefix}, ${name}!`;",
+    "entry": "greet",
+    "args": ["world"],
+    "expect": {"value": "Hello, world!"}
+  },
+  {
+    "name": "positional call with null triggers default",
+    "source": "export const greet = (name: string, prefix: string = \"Hello\") => `${prefix}, ${name}!`;",
+    "entry": "greet",
+    "args": ["world", null],
+    "expect": {"value": "Hello, world!"}
+  },
+  {
+    "name": "positional call with earlier parameter in scope of later default",
+    "source": "export const span = (lo: int, hi: int = lo + 10) => hi - lo;",
+    "entry": "span",
+    "args": [5],
+    "expect": {"value": 10}
+  },
+  {
+    "name": "positional call with nullable non-defaulted parameter passes null through",
+    "source": "export const show = (x: int | null) => x == null ? \"none\" : string(x);",
+    "entry": "show",
+    "args": [null],
+    "expect": {"value": "none"}
+  },
+  {
+    "name": "call by record: Row 1 single record parameter",
+    "source": "export const weather = (q: {city: string, units?: \"metric\" | \"imperial\"}) => `${q.city}:${q.units ?? \"metric\"}`;",
+    "entry": "weather",
+    "input": {"city": "Paris"},
+    "expect": {"value": "Paris:metric"}
+  },
+  {
+    "name": "call by record: Row 1 destructured record parameter with pattern default",
+    "source": "export const weather = ({city, units = \"metric\"}: {city: string, units?: \"metric\" | \"imperial\"}) => `${city}:${units}`;",
+    "entry": "weather",
+    "input": {"city": "Paris"},
+    "expect": {"value": "Paris:metric"}
+  },
+  {
+    "name": "call by record: Row 1 discard record parameter",
+    "source": "export const ok = (_: {x: int}) => true;",
+    "entry": "ok",
+    "input": {"x": 1},
+    "expect": {"value": true}
+  },
+  {
+    "name": "call by record: Row 1 map<int> parameter",
+    "source": "export const total = (m: map<int>) => m.values().sum();",
+    "entry": "total",
+    "input": {"a": 2, "b": 5},
+    "expect": {"value": 7}
+  },
+  {
+    "name": "call by record: Row 1 recursive record parameter",
+    "source": "type Node = {v: int, next: Node | null};\nexport const sum = (n: Node): int => n.v + (n.next == null ? 0 : sum(n.next));",
+    "entry": "sum",
+    "input": {"v": 1, "next": {"v": 2, "next": {"v": 3, "next": null}}},
+    "expect": {"value": 6}
+  },
+  {
+    "name": "call by record: Row 2 zero parameters takes empty object",
+    "source": "export const ping = () => \"pong\";",
+    "entry": "ping",
+    "input": {},
+    "expect": {"value": "pong"}
+  },
+  {
+    "name": "call by record: Row 2 zero parameters rejects extra key",
+    "source": "export const ping = () => \"pong\";",
+    "entry": "ping",
+    "input": {"extra": 1},
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": ["extra"],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "call by record: Row 2 single non-record parameter wrapped by name",
+    "source": "export const dbl = (n: int) => n * 2;",
+    "entry": "dbl",
+    "input": {"n": 6},
+    "expect": {"value": 12}
+  },
+  {
+    "name": "call by record: Row 2 single nullable record parameter wrapped by name",
+    "source": "export const get = (r: {a: int} | null) => r?.a ?? 0;",
+    "entry": "get",
+    "input": {"r": null},
+    "expect": {"value": 0}
+  },
+  {
+    "name": "call by record: Row 2 single tagged union parameter wrapped by name",
+    "source": "type Ev = {kind: \"a\", n: int} | {kind: \"b\", s: string};\nexport const describe = (e: Ev) => match e.kind { \"a\" => string(e.n), \"b\" => e.s };",
+    "entry": "describe",
+    "input": {"e": {"kind": "a", "n": 42}},
+    "expect": {"value": "42"}
+  },
+  {
+    "name": "call by record: Row 2 multiple parameters with omitted optional key running default",
+    "source": "export const range = (lo: int, hi: int = 10, step: int = 1) => [lo, hi, step];",
+    "entry": "range",
+    "input": {"lo": 2, "step": 3},
+    "expect": {"value": [2, 10, 3]}
+  },
+  {
+    "name": "call by record: Row 2 explicit null for non-nullable optional parameter fails conformance",
+    "source": "export const f = (a: int, b: int = 1) => a + b;",
+    "entry": "f",
+    "input": {"a": 2, "b": null},
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": ["b"],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "needs: unused const line that would fail at runtime is skipped",
+    "source": "const boom = fail(\"boom\");\nexport const ok = (x: int) => x + 1;",
+    "entry": "ok",
+    "args": [5],
+    "expect": {"value": 6, "steps": 2, "allocated": 0}
+  },
+  {
+    "name": "needs: unused const line calling a host stub never calls it",
+    "functions": {
+      "used": {"type": "() => int", "calls": [{"result": 10}]},
+      "unused": "() => int !"
+    },
+    "source": "const a = used();\nconst b = unused();\nexport const f = () => a;",
+    "entry": "f",
+    "expect": {"value": 10}
+  },
+  {
+    "name": "needs: transitive needs evaluated in text order",
+    "source": "const a = 2;\nconst b = a + 3;\nconst skip = fail(\"skip\");\nconst helper = (n: int) => n * b;\nexport const calc = (x: int) => helper(x);",
+    "entry": "calc",
+    "args": [4],
+    "expect": {"value": 20}
+  },
+  {
+    "name": "needs: top-level const referenced only in parameter default is evaluated",
+    "source": "const def = 7;\nconst unused = fail(\"unused\");\nexport const f = (x: int = def) => x;",
+    "entry": "f",
+    "args": [],
+    "expect": {"value": 7}
+  },
+  {
+    "name": "needs: top-level const referenced in destructuring pattern default is evaluated",
+    "source": "const fallback = \"metric\";\nconst unused = fail(\"unused\");\nexport const f = ({u = fallback}: {u?: string}) => u;",
+    "entry": "f",
+    "input": {},
+    "expect": {"value": "metric"}
+  },
+  {
+    "name": "needs: multi-name const line is needed when only one of its names is referenced",
+    "functions": {
+      "pair": {"type": "() => {a: int, b: int}", "calls": [{"result": {"a": 3, "b": 4}}]}
+    },
+    "source": "const {a, b} = pair();\nexport const getA = () => a;",
+    "entry": "getA",
+    "expect": {"value": 3}
+  },
+  {
+    "name": "needs: shadowed local binding does not pull top-level const",
+    "source": "const x = fail(\"unused\");\nexport const f = () => { const x = 5; x };",
+    "entry": "f",
+    "expect": {"value": 5}
+  },
+  {
+    "name": "needs: top-level lambda definitions charge zero steps",
+    "source": "const h1 = (x: int) => x + 1;\nconst h2 = (x: int) => x + 2;\nexport const e1 = (x: int) => h1(x);\nexport const e2 = () => 1;",
+    "entry": "e2",
+    "expect": {"value": 1, "steps": 1, "allocated": 0}
+  },
+  {
+    "name": "depth limit: entry call adds 1 to depth so depth 1 allows a leaf entry point",
+    "limits": {"depth": 1},
+    "source": "export const leaf = (x: int) => x + 1;",
+    "entry": "leaf",
+    "args": [2],
+    "expect": {"value": 3}
+  },
+  {
+    "name": "depth limit: entry call adds 1 to depth so depth 1 rejects calling a helper",
+    "limits": {"depth": 1},
+    "source": "const h = (x: int) => x + 1;\nexport const f = (x: int) => h(x);",
+    "entry": "f",
+    "args": [2],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [{
+        "code": "depth-exceeded",
+        "class": "limit",
+        "span": [2, 30, 2, 34]
+      }]
+    }
+  },
+  {
+    "name": "trace: failure directly inside entry point has empty trace",
+    "source": "export const boom = (n: int) => 1 / n;",
+    "entry": "boom",
+    "args": [0],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [{
+        "code": "divide-by-zero",
+        "class": "divide",
+        "span": [1, 33, 1, 38],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "trace: failure inside helper called by entry point traces only the helper call",
+    "source": "const inv = (n: int) => 1 / n;\nexport const run = (n: int) => inv(n);",
+    "entry": "run",
+    "args": [0],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [{
+        "code": "divide-by-zero",
+        "class": "divide",
+        "span": [1, 25, 1, 30],
+        "trace": [
+          {"span": [2, 32, 2, 38], "name": "inv", "index": null}
+        ]
+      }]
+    }
+  },
+  {
+    "name": "conformance: positional argument wrong type prefixes path with 0-based index",
+    "source": "export const f = (x: int) => x;",
+    "entry": "f",
+    "args": ["bad"],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [0],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "conformance: positional nested record field failure prefixes path with argument index",
+    "source": "export const f = (a: int, q: {city: string}) => q.city;",
+    "entry": "f",
+    "args": [1, {"city": 123}],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [1, "city"],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "conformance: positional multiple failing arguments are collected in order",
+    "source": "export const f = (a: int, b: string) => b;",
+    "entry": "f",
+    "args": ["nope", 42],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [
+        {
+          "code": "not-conforming",
+          "class": "value",
+          "span": null,
+          "path": [0],
+          "trace": []
+        },
+        {
+          "code": "not-conforming",
+          "class": "value",
+          "span": null,
+          "path": [1],
+          "trace": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "conformance: positional null for non-defaulted non-nullable parameter fails",
+    "source": "export const f = (a: int) => a;",
+    "entry": "f",
+    "args": [null],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [0],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "conformance: call by record wrong root value reports empty path",
+    "source": "export const f = (a: int) => a;",
+    "entry": "f",
+    "input": 42,
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "conformance: call by record missing required field and nested list error",
+    "source": "export const f = (q: {city: string, tags: string[]}) => q.city;",
+    "entry": "f",
+    "input": {"tags": ["ok", 99]},
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [
+        {
+          "code": "not-conforming",
+          "class": "value",
+          "span": null,
+          "path": ["city"],
+          "trace": []
+        },
+        {
+          "code": "not-conforming",
+          "class": "value",
+          "span": null,
+          "path": ["tags", 1],
+          "trace": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "conformance: runs even when compiled with check: false",
+    "check": false,
+    "source": "export const f = (a: int) => a + 1;",
+    "entry": "f",
+    "args": ["bad"],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [0],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "declare: calling an unknown entry point fails bad-name",
+    "source": "export const f = () => 1;",
+    "entry": "missing",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-name"}]
+    }
+  },
+  {
+    "name": "declare: calling a private const lambda fails bad-name",
+    "source": "const helper = () => 1;\nexport const f = () => helper();",
+    "entry": "helper",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-name"}]
+    }
+  },
+  {
+    "name": "declare: positional call with too few arguments fails arity",
+    "source": "export const f = (a: int, b: int = 1) => a + b;",
+    "entry": "f",
+    "args": [],
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "arity"}]
+    }
+  },
+  {
+    "name": "declare: positional call with too many arguments fails arity",
+    "source": "export const f = (a: int) => a;",
+    "entry": "f",
+    "args": [1, 2],
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "arity"}]
+    }
+  },
+  {
+    "name": "declare: call by record on entry point with no input record (multiple params with pattern) fails no-input-record",
+    "source": "export const f = ({a}: {a: int}, b: int) => a + b;",
+    "entry": "f",
+    "input": {"a": 1, "b": 2},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-input-record"}]
+    }
+  },
+  {
+    "name": "declare: call by record on entry point with discard non-record parameter fails no-input-record",
+    "source": "export const f = (_: int) => 1;",
+    "entry": "f",
+    "input": {},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-input-record"}]
+    }
+  },
+  {
+    "name": "declare: running a program with no result expression fails no-result",
+    "source": "export const f = () => 1;",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-result"}]
+    }
+  },
+  {
+    "name": "opaque argument in positional call succeeds and invokes method",
+    "opaque": ["Token"],
+    "methods": {"Token.owner": {"type": "() => string", "calls": [{"result": "alice"}]}},
+    "source": "export const who = (t: Token) => t.owner();",
+    "entry": "who",
+    "args": [{"$opaque": {"type": "Token", "id": 1}}],
+    "expect": {"value": "alice"}
+  },
+  {
+    "name": "opaque argument of wrong type fails conformance",
+    "opaque": ["Token", "Other"],
+    "source": "export const who = (t: Token) => t;",
+    "entry": "who",
+    "args": [{"$opaque": {"type": "Other", "id": 1}}],
+    "expect": {
+      "phase": "run",
+      "steps": 0,
+      "allocated": 0,
+      "diagnostics": [{
+        "code": "not-conforming",
+        "class": "value",
+        "span": null,
+        "path": [0],
+        "trace": []
+      }]
+    }
+  },
+  {
+    "name": "opaque argument inside record call succeeds",
+    "opaque": ["Token"],
+    "methods": {"Token.owner": {"type": "() => string", "calls": [{"result": "bob"}]}},
+    "source": "export const check = (t: Token, role: string) => `${t.owner()}:${role}`;",
+    "entry": "check",
+    "input": {"t": {"$opaque": {"type": "Token", "id": 1}}, "role": "admin"},
+    "expect": {"value": "bob:admin"}
+  },
+  {
+    "name": "entry point reads host variables from env and vars",
+    "env": "{tenant: string, tax: float}",
+    "vars": {"tenant": "acme", "tax": 0.25},
+    "source": "const rate = 1 + tax;\nexport const price = (base: float) => ({tenant, total: base * rate});",
+    "entry": "price",
+    "args": [100.0],
+    "expect": {"value": {"tenant": "acme", "total": 125.0}}
+  },
+  {
+    "name": "tool file example: weather entry point called by record",
+    "functions": {
+      "http.get": {"type": "(url: string, opts: {params: {q: string, units: string}}) => {body: {temp: float, summary: string}}", "calls": [{"result": {"body": {"temp": 21.5, "summary": "sunny"}}}]}
+    },
+    "source": "type Units = \"metric\" | \"imperial\";\nconst api = \"https://api.example.com\";\n/** Get the current weather for a city. */\nexport const weather = (\n  /** The city name, such as \"Paris\". */\n  city: string,\n  /** Temperature units. */\n  units: Units = \"metric\",\n) => {\n  const r = http.get(`${api}/weather`, {params: {q: city, units}});\n  {city, temp: r.body.temp, summary: r.body.summary}\n};",
+    "entry": "weather",
+    "input": {"city": "Paris"},
+    "expect": {"value": {"city": "Paris", "temp": 21.5, "summary": "sunny"}}
+  },
+  {
+    "name": "event handlers example: onOrder entry point called by record",
+    "source": "type Order = {id: string, total: float, vip: bool};\nconst priority = (o: Order) => o.vip || o.total > 500;\nexport const onOrder = (order: Order) => ({\n  queue: priority(order) ? \"fast\" : \"standard\",\n  notify: order.vip,\n});",
+    "entry": "onOrder",
+    "input": {"id": "ord-1", "total": 750.0, "vip": false},
+    "expect": {"value": {"queue": "fast", "notify": false}}
+  }
+]

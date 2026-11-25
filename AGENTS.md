@@ -21,11 +21,12 @@ what follows it, and the order. Its section 5.3 orders the work after the
 alpha as tracks A to F: Core amendments first, then annotations, recursion
 and function parameters, entry points, and author feedback. Plans `17` to
 `21` describe that work. Built so far, in all three implementations: the Core
-amendments (track B); the first steps of F17, guards on `match` arms and the
-library function `walk`, typed self-recursion, and function parameters
-(`spec/packages/f17-recursion.md`); and the first slice of F16, type
-annotations and `type` lines (`spec/packages/f16-entry-points.md`). Recursive
-named types are next in F17.
+amendments (track B); F17, including `match` guards, `walk`, typed
+self-recursion, function parameters and recursive named types
+(`spec/packages/f17-recursion.md`); F19
+(`spec/packages/f19-author-feedback.md`); and F16 slices D1, D3 and D2,
+including type annotations, `type` lines, descriptions and `export const` entry
+points (`spec/packages/f16-entry-points.md`).
 
 ## What v3 is
 

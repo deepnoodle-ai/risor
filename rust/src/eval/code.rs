@@ -38,7 +38,13 @@ where
 fn children(kind: &NodeKind, out: &mut Vec<NodeId>) {
     out.clear();
     match kind {
-        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+        NodeKind::Program { consts, result, .. } => {
+            out.extend(consts.iter().copied());
+            if let Some(r) = result {
+                out.push(*r);
+            }
+        }
+        NodeKind::Block { consts, result } => {
             out.extend(consts.iter().copied());
             out.push(*result);
         }
@@ -402,7 +408,12 @@ fn node(
                 Ok(v)
             })
         }
-        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+        NodeKind::Program {
+            consts,
+            result: Some(result),
+            ..
+        }
+        | NodeKind::Block { consts, result } => {
             let lines: Box<[Line]> = consts
                 .iter()
                 .map(|&c| match ast.kind(c) {

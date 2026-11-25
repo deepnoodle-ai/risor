@@ -79,6 +79,59 @@ pub struct TypeRef {
     pub declaration: Option<Range>,
 }
 
+/// F16 12.6: one parameter of a compiled entry point.
+#[derive(Clone, Debug)]
+pub(crate) struct CompiledParam {
+    pub name: Option<String>,
+    pub ty: Ty,
+    pub doc: Option<String>,
+    pub optional: bool,
+}
+
+/// F16 12.4–12.6: a compiled `export const` entry point.
+#[derive(Clone, Debug)]
+pub(crate) struct CompiledEntry {
+    pub name: String,
+    pub doc: Option<String>,
+    pub const_node: NodeId,
+    pub lambda_node: NodeId,
+    pub params: Vec<CompiledParam>,
+    pub min_args: usize,
+    pub input_type: Option<Ty>,
+    /// `true` for Row 1 (single record parameter), `false` for Row 2.
+    pub input_is_row1: bool,
+    pub result_type: Option<Ty>,
+    /// Top-level non-lambda `Const` lines in text order needed by this entry point.
+    pub needs: Vec<NodeId>,
+}
+
+impl CompiledEntry {
+    pub(crate) fn to_public(&self) -> crate::api::Entry {
+        crate::api::Entry {
+            name: self.name.clone(),
+            doc: self.doc.clone(),
+            params: self
+                .params
+                .iter()
+                .map(|p| crate::api::EntryParam {
+                    name: p.name.clone(),
+                    ty: crate::typ::Type::from_ty(p.ty.clone()),
+                    doc: p.doc.clone(),
+                    optional: p.optional,
+                })
+                .collect(),
+            input_type: self
+                .input_type
+                .as_ref()
+                .map(|t| crate::typ::Type::from_ty(t.clone())),
+            result_type: self
+                .result_type
+                .as_ref()
+                .map(|t| crate::typ::Type::from_ty(t.clone())),
+        }
+    }
+}
+
 /// A compiled program. It does not change, and is safe to share between
 /// threads and to run many times.
 pub struct Program {
@@ -118,6 +171,10 @@ pub struct Program {
     /// F17 13.1: for each node, whether it is a higher-order lambda: a
     /// `Lambda` with a function parameter. A call of one binds lambdas.
     pub(crate) higher: Vec<bool>,
+    /// F16 12.6: compiled entry points in text order.
+    pub(crate) entries: Vec<CompiledEntry>,
+    /// F16 12.6: cached public entry metadata.
+    pub(crate) public_entries: Vec<crate::api::Entry>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -207,6 +264,8 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
     let higher = (0..parsed.ast.nodes.len())
         .map(|i| is_higher_order(&parsed.ast, NodeId(i as u32)))
         .collect();
+    let entries = build_entries(&parsed.ast, &r.res, &r.annots, None, true);
+    let public_entries = entries.iter().map(CompiledEntry::to_public).collect();
     Ok(Program {
         env: env.clone(),
         code,
@@ -215,6 +274,8 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         var_index,
         vars_read: vars_read as usize,
         higher,
+        entries,
+        public_entries,
         parsed,
         res: r.res,
         measure: r.measure,
@@ -225,6 +286,411 @@ pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Erro
         ty: None,
         tables: r.tables,
     })
+}
+
+/// F16 12.2: the names of the valid `export const` entry points of a parsed
+/// program (exported top-level `const` with a name pattern, no `const` type
+/// annotation, and a `Lambda` value).
+pub(crate) fn entry_names(ast: &crate::syntax::ast::Ast) -> Vec<String> {
+    let NodeKind::Program { consts, .. } = ast.kind(ast.root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for &c in consts {
+        if let NodeKind::Const {
+            pattern,
+            value,
+            ty: None,
+            exported: true,
+            ..
+        } = ast.kind(c)
+        {
+            if let (NodeKind::NamePat { name: Some(n) }, NodeKind::Lambda { .. }) =
+                (ast.kind(*pattern), ast.kind(*value))
+            {
+                out.push(n.clone());
+            }
+        }
+    }
+    out
+}
+
+/// F16 12.5: compute the input type of an entry point by the 3-row rule.
+/// Returns `(input_type, is_row1)`.
+fn compute_input_type(params: &[CompiledParam]) -> (Option<Ty>, bool) {
+    // Row 1: exactly one parameter whose resolved type (unfolding recursive
+    // references) is a record with no other alternative (not a tagged union,
+    // not nullable, not mixed; `map<T>` and a recursive record type qualify).
+    if params.len() == 1 {
+        let t = &params[0].ty;
+        let u = t.view();
+        if !u.any && u.kinds() == 1 && u.map.is_some() && u.variants.is_none() {
+            return (Some(crate::check::ty::strengthen(t)), true);
+        }
+    }
+    // Row 2: every parameter's pattern is a name other than `_`.
+    if params.iter().all(|p| p.name.is_some()) {
+        let mut fields = std::collections::BTreeMap::new();
+        for p in params {
+            let name = p.name.clone().expect("row 2 parameter has a name");
+            fields.insert(
+                name,
+                crate::check::ty::Field {
+                    ty: crate::check::ty::strengthen(&p.ty),
+                    optional: p.optional,
+                    doc: crate::check::ty::Doc(p.doc.as_deref().map(std::sync::Arc::<str>::from)),
+                },
+            );
+        }
+        let rec = crate::check::ty::Rec::new(fields, Ty::never());
+        return (Some(crate::check::ty::strengthen(&Ty::rec(rec))), false);
+    }
+    // Row 3: at least one parameter's pattern is not a name.
+    (None, false)
+}
+
+/// F16 12.4–12.6: build metadata (and optionally transitive `needs`) for every
+/// valid `export const` entry point of `ast`, in text order.
+pub(crate) fn build_entries(
+    ast: &crate::syntax::ast::Ast,
+    res: &[Res],
+    annots: &HashMap<u32, Option<Ty>>,
+    once_result: Option<&HashMap<u32, Ty>>,
+    with_needs: bool,
+) -> Vec<CompiledEntry> {
+    let NodeKind::Program { consts, .. } = ast.kind(ast.root) else {
+        return Vec::new();
+    };
+    let needs_map = if with_needs {
+        compute_all_needs(ast, res, consts)
+    } else {
+        HashMap::new()
+    };
+    let mut out = Vec::new();
+    for &c in consts {
+        let NodeKind::Const {
+            pattern,
+            value,
+            ty: None,
+            doc,
+            exported: true,
+        } = ast.kind(c)
+        else {
+            continue;
+        };
+        let (
+            NodeKind::NamePat { name: Some(name) },
+            NodeKind::Lambda {
+                params: param_ids, ..
+            },
+        ) = (ast.kind(*pattern), ast.kind(*value))
+        else {
+            continue;
+        };
+        let mut params = Vec::with_capacity(param_ids.len());
+        let mut min_args = 0usize;
+        for (i, &pid) in param_ids.iter().enumerate() {
+            let NodeKind::Param {
+                pattern: ppat,
+                default,
+                ty: pty,
+                doc: pdoc,
+                ..
+            } = ast.kind(pid)
+            else {
+                continue;
+            };
+            let pname = match ast.kind(*ppat) {
+                NodeKind::NamePat { name: Some(n) } => Some(n.clone()),
+                _ => None,
+            };
+            let ty = pty
+                .as_deref()
+                .and_then(|pt| annots.get(&pt.span.start).cloned().flatten())
+                .map(|t| crate::check::ty::strengthen(&t))
+                .unwrap_or_else(Ty::never);
+            let optional = default.is_some();
+            if !optional {
+                min_args = i + 1;
+            }
+            params.push(CompiledParam {
+                name: pname,
+                ty,
+                doc: pdoc.as_deref().map(String::from),
+                optional,
+            });
+        }
+        let (input_type, input_is_row1) = compute_input_type(&params);
+        let result_type = once_result
+            .and_then(|m| m.get(&value.0))
+            .map(crate::check::ty::strengthen);
+        let needs = needs_map.get(&c.0).cloned().unwrap_or_default();
+        out.push(CompiledEntry {
+            name: name.clone(),
+            doc: doc.as_deref().map(String::from),
+            const_node: c,
+            lambda_node: *value,
+            params,
+            min_args,
+            input_type,
+            input_is_row1,
+            result_type,
+            needs,
+        });
+    }
+    out
+}
+
+/// F16 12.4 item 1: compute the transitive non-lambda top-level `const` needs
+/// (in text order) for every exported `const`-bound lambda.
+fn compute_all_needs(
+    ast: &crate::syntax::ast::Ast,
+    res: &[Res],
+    consts: &[NodeId],
+) -> HashMap<u32, Vec<NodeId>> {
+    let mut slot_to_top: HashMap<u32, usize> = HashMap::new();
+    let mut lam_to_top: HashMap<u32, usize> = HashMap::new();
+    let mut is_lam = vec![false; consts.len()];
+
+    fn collect_pat_slots(
+        ast: &crate::syntax::ast::Ast,
+        res: &[Res],
+        pat: NodeId,
+        top_idx: usize,
+        out: &mut HashMap<u32, usize>,
+    ) {
+        match ast.kind(pat) {
+            NodeKind::NamePat { .. } => {
+                if let Res::Bind(s) = res[pat.index()] {
+                    out.insert(s, top_idx);
+                }
+            }
+            NodeKind::MapPat { .. } => {
+                if let Res::PatSlots { fields, rest } = &res[pat.index()] {
+                    for s in fields.iter().flatten() {
+                        out.insert(*s, top_idx);
+                    }
+                    if let Some(s) = rest {
+                        out.insert(*s, top_idx);
+                    }
+                }
+            }
+            NodeKind::ListPat { elems, .. } => {
+                for e in elems {
+                    collect_pat_slots(ast, res, e.pat, top_idx, out);
+                }
+                if let Res::PatSlots { rest: Some(s), .. } = &res[pat.index()] {
+                    out.insert(*s, top_idx);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for (i, &c) in consts.iter().enumerate() {
+        let NodeKind::Const { pattern, value, .. } = ast.kind(c) else {
+            continue;
+        };
+        if matches!(ast.kind(*pattern), NodeKind::NamePat { name: Some(_) })
+            && matches!(ast.kind(*value), NodeKind::Lambda { .. })
+        {
+            is_lam[i] = true;
+            lam_to_top.insert(value.0, i);
+        } else {
+            collect_pat_slots(ast, res, *pattern, i, &mut slot_to_top);
+        }
+    }
+
+    // Direct references of each top-level `const` line.
+    let mut direct: Vec<Vec<usize>> = vec![Vec::new(); consts.len()];
+    let mut stack: Vec<NodeId> = Vec::new();
+    for (i, &c) in consts.iter().enumerate() {
+        stack.clear();
+        stack.push(c);
+        while let Some(id) = stack.pop() {
+            match &res[id.index()] {
+                Res::Slot(s) => {
+                    if let Some(&k) = slot_to_top.get(s) {
+                        if k != i && !direct[i].contains(&k) {
+                            direct[i].push(k);
+                        }
+                    }
+                }
+                Res::CallLambda(l) | Res::LambdaRef(l) => {
+                    if let Some(&k) = lam_to_top.get(&l.0) {
+                        if k != i && !direct[i].contains(&k) {
+                            direct[i].push(k);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            push_node_children(ast.kind(id), &mut stack);
+        }
+    }
+
+    // Transitive closure for each exported `const`-bound lambda.
+    let mut out = HashMap::new();
+    for (i, &c) in consts.iter().enumerate() {
+        let NodeKind::Const { exported: true, .. } = ast.kind(c) else {
+            continue;
+        };
+        if !is_lam[i] {
+            continue;
+        }
+        let mut visited = vec![false; consts.len()];
+        visited[i] = true;
+        let mut q = std::collections::VecDeque::new();
+        for &d in &direct[i] {
+            if !visited[d] {
+                visited[d] = true;
+                q.push_back(d);
+            }
+        }
+        while let Some(u) = q.pop_front() {
+            for &d in &direct[u] {
+                if !visited[d] {
+                    visited[d] = true;
+                    q.push_back(d);
+                }
+            }
+        }
+        let needs: Vec<NodeId> = (0..consts.len())
+            .filter(|&k| k != i && visited[k] && !is_lam[k])
+            .map(|k| consts[k])
+            .collect();
+        out.insert(c.0, needs);
+    }
+    out
+}
+
+fn push_node_children(kind: &NodeKind, out: &mut Vec<NodeId>) {
+    match kind {
+        NodeKind::Program { consts, result, .. } => {
+            out.extend(consts.iter().copied());
+            if let Some(r) = result {
+                out.push(*r);
+            }
+        }
+        NodeKind::Block { consts, result } => {
+            out.extend(consts.iter().copied());
+            out.push(*result);
+        }
+        NodeKind::Const { pattern, value, .. } => {
+            out.push(*pattern);
+            out.push(*value);
+        }
+        NodeKind::Template { parts } => {
+            for p in parts {
+                if let crate::syntax::ast::TemplatePart::Expr(e) = p {
+                    out.push(*e);
+                }
+            }
+        }
+        NodeKind::List { items } => out.extend(items.iter().copied()),
+        NodeKind::Map { entries } => out.extend(entries.iter().copied()),
+        NodeKind::Entry { key, value, .. } => {
+            if let EntryKey::Computed(k) = key {
+                out.push(*k);
+            }
+            out.push(*value);
+        }
+        NodeKind::Spread { value } => out.push(*value),
+        NodeKind::Unary { x, .. } | NodeKind::OptChain { x } | NodeKind::As { x, .. } => {
+            out.push(*x)
+        }
+        NodeKind::Binary { x, y, .. } => {
+            out.push(*x);
+            out.push(*y);
+        }
+        NodeKind::Cond {
+            test, then, else_, ..
+        } => {
+            out.push(*test);
+            out.push(*then);
+            out.push(*else_);
+        }
+        NodeKind::Member { x, .. } => out.push(*x),
+        NodeKind::Index { x, index, .. } => {
+            out.push(*x);
+            out.push(*index);
+        }
+        NodeKind::Call { args, .. } => out.extend(args.iter().copied()),
+        NodeKind::MethodCall { x, args, .. } => {
+            out.push(*x);
+            out.extend(args.iter().copied());
+        }
+        NodeKind::Lambda { params, body, .. } => {
+            out.extend(params.iter().copied());
+            out.push(*body);
+        }
+        NodeKind::Param {
+            pattern, default, ..
+        } => {
+            out.push(*pattern);
+            if let Some(d) = default {
+                out.push(*d);
+            }
+        }
+        NodeKind::Match { subject, arms } => {
+            out.push(*subject);
+            out.extend(arms.iter().copied());
+        }
+        NodeKind::Arm { guard, result, .. } => {
+            if let Some(g) = guard {
+                out.push(*g);
+            }
+            out.push(*result);
+        }
+        NodeKind::Try { body, handler, .. } => {
+            out.push(*body);
+            out.push(*handler);
+        }
+        NodeKind::MapPat { fields, .. } => {
+            for f in fields {
+                if let Some(d) = f.default {
+                    out.push(d);
+                }
+            }
+        }
+        NodeKind::ListPat { elems, .. } => {
+            for e in elems {
+                out.push(e.pat);
+                if let Some(d) = e.default {
+                    out.push(d);
+                }
+            }
+        }
+        NodeKind::Each { x, reads, .. } => {
+            if let Some(x) = x {
+                out.push(*x);
+            }
+            out.extend(reads.iter().copied());
+        }
+        NodeKind::Ident { .. }
+        | NodeKind::Number { .. }
+        | NodeKind::String { .. }
+        | NodeKind::Bool { .. }
+        | NodeKind::Null
+        | NodeKind::NamePat { .. }
+        | NodeKind::Bad
+        | NodeKind::Elem => {}
+    }
+}
+
+/// F16 12.3: whether a pattern binds no name (`_`, `{}`, `[]`, `[_, _]`, etc.).
+fn pattern_binds_nothing(ast: &crate::syntax::ast::Ast, pat: NodeId) -> bool {
+    match ast.kind(pat) {
+        NodeKind::NamePat { name } => name.is_none(),
+        NodeKind::MapPat { fields, rest } => {
+            fields.iter().all(|f| f.name.name == "_") && rest.as_ref().is_none_or(|r| r.name == "_")
+        }
+        NodeKind::ListPat { elems, rest } => {
+            elems.iter().all(|e| pattern_binds_nothing(ast, e.pat))
+                && rest.as_ref().is_none_or(|r| r.name == "_")
+        }
+        _ => false,
+    }
 }
 
 /// Where a run keeps a slot (F17 11.5): in the frame of depth `depth` on the
@@ -309,6 +775,9 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
     {
         // F17 12.3 item 2: the type lines are resolved as one list first.
         let declared = r.type_lines_list(types);
+        let has_export = consts
+            .iter()
+            .any(|&c| matches!(parsed.ast.kind(c), NodeKind::Const { exported: true, .. }));
         // F16 3.1 item 1: the type lines and the `const` lines in the order
         // of the text, then the result.
         let mut lines: Vec<(u32, Result<NodeId, usize>)> = consts
@@ -324,11 +793,13 @@ pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
         lines.sort_by_key(|(s, _)| *s);
         for (_, l) in lines {
             match l {
-                Ok(c) => r.const_line(c),
+                Ok(c) => r.const_line(c, true, has_export),
                 Err(i) => r.type_line(&types[i], declared[i].clone()),
             }
         }
-        r.walk(*result);
+        if let Some(res_id) = result {
+            r.walk(*res_id);
+        }
     }
     // 22.5: once for each lambda, on its reference with the least start.
     let mut refs: Vec<(Range, String)> = std::mem::take(&mut r.self_refs).into_values().collect();
@@ -939,13 +1410,76 @@ impl Resolver<'_> {
         slot
     }
 
-    fn const_line(&mut self, id: NodeId) {
+    fn const_line(&mut self, id: NodeId, top_level: bool, has_export: bool) {
         let NodeKind::Const {
-            pattern, value, ty, ..
+            pattern,
+            value,
+            ty,
+            exported,
+            ..
         } = self.kind(id).clone()
         else {
             return;
         };
+        // F16 12.3: static rule `bad-export`.
+        if top_level && exported {
+            let is_name_pat = matches!(self.kind(pattern), NodeKind::NamePat { name: Some(_) });
+            let is_lambda = matches!(self.kind(value), NodeKind::Lambda { .. });
+            if !is_name_pat || ty.is_some() || !is_lambda {
+                let name = match self.kind(pattern) {
+                    NodeKind::NamePat { name: Some(n) } => n.clone(),
+                    _ => "this line".to_string(),
+                };
+                self.diag(
+                    code::BAD_EXPORT,
+                    self.span(id),
+                    "not-lambda",
+                    &[("name", name)],
+                );
+            } else if let (
+                NodeKind::NamePat {
+                    name: Some(entry_name),
+                },
+                NodeKind::Lambda { params, .. },
+            ) = (self.kind(pattern).clone(), self.kind(value).clone())
+            {
+                for (i, p) in params.iter().enumerate() {
+                    if let NodeKind::Param {
+                        pattern: ppat,
+                        ty: pty,
+                        fn_: pfn,
+                        ..
+                    } = self.kind(*p).clone()
+                    {
+                        if pfn.is_some() {
+                            let param_name = match self.kind(ppat) {
+                                NodeKind::NamePat { name: Some(pn) } => pn.clone(),
+                                _ => (i + 1).to_string(),
+                            };
+                            self.diag(
+                                code::BAD_EXPORT,
+                                self.span(*p),
+                                "fn-parameter",
+                                &[("name", entry_name.clone()), ("param", param_name)],
+                            );
+                        } else if pty.is_none() {
+                            let param_name = match self.kind(ppat) {
+                                NodeKind::NamePat { name: Some(pn) } => pn.clone(),
+                                _ => (i + 1).to_string(),
+                            };
+                            self.diag(
+                                code::BAD_EXPORT,
+                                self.span(*p),
+                                "unannotated",
+                                &[("name", entry_name.clone()), ("param", param_name)],
+                            );
+                        }
+                    }
+                }
+            }
+        } else if top_level && has_export && pattern_binds_nothing(&self.p.ast, pattern) {
+            self.diag(code::BAD_EXPORT, self.span(id), "binds-nothing", &[]);
+        }
         if let Some(t) = &ty {
             self.annotation(t);
         }
@@ -1006,19 +1540,27 @@ impl Resolver<'_> {
     }
 
     /// Walk the nodes of a scope: `const` lines, then a result.
-    fn scope_body(&mut self, consts: &[NodeId], result: NodeId) {
+    fn scope_body(&mut self, consts: &[NodeId], result: Option<NodeId>) {
         for &c in consts {
-            self.const_line(c);
+            self.const_line(c, false, false);
         }
-        self.walk(result);
+        if let Some(r) = result {
+            self.walk(r);
+        }
     }
 
     fn walk(&mut self, mut id: NodeId) {
         loop {
             match self.kind(id).clone() {
-                NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+                NodeKind::Program { consts, result, .. } => {
                     self.scopes.push(HashMap::new());
                     self.scope_body(&consts, result);
+                    self.scopes.pop();
+                    return;
+                }
+                NodeKind::Block { consts, result } => {
+                    self.scopes.push(HashMap::new());
+                    self.scope_body(&consts, Some(result));
                     self.scopes.pop();
                     return;
                 }
@@ -1193,7 +1735,9 @@ impl Resolver<'_> {
                     let slot = name.and_then(|n| self.bind(&n.name, n.span, None));
                     self.res[id.index()] = Res::Catch(slot);
                     match self.kind(handler).clone() {
-                        NodeKind::Block { consts, result } => self.scope_body(&consts, result),
+                        NodeKind::Block { consts, result } => {
+                            self.scope_body(&consts, Some(result))
+                        }
                         _ => self.walk(handler),
                     }
                     self.scopes.pop();

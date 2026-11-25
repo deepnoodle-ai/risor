@@ -63,6 +63,22 @@ describe("tokens", () => {
     assert.deepEqual(show(`const f = (x: Order): int => x`).slice(3, 9), ["punctuation:(", "name:x", "punctuation::", "name:Order", "punctuation:)", "punctuation::"]);
   });
 
+  test("package F16 slice D2: export is a keyword where it begins a top-level export const, and a name elsewhere", () => {
+    assert.deepEqual(show(`export const f = () => 1;`), [
+      "keyword:export", "keyword:const", "name:f", "operator:=", "punctuation:(", "punctuation:)", "operator:=>", "number:1", "punctuation:;",
+    ]);
+    assert.deepEqual(show(`const a = 1; export /* c */ const f = () => a;`), [
+      "keyword:const", "name:a", "operator:=", "number:1", "punctuation:;",
+      "keyword:export", "comment:/* c */", "keyword:const", "name:f", "operator:=", "punctuation:(", "punctuation:)", "operator:=>", "name:a", "punctuation:;",
+    ]);
+    // Not a top-level export const: a call, a name, a property, another statement, or inside a block.
+    assert.deepEqual(show(`export(1)`)[0], "function:export");
+    assert.deepEqual(show(`const export = 1; export`).slice(-1), ["name:export"]);
+    assert.deepEqual(show(`a.export`), ["name:a", "punctuation:.", "property:export"]);
+    assert.deepEqual(show(`export default 1`)[0], "name:export");
+    assert.deepEqual(show(`{ const a = 1; export const b = () => 1; b() }`)[6], "name:export");
+  });
+
   test("package F17: a function parameter is a name, and its function type has F16's words (f17 13.7 item 5)", () => {
     assert.deepEqual(show(`const apply = (f: (x: int) => unknown) => f(1); apply(y => y)`), [
       "keyword:const", "name:apply", "operator:=", "punctuation:(", "name:f", "punctuation::",

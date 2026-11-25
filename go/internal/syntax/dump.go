@@ -37,19 +37,25 @@ func dump(b *strings.Builder, n Node) {
 			w(" ")
 			dump(b, c)
 		}
-		w(" ")
-		dump(b, n.Result)
+		if n.Result != nil {
+			w(" ")
+			dump(b, n.Result)
+		}
 		w(")")
 	case *Const:
+		head := "const"
+		if n.Exported {
+			head = "export-const"
+		}
 		if n.Type != nil {
-			w("(const ")
+			w("(" + head + " ")
 			dump(b, n.Pattern)
 			w(" : " + n.Type.String() + " ")
 			dump(b, n.Value)
 			w(")")
 			return
 		}
-		list("const", n.Pattern, n.Value)
+		list(head, n.Pattern, n.Value)
 	case *Block:
 		w("(block")
 		for _, c := range n.Consts {

@@ -143,6 +143,25 @@ func TestFunctionParameters(t *testing.T) {
 	}
 }
 
+// The generator writes export const entry points and Call stage cases (F16
+// slice D2), and -nod2 leaves them out.
+func TestEntryPoints(t *testing.T) {
+	lib := loadLib(t)
+	with := 0
+	for i := range 2000 {
+		c := Generate(lib, Options{}, 9, 0, i)
+		if c.D2 {
+			with++
+		}
+		if d := Generate(lib, Options{NoD2: true}, 9, 0, i); d.D2 {
+			t.Fatalf("case %d has an export const entry point with NoD2", i)
+		}
+	}
+	if with < 100 {
+		t.Errorf("%d of 2000 cases have an export const entry point", with)
+	}
+}
+
 // A flat chain has 1,000 links or more, and prints as text with no level of
 // nesting deeper than its lambda's argument list.
 func TestFlatChain(t *testing.T) {

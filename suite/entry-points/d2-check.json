@@ -1,0 +1,264 @@
+[
+  {
+    "name": "an uncalled entry point is checked once and type errors in its body are reported",
+    "source": "export const f = (x: int) => x + \"a\"; 1",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "kind",
+        "span": [1, 30, 1, 37]
+      }]
+    }
+  },
+  {
+    "name": "a zero-parameter entry point with no result annotation is checked once",
+    "source": "export const bad = () => 1 + \"a\";",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "kind",
+        "span": [1, 26, 1, 33]
+      }]
+    }
+  },
+  {
+    "name": "a zero-parameter entry point keeps its dynamic sites",
+    "env": "{x: any}",
+    "source": "export const f = () => x + 1;",
+    "expect": {
+      "type": "never",
+      "sites": [{
+        "class": "dynamic",
+        "span": [1, 24, 1, 25]
+      }]
+    }
+  },
+  {
+    "name": "an uncalled entry point keeps its checked sites",
+    "env": "{xs: int[]}",
+    "source": "export const first = (i: int) => xs[i]; 1",
+    "expect": {
+      "type": "int",
+      "sites": [{
+        "class": "index",
+        "span": [1, 34, 1, 39]
+      }]
+    }
+  },
+  {
+    "name": "a program with no result expression has type never",
+    "source": "export const ping = () => \"pong\";",
+    "expect": {
+      "type": "never",
+      "sites": []
+    }
+  },
+  {
+    "name": "one entry point can call another entry point",
+    "source": "export const inc = (x: int) => x + 1;\nexport const add2 = (x: int) => inc(inc(x));",
+    "entry": "add2",
+    "args": [3],
+    "expect": {"value": 5, "entries": [{"name": "inc", "result": "int"}, {"name": "add2", "result": "int"}]}
+  },
+  {
+    "name": "a helper and the result can call an entry point",
+    "source": "export const dbl = (x: int) => x * 2;\nconst quad = (x: int) => dbl(dbl(x));\nquad(3)",
+    "expect": {"value": 12, "type": "int"}
+  },
+  {
+    "name": "an entry point can be passed to a library method as a lambda",
+    "source": "export const dbl = (x: int) => x * 2;\n[1, 2, 3].map(dbl)",
+    "expect": {"value": [2, 4, 6], "type": "int[]"}
+  },
+  {
+    "name": "recursive entry point with a result annotation checks and runs",
+    "source": "export const fact = (n: int): int => n <= 1 ? 1 : n * fact(n - 1);",
+    "entry": "fact",
+    "args": [5],
+    "expect": {"value": 120, "entries": [{"name": "fact", "result": "int"}]}
+  },
+  {
+    "name": "recursive entry point without a result annotation reports recursion-needs-types",
+    "source": "export const fact = (n: int) => n <= 1 ? 1 : n * fact(n - 1);",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "recursion-needs-types",
+        "span": [1, 50, 1, 54]
+      }]
+    }
+  },
+  {
+    "name": "result annotation mismatch on an entry point",
+    "source": "export const f = (x: int): string => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "result-mismatch",
+        "span": [1, 38, 1, 39]
+      }]
+    }
+  },
+  {
+    "name": "default value mismatch on an entry point parameter",
+    "source": "export const f = (x: int = \"bad\") => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "result-mismatch",
+        "span": [1, 28, 1, 33]
+      }]
+    }
+  },
+  {
+    "name": "entryReturns matching an entry point's inferred result",
+    "source": "export const f = (x: int) => x + 1;",
+    "entryReturns": {"f": "int"},
+    "entry": "f",
+    "args": [4],
+    "expect": {"value": 5, "entries": [{"name": "f", "result": "int"}]}
+  },
+  {
+    "name": "entryReturns matching multiple entry points",
+    "source": "export const a = (x: int) => x;\nexport const b = (s: string) => len(s);",
+    "entryReturns": {"a": "int", "b": "int"},
+    "expect": {"type": "never", "sites": []}
+  },
+  {
+    "name": "entryReturns mismatch reports result-mismatch at the entry body",
+    "source": "export const f = (x: int) => x + 1;",
+    "entryReturns": {"f": "string"},
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "result-mismatch",
+        "span": [1, 30, 1, 35]
+      }]
+    }
+  },
+  {
+    "name": "entryReturns checks the entry's result annotation against the expected type",
+    "source": "export const f = (x: int): int | null => x;",
+    "entryReturns": {"f": "int"},
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "result-mismatch",
+        "span": [1, 42, 1, 43]
+      }]
+    }
+  },
+  {
+    "name": "entryReturns pinpoints missing and extra fields on a map literal body",
+    "source": "export const f = () => ({a: 1, extra: 2});",
+    "entryReturns": {"f": "{a: int, b: string}"},
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "result-mismatch",
+          "span": [1, 25, 1, 41]
+        },
+        {
+          "code": "result-mismatch",
+          "span": [1, 32, 1, 37]
+        }
+      ]
+    }
+  },
+  {
+    "name": "entryReturns allows any with a dynamic site",
+    "env": "{v: any}",
+    "source": "export const f = () => v;",
+    "entryReturns": {"f": "int"},
+    "expect": {
+      "type": "never",
+      "sites": [{
+        "class": "dynamic",
+        "span": [1, 24, 1, 25]
+      }]
+    }
+  },
+  {
+    "name": "entryReturns with an unknown entry name fails declare bad-name",
+    "source": "export const f = () => 1;",
+    "entryReturns": {"missing": "int"},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-name"}]
+    }
+  },
+  {
+    "name": "entryReturns with a private const lambda fails declare bad-name",
+    "source": "const helper = (x: int) => x;\nexport const f = () => helper(1);",
+    "entryReturns": {"helper": "int"},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-name"}]
+    }
+  },
+  {
+    "name": "entryReturns with invalid type text fails declare bad-type",
+    "source": "export const f = () => 1;",
+    "entryReturns": {"f": "not a type!"},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-type"}]
+    }
+  },
+  {
+    "name": "NoCheck skips entryReturns fit but validates names and types",
+    "check": false,
+    "source": "export const f = () => 1;",
+    "entryReturns": {"f": "string"},
+    "entry": "f",
+    "expect": {"value": 1}
+  },
+  {
+    "name": "NoCheck rejects unknown entry name in entryReturns",
+    "check": false,
+    "source": "export const f = () => 1;",
+    "entryReturns": {"nope": "int"},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-name"}]
+    }
+  },
+  {
+    "name": "returns on a program with no result fails declare no-result",
+    "source": "export const f = () => 1;",
+    "returns": "int",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-result"}]
+    }
+  },
+  {
+    "name": "returnsSchema on a program with no result fails declare no-result",
+    "source": "export const f = () => 1;",
+    "returnsSchema": {"schema": {"type": "integer"}},
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-result"}]
+    }
+  },
+  {
+    "name": "returns with invalid type text on a no-result program still fails declare bad-type",
+    "source": "export const f = () => 1;",
+    "returns": "bad type!",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "bad-type"}]
+    }
+  },
+  {
+    "name": "NoCheck with returns on a no-result program fails declare no-result",
+    "check": false,
+    "source": "export const f = () => 1;",
+    "returns": "int",
+    "expect": {
+      "phase": "declare",
+      "diagnostics": [{"code": "no-result"}]
+    }
+  }
+]

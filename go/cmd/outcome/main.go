@@ -17,6 +17,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: outcome FILE")
 		os.Exit(2)
 	}
+	// Accept static codes of all offered packages (F4, F16, F17) in case files.
+	casefile.ExtraStatic = map[string]bool{
+		"untagged-union": true,
+		"check-limit":    true,
+		"name-clash":     true,
+		"bad-export":     true,
+		"circular-type":  true,
+		"arg-mismatch":   true,
+	}
 	f, err := casefile.LoadNoExpect(os.Args[1])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

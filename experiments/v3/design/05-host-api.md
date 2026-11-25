@@ -2613,14 +2613,20 @@ code for it.
 | The report of an analysis | `Analysis` | `Analysis` | `Analysis` | `Analysis` |
 | An analysis as JSON text | `json` | `a.JSON()` | `a.json()` | `a.json()` |
 | The calls of some names (R347) | `callsOf` | `a.CallsOf(names...)` | `a.callsOf(...names)` | `a.calls_of(&names)` |
-| What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, and `check: false` in `CompileOptions` |
+| What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `ExpectEntry(name, text)`, `ExpectEntryType(name, t)`, `ExpectEntrySchema(name, schema, opts...)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `entryExpected`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, `entry_expected`, and `check: false` in `CompileOptions` |
 | Check | `check` | `env.Check(x, opts...)` | `env.check(x, expected)` | `env.check(&x, &expected)` |
-| The result of a check | `CheckResult` | `{Type, Sites}` | `{type, sites}` | `{ty, sites}` |
+| The result of a check | `CheckResult` | `{Type, Sites, Entries}` | `{type, sites, entries}` | `{ty, sites, entries}` |
 | Compile | `compile` | `env.Compile(x, opts...)` | `env.compile(x, options)` | `env.compile(&x, options)` |
 | A compiled program | `Program` | `*Program` | `Program` | `Program` |
 | Its check result | `checkResult` | `p.CheckResult()` | `p.checkResult` | `p.check_result()` |
+| Its entry points (F16 D2) | `entries` | `p.Entries()` | `p.entries` | `p.entries()` |
+| Whether it has a result expression (F16 D2) | `hasResult` | `p.HasResult()` | `p.hasResult` | `p.has_result()` |
 | Run | `run` | `p.Run(ctx, vars)` | `p.run(vars, {signal})` | `p.run(&vars)`, `p.run_with(&vars, opts)` |
 | Run and report usage | `measure` | `p.Measure(ctx, vars)` | `p.measure(vars, {signal})` | `p.measure(&vars)`, `p.measure_with(&vars, opts)` |
+| Call an entry point (F16 D2) | `call` | `p.Call(ctx, name, args, vars)` | `p.call(name, args, vars, {signal})` | `p.call(name, &args, &vars)`, `p.call_with(...)` |
+| Call and report usage (F16 D2) | `callMeasure` | `p.CallMeasure(ctx, name, args, vars)` | `p.callMeasure(name, args, vars, {signal})` | `p.call_measure(name, &args, &vars)`, `p.call_measure_with(...)` |
+| Call by record (F16 D2) | `callRecord` | `p.CallRecord(ctx, name, input, vars)` | `p.callRecord(name, input, vars, {signal})` | `p.call_record(name, &input, &vars)`, `p.call_record_with(...)` |
+| Call by record and report usage (F16 D2) | `callRecordMeasure` | `p.CallRecordMeasure(ctx, name, input, vars)` | `p.callRecordMeasure(name, input, vars, {signal})` | `p.call_record_measure(name, &input, &vars)`, `p.call_record_measure_with(...)` |
 | What a run used | `Usage` | `{Steps, Allocated}` | `{steps, allocated}` | `{steps, allocated}` |
 | The variables of a run | `Vars` | `Vars`, `Map` | an object, a `Map` or a function | `Vars`, `NoVars` |
 

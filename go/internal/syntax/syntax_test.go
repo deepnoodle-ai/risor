@@ -269,7 +269,8 @@ func TestFollowOnText(t *testing.T) {
 		{`interface X {}`, "unexpected-token", [4]int{1, 11, 1, 12}},
 		{`enum E { A }`, "unexpected-token", [4]int{1, 6, 1, 7}},
 		{`type Name = T`, "bad-type-text", [4]int{1, 13, 1, 14}}, // F16: a type line whose type is one letter
-		{`export const x = 1;`, "unexpected-token", [4]int{1, 8, 1, 13}},
+		{`export default 1`, "unexpected-token", [4]int{1, 8, 1, 15}}, // F16 D2: export const is valid at top level
+		{`{ export const x = 1; x }`, "unexpected-token", [4]int{1, 10, 1, 15}},
 		{`f(x => { x + 1 })`, "unexpected-token", [4]int{1, 12, 1, 13}},
 		{`a?[i]`, "unexpected-token", [4]int{1, 6, 1, 6}},
 		{`{max-retries: 3}`, "unexpected-token", [4]int{1, 5, 1, 6}},

@@ -11,7 +11,7 @@ func cloneConsts(cs []*Const) []*Const {
 	}
 	out := make([]*Const, len(cs))
 	for i, c := range cs {
-		out[i] = &Const{Pat: clonePat(c.Pat), Type: c.Type, Value: CloneExpr(c.Value)}
+		out[i] = &Const{Exported: c.Exported, Pat: clonePat(c.Pat), Type: c.Type, Value: CloneExpr(c.Value)}
 	}
 	return out
 }

@@ -134,8 +134,8 @@ func outcome(c *casefile.Case) string {
 			b.WriteByte('}')
 		}
 		b.WriteByte(']')
-		// A limit failure has no fixed usage, so none is written.
-		if u != nil && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
+		// A declare failure did not reach a run, and a limit failure has no fixed usage.
+		if u != nil && ph != "declare" && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
 			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Allocated)
 		}
 		b.WriteByte('}')
@@ -161,7 +161,8 @@ func outcome(c *casefile.Case) string {
 	if unchecked {
 		// "check": false (03-host.md 3.10.8 item 5): compiled without a check; no type and no sites.
 		opts = append(opts, risor.NoCheck)
-	} else if c.Returns != nil {
+	}
+	if c.Returns != nil {
 		if *c.Returns == "condition" {
 			opts = append(opts, risor.Condition)
 		} else {
@@ -169,6 +170,16 @@ func outcome(c *casefile.Case) string {
 		}
 	} else if rs := c.ReturnsSchema; rs != nil {
 		opts = append(opts, risor.ExpectSchema(rs.Schema, schemaOpts(rs.Options)...))
+	}
+	if len(c.EntryReturns) > 0 {
+		names := make([]string, 0, len(c.EntryReturns))
+		for n := range c.EntryReturns {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			opts = append(opts, risor.ExpectEntry(n, c.EntryReturns[n]))
+		}
 	}
 	if !unchecked {
 		cr, err := env.Check(x, opts...)
@@ -189,7 +200,17 @@ func outcome(c *casefile.Case) string {
 	if err != nil {
 		return fail(err, nil)
 	}
-	v, u, err := prog.Measure(context.Background(), risor.Map(c.Vars))
+	var v any
+	var u risor.Usage
+	if c.Entry != nil {
+		if c.HasInput {
+			v, u, err = prog.CallRecordMeasure(context.Background(), *c.Entry, c.Input, risor.Map(c.Vars))
+		} else {
+			v, u, err = prog.CallMeasure(context.Background(), *c.Entry, c.Args, risor.Map(c.Vars))
+		}
+	} else {
+		v, u, err = prog.Measure(context.Background(), risor.Map(c.Vars))
+	}
 	if err != nil {
 		return fail(err, &u)
 	}

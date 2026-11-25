@@ -225,6 +225,13 @@ func Check(prog *syntax.Program, names *Names) *Result {
 	outer := &scope{names: map[string]*Binding{}, vars: names.Vars}
 	s := &scope{parent: outer, names: map[string]*Binding{}}
 	w.resolveTypeLines(prog.Types)
+	hasExport := false
+	for _, c := range prog.Consts {
+		if c.Exported {
+			hasExport = true
+			break
+		}
+	}
 	// The const lines and the type lines, in the order of the text.
 	ci, ti := 0, 0
 	for ci < len(prog.Consts) || ti < len(prog.Types) {
@@ -233,10 +240,12 @@ func Check(prog *syntax.Program, names *Names) *Result {
 			ti++
 			continue
 		}
-		w.constLine(prog.Consts[ci], s)
+		w.topConstLine(prog.Consts[ci], s, hasExport)
 		ci++
 	}
-	w.expr(prog.Result, s)
+	if prog.Result != nil {
+		w.expr(prog.Result, s)
+	}
 	// recursion-needs-types, on the first reference of each lambda to its
 	// own name, unless every parameter and the result carry a type
 	// (01-language.md 14.4; 05-types.md 22.5; F17 11.2).
@@ -296,6 +305,60 @@ func (w *walker) bind(name string, sp syntax.Span, s *scope, kind BindKind, lam 
 	s.names[name] = b
 	w.last = b
 	return b.Slot
+}
+
+func (w *walker) topConstLine(c *syntax.Const, s *scope, hasExport bool) {
+	if c.Exported {
+		lam, isLam := c.Value.(*syntax.Lambda)
+		np, isName := c.Pattern.(*syntax.NamePat)
+		if !isLam || c.Type != nil || !isName || np.Discard {
+			name := "this line"
+			if isName && !np.Discard {
+				name = np.Name
+			}
+			w.diagm("bad-export", c.Span(), "not-lambda", nameP(name))
+		} else {
+			for i, p := range lam.Params {
+				switch {
+				case p.Fn != nil:
+					pn := ""
+					if pnp, ok := p.Pattern.(*syntax.NamePat); ok {
+						pn = pnp.Name
+					}
+					w.diagm("bad-export", p.Span(), "fn-parameter", messages.Word("param", pn), nameP(np.Name))
+				case p.Type == nil:
+					pn := strconv.Itoa(i + 1)
+					if pnp, ok := p.Pattern.(*syntax.NamePat); ok && !pnp.Discard {
+						pn = pnp.Name
+					}
+					w.diagm("bad-export", p.Span(), "unannotated", messages.Word("param", pn), nameP(np.Name))
+				}
+			}
+		}
+	} else if hasExport && !bindsName(c.Pattern) {
+		w.diagm("bad-export", c.Span(), "binds-nothing")
+	}
+	w.constLine(c, s)
+}
+
+// bindsName reports whether a pattern binds at least one name (F16 12.3).
+func bindsName(p syntax.Pattern) bool {
+	switch p := p.(type) {
+	case *syntax.NamePat:
+		return !p.Discard
+	case *syntax.MapPat:
+		return len(p.Fields) > 0 || p.Rest != nil
+	case *syntax.ListPat:
+		if p.Rest != nil {
+			return true
+		}
+		for _, e := range p.Elems {
+			if e.Name != nil && !e.Name.Discard {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (w *walker) constLine(c *syntax.Const, s *scope) {

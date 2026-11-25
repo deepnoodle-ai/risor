@@ -31,7 +31,8 @@ export interface Program extends Base {
   consts: Const[];
   /** Package F16: the type lines, in the order of the text (f16 2.3). Not nodes. */
   types: TypeLine[];
-  result: Expr;
+  /** Package F16 slice D2: absent (null) when the program has at least one `export const` and omits its result (f16 12.2). */
+  result: Expr | null;
 }
 
 /** Package F16: a program type written in an annotation or a type line (f16 1.1). Not a node. */
@@ -68,6 +69,8 @@ export interface FnAnn {
 
 export interface Const extends Base {
   kind: "Const";
+  /** Package F16 slice D2: true for an `export const` line, false for a plain `const` line (f16 12.2 item 3). */
+  exported: boolean;
   pattern: Pattern;
   /** Package F16: the annotation, or null (f16 2.3). */
   type: TypeAnn | null;

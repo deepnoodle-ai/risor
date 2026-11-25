@@ -131,7 +131,9 @@ export function outcomeLine(c: Case): string {
           const trace = d.class === "limit" ? "" : `,"trace":[${(d.trace ?? []).map((t) => `{"span":${span(t)},"name":${jsonString(t.name)},"index":${t.index === null ? "null" : t.index}}`).join(",")}]`;
           // R73: a limit failure's span is not specified, and its line has none.
           const sp = d.class === "limit" ? "null" : span(d);
-          return `{"code":${jsonString(d.code)},"span":${sp},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
+          // f16 12.5: entry argument conformance failures carry span null and path.
+          const path = c.entry !== undefined && d.span === undefined && d.path !== undefined ? `,"path":${JSON.stringify(d.path)}` : "";
+          return `{"code":${jsonString(d.code)},"span":${sp},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${path}${trace}}`;
         });
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);

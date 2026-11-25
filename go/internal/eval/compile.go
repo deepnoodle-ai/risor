@@ -54,6 +54,8 @@ type Program struct {
 	file       *syntax.File
 	whole      syntax.Span // the program's span: a limit diagnostic's (run.go)
 	root       code
+	hasResult  bool
+	entries    map[string]*entryPoint
 	top        int     // the number of values of the program's frame (frames.go)
 	nvars      int     // the variables the program reads, numbered densely
 	constSlots [][]int // for Entry: the indexes in the program's frame of each top-level const line
@@ -141,25 +143,36 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 	}()
 	var root code
 	var constSlots [][]int
+	var hasResult bool
+	var entries map[string]*entryPoint
 	if cfg.Entry {
-		root, constSlots = c.entry(prog.Consts, prog.Result)
+		root, constSlots, hasResult = c.entry(prog.Consts, prog.Result)
 	} else {
-		root = c.block(prog.Consts, prog.Result)
+		root, hasResult, entries = c.compileTop(prog)
 	}
-	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, top: c.ly.top, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
+	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, hasResult: hasResult, entries: entries, top: c.ly.top, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the
 // usage in both cases.
 func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, d *diag.Diagnostic) {
+	if !p.hasResult {
+		return nil, Usage{}, &diag.Diagnostic{Phase: diag.PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}
+	}
 	result, usage, _, d = p.RunEntry(ctx, vars)
 	return result, usage, d
 }
 
 // RunEntry runs the program as Run does. For a program compiled as an
 // entry (Config.Entry) that succeeds, it also gives the values of each
-// top-level const line, by the slots of its pattern.
+// top-level const line, by the slots of its pattern; when the entry has no
+// result expression, it still runs its new const lines and gives a nil value.
 func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Usage, held [][]any, d *diag.Diagnostic) {
+	if !p.hasResult && !p.cfg.Entry {
+		return nil, Usage{}, nil, &diag.Diagnostic{Phase: diag.PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -277,8 +290,9 @@ func (c *compiler) block(consts []*syntax.Const, result syntax.Node) code {
 }
 
 // entry compiles the top level of a REPL entry (Config.Entry). A held
-// lambda line is compiled, since calls name it, but not run.
-func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int) {
+// lambda line is compiled, since calls name it, but not run. When result is
+// nil, the new const lines still run and the entry returns nil.
+func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int, bool) {
 	held := c.cfg.Held
 	if len(held) > len(consts) {
 		panic("more held values than const lines")
@@ -295,7 +309,21 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 	}
-	body := c.block(consts[len(held):], result)
+	var body code
+	if result != nil {
+		body = c.block(consts[len(held):], result)
+	} else {
+		cs := make([]code, len(consts)-len(held))
+		for i, k := range consts[len(held):] {
+			cs[i] = c.constLine(k)
+		}
+		body = func(r *run) any {
+			for _, k := range cs {
+				k(r)
+			}
+			return nil
+		}
+	}
 	return func(r *run) any {
 		for i, vals := range held {
 			for j, s := range slots[i] {
@@ -303,7 +331,7 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 		return body(r)
-	}, slots
+	}, slots, result != nil
 }
 
 // patternSlots are the slots a const pattern binds, in the order of the

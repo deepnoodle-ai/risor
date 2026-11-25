@@ -1,20 +1,24 @@
-# F16. Entry points, slices D1 and D3: annotations, type lines and descriptions
+# F16. Entry points: annotations, type lines, descriptions and export
 
-This chapter is normative. It specifies follow-on package F16 as far as slice
-D1 of its plan (`experiments/v3/design/17-entry-points.md`, and
-`experiments/v3/design/14-implementation-plan.md` 5.3, track D): type lines,
-annotations on `const` lines, on the parameters of a lambda and on its
-result, and the syntax of a function type on a parameter. It adds fields to
-the nodes `Program`, `Const`, `Lambda` and `Param`, one check code,
-`name-clash`, the catalog file `suite/messages-entry-points.json`, the hover
-kind `type` of F12, and the
-directory `suite/entry-points/`. It adds no node kind, no value, no type, no
-run code, no `parse` code, no reserved word and no case field.
+This chapter is normative. It specifies follow-on package F16 across its three
+slices (`experiments/v3/design/17-entry-points.md`, and
+`experiments/v3/design/14-implementation-plan.md` 5.3, track D):
 
-Slice D3 is section 11: doc comments as descriptions, `SchemaOf`, and the
-`Doc` of host declarations. Slice D2 of the plan is not in this chapter yet:
-`export`, entry points, the stage that calls one, programs with no result. It
-adds to this chapter when it lands.
+- **Slice D1** (sections 1 to 10): type lines, annotations on `const` lines, on
+  the parameters of a lambda and on its result, and the syntax of a function
+  type on a parameter. It adds fields to the nodes `Program`, `Const`, `Lambda`
+  and `Param`, the check code `name-clash`, the catalog file
+  `suite/messages-entry-points.json`, the hover kind `type` of F12, and the
+  directory `suite/entry-points/`.
+- **Slice D3** (section 11): doc comments as descriptions, `SchemaOf`, and the
+  `Doc` of host declarations.
+- **Slice D2** (section 12): `export const` entry points, programs with no
+  result expression, the check code `bad-export`, the `declare` codes
+  `no-result` and `no-input-record`, the Call stage (positional and by record),
+  per-entry expected results, and the `Entries` call.
+
+The package adds no node kind, no value, no type, no run code, no `parse` code
+and no reserved word.
 
 The package only adds. In Core an annotation and a type line are `parse`
 errors. A Core amendment lands with this slice (section 5): the name of a
@@ -75,17 +79,17 @@ version number and no version marker.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F16 slice D1, F17, F16 slice D3, F19, F12. Slice D1 stands before
-   F17, and each later slice takes a place of its own after F17, in the order
-   the slices are built: F16 slice D1, F17, F16 slice D3 (`15-build-rulings.md` R211,
-   R261, R371). Slice D2 takes its place after slice D3 when it is built.
+   F13, F14, F16 slice D1, F17, F16 slice D3, F19, F16 slice D2, F12. Slice D1
+   stands before F17, and each later slice takes a place of its own after F17,
+   in the order the slices are built (`15-build-rulings.md` R211, R261, R371).
 2. An implementation that offers this package offers F4: an annotation is a
    program type of F4, resolved by F4's rules. It offers F8, so a case of this
    package may state messages.
 3. The cases of each slice stand in their own files. Those of slice D1 are the
    files of `suite/entry-points/` whose names begin `d1-` or `tools-d1-` (8),
-   and those of slice D3 the files whose names begin `d3-` or `tools-d3-`
-   (11.8).
+   those of slice D3 the files whose names begin `d3-` or `tools-d3-` (11.8),
+   and those of slice D2 the files whose names begin `d2-` or `tools-d2-`
+   (12.10).
 4. **An implementation that offers F17 or F12 and not yet this slice** does
    not run `suite/entry-points/` or load `suite/messages-entry-points.json`,
    and it does not pass the new Core cases of section 5: the Core amendment
@@ -882,4 +886,462 @@ nor `docs` (`03-host.md` 3.11 item 3).
 | `15-build-rulings.md` R114, R188 | Reversed, as D53 planned |
 
 No other rule changes. A program with no doc comment has the type, sites,
+diagnostics, value and usage it has without this slice.
+
+## 12. Slice D2: `export const` entry points and the Call stage
+
+Slice D2 of the plan (`17` 3.3, 3.5). A top-level `const`-bound lambda marked
+`export` is an **entry point**. A program that has at least one `export const`
+may omit its result expression. A host lists a program's entry points with
+`Entries` and calls one by name — positionally or by record — through the Call
+stage, as one bounded run with conformed arguments and nothing kept between
+calls.
+
+This slice adds the field `exported` to node 2 (`Const`), allows `Program`'s
+`result` to be absent, adds the static check code `bad-export` (four templates
+in `suite/messages-entry-points.json`), narrows the parse code
+`export-statement` (updating its text in `suite/messages-parse.json`), adds the
+`declare` codes `no-result` and `no-input-record`, adds the Call stage and
+`Entries` to every binding, adds the case fields `entry`, `args`, `input`,
+`entryReturns` and the result field `entries` (12.10), and adds the files of
+`suite/entry-points/` whose names begin `d2-` or `tools-d2-`.
+
+It is offered after F19 and before F12, as F16 slice D2 (1.4 item 1).
+
+### 12.1 Terms
+
+| Term | Meaning |
+| --- | --- |
+| Export line | `export const ...;` at the top level of a program |
+| Entry point | An export line whose pattern is a name other than `_`, that has no `const` annotation, and whose value is a lambda |
+| Needs | The top-level `const` lines an entry point refers to, directly or through other top-level `const` lines (12.4) |
+| Input type | The record type that a call by record conforms its input value to, or absent when no input record exists (12.5) |
+| Call stage | Calling one entry point of a compiled program, positionally or by record (12.5) |
+
+### 12.2 Syntax
+
+The productions `Program`, `Top` and `Export` extend 2.1:
+
+```ebnf
+Program  = { Top } [ Expr [ ";" ] ] .
+Top      = Const | Export | TypeLine .
+Export   = "export" Const .
+```
+
+1. **`export` is contextual.** It is not a reserved word (`01-language.md` 2.4
+   item 3). At the start of a top-level line of a `Program`, where `const` and
+   `TypeLine` may stand, the word `export` begins an `Export` **exactly when
+   the next token is the word `const`**. Elsewhere `export` is an ordinary
+   name: `const export = 1; export`, `export(1)` and `export.a` remain valid
+   programs, and `export default 1` or `export const` inside a block or branch
+   stays `export-statement` (E18).
+2. **Optional result expression.** A `Program` may omit `Expr` (reaching end of
+   input directly after `{ Top }`) **only when `{ Top }` contains at least one
+   `Export`**. Without an `Export`, reaching end of input where `Expr` must
+   begin reports `unexpected-token` at end of input, as before. When `Expr` is
+   omitted, no trailing `;` may follow `{ Top }`: `export const f = (x: int) =>
+   x;;` reports `unexpected-token` at the second `;`.
+3. **Nodes.** Node 2 (`Const`) gains the boolean field `exported` (`true` for
+   an `Export`, `false` for a plain `Const`). Node 1 (`Program`)'s `result`
+   field may be absent. No node kind is added.
+4. **Spans.** The span of an exported `Const` runs from `export` to its `;`.
+   When a `Program` has no `result`, its span runs from its first token to the
+   `;` of its last top-level line.
+5. **Doc comments.** For an `export const` line, a doc comment (11.2) attaches
+   at the word `export`, not at the word `const`. A doc comment between
+   `export` and `const` is an ordinary comment and does not attach. The `Const`
+   node's `doc` holds the description attached to `export`.
+6. **Levels of nesting.** `export` opens no level (`01-language.md` 13.1).
+7. **Text that stays an error.**
+
+| Text | Core code | Span | With F8 |
+| --- | --- | --- | --- |
+| `export` followed by something other than `const` at the top level: `export default 1`, `export foo = 1` | `unexpected-token` | The token after `export` | `export-statement` at `export` (E18), except `export = 1` which stays `assignment` (E7 before E18) |
+| `export const` in a block or a branch: `{ const x = 1; export const a = () => x; a() }`, `if (c) { export const a = () => 1; a() } else { 0 }` | `unexpected-token` | `const` | `export-statement` at `export` (E18); note `{ export const a = 1; a }` starts a map literal (not a block) and stays `unexpected-token` at `const` |
+| `export const _ = x => x;` or `export const {a} = x => x;` | `unexpected-token` | `=>` | `lambda-in-pattern` (3.4 rule 9) |
+| `export const f: int = x => x;` | `unexpected-token` | `=>` | The same (2.5) |
+| `const a = 1;` or `type Foo = int;` with no `export` and no result | `unexpected-token` | End of input | The same |
+| `export const f = (x: int) => x;;` | `unexpected-token` | The second `;` | The same |
+
+### 12.3 Static rules and the checker
+
+#### Static rule `bad-export`
+
+`bad-export` is a static rule (`05-types.md` 22): it is reported in phase
+`check` in every compile, with or without the type rules (`NoCheck`).
+
+| Condition | Template | Span | Params |
+| --- | --- | --- | --- |
+| An `export const` line whose pattern is not a `NamePat` (or is `_`), or that carries a `const` annotation (`const x: T = ...`), or whose value is not a `Lambda` | `not-lambda` | The `Const` node | `name`: the bound name when the pattern is a `NamePat` other than `_`, else `"this line"` |
+| A parameter of an exported `const`-bound lambda has neither a program type (`type`) nor a function type (`fn`) annotation | `unannotated` | The `Param` node | `name`: the entry point's name; `param`: the parameter's name when its pattern is a `NamePat` other than `_`, else its 1-based position (`"1"`, `"2"`, ...) |
+| A parameter of an exported `const`-bound lambda has a function type (`fn`) annotation | `fn-parameter` | The `Param` node | `name`: the entry point's name; `param`: the parameter's name |
+| In a program that has at least one `export const` line, a top-level `const` line that is not marked `export` and whose pattern binds no name (`_`, `{}`, `[]`, `[_, _]`, etc.) | `binds-nothing` | The `Const` node | None |
+
+1. An `export const` line that fails `not-lambda` (such as `export const _ =
+   1;`) does not also report `binds-nothing`. Its value and pattern are still
+   walked by the other static rules (`undefined-name`, `duplicate-name`,
+   `shadows-namespace`, and so on).
+2. `binds-nothing` applies only at the top level of a program that has at least
+   one `export const` line. A `const _ = ...;` inside a block or branch of an
+   entry point or helper is allowed: that block runs when called.
+3. A parameter whose annotation has a static error (such as `undefined-name`
+   for an unknown type name) still carries an annotation and does not report
+   `bad-export` `unannotated`.
+4. An entry point with zero parameters (`export const ping = () => "pong";`)
+   satisfies the annotation rule: every parameter carries a type.
+5. **Static codes.** For `03-host.md` 3.10.8, 3.10.10 item 17 and 3.10.13, in
+   `suite/entry-points/` and `suite/messages-entry-points.json`, `bad-export`
+   joins the static codes of 3.1 item 11: `untagged-union`, `check-limit`,
+   `name-clash` and `bad-export`.
+
+#### Type checking
+
+1. **Checked once.** Every entry point whose parameters all carry program type
+   annotations — including one with zero parameters and no result annotation,
+   `export const ping = () => "pong";` — is **checked once** (3.4), where it is
+   written, under the top-level facts (empty), with its sites kept, even when
+   nothing in the program calls it. Its result type is its result annotation
+   when present, else its body's type. It counts as one check against
+   `05-types.md` 20.3 and its nesting against 20.2.
+2. **Still a `const`-bound lambda.** Other `const` lines, other entry points,
+   and the result expression may call an entry point by name or pass it to a
+   library entry, as any `const`-bound lambda checked once (3.4).
+3. **Program with no result expression.** When `Program.result` is absent, the
+   checker checks all type lines and `const` lines as usual and gives the
+   program's result type as `never`.
+4. **Expected result of the program.** Calling `Check` or `Compile` (checked or
+   with `NoCheck`) on a program with no result expression with an expected
+   result (`Expect`, `ExpectType`, `ExpectSchema` or `Condition`; in a case
+   file, `returns` or `returnsSchema`) fails with phase `declare`, code
+   `no-result` and no span. Invalid type text or schema in the option is still
+   `declare` `bad-type`.
+5. **Expected result of an entry point.** `Check` and `Compile` accept an
+   expected result type for each named entry point (in type text, as a `Type`,
+   or by JSON Schema with the options of F10 2.1; not `condition`).
+   - Invalid type text or schema in the option is `declare` `bad-type`.
+   - A name that is not an entry point of the program (not an exported
+     `const`-bound lambda, including a private `const` lambda or an unknown
+     name) is `declare` `bad-name`, in both checked and unchecked (`NoCheck`)
+     compiles.
+   - When checked, after the entry point is checked once (giving its result
+     type T), T is fitted through its form (`05-types.md` 15.1, allowing `any`
+     with a `dynamic` site as `returns` does) against the expected type at the
+     entry point's body (`lam.Body`), reporting `result-mismatch` (`result`,
+     `missing`, `extra`) at each place of failure. Passing the pair bound of
+     F17 12.5 reports `check-limit` `pairs` at `lam.Body`.
+   - When compiled with `NoCheck`, the option's type text and entry name are
+     still validated (`bad-type`, `bad-name`), and the fit is skipped.
+
+### 12.4 Needs and evaluation of an entry call
+
+This section extends `02-evaluation.md` for the Call stage.
+
+1. **Needs.** For an entry point `e`, its **direct references** are the
+   top-level `const` lines whose bound name(s) or `const`-bound lambda are
+   referred to (by lexical resolution, `01-language.md` 5) anywhere in `e`'s
+   lambda (its body, its parameter defaults, and defaults inside its parameter
+   patterns). For any top-level `const` line `k`, `k`'s direct references are
+   the top-level `const` lines referred to anywhere in `k`'s value (for a
+   lambda, its body and defaults) or defaults in `k`'s pattern. The **needs**
+   of `e` are the transitive closure of direct references starting from `e`
+   (excluding `e` itself).
+   - A `const` line whose pattern binds several names is needed when any of its
+     names is referred to.
+   - A shadowed local binding inside a block or lambda does not refer to a
+     top-level `const` line.
+   - Type lines and annotations are never evaluated and create no needs.
+   - Needs are determined purely from the source text, so every implementation
+     evaluates the exact same lines in the exact same order.
+2. **Evaluation order.** A call of entry point `e` executes as one bounded run
+   under the compiled program's environment limits:
+   1. Evaluate each top-level `const` line in `e`'s needs **that is not a
+      lambda**, in text order, as a program evaluates it (`02-evaluation.md`).
+      Evaluate no other top-level `const` line, no top-level lambda `const`
+      line (their definitions charge 0 steps), and not the result expression.
+   2. Charge **1 step** for calling the entry point, and add **1** to the depth
+      count (testing `depth + 1 > maxDepth`, which fails with `depth-exceeded`
+      if exceeded).
+   3. Bind the arguments to `e`'s parameters in parameter order, as a call by
+      name does (`01-language.md` 8.3): each supplied host argument is read
+      (`03-host.md` 3.4.4, 3.4.5); an omitted argument, or a `null` argument
+      for a parameter with a default, evaluates that default in parameter order
+      with earlier parameters in scope.
+   4. Evaluate `e`'s body. Its value is the call's value.
+   5. Subtract 1 from the depth count when `e` returns.
+3. **Trace.** The host's call of the entry point adds no entry to `trace` (F8
+   4.1): there is no `Call` node in the source text for it. Calls made inside
+   `e` or inside its needed lines add trace entries as usual.
+4. **Isolation.** Nothing is kept between calls. Each call evaluates `e`'s
+   needs again with its own limits, usage counters, variables and cancellation
+   signal. Several calls on one compiled program may run concurrently
+   (`03-host.md` 3.2.2).
+5. **Running a program with no result expression.** Calling `Run` or `Measure`
+   on a compiled program whose `result` is absent fails with phase `declare`,
+   code `no-result`, no span, and usage of 0 steps and 0 allocation units.
+
+### 12.5 The Call stage and the input record
+
+`03-host.md` 3.2.1 gains the fifth stage, **Call**:
+
+| Stage | Takes | Gives | Fails with a list of diagnostics of phase |
+| --- | --- | --- | --- |
+| Call | A runnable program, an entry point's name, arguments (positional list or one input record), a supply of variables, and a cancellation signal | A value, or diagnostics; and the usage (3.6.3) in both cases | `declare` (`bad-name`, `arity`, `no-input-record`), or `run` (argument `not-conforming` failures or a failure of the run) |
+
+#### The input record
+
+Every entry point has an **input type**, or none, determined from its parameter
+list:
+
+| The entry point has | Its input type |
+| --- | --- |
+| Exactly one parameter, whose resolved type (unfolding recursive references) is a record with no other alternative (not a tagged union, not nullable, not mixed; `map<T>` and a recursive record type `Node` qualify) | That parameter's type (keeping a recursive reference `Node` as written so `SchemaOf` writes `$defs`/`$ref`). The single object passed to a record call is that parameter's argument, even when the parameter's pattern is a destructuring pattern or `_` |
+| Any other list of parameters (0 parameters, 2 or more parameters, or 1 parameter whose type is not a single record alternative), where every parameter's pattern is a name other than `_` | An exact record (`rest = never`) with one field per parameter, keyed by the parameter's name, with the parameter's type, marked optional when the parameter has a default, and carrying the parameter's description (11.2) as the field's description. For 0 parameters, `{}` |
+| Any other list of parameters where at least one parameter's pattern is not a name (a destructuring pattern or `_`) | None (no input record) |
+
+#### Positional call
+
+Calling entry point `name` with positional argument list `args`:
+
+1. If `name` is not an entry point of the program: fail with phase `declare`,
+   code `bad-name`, no span, usage 0 steps / 0 units.
+2. Let `min` be the highest 1-based index of a parameter with no default (or 0
+   if every parameter has a default), and `max` be the number of parameters. If
+   `len(args) < min` or `len(args) > max`: fail with phase `declare`, code
+   `arity`, no span, usage 0 steps / 0 units.
+3. **Argument conformance.** For each `i` from `0` to `len(args) - 1` in order,
+   conform `args[i]` against `T_i` — where `T_i` is parameter `i`'s annotated
+   type, or `T_i | null` when parameter `i` has a default — using F8's
+   `ConformAll` (default step limit 1,000,000, default depth limit 200),
+   collecting at most **100** diagnostics across all arguments in order.
+   - Each `not-conforming` diagnostic has phase `run`, class `value`, no span,
+     empty trace, and its `path` prefixed with `i` (the 0-based integer index
+     of the argument).
+   - A limit diagnostic (`steps-exceeded` or `depth-exceeded`) has phase `run`,
+     class `limit`, no span, no path, empty trace, and stops further
+     conformance immediately.
+   - If any diagnostic is produced, end the call with those diagnostics and
+     usage 0 steps / 0 units.
+4. Otherwise evaluate the entry point by 12.4, with parameters `0..len(args)-1`
+   present and `len(args)..max-1` omitted.
+
+#### Call by record
+
+Calling entry point `name` with one input value `input`:
+
+1. If `name` is not an entry point of the program: fail with phase `declare`,
+   code `bad-name`, no span, usage 0 steps / 0 units.
+2. If the entry point has no input record: fail with phase `declare`, code
+   `no-input-record`, no span, usage 0 steps / 0 units.
+3. **Input conformance.** Conform `input` against the entry point's input type
+   using F8's `ConformAll` with maximum **100** (default step limit 1,000,000,
+   default depth limit 200). Each `not-conforming` diagnostic has phase `run`,
+   class `value`, no span, empty trace, and its `path` from `ConformAll`
+   directly; a limit diagnostic has class `limit` and no path. If any
+   diagnostic is produced, end the call with those diagnostics and usage 0
+   steps / 0 units.
+4. **Argument extraction.**
+   - Row 1 (single record parameter): one argument, `input`, present.
+   - Row 2 (exact record by parameter name): for each parameter `i` with name
+     `k`, if `input` has key `k`, pass its value as present; if key `k` is
+     absent from `input`, mark parameter `i` omitted (so its default runs).
+5. Evaluate the entry point by 12.4.
+
+#### Unchecked compiles
+
+Parameter annotations are resolved by the static rules (3.1), so an entry
+point's parameter types and input type are known even in a program compiled
+with `NoCheck`. Argument conformance (step 3 of positional call and call by
+record) runs in both checked and unchecked compiles.
+
+### 12.6 `Entries` and the binding surface
+
+Every binding offers `Entries` on a compiled `Program` (and on a `CheckResult`)
+returning one record per entry point in text order:
+
+| Field | Holds |
+| --- | --- |
+| `name` | The entry point's `const` name |
+| `doc` | The entry point's description (from the doc comment before `export`), or empty/null when none |
+| `params` | For each parameter, in written order: `name` (its name, or empty/null when its pattern is a destructuring pattern or `_`), `type` (its annotated `Type`), `doc` (its description, or empty/null when none), and `optional` (`true` when it has a default) |
+| `inputType` | Its input `Type` (12.5), or absent/null when it has no input record |
+| `resultType` | Its checked result `Type`, or absent/null for a program compiled with `NoCheck` |
+
+Every binding also offers:
+- Positional call (`call` and `callMeasure`, returning value, or value and
+  usage).
+- Call by record (`callRecord` and `callRecordMeasure`).
+- Per-entry expected result options on `Check` and `Compile`.
+
+### 12.7 Analysis (F2)
+
+1. An `export const` line is analyzed as a `const`-bound lambda (section 6):
+   its name is bound in its own body and defaults, and in later lines and the
+   result.
+2. A program with no result expression is never a literal (`literal` is null);
+   its `names`, `refs` and `calls` are collected from its top-level `const`
+   lines in order.
+
+### 12.8 Tools (F12)
+
+#### Formatter
+
+These rules add to F12 2.8 and section 7.1:
+
+| Node | Document |
+| --- | --- |
+| `Const` with `exported` true | `"export" sp` followed by the document of the `Const` (`"const" sp ...`) |
+| `Program` with no `result` | The top-level lines (type lines, `const` lines and `export const` lines in text order) separated by `H`, preserving blank lines (F12 2.9) and comments (F12 2.12), followed by `H` (one trailing line feed) |
+
+1. The word `export` is a kept token (F12 2.12 item 1): comments before
+   `export` or between `export` and `const` stay in place.
+2. Every formatting law of F12 2.2 holds for programs with `export const` and
+   programs with no result expression.
+
+#### Completion
+
+1. Completion repairs and analyzes programs with `export const` and programs
+   with no result expression by the rules of F12 3.3 and section 7.2.
+2. An exported `const`-bound lambda is in scope in its own body and in later
+   lines and the result as kind `lambda` (7.2 item 5).
+3. A hole in the name of an `export const` line has no context (empty list).
+4. A hole in an annotation of an `export const` line is in the `types` context.
+
+#### Hover
+
+1. Hovering on an `export const` entry point's name — at its declaration, at a
+   call, or as a lambda argument — follows 11.7, with `doc` equal to the
+   description attached to `export` (12.2 item 5), or null.
+2. Hovering on a parameter of an `export const` entry point follows 7.3 item 4
+   and 11.7.
+3. Hovering on the word `export` gives no hover (null).
+4. Hover works on programs with no result expression.
+
+### 12.9 Messages and codes
+
+#### `suite/messages-entry-points.json`
+
+This entry is added to `suite/messages-entry-points.json` (9.1):
+
+| Code | Phase | Template | Text | Params |
+| --- | --- | --- | --- | --- |
+| `bad-export` | `check` | `not-lambda` | `export marks a const-bound lambda; {name} is not one` | `name`: word |
+| | | `unannotated` | `parameter {param} of the entry point {name} needs a type` | `param`: word, `name`: word |
+| | | `fn-parameter` | `parameter {param} of the entry point {name} is a function, which a host cannot pass` | `param`: word, `name`: word |
+| | | `binds-nothing` | `a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line` | |
+
+With this slice, the check codes an implementation can report are 33 (Core's
+28, `never-conforms`, `untagged-union`, `name-clash`, `circular-type`,
+`bad-export`), with 90 check templates in all.
+
+#### Narrowed `parse` code
+
+The text of `export-statement` in `suite/messages-parse.json` changes in place
+(as 9.2 changed `type-annotation` and `type-declaration`):
+
+| Code | Template | Text |
+| --- | --- | --- |
+| `export-statement` | `default` | `export marks only a top-level const-bound lambda; write export const at the top level of a program` |
+
+The count of `parse` codes stays 62, with 103 templates.
+
+#### `declare` codes
+
+This slice adds two `declare` codes: `no-result` and `no-input-record`. Unknown
+entry point names use the existing `declare` code `bad-name`; wrong positional
+argument counts in the Call stage use phase `declare` with code `arity`. As
+with all `declare` diagnostics (`03-host.md` 3.7.2), their messages are not in
+the catalog.
+
+### 12.10 The cases
+
+#### Case fields
+
+These rows add to `03-host.md` 3.10.3:
+
+| Field | Holds | When absent |
+| --- | --- | --- |
+| `entry` | The name of the entry point to call, a string | The case runs the program's result expression (3.10.5) |
+| `args` | A JSON array of host values (supporting `{"$opaque": ...}`): positional arguments for `entry` | With `entry` and no `input`, an empty argument list `[]` |
+| `input` | One JSON host value (supporting `{"$opaque": ...}`): the input record for `entry` | Positional call |
+| `entryReturns` | An object mapping entry point names to expected result type texts (strings) | No per-entry expected result |
+
+1. Each of the four fields may appear in the header or in a case. `args` and
+   `input` count as one field for the header rule (`03-host.md` 3.10.2): a case
+   that gives either replaces the header's `args` or `input`.
+2. `args` or `input` without `entry`, or both `args` and `input` in one case,
+   makes the file invalid.
+3. None of these four fields may appear in a `conform`, `render`, `runner` or
+   F12 tools case.
+4. When `entry` is present, step 5 of `03-host.md` 3.10.5 always runs (calling
+   the entry point with `args` or `input`, instead of running the program's
+   result). Fixtures of `vars` and stub `result`s are still tested by F9 2.2;
+   `args` and `input` are not fixtures and are tested by the Call stage itself.
+5. In a case with `entry`, `"span": null` is allowed in an expected diagnostic
+   of phase `run` (for argument conformance failures, as F10 10.2 allows it for
+   a load).
+
+#### Result field `entries`
+
+This row adds to the result table of `03-host.md` 3.10.6:
+
+| Field of a result | Compared with | How |
+| --- | --- | --- |
+| `entries` | `Entries` of the checked program (12.6) | Exact length and order; each element compares the fields present |
+
+Each element of `expect.entries` is an object with:
+
+| Field | Required | Compared with |
+| --- | --- | --- |
+| `name` | Yes | Entry `name`, equal |
+| `doc` | No | Entry `doc` (`null` means no description), equal |
+| `params` | No | Exact list of `{name (string or null), type (type text, compared by structure), doc (optional string or null), optional (bool)}` |
+| `input` | No | Entry `inputType` (`null` means no input record; string compared by structure as `expect.type`) |
+| `inputSchema` | No | `SchemaOf(inputType)` (`null` means no input record or SchemaOf refusal; otherwise JSON data and the round-trip law of 11.8 item 2) |
+| `result` | No | Entry `resultType` (string compared by structure as `expect.type`) |
+
+1. A case with `expect.entries` is run once, checked (as `type` and `schema`
+   are). `entries` in an expected failure, or in a case with `"check": false`,
+   makes the file invalid.
+2. The difference is named `entries`. It stands after `schema` in the order of
+   `03-host.md` 3.10.8 item 2.
+
+#### Suite files
+
+| Path | Holds |
+| --- | --- |
+| `suite/entry-points/d2-syntax.json` | Grammar of `export const`, contextual `export`, optional result expression, narrowed `export-statement`, parse errors |
+| `suite/entry-points/d2-earlier.json` | The earlier text `export const a = 1; a` with slice D2's outcome (`bad-export`) |
+| `suite/entry-points/d2-static.json` | All four templates of `bad-export`, scope and shadowing with `export const`, static checking with `NoCheck` |
+| `suite/entry-points/d2-check.json` | Type checking of entry points (checked once, sites kept, zero-param entry points, `entryReturns`, `no-result`, `bad-name`) |
+| `suite/entry-points/d2-run.json` | The Call stage: positional and record calls, defaults, needs evaluation and order, unused lines skipped, steps/units/depth, traces, conformance failures, `no-result`, `no-input-record`, `bad-name`, `arity`, opaque arguments |
+| `suite/entry-points/d2-entries.json` | `Entries`: names, descriptions, parameters, input types, result types, and `SchemaOf(inputType)` with parameter and nested field descriptions |
+| `suite/entry-points/d2-analysis.json` | Analysis (F2) of programs with `export const` and programs with no result expression |
+| `suite/entry-points/tools-d2-format.json` | Formatter (F12) for `export const`, comments, and programs with no result expression |
+| `suite/entry-points/tools-d2-assist.json` | Completion and hover (F12) for `export const`, descriptions, and programs with no result expression |
+
+#### Earlier cases
+
+1. One case of `suite/errors/errors-core-texts.json` (`"core-run/parse-follow-on:
+   text a later package covers: export const a = 1; a"`) is replaced by
+   `suite/entry-points/d2-earlier.json` with slice D2's outcome (`bad-export`,
+   template `not-lambda`).
+2. `suite/messages-parse.json` (`export-statement`) and
+   `suite/errors/parse-targeted.json` (`export-statement: export default`)
+   carry the new `export-statement` template text of 12.9, and the catalog case
+   of `export-statement` uses `export default 1`.
+
+### 12.11 What this slice changes in earlier rules
+
+| Earlier rule | With this slice |
+| --- | --- |
+| `01-language.md` 3.1, 4.1, 4.3, 14.3; F16 2.1, 2.3 | `Export`, `Const.exported`, optional `Program.result`, `export` contextual word (12.2) |
+| `02-evaluation.md` | Needs and evaluation of an entry call (12.4) |
+| `03-host.md` 3.2.1, 3.7.3, 3.10, 3.11 | The Call stage, `Entries`, `no-result`, `no-input-record`, case fields and package order (12.5, 12.6, 12.10) |
+| `05-types.md` 16.2, 22; F16 3.1, 3.4 | `bad-export` static rule, entry points checked once, per-entry expected results (12.3) |
+| F2 3 | Analysis of `export const` and result-less programs (12.7) |
+| F8 2.7 E18, 3.1, 3.4 | Narrowed `export-statement`, new text, 90 check templates (12.2, 12.9) |
+| F12 2.8, 3 | Formatting, completion and hover for `export const` and result-less programs (12.8) |
+| F16 11.2, 11.7 | Doc comment attaches at `export`; `Entries` reads descriptions (12.2, 12.6, 12.8) |
+
+No other rule changes. A program with no `export const` has the type, sites,
 diagnostics, value and usage it has without this slice.

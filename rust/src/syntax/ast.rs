@@ -145,10 +145,12 @@ pub struct PatElem {
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeKind {
     /// Kind 1. `types` are the type lines of package F16, in the order of
-    /// the text (`f16-entry-points.md` 2.3); they are not nodes.
+    /// the text (`f16-entry-points.md` 2.3); they are not nodes. `result` may
+    /// be `None` when the program has at least one `export const` line
+    /// (`f16-entry-points.md` 12.2).
     Program {
         consts: Vec<NodeId>,
-        result: NodeId,
+        result: Option<NodeId>,
         types: Vec<TypeLine>,
     },
     /// Kind 2. `ty` is the annotation of package F16, or none.
@@ -158,6 +160,8 @@ pub enum NodeKind {
         ty: Option<Box<PType>>,
         /// F16 11.3: its description, or none.
         doc: Option<Arc<str>>,
+        /// F16 12.2: `true` for `export const`, `false` for plain `const`.
+        exported: bool,
     },
     /// 3
     Block { consts: Vec<NodeId>, result: NodeId },
@@ -641,7 +645,7 @@ impl Ast {
         let root = ast.push(
             NodeKind::Program {
                 consts: Vec::new(),
-                result: new_id[&top.0],
+                result: Some(new_id[&top.0]),
                 types: Vec::new(),
             },
             self.span(top),
@@ -660,8 +664,13 @@ fn node_ids(kind: &mut NodeKind, f: &mut dyn FnMut(&mut NodeId)) {
             consts,
             result,
             types: _,
+        } => {
+            consts.iter_mut().for_each(&mut *f);
+            if let Some(r) = result {
+                f(r);
+            }
         }
-        | NodeKind::Block { consts, result } => {
+        NodeKind::Block { consts, result } => {
             consts.iter_mut().for_each(&mut *f);
             f(result);
         }
@@ -670,6 +679,7 @@ fn node_ids(kind: &mut NodeKind, f: &mut dyn FnMut(&mut NodeId)) {
             value,
             ty: _,
             doc: _,
+            exported: _,
         } => {
             f(pattern);
             f(value);

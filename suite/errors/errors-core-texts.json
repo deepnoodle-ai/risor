@@ -4466,25 +4466,6 @@
   }
  },
  {
-  "name": "core-run/parse-follow-on: text a later package covers: export const a = 1; a",
-  "source": "export const a = 1; a",
-  "expect": {
-   "phase": "parse",
-   "diagnostics": [
-    {
-     "code": "export-statement",
-     "span": [
-      1,
-      1,
-      1,
-      7
-     ],
-     "message": "a program exports no name; its value is its last expression"
-    }
-   ]
-  }
- },
- {
   "name": "core-run/parse-follow-on: text a later package covers: [1].map(x => { x + 1 })",
   "source": "[1].map(x => { x + 1 })",
   "expect": {

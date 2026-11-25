@@ -428,7 +428,8 @@ Two things to record with track E:
   use (13.9). A recommendation (`18` 7.6); not in track E.
 
 **Track D2: `export const` entry points and the Call stage** (F16, second
-slice; `17` 3.3, 3.5).
+slice; `17` 3.3, 3.5). **Built (R399 to R406):** `spec/packages/f16-entry-points.md`
+12, and the cases `suite/entry-points/d2-*.json` and `tools-d2-*.json`.
 
 - `export const name = (p: T, q: U = d): R => e;`, and a program with no
   result when it has an export.
@@ -437,9 +438,9 @@ slice; `17` 3.3, 3.5).
   between calls. Calling by record.
 - An entry point has no `Fn` parameter: `bad-export`, since a host cannot
   pass a function (S3).
-- **A ruling to record:** beside an `export const`, a top-level `const` that
-  binds no name (`const _ = ...;`) is `bad-export`. No entry point can need
-  it, so it would be skipped in silence (`17` 3.3, 17-15).
+- Beside an `export const`, a top-level `const` that binds no name (`const _ =
+  ...;`) is `bad-export`. No entry point can need it, so it would be skipped in
+  silence (`17` 3.3, 17-15).
 - `export-statement` narrows, with a new text (`17` 3.1). The `declare` codes
   `no-result` and `no-input-record`.
 

@@ -15,7 +15,7 @@ import type { Token } from "../syntax/token.ts";
 
 /** The class of a token, for its colour. */
 export type TokenClass =
-  | "keyword" // a reserved word other than the constants; and `type` where it begins a type line (package F16)
+  | "keyword" // a reserved word other than the constants; and `type` or `export` where it begins a top-level declaration (package F16)
   | "constant" // true, false, null
   | "name" // a word that is not reserved
   | "function" // a word directly before `(`
@@ -153,6 +153,7 @@ function flatten(toks: Token[], base: number, out: ColourToken[]): void {
         else if (t.text === "true" || t.text === "false" || t.text === "null") cls = "constant";
         else if (isReserved(t.text)) cls = "keyword";
         else if (t.text === "type" && stack.length === 1 && depth === 0 && beginsTypeLine(all, i)) cls = "keyword";
+        else if (t.text === "export" && stack.length === 1 && depth === 0 && beginsExport(all, i)) cls = "keyword";
         else if (prev?.kind === "punct" && (prev.text === "." || prev.text === "?.")) cls = "property";
         else if (next?.kind === "punct" && next.text === "(") cls = "function";
         else cls = "name";
@@ -196,6 +197,17 @@ function beginsTypeLine(all: Token[], i: number): boolean {
   const eq = all[i + 2];
   if (prev !== undefined && !(prev.kind === "punct" && prev.text === ";")) return false;
   return name !== undefined && name.kind === "word" && /^[A-Z]/.test(name.text) && eq !== undefined && eq.kind === "punct" && eq.text === "=";
+}
+
+/**
+ * f16 12.2 item 1: the word `export` at index i of the top list begins an Export: it stands where a top-level
+ * line may begin (the start, or after a `;` at the top level), and the next token is the word `const`.
+ */
+function beginsExport(all: Token[], i: number): boolean {
+  const prev = all[i - 1];
+  const next = all[i + 1];
+  if (prev !== undefined && !(prev.kind === "punct" && prev.text === ";")) return false;
+  return next !== undefined && next.kind === "word" && next.text === "const";
 }
 
 /** The comments in a gap between tokens: each run of code points that is not white space. */

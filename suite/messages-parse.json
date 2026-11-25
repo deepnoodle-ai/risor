@@ -2698,12 +2698,12 @@
     "since": "3.0",
     "params": {},
     "templates": {
-      "default": "a program exports no name; its value is its last expression"
+      "default": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
     },
     "cases": [
       {
-        "name": "export-statement: export const",
-        "source": "export const a = 1; a",
+        "name": "export-statement: export default",
+        "source": "export default 1",
         "expect": {
           "phase": "parse",
           "diagnostics": [
@@ -2715,7 +2715,7 @@
                 1,
                 7
               ],
-              "message": "a program exports no name; its value is its last expression"
+              "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
             }
           ]
         }

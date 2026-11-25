@@ -667,7 +667,7 @@ export const CATALOG: CatalogEntry[] = [
     "caught": null,
     "params": {},
     "templates": {
-      "default": "a program exports no name; its value is its last expression"
+      "default": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
     }
   },
   {
@@ -1308,6 +1308,21 @@ export const CATALOG: CatalogEntry[] = [
     },
     "templates": {
       "default": "{name} is a type of the environment, and a type line cannot declare it again"
+    }
+  },
+  {
+    "code": "bad-export",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "not-lambda": "export marks a const-bound lambda; {name} is not one",
+      "unannotated": "parameter {param} of the entry point {name} needs a type",
+      "fn-parameter": "parameter {param} of the entry point {name} is a function, which a host cannot pass",
+      "binds-nothing": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
     }
   },
   {

@@ -4,9 +4,10 @@
 use risor::{
     conform, conform_all, exact_record_type, format, join, json_text, list_type, literal_type,
     load_value, map_type, nullable, opaque_type_named, parse, parse_template, record_type,
-    render_line, tagged_union_type, truthy, type_from_schema, union_type, CompileOptions, Data,
-    Env, Expected, FieldType, LoadOptions, NoVars, OpaqueRef, Pos, SchemaOptions, TemplateMode,
-    Type, TypeKind, Value,
+    render_line, schema_of, tagged_union_type, truthy, type_from_schema, union_type,
+    CompileOptions, Data, Entry, EntryParam, Env, Expected, FieldType, Host, LoadOptions, NoVars,
+    OpaqueRef, PathStep, Phase, Pos, RunOptions, SchemaOptions, TemplateMode, Type, TypeKind,
+    Value,
 };
 use std::collections::BTreeMap;
 
@@ -310,4 +311,218 @@ fn schema_of_and_documentation() {
         )
         .unwrap();
     assert_eq!(h.doc.as_deref(), Some("A session token."));
+}
+
+#[test]
+fn export_const_entries_and_call_stage() {
+    let env = Env::builder().var("tax", "float").build().unwrap();
+    let src = r#"
+type Units = "metric" | "imperial";
+const mult = 1 + tax;
+/** Compute total price. */
+export const price = (
+  /** Base amount. */
+  base: float,
+  /** Currency units. */
+  units: Units = "metric",
+): {total: float, units: string} => ({total: base * mult, units});
+/** Sum a record. */
+export const sumRec = (q: {a: int, b: int}) => q.a + q.b;
+export const noRec = (_: int) => 42;
+"#;
+    let parsed = parse(src).unwrap();
+    assert!(!parsed.has_result());
+
+    // CheckResult and Program both expose Entries in text order.
+    let opts = CompileOptions::default()
+        .expect_entry("price", "{total: float, units: string}")
+        .expect_entry_type("sumRec", &Type::INT)
+        .expect_entry_schema("noRec", r#"{"type": "integer"}"#, SchemaOptions::default())
+        .unwrap();
+    let cr = env.check_with(&parsed, &opts).unwrap();
+    assert_eq!(cr.ty, Type::NEVER);
+    assert_eq!(cr.entries.len(), 3);
+    assert_eq!(
+        cr.entries[0],
+        Entry {
+            name: "price".into(),
+            doc: Some("Compute total price.".into()),
+            params: vec![
+                EntryParam {
+                    name: Some("base".into()),
+                    ty: Type::FLOAT,
+                    doc: Some("Base amount.".into()),
+                    optional: false,
+                },
+                EntryParam {
+                    name: Some("units".into()),
+                    ty: literal_type(&["metric", "imperial"]),
+                    doc: Some("Currency units.".into()),
+                    optional: true,
+                },
+            ],
+            input_type: Some(exact_record_type(&[
+                field("base", Type::FLOAT),
+                FieldType {
+                    key: "units".into(),
+                    ty: literal_type(&["metric", "imperial"]),
+                    optional: true,
+                },
+            ])),
+            result_type: Some(exact_record_type(&[
+                field("total", Type::FLOAT),
+                field("units", Type::STRING),
+            ])),
+        }
+    );
+    // SchemaOf(input_type) carries parameter descriptions.
+    let price_schema = schema_of(cr.entries[0].input_type.as_ref().unwrap()).unwrap();
+    assert!(price_schema.contains(r#""description":"Base amount.""#));
+    assert!(price_schema.contains(r#""description":"Currency units.""#));
+    assert!(cr.entries[2].input_type.is_none());
+
+    let p = env.compile(&parsed, opts).unwrap();
+    assert!(!p.has_result());
+    assert_eq!(p.entries(), cr.entries.as_slice());
+
+    // Running a result-less program fails declare `no-result` with 0 steps/units.
+    let (res, usage) = p.measure(&NoVars);
+    let err = res.unwrap_err();
+    assert_eq!(err.phase, Phase::Declare);
+    assert_eq!(err.first().code, "no-result");
+    assert_eq!(usage.steps, 0);
+    assert_eq!(usage.allocated, 0);
+
+    // Positional call and call_measure with host vars.
+    let mut vars = BTreeMap::new();
+    vars.insert("tax".to_string(), Data::Float(0.25));
+    let (v, usage) = p.call_measure("price", &[&100.0f64], &vars);
+    assert_eq!(
+        json_text(&v.unwrap()).unwrap(),
+        r#"{"total":125,"units":"metric"}"#
+    );
+    assert!(usage.steps > 0);
+
+    // Call by record (Row 2 with omitted optional field, and Row 1 single record).
+    let mut rec_input = BTreeMap::new();
+    rec_input.insert("base".to_string(), Data::Float(80.0));
+    let rec_input = Data::Map(rec_input);
+    let v = p.call_record("price", &rec_input, &vars).unwrap();
+    assert_eq!(json_text(&v).unwrap(), r#"{"total":100,"units":"metric"}"#);
+
+    let mut sum_input = BTreeMap::new();
+    sum_input.insert("a".to_string(), Data::Int(10));
+    sum_input.insert("b".to_string(), Data::Int(32));
+    let sum_input = Data::Map(sum_input);
+    let v = p.call_record("sumRec", &sum_input, &NoVars).unwrap();
+    assert_eq!(json_text(&v).unwrap(), "42");
+
+    // Row 3 fails declare `no-input-record`.
+    let e = p
+        .call_record("noRec", &Data::Map(BTreeMap::new()), &NoVars)
+        .unwrap_err();
+    assert_eq!(e.phase, Phase::Declare);
+    assert_eq!(e.first().code, "no-input-record");
+
+    // Positional conformance error prefixes path with 0-based index and uses 0 steps/units.
+    let (res, usage) = p.call_measure("price", &[&"bad", &"wrong"], &vars);
+    let err = res.unwrap_err();
+    assert_eq!(err.phase, Phase::Run);
+    assert_eq!(err.diagnostics.len(), 2);
+    assert_eq!(err.diagnostics[0].code, "not-conforming");
+    assert_eq!(err.diagnostics[0].span, None);
+    assert_eq!(
+        err.diagnostics[0].path.as_deref(),
+        Some(&vec![PathStep::Index(0)])
+    );
+    assert_eq!(
+        err.diagnostics[1].path.as_deref(),
+        Some(&vec![PathStep::Index(1)])
+    );
+    assert_eq!(usage.steps, 0);
+    assert_eq!(usage.allocated, 0);
+
+    // Concurrent calls on one compiled program are isolated.
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for i in 1..=4i64 {
+            let p = &p;
+            handles.push(s.spawn(move || {
+                let mut v = BTreeMap::new();
+                v.insert("tax".to_string(), Data::Float(0.1 * i as f64));
+                let arg = Data::Float(10.0);
+                let out = p
+                    .call_with("price", &[&arg as &dyn Host], &v, RunOptions::default())
+                    .unwrap();
+                json_text(&out).unwrap()
+            }));
+        }
+        let got: Vec<String> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        assert_eq!(
+            got,
+            vec![
+                r#"{"total":11,"units":"metric"}"#,
+                r#"{"total":12,"units":"metric"}"#,
+                r#"{"total":13,"units":"metric"}"#,
+                r#"{"total":14,"units":"metric"}"#,
+            ]
+        );
+    });
+
+    // Unchecked compile exposes Entries with result_type == None and still conforms arguments.
+    let unchecked = env
+        .compile(
+            &parsed,
+            CompileOptions {
+                check: false,
+                ..CompileOptions::default()
+            }
+            .expect_entry("price", "string"),
+        )
+        .unwrap();
+    assert!(unchecked.entries()[0].result_type.is_none());
+    let e = unchecked.call("price", &[&"nope"], &vars).unwrap_err();
+    assert_eq!(e.phase, Phase::Run);
+    assert_eq!(e.first().code, "not-conforming");
+
+    // `condition` is rejected for an entry point expected result.
+    let mut bad_opts = CompileOptions::default();
+    bad_opts
+        .entry_expected
+        .insert("price".into(), Expected::Condition);
+    let e = env.check_with(&parsed, &bad_opts).unwrap_err();
+    assert_eq!(e.phase, Phase::Declare);
+    assert_eq!(e.first().code, "bad-type");
+}
+
+#[test]
+fn export_const_conformance_caps_at_100_diagnostics() {
+    let parsed = parse("export const f = (xs: int[], ys: int[]) => len(xs) + len(ys);").unwrap();
+    let p = Env::default()
+        .compile(&parsed, CompileOptions::default())
+        .unwrap();
+    let bad_xs = Data::List((0..60).map(|_| Data::Str("a".into())).collect());
+    let bad_ys = Data::List((0..60).map(|_| Data::Str("b".into())).collect());
+    let (res, usage) = p.call_measure("f", &[&bad_xs, &bad_ys], &NoVars);
+    let err = res.unwrap_err();
+    assert_eq!(err.phase, Phase::Run);
+    assert_eq!(err.diagnostics.len(), 100);
+    assert_eq!(
+        err.diagnostics[0].path.as_deref(),
+        Some(&vec![PathStep::Index(0), PathStep::Index(0)])
+    );
+    assert_eq!(
+        err.diagnostics[59].path.as_deref(),
+        Some(&vec![PathStep::Index(0), PathStep::Index(59)])
+    );
+    assert_eq!(
+        err.diagnostics[60].path.as_deref(),
+        Some(&vec![PathStep::Index(1), PathStep::Index(0)])
+    );
+    assert_eq!(
+        err.diagnostics[99].path.as_deref(),
+        Some(&vec![PathStep::Index(1), PathStep::Index(39)])
+    );
+    assert_eq!(usage.steps, 0);
+    assert_eq!(usage.allocated, 0);
 }

@@ -780,11 +780,12 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 			info := &lamInfo{facts: fs, base: c.base, lamDepth: c.lamDepth, maxRel: maxRel(lam)}
 			c.lambdas[lam] = info
 			base := lam.Depth() - c.lamDepth + c.base
+			isExportEntry := k.Exported && validExportParams(lam)
 			switch {
-			case checkedOnce(lam):
+			case checkedOnce(lam) || isExportEntry:
 				// Checked once, where it is written, with its parameters at
-				// their annotations; its sites are kept (F16 3.4). The check
-				// counts against the limits of 20.2 and 20.3.
+				// their annotations; its sites are kept (F16 3.4, 12.3). The
+				// check counts against the limits of 20.2 and 20.3.
 				info.once = true
 				info.result = types.Never
 				if lam.Result != nil {
@@ -803,6 +804,15 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 					c.bindArgs(lam, nil, nil, fs)
 					info.result = c.resultOf(lam, c.synth(lam.Body, fs), formAnnot)
 				})
+				if isExportEntry {
+					c.entryTypes[np.Name] = info.result
+					if want, ok := c.entryExp[np.Name]; ok {
+						func() {
+							defer c.catchPairs(lam.Body)
+							c.fitForm(lam.Body, info.result, want, formResult)
+						}()
+					}
+				}
 			case !c.used[lam]:
 				// No use: checked once, parameters any, sites dropped (13.9).
 				// An annotated parameter has its annotation, and a fit that
@@ -833,6 +843,17 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 		}
 	}
 	c.bindPattern(k.Pattern, v, k.Value.Span(), fs)
+}
+
+// validExportParams reports whether every parameter of lam has a program
+// type annotation and none has a function type (F16 12.3).
+func validExportParams(l *syntax.Lambda) bool {
+	for _, p := range l.Params {
+		if p.Type == nil || p.Fn != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // maxRel is d(L) of 20.2: the greatest number of levels open at once

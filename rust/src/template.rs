@@ -273,7 +273,7 @@ impl Template {
         let root = ast.push(
             NodeKind::Program {
                 consts: Vec::new(),
-                result,
+                result: Some(result),
                 types: Vec::new(),
             },
             span,

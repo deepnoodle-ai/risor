@@ -8,8 +8,8 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { buildEnv, childEnv, conform, conformAll, conformDiagnostic, execute, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
-import type { Analysis } from "../host/api.ts";
+import { buildEnv, childEnv, conform, conformAll, conformDiagnostic, execute, executeEntry, executeEntryRecord, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
+import type { Analysis, Entry } from "../host/api.ts";
 import { lineSpanOf } from "../host/error.ts";
 import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedType } from "../host/api.ts";
@@ -99,8 +99,8 @@ export interface RunnerOptions {
 }
 
 export type Outcome =
-  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[] }
-  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[]; checked?: HostType };
+  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[]; entries?: readonly Entry[] }
+  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[]; checked?: HostType; entries?: readonly Entry[] };
 
 /** An opaque value of a case file (03 3.10.3 item 7): one object for each type and id. */
 export class OpaqueRef {
@@ -172,9 +172,10 @@ function needsRun(c: Case): boolean {
   const ex = c.expect;
   return (
     c.load === true ||
+    c.entry !== undefined ||
     c.vars !== undefined ||
     (ex.kind === "result" && (ex.value !== undefined || ex.json !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
-    (ex.kind === "failure" && ex.phase === "run")
+    (ex.kind === "failure" && (ex.phase === "run" || (ex.phase === "declare" && ex.diagnostics.some((d) => d.code === "no-result" || d.code === "no-input-record" || d.code === "arity" || d.code === "bad-name"))))
   );
 }
 
@@ -326,8 +327,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
     // 03 3.11: a file that is run checked only is not run with the static rules alone.
     if (opts.checkOnly === true) return v("skip", { reason: "run checked only" });
     if (c.load === true) return v("skip", { reason: "a load is run once, checked" });
-    // 03 3.10.8 item 5: a runner with no type checker; f16 11.8 item 1: `schema` too.
-    if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined)) {
+    // 03 3.10.8 item 5: a runner with no type checker; f16 11.8 item 1: `schema`; f16 12.10: `entries`.
+    if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined || ex.entries !== undefined)) {
       return v("skip", { reason: "needs the type checker (type or sites)" });
     }
     if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
@@ -341,7 +342,7 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
     opts.checkOnly === true ||
     // f10 10.2 item 3: a load case is run once, checked.
     c.load === true ||
-    (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined)) ||
+    (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined || ex.schema !== undefined || ex.entries !== undefined)) ||
     (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code)));
   const runs: { checker: boolean; allClasses: boolean }[] =
     c.check === false ? [{ checker: false, allClasses: true }]
@@ -390,7 +391,7 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
 }
 
 /** The order of the names of differences (03 3.10.8 item 2, with the names packages add). */
-const FIELD_ORDER = ["outcome", "analysis", "description", "type", "schema", "sites", "value", "json", "truthy", "diagnostics", "rendered", "steps", "allocated", "functions"];
+const FIELD_ORDER = ["outcome", "analysis", "description", "type", "schema", "entries", "sites", "value", "json", "truthy", "diagnostics", "rendered", "steps", "allocated", "functions"];
 
 function fieldRank(f: string): number {
   const i = FIELD_ORDER.indexOf(f);
@@ -463,8 +464,6 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     };
     // 03 3.10.9: every case runs in a child of the base environment; each limit given replaces the base's.
     env = base === undefined ? buildEnv(options) : childEnv(base, { ...options, opaqueNames: c.opaque ?? [], limits: limits === undefined ? undefined : { ...be!.limits, ...limits } });
-    // The expected result is declared type text, resolved in every compile (03 3.3.1).
-    if (!checker && c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
     // f10 10.1: the expected result by schema.
     const expected: Expectation | undefined = c.returnsSchema !== undefined ? { schema: c.returnsSchema.schema, options: c.returnsSchema.options as SchemaOption[] | undefined } : c.returns;
     // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
@@ -474,7 +473,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
       if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
       input = new Expr(t.template.source, templateProgram(t.template, c.template));
     }
-    compiled = tryCompile(env, input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined }, sourceLimit);
+    compiled = tryCompile(env, input, { check: checker, expected, entryExpected: c.entryReturns }, sourceLimit);
     if (c.load === true) loadType = env.expectedType(expected!);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
@@ -484,8 +483,13 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
   const prog = compiled.program;
-  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, checked: prog.checkResult?.type, sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })) };
-  // Step 5: run.
+  const typeInfo = {
+    type: prog.checkResult?.type.toString() ?? null,
+    checked: prog.checkResult?.type,
+    sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })),
+    entries: prog.entries(),
+  };
+  // Step 5: run (or Call stage when `entry` is set, f16 12.10 item 4).
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
   if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
   // f09 2.2: the fixture test, between steps 4 and 5.
@@ -494,7 +498,20 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     if (f !== null) return { ...done({ kind: "result", ran: false }), fixtureTested: true, fixture: f };
   }
   const vars = c.vars ?? {};
-  const o = execute(compiled.program, (name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : ctx.vars?.(name)));
+  const varFn = (name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : ctx.vars?.(name));
+  if (c.entry !== undefined) {
+    const o =
+      c.input !== undefined
+        ? executeEntryRecord(compiled.program, c.entry, hostValue(c.input.value), varFn)
+        : executeEntry(compiled.program, c.entry, (c.args ?? []).map(hostValue), varFn);
+    if (o.ok) return { ...done({ kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
+    const phase = o.diagnostics[0].phase;
+    return {
+      ...done({ kind: "failure", phase, diagnostics: o.diagnostics, source: compiled.program.source, usage: phase === "run" ? o.usage : undefined, ...typeInfo }),
+      fixtureTested: testFixtures,
+    };
+  }
+  const o = execute(compiled.program, varFn);
   // f10 10.2 item 4: step 5a, the conformance function on the value of a load, with a maximum of 1.
   if (o.ok && loadType !== null) {
     const fs = conformAllWalk(o.value, loadType, env.classifier, 1);
@@ -508,7 +525,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     ...done(
       o.ok
         ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
-        : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage, ...typeInfo },
+        : { kind: "failure", phase: o.diagnostic.phase, diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.diagnostic.phase === "run" ? o.usage : undefined, ...typeInfo },
     ),
     fixtureTested: testFixtures,
   };
@@ -639,7 +656,7 @@ function diagData(d: Diagnostic, columns: string[], source: Source | undefined):
 
 /** The diagnostics of a failure written with these columns: the first for parse and declare (f09 4.4). */
 function diagsData(o: Extract<Outcome, { kind: "failure" }>, columns: string[] | null): Json[] {
-  const list = o.phase === "parse" || o.phase === "declare" || o.phase === "run" ? o.diagnostics.slice(0, 1) : o.diagnostics;
+  const list = o.phase === "parse" || o.phase === "declare" ? o.diagnostics.slice(0, 1) : o.diagnostics;
   const cols = columns ?? COLUMNS[o.phase].filter((c) => c !== "trace");
   return list.map((d) => diagData(d, cols, o.source));
 }
@@ -688,6 +705,10 @@ function withForms(c: Case, o: Outcome, d: Difference, checked: boolean): Differ
       break;
     case "schema":
       e = raw("schema");
+      f = jsonForm((d.found ?? null) as Json);
+      break;
+    case "entries":
+      e = raw("entries");
       f = jsonForm((d.found ?? null) as Json);
       break;
     case "sites":
@@ -925,6 +946,62 @@ function compare(c: Case, o: Outcome): Difference[] {
     if (ex.schema !== undefined) {
       const r = schemaLaw(o.checked, ex.schema.value);
       if (!r.ok) d.push({ field: "schema", expected: ex.schema.value, found: r.found });
+    }
+    if (ex.entries !== undefined) {
+      const got = o.entries ?? [];
+      const typeMatches = (wantText: string, foundType: HostType | null): boolean => {
+        if (foundType === null || CURRENT_ENV === null) return false;
+        try {
+          const atoms = new Map<string, Ref>();
+          return typeEqual(CURRENT_ENV.typeOfText(wantText, atoms), CURRENT_ENV.typeOfText(foundType.toString(), atoms));
+        } catch {
+          return false;
+        }
+      };
+      let same = got.length === ex.entries.length;
+      if (same) {
+        for (let i = 0; i < ex.entries.length; i++) {
+          const w = ex.entries[i];
+          const g = got[i];
+          if (w.name !== g.name) { same = false; break; }
+          if (w.doc !== undefined && w.doc !== g.doc) { same = false; break; }
+          if (w.params !== undefined) {
+            if (g.params.length !== w.params.length) { same = false; break; }
+            for (let j = 0; j < w.params.length; j++) {
+              const wp = w.params[j];
+              const gp = g.params[j];
+              if (wp.name !== gp.name || wp.optional !== gp.optional || (wp.doc !== undefined && wp.doc !== gp.doc) || !typeMatches(wp.type, gp.type)) {
+                same = false;
+                break;
+              }
+            }
+            if (!same) break;
+          }
+          if (w.input !== undefined) {
+            if (w.input === null ? g.inputType !== null : !typeMatches(w.input, g.inputType)) { same = false; break; }
+          }
+          if (w.inputSchema !== undefined) {
+            if (g.inputType === null) {
+              if (w.inputSchema.value !== null) { same = false; break; }
+            } else {
+              const r = schemaLaw(g.inputType, w.inputSchema.value);
+              if (!r.ok) { same = false; break; }
+            }
+          }
+          if (w.result !== undefined && !typeMatches(w.result, g.resultType)) { same = false; break; }
+        }
+      }
+      if (!same) {
+        const foundEntries = got.map((g) => ({
+          name: g.name,
+          doc: g.doc,
+          params: g.params.map((p) => ({ name: p.name, type: p.type.toString(), doc: p.doc, optional: p.optional })),
+          input: g.inputType?.toString() ?? null,
+          inputSchema: g.inputType === null ? null : schemaFound(g.inputType).found,
+          result: g.resultType?.toString() ?? null,
+        }));
+        d.push({ field: "entries", expected: ex.entries, found: foundEntries });
+      }
     }
     if (ex.sites !== undefined) {
       const found = o.sites ?? [];

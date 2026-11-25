@@ -1407,14 +1407,16 @@ impl<'a> B<'a> {
                 types,
             } => {
                 // F16 7.1: the type lines among the `const` lines, in the
-                // order of the text.
+                // order of the text. F16 12.8: `result` may be absent.
                 let mut elems: Vec<(Range, Result<NodeId, &TypeLine>)> = consts
                     .iter()
                     .map(|&c| (self.outer(c), Ok(c)))
                     .chain(types.iter().map(|t| (t.span, Err(t))))
                     .collect();
                 elems.sort_by_key(|(r, _)| r.start);
-                elems.push((self.outer(*result), Ok(*result)));
+                if let Some(r) = result {
+                    elems.push((self.outer(*r), Ok(*r)));
+                }
                 let mut v = Vec::new();
                 for (k, (outer, e)) in elems.into_iter().enumerate() {
                     if k > 0 && self.blank_before(outer) {
@@ -1433,12 +1435,28 @@ impl<'a> B<'a> {
                 self.list(v)
             }
             NodeKind::Const {
-                pattern, value, ty, ..
+                pattern,
+                value,
+                ty,
+                exported,
+                ..
             } => {
-                let c = self.tk_at(span.start);
+                let mut v = Vec::new();
+                let ci = if *exported {
+                    // F16 12.8: `export` is a kept token directly before `const`.
+                    let ei = self.ti(span.start);
+                    let exp = self.tk(ei);
+                    let s0 = self.sp();
+                    v.push(exp);
+                    v.push(s0);
+                    ei + 1
+                } else {
+                    self.ti(span.start)
+                };
+                let c = self.tk(ci);
                 let s1 = self.sp();
                 let p = self.pattern(*pattern);
-                let mut v = vec![c, s1, p];
+                v.extend([c, s1, p]);
                 // F16 7.1: `":" sp type` after the pattern.
                 if let Some(t) = ty {
                     v.push(self.annotation(t));
@@ -2858,16 +2876,37 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 for (_, l) in lines {
                     let _ = write!(out, " {l}");
                 }
+                if result.is_none() {
+                    out.push_str(" nores");
+                }
                 kids.extend(consts);
-                kids.push(*result);
+                if let Some(r) = result {
+                    kids.push(*r);
+                }
             }
-            NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+            NodeKind::Program { consts, result, .. } => {
+                if result.is_none() {
+                    out.push_str(" nores");
+                }
+                kids.extend(consts);
+                if let Some(r) = result {
+                    kids.push(*r);
+                }
+            }
+            NodeKind::Block { consts, result } => {
                 kids.extend(consts);
                 kids.push(*result);
             }
             NodeKind::Const {
-                pattern, value, ty, ..
+                pattern,
+                value,
+                ty,
+                exported,
+                ..
             } => {
+                if *exported {
+                    out.push_str(" export");
+                }
                 if let Some(t) = ty {
                     let _ = write!(out, " :{}", ptype_canon(t));
                 }

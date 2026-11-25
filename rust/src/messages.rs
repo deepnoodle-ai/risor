@@ -346,13 +346,13 @@ mod tests {
             (es.len(), es.iter().map(|e| e.templates.len()).sum())
         };
         assert_eq!(of("parse"), (62, 103));
-        assert_eq!(of("check"), (32, 86));
+        assert_eq!(of("check"), (33, 90));
         assert_eq!(
             c.entries
                 .iter()
                 .filter(|e| matches!(e.phase.as_str(), "run" | "parse" | "check"))
                 .count(),
-            113
+            114
         );
         let fix = "x".repeat(100);
         let m = build(
@@ -364,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn the_check_catalog_has_32_codes_and_81_templates() {
+    fn the_check_catalog_has_33_codes_and_90_templates() {
         let count = |text: &str| {
             let d = json::parse(text).expect("valid JSON");
             let es = d.as_arr().unwrap_or_default().to_vec();
@@ -380,13 +380,14 @@ mod tests {
         };
         assert_eq!(count(CHECK_SOURCE), (30, 72));
         assert_eq!(count(PARSE_SOURCE), (60, 99));
-        assert_eq!(count(ENTRY_POINTS_SOURCE), (1, 1));
+        assert_eq!(count(ENTRY_POINTS_SOURCE), (2, 5));
         assert_eq!(count(RECURSION_SOURCE), (6, 8));
         let c = catalog();
         let check: Vec<_> = c.entries.iter().filter(|e| e.phase == "check").collect();
-        assert_eq!(check.len(), 32);
-        // F19 adds five templates (`f19-author-feedback.md` 7 item 1).
-        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 86);
+        assert_eq!(check.len(), 33);
+        // F19 adds five templates (`f19-author-feedback.md` 7 item 1);
+        // F16 slice D2 adds `bad-export` with four (`f16-entry-points.md` 12.9).
+        assert_eq!(check.iter().map(|e| e.templates.len()).sum::<usize>(), 90);
         assert_eq!(
             build("circular-type", "direct", &[("name", "Loop".into())]),
             "Loop refers to itself outside any list, map or record"

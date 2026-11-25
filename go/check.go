@@ -45,6 +45,24 @@ func ExpectSchema(schema any, opts ...SchemaOption) CheckOption {
 // TypeFromSchema or Env.ParseType.
 func ExpectType(t Type) CheckOption { return expectTypeOption{t: t} }
 
+// ExpectEntry states the expected result type of the named entry point, in
+// type text (package F16 slice D2, 12.3).
+func ExpectEntry(name, typeText string) CheckOption {
+	return expectEntryOption{name: name, text: typeText}
+}
+
+// ExpectEntryType states the expected result type of the named entry point
+// as a Type (F16 12.3).
+func ExpectEntryType(name string, t Type) CheckOption {
+	return expectEntryTypeOption{name: name, t: t}
+}
+
+// ExpectEntrySchema states the expected result type of the named entry
+// point by JSON Schema, with the options of F10 2.1 (F16 12.3).
+func ExpectEntrySchema(name string, schema any, opts ...SchemaOption) CheckOption {
+	return expectEntrySchemaOption{name: name, schema: schema, opts: opts}
+}
+
 type expectSchemaOption struct {
 	schema any
 	opts   []SchemaOption
@@ -55,6 +73,25 @@ func (expectSchemaOption) checkOption() {}
 type expectTypeOption struct{ t Type }
 
 func (expectTypeOption) checkOption() {}
+
+type expectEntryOption struct{ name, text string }
+
+func (expectEntryOption) checkOption() {}
+
+type expectEntryTypeOption struct {
+	name string
+	t    Type
+}
+
+func (expectEntryTypeOption) checkOption() {}
+
+type expectEntrySchemaOption struct {
+	name   string
+	schema any
+	opts   []SchemaOption
+}
+
+func (expectEntrySchemaOption) checkOption() {}
 
 // resultSchemaType maps a schema given as the expected result (F10 2.1).
 func resultSchemaType(schema any, opts []SchemaOption) (*types.Type, error) {
@@ -84,10 +121,14 @@ type Site struct {
 // CheckResult is what a check gives for a program that checks.
 type CheckResult struct {
 	// Type is the result type, the checker's own. Its String method prints
-	// it by 05-types.md 3.9.
+	// it by 05-types.md 3.9. For a program with no result expression (F16
+	// 12.3), it is never.
 	Type Type
 	// Sites are the places where the program can still fail on a value.
 	Sites []Site
+	// Entries are the program's exported entry points, in text order
+	// (package F16 slice D2, 12.6).
+	Entries []Entry
 }
 
 // typeEnv converts the type text of the environment's declarations into
@@ -295,6 +336,39 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 					Message: "the expected result: " + p}}}
 			}
 			exp = check.Expect{Kind: check.ExpectType, Type: o.t.t}
+		case expectEntryOption:
+			tt, err := typetext.ParseType(o.text)
+			var t *types.Type
+			if err == nil {
+				t, err = types.FromTextIn(tt, e.scope(), false)
+			}
+			if err != nil {
+				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
+					Message: fmt.Sprintf("the expected result of entry point %s: %v", o.name, err)}}}
+			}
+			if exp.Entries == nil {
+				exp.Entries = map[string]*types.Type{}
+			}
+			exp.Entries[o.name] = t
+		case expectEntrySchemaOption:
+			t, err := resultSchemaType(o.schema, o.opts)
+			if err != nil {
+				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
+					Message: fmt.Sprintf("the expected result of entry point %s: %v", o.name, err)}}}
+			}
+			if exp.Entries == nil {
+				exp.Entries = map[string]*types.Type{}
+			}
+			exp.Entries[o.name] = t
+		case expectEntryTypeOption:
+			if p := o.t.problem(); p != "" {
+				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
+					Message: fmt.Sprintf("the expected result of entry point %s: %s", o.name, p)}}}
+			}
+			if exp.Entries == nil {
+				exp.Entries = map[string]*types.Type{}
+			}
+			exp.Entries[o.name] = o.t.t
 		}
 	}
 	return exp, checked, nil
@@ -323,6 +397,35 @@ func (e *Env) analyze(x *Expr, names *static.Names, varNames []string, opts []Ch
 	exp, checked, err := e.expected(opts)
 	if err != nil {
 		return nil, nil, err
+	}
+	if exp.Kind != check.ExpectNone && x.tree.Result == nil {
+		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}}}
+	}
+	if len(exp.Entries) > 0 {
+		known := map[string]bool{}
+		for _, k := range x.tree.Consts {
+			if !k.Exported || k.Type != nil {
+				continue
+			}
+			if _, ok := k.Value.(*syntax.Lambda); !ok {
+				continue
+			}
+			if np, ok := k.Pattern.(*syntax.NamePat); ok && !np.Discard {
+				known[np.Name] = true
+			}
+		}
+		var names []string
+		for n := range exp.Entries {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			if !known[n] {
+				return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadName,
+					Message: fmt.Sprintf("unknown entry point %s", n)}}}
+			}
+		}
 	}
 	res := static.Check(x.tree, names)
 	var ds []Diagnostic
@@ -389,19 +492,20 @@ func sortDiags(ds []Diagnostic) []Diagnostic {
 // result type and its sites, or an *Error of phase check.
 func (e *Env) Check(x *Expr, opts ...CheckOption) (*CheckResult, error) {
 	names, varNames := e.staticNames()
-	_, cr, err := e.analyze(x, names, varNames, opts)
+	res, cr, err := e.analyze(x, names, varNames, opts)
 	if err != nil {
 		return nil, err
 	}
-	return checkResult(x, cr), nil
+	return checkResult(x, res, cr), nil
 }
 
 // checkResult is the binding's form of a check's result, or nil.
-func checkResult(x *Expr, cr *check.Result) *CheckResult {
+func checkResult(x *Expr, res *static.Result, cr *check.Result) *CheckResult {
 	if cr == nil {
 		return nil
 	}
-	out := &CheckResult{Type: Type{t: cr.Type}}
+	entries, _ := buildEntries(x.tree, res, cr)
+	out := &CheckResult{Type: Type{t: cr.Type}, Entries: entries}
 	for _, s := range cr.Sites {
 		out.Sites = append(out.Sites, Site{Class: s.Class, Span: x.file.Span(s.Span.Start, s.Span.End)})
 	}

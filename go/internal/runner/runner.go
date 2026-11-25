@@ -478,7 +478,7 @@ func runCase(cr *caseRun) Result {
 	// The case is also run with the static rules alone (3.10.8 item 5),
 	// unless it needs the checker.
 	e := c.Expect
-	if e.Type != nil || e.HasSites || c.Schemas != nil || e.HasDescription || e.HasSchema { // F5 11.2 item 2; F16 11.8
+	if e.Type != nil || e.HasSites || c.Schemas != nil || e.HasDescription || e.HasSchema || e.HasEntries { // F5 11.2 item 2; F16 11.8, 12.10
 		return r
 	}
 	if e.Phase == "check" {
@@ -525,15 +525,25 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 	if !checked {
 		opts = append(opts, risor.NoCheck)
 	}
-	if c.Returns != nil && checked {
+	if c.Returns != nil {
 		if *c.Returns == "condition" {
 			opts = append(opts, risor.Condition)
 		} else {
 			opts = append(opts, risor.Expect(*c.Returns))
 		}
 	}
-	if rs := c.ReturnsSchema; rs != nil && checked {
+	if rs := c.ReturnsSchema; rs != nil {
 		opts = append(opts, risor.ExpectSchema(rs.Schema, schemaOpts(rs.Options)...))
+	}
+	if len(c.EntryReturns) > 0 {
+		names := make([]string, 0, len(c.EntryReturns))
+		for n := range c.EntryReturns {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			opts = append(opts, risor.ExpectEntry(n, c.EntryReturns[n]))
+		}
 	}
 	if checked {
 		o.cr, err = env.Check(x, opts...)
@@ -545,7 +555,7 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 	if err != nil {
 		return fail(err, nil)
 	}
-	needRun := cr.forceRun || c.Load || c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
+	needRun := cr.forceRun || c.Entry != nil || c.Load || c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run" || (!prog.HasResult() && e.Phase == "declare")
 	if !needRun {
 		return compareResult(c, env, nil, false, nil, st, o)
 	}
@@ -557,7 +567,17 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 			return Result{Verdict: Invalid, Fixture: path, Message: msg, Reason: "fixture " + renderPath(path) + ": " + msg}
 		}
 	}
-	v, usage, err := prog.Measure(cr.ctx.context(), cr.vars())
+	var v any
+	var usage risor.Usage
+	if c.Entry != nil {
+		if c.HasInput {
+			v, usage, err = prog.CallRecordMeasure(cr.ctx.context(), *c.Entry, c.Input, cr.vars())
+		} else {
+			v, usage, err = prog.CallMeasure(cr.ctx.context(), *c.Entry, c.Args, cr.vars())
+		}
+	} else {
+		v, usage, err = prog.Measure(cr.ctx.context(), cr.vars())
+	}
 	if err != nil {
 		return fail(err, &usage)
 	}
@@ -639,6 +659,11 @@ func compareResult(c *casefile.Case, env *risor.Env, v any, ran bool, u *risor.U
 	}
 	if e.HasSchema {
 		if d := compareSchema(e.Schema, cr); d != nil {
+			diffs = append(diffs, *d)
+		}
+	}
+	if e.HasEntries {
+		if d := compareEntries(c, e.Entries, cr); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
@@ -873,33 +898,7 @@ func compareSchema(want any, cr *risor.CheckResult) *Diff {
 	if cr == nil {
 		return &Diff{"schema", jsonForm(want), "no type"}
 	}
-	text, err := risor.SchemaOf(cr.Type)
-	if err != nil {
-		if want == nil {
-			return nil
-		}
-		return &Diff{"schema", jsonForm(want), "refused: " + err.Error()}
-	}
-	got, derr := casefile.DecodeJSON(text)
-	if derr != nil || want == nil || !value.Equal(got, want) {
-		return &Diff{"schema", jsonForm(want), string(text)}
-	}
-	back, err := risor.TypeFromSchema(text)
-	if err != nil {
-		return &Diff{"schema", jsonForm(want), "the law: " + err.Error()}
-	}
-	again, err := risor.SchemaOf(back)
-	if err != nil || !back.Equal(cr.Type) {
-		return &Diff{"schema", jsonForm(want), "the law: maps back to " + back.String()}
-	}
-	// A recursive type the mapping does not meet again comes back written
-	// out (F17 12.4 item 3): the schema found, with such a $ref replaced by
-	// its entry, must be the schema of the type it gives.
-	g2, _ := casefile.DecodeJSON(again)
-	if !value.Equal(sortAnyOf(inlineDefs(got, g2)), sortAnyOf(g2)) {
-		return &Diff{"schema", jsonForm(want), "the law: maps back to the schema " + string(again)}
-	}
-	return nil
+	return compareTypeSchema(want, cr.Type)
 }
 
 // inlineDefs replaces in s each $ref to an entry of its $defs that back's

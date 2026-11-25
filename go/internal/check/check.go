@@ -26,10 +26,12 @@ const (
 	ExpectCondition
 )
 
-// Expect is the expected result of a check.
+// Expect is the expected result of a check. Entries maps entry point names
+// to their expected result types (package F16 slice D2, 12.3).
 type Expect struct {
-	Kind ExpectKind
-	Type *types.Type
+	Kind    ExpectKind
+	Type    *types.Type
+	Entries map[string]*types.Type
 }
 
 // Env is what the type rules read from an environment.
@@ -181,6 +183,9 @@ type Result struct {
 	// Value holds the span of every node with a value site, dropped or not:
 	// a not-conforming there has the class value (F4 6.6).
 	Value map[syntax.Span]bool
+	// EntryTypes holds the checked result type of each valid exported entry
+	// point, by name (package F16 slice D2, 12.6).
+	EntryTypes map[string]*types.Type
 }
 
 // MaxUses is the most lambda body checks of 20.3; MaxNesting is the
@@ -382,6 +387,10 @@ type checker struct {
 	// and cost nothing, in an ordinary check.
 	firstTy    map[syntax.Node]*types.Type
 	firstSlots []*types.Type
+	// entryExp and entryTypes are the per-entry expected results and checked
+	// result types of package F16 slice D2 (12.3, 12.6).
+	entryExp   map[string]*types.Type
+	entryTypes map[string]*types.Type
 }
 
 // setTy records the type of node n in the check under way, and, when the
@@ -411,11 +420,15 @@ func Check(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *Resu
 func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect, first bool) (out *types.Type) {
 	*c = checker{
 		env: env, res: res,
-		slots:    make([]*types.Type, res.NSlots),
-		ty:       map[syntax.Node]*types.Type{},
-		lambdas:  map[*syntax.Lambda]*lamInfo{},
-		used:     map[*syntax.Lambda]bool{},
-		dynSites: map[syntax.Span]bool{}, hostSites: map[syntax.Span]bool{}, valueSites: map[syntax.Span]bool{},
+		slots:      make([]*types.Type, res.NSlots),
+		ty:         map[syntax.Node]*types.Type{},
+		lambdas:    map[*syntax.Lambda]*lamInfo{},
+		used:       map[*syntax.Lambda]bool{},
+		dynSites:   map[syntax.Span]bool{},
+		hostSites:  map[syntax.Span]bool{},
+		valueSites: map[syntax.Span]bool{},
+		entryExp:   exp.Entries,
+		entryTypes: map[string]*types.Type{},
 	}
 	for i := range c.slots {
 		c.slots[i] = types.Never
@@ -442,6 +455,9 @@ func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Ex
 	for _, k := range prog.Consts {
 		c.constLine(k, fs)
 	}
+	if prog.Result == nil {
+		return types.Never
+	}
 	t := c.synth(prog.Result, fs)
 	func() {
 		defer c.catchPairs(prog.Result)
@@ -456,7 +472,7 @@ func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Ex
 }
 
 func (c *checker) result(prog *syntax.Program, t *types.Type) *Result {
-	r := &Result{Type: t, Dynamic: c.covered(prog), Host: c.hostSites, Value: c.valueSites}
+	r := &Result{Type: t, Dynamic: c.covered(prog), Host: c.hostSites, Value: c.valueSites, EntryTypes: c.entryTypes}
 	type dk struct {
 		code, class string
 		sp          syntax.Span

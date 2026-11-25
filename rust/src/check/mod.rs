@@ -45,6 +45,8 @@ pub struct Checked {
     pub ty: Option<Ty>,
     pub sites: Vec<Site>,
     pub diagnostics: Vec<Diagnostic>,
+    /// F16 12.6: compiled entry points with checked result types, in text order.
+    pub entries: Vec<crate::compile::CompiledEntry>,
 }
 
 /// Read the text of an expected result: `condition` or a type.
@@ -59,6 +61,14 @@ pub fn expected(env: &Env, text: Option<&str>) -> Result<Want, Diagnostic> {
             Ok(Want::Type(ty))
         }
     }
+}
+
+/// Read the text of a type expected of an entry point (`f16-entry-points.md`
+/// 12.3 item 5). `condition` is not accepted here.
+pub fn expected_type(env: &Env, text: &str) -> Result<Ty, Diagnostic> {
+    let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
+    let parsed = text::parse_type(text).map_err(|e| bad(e.message))?;
+    from_text(&parsed, &env.data().names, None).map_err(bad)
 }
 
 /// An expected result by JSON Schema (`f10-config.md` 2.1): the type the
@@ -79,10 +89,22 @@ pub fn expected_schema(
 }
 
 /// Check a program against an environment (`03-host.md` 3.2.1).
+#[cfg(test)]
 pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
+    check_with_entries(env, parsed, expected, &BTreeMap::new())
+}
+
+/// Check a program with optional per-entry expected result types
+/// (`f16-entry-points.md` 12.3 item 5).
+pub fn check_with_entries(
+    env: &Env,
+    parsed: &Expr,
+    expected: &Want,
+    entry_expected: &BTreeMap<String, Ty>,
+) -> Checked {
     let r = resolve(env, parsed);
     let w = watch();
-    let mut c = Checker::new(env, parsed, &r);
+    let mut c = Checker::new(env, parsed, &r, entry_expected);
     let t = c.program(expected);
     // F17 12.5 item 7: past the bound of pairs the check ends, with one
     // `check-limit` on the innermost node in progress; the diagnostics of
@@ -105,6 +127,7 @@ pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
             ty: None,
             sites: Vec::new(),
             diagnostics: diags,
+            entries: Vec::new(),
         };
     }
     drop(w);
@@ -130,17 +153,26 @@ pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     sites.sort_by_key(|s| (s.span.start, s.span.end, s.class));
     sites.dedup();
     if diags.is_empty() {
+        let entries = crate::compile::build_entries(
+            &parsed.ast,
+            &r.res,
+            &r.annots,
+            Some(&c.once_result),
+            false,
+        );
         Checked {
             // F17 12: the type outlives the program's tables.
             ty: Some(strengthen(&t)),
             sites,
             diagnostics: diags,
+            entries,
         }
     } else {
         Checked {
             ty: None,
             sites: Vec::new(),
             diagnostics: diags,
+            entries: Vec::new(),
         }
     }
 }
@@ -170,7 +202,8 @@ pub struct Probe {
 pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
     let _w = watch();
-    let mut c = Checker::new(env, parsed, &r);
+    let empty = BTreeMap::new();
+    let mut c = Checker::new(env, parsed, &r, &empty);
     c.probe = probe;
     c.program(expected);
     Probe {
@@ -191,7 +224,18 @@ pub fn compile_checked(
     parsed: Expr,
     expected: &Want,
 ) -> Result<(Program, Checked), Error> {
-    let result = check(env, &parsed, expected);
+    compile_checked_with_entries(env, parsed, expected, &BTreeMap::new())
+}
+
+/// Compile with a check and per-entry expected result types
+/// (`f16-entry-points.md` 12.3 item 5).
+pub fn compile_checked_with_entries(
+    env: &Env,
+    parsed: Expr,
+    expected: &Want,
+    entry_expected: &BTreeMap<String, Ty>,
+) -> Result<(Program, Checked), Error> {
+    let result = check_with_entries(env, &parsed, expected, entry_expected);
     if !result.diagnostics.is_empty() {
         return Err(Error {
             phase: Phase::Check,
@@ -201,6 +245,15 @@ pub fn compile_checked(
     let mut p = crate::compile::compile_unchecked(env, parsed)?;
     p.sites = Some(result.sites.clone());
     p.ty = result.ty.clone();
+    // Attach checked result types to the compiled entries (keeping `needs`).
+    for (pe, ce) in p.entries.iter_mut().zip(&result.entries) {
+        pe.result_type = ce.result_type.clone();
+    }
+    p.public_entries = p
+        .entries
+        .iter()
+        .map(crate::compile::CompiledEntry::to_public)
+        .collect();
     Ok((p, result))
 }
 
@@ -283,6 +336,10 @@ struct Checker<'a> {
     /// F17 13.2 item 4: the slots of the parameters written as a name with
     /// no default and no function type.
     plain_params: &'a std::collections::HashSet<u32>,
+    /// F16 12.3: the `Lambda` nodes of top-level `export const` entry points.
+    exported_lambdas: std::collections::HashSet<u32>,
+    /// F16 12.3 item 5: per-entry expected result types.
+    entry_expected: &'a BTreeMap<String, Ty>,
 }
 
 /// What step 3 of 13.5 checks at an `Fn`: a lambda, written there (`false`)
@@ -312,8 +369,34 @@ fn whole(v: f64) -> bool {
 }
 
 impl<'a> Checker<'a> {
-    fn new(env: &'a Env, parsed: &'a Expr, r: &'a crate::compile::Resolution) -> Checker<'a> {
+    fn new(
+        env: &'a Env,
+        parsed: &'a Expr,
+        r: &'a crate::compile::Resolution,
+        entry_expected: &'a BTreeMap<String, Ty>,
+    ) -> Checker<'a> {
         let (res, annots) = (&r.res[..], &r.annots);
+        let mut exported_lambdas = std::collections::HashSet::new();
+        if let NodeKind::Program { consts, .. } = parsed.ast.kind(parsed.ast.root) {
+            for &c in consts {
+                if let NodeKind::Const {
+                    pattern,
+                    value,
+                    ty: None,
+                    exported: true,
+                    ..
+                } = parsed.ast.kind(c)
+                {
+                    if matches!(
+                        parsed.ast.kind(*pattern),
+                        NodeKind::NamePat { name: Some(_) }
+                    ) && matches!(parsed.ast.kind(*value), NodeKind::Lambda { .. })
+                    {
+                        exported_lambdas.insert(value.0);
+                    }
+                }
+            }
+        }
         let mut uses = HashMap::new();
         let mut slots_n = 0;
         for r in res {
@@ -401,6 +484,8 @@ impl<'a> Checker<'a> {
             once_result: HashMap::new(),
             limit_at: None,
             plain_params: &r.plain_params,
+            exported_lambdas,
+            entry_expected,
         }
     }
 
@@ -1006,15 +1091,20 @@ impl<'a> Checker<'a> {
         for &c in consts {
             self.const_line(c);
         }
-        let t = self.synth(*result);
-        match expected {
-            Want::Nothing => {}
-            Want::Type(e) => self.fit_form(*result, e, Fit::Result),
-            Want::Condition => self.tested(*result, &t),
+        match *result {
+            Some(r) => {
+                let t = self.synth(r);
+                match expected {
+                    Want::Nothing => {}
+                    Want::Type(e) => self.fit_form(r, e, Fit::Result),
+                    Want::Condition => self.tested(r, &t),
+                }
+                let rs = self.span(r);
+                self.mark(rs);
+                t
+            }
+            None => Ty::never(),
         }
-        let rs = self.span(*result);
-        self.mark(rs);
-        t
     }
 
     /// F12 3.12: the first check that reaches the probe.
@@ -1212,7 +1302,11 @@ impl<'a> Checker<'a> {
 
     fn const_line(&mut self, c: NodeId) {
         let NodeKind::Const {
-            pattern, value, ty, ..
+            pattern,
+            value,
+            ty,
+            exported,
+            ..
         } = self.kind(c)
         else {
             return;
@@ -1229,6 +1323,27 @@ impl<'a> Checker<'a> {
             self.lambda_facts.insert(value.0, self.facts.clone());
             if self.checked_once(*value) {
                 self.check_once(*value, name);
+                // F16 12.3 item 5: per-entry expected result.
+                if *exported {
+                    if let Some(want) = self.entry_expected.get(name.as_str()).cloned() {
+                        let bs = self.span(*body);
+                        self.mark(bs);
+                        if result.is_none() {
+                            self.fit_form(*body, &want, Fit::Result);
+                        } else {
+                            let rt = self.once_result.get(&value.0).cloned().unwrap_or_default();
+                            match fits(&rt, &want) {
+                                Some(false) => {}
+                                Some(true) => {
+                                    self.dyn_site(bs);
+                                }
+                                None => {
+                                    self.report(bs, &rt, &want, Fit::Result, Why::Fit);
+                                }
+                            }
+                        }
+                    }
+                }
             } else if self.uses.get(&value.0).copied().unwrap_or(0) == 0 {
                 // 13.9: an unused lambda is checked once, with every
                 // parameter `any`. Its sites are dropped. F16 3.4: an
@@ -1322,7 +1437,9 @@ impl<'a> Checker<'a> {
 
     /// 3.4: a `const`-bound lambda with at least one annotation, and every
     /// parameter annotated, is checked once. A lambda with no parameter and
-    /// no annotation is not (3.4 item 3).
+    /// no annotation is not (3.4 item 3), except an `export const` entry point
+    /// (F16 12.3), which is always checked once when every parameter has a
+    /// program type annotation.
     fn checked_once(&self, l: NodeId) -> bool {
         let NodeKind::Lambda { params, result, .. } = self.kind(l) else {
             return false;
@@ -1333,7 +1450,12 @@ impl<'a> Checker<'a> {
                 NodeKind::Param { ty: Some(_), .. } | NodeKind::Param { fn_: Some(_), .. }
             )
         };
-        (result.is_some() || params.iter().any(annotated)) && params.iter().all(annotated)
+        let is_entry = self.exported_lambdas.contains(&l.0)
+            && params
+                .iter()
+                .all(|p| matches!(self.kind(*p), NodeKind::Param { ty: Some(_), .. }));
+        is_entry
+            || ((result.is_some() || params.iter().any(annotated)) && params.iter().all(annotated))
     }
 
     /// The fit of a value against an annotation (3.3): through its form,

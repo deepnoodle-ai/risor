@@ -334,6 +334,219 @@ impl Program {
             result,
         }
     }
+
+    /// F16 12.5: positional call of an `export const` entry point.
+    pub(crate) fn call_outcome_with<'h>(
+        &'h self,
+        name: &str,
+        args: &[&'h dyn crate::host::Host],
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> (Result<Value<'h>, crate::diag::Error>, Usage) {
+        use crate::diag::{code, Diagnostic, Error, PathStep, Phase};
+        let Some(entry) = self.entries.iter().find(|e| e.name == name) else {
+            return (
+                Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    code::BAD_NAME,
+                    format!("{name} is not an entry point of the program"),
+                ))),
+                Usage::default(),
+            );
+        };
+        let max = entry.params.len();
+        if args.len() < entry.min_args || args.len() > max {
+            return (
+                Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    code::ARITY,
+                    format!(
+                        "entry point {name} expects between {} and {max} arguments, got {}",
+                        entry.min_args,
+                        args.len()
+                    ),
+                ))),
+                Usage::default(),
+            );
+        }
+        let mut arg_vals: Vec<Value<'h>> = args.iter().map(|a| from_view(a.view())).collect();
+        // F16 12.5 step 3: argument conformance with ConformAll (max 100 across all args).
+        let mut diags: Vec<Diagnostic> = Vec::new();
+        for (i, (val, param)) in arg_vals.iter().zip(&entry.params).enumerate() {
+            let remaining = 100usize.saturating_sub(diags.len());
+            if remaining == 0 {
+                break;
+            }
+            let param_ty = if param.optional {
+                param.ty.clone().with_null()
+            } else {
+                param.ty.clone()
+            };
+            let fs =
+                crate::conform::all(val, &param_ty, remaining, Some(crate::conform::FREE_STEPS));
+            let mut hit_limit = false;
+            for f in &fs {
+                let mut d = f.diagnostic();
+                if d.code == "not-conforming" {
+                    let mut p = vec![PathStep::Index(i)];
+                    if let Some(inner) = d.path.take() {
+                        p.extend(*inner);
+                    }
+                    d.path = Some(Box::new(p));
+                    diags.push(d);
+                } else {
+                    diags.push(d);
+                    hit_limit = true;
+                    break;
+                }
+            }
+            if hit_limit || diags.len() >= 100 {
+                break;
+            }
+        }
+        if !diags.is_empty() {
+            release_all(&mut arg_vals);
+            return (
+                Err(Error {
+                    phase: Phase::Run,
+                    diagnostics: diags,
+                }),
+                Usage::default(),
+            );
+        }
+        self.eval_entry(entry, arg_vals, vars, opts)
+    }
+
+    /// F16 12.5: call by record of an `export const` entry point.
+    pub(crate) fn call_record_outcome_with<'h>(
+        &'h self,
+        name: &str,
+        input: &'h dyn crate::host::Host,
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> (Result<Value<'h>, crate::diag::Error>, Usage) {
+        use crate::diag::{code, Diagnostic, Error, Phase};
+        let Some(entry) = self.entries.iter().find(|e| e.name == name) else {
+            return (
+                Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    code::BAD_NAME,
+                    format!("{name} is not an entry point of the program"),
+                ))),
+                Usage::default(),
+            );
+        };
+        let Some(input_ty) = &entry.input_type else {
+            return (
+                Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    code::NO_INPUT_RECORD,
+                    format!("entry point {name} has no input record"),
+                ))),
+                Usage::default(),
+            );
+        };
+        let input_val = from_view(input.view());
+        let fs = crate::conform::all(&input_val, input_ty, 100, Some(crate::conform::FREE_STEPS));
+        if !fs.is_empty() {
+            let diags = fs.iter().map(crate::conform::Failure::diagnostic).collect();
+            value::release(input_val);
+            return (
+                Err(Error {
+                    phase: Phase::Run,
+                    diagnostics: diags,
+                }),
+                Usage::default(),
+            );
+        }
+        let arg_vals = if entry.input_is_row1 {
+            vec![input_val]
+        } else {
+            let mut vals = Vec::with_capacity(entry.params.len());
+            for p in &entry.params {
+                let k = p.name.as_deref().expect("row 2 parameter has a name");
+                vals.push(input_val.field(k).unwrap_or(Value::Null));
+            }
+            value::release(input_val);
+            vals
+        };
+        self.eval_entry(entry, arg_vals, vars, opts)
+    }
+
+    /// F16 12.4: evaluate an entry point's needed non-lambda top-level `const`
+    /// lines in text order, charge 1 step, add 1 to depth, bind arguments, and
+    /// evaluate its body, with no `trace` entry for the host's call.
+    fn eval_entry<'h>(
+        &'h self,
+        entry: &'h crate::compile::CompiledEntry,
+        mut arg_vals: Vec<Value<'h>>,
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> (Result<Value<'h>, crate::diag::Error>, Usage) {
+        let limits = self.env.data().limits;
+        let nvars = self.vars_read;
+        let root = self.frames[self.parsed.ast.root.index()];
+        let n = nvars + root.size as usize;
+        let any = nvars > 0 || !self.place.is_empty();
+        let slots = if any {
+            SLOTS.with(|c| c.take())
+        } else {
+            Vec::new()
+        };
+        let mut display = DISPLAY.with(|c| c.take());
+        display.clear();
+        display.resize(self.max_depth + 1, 0);
+        display[0] = nvars;
+        let mut run = Run {
+            p: self,
+            ast: &self.parsed.ast,
+            vars,
+            slots,
+            display,
+            cb_frames: Vec::new(),
+            closures: Vec::new(),
+            closure_display: Vec::new(),
+            display_saved: Vec::new(),
+            vars_read: Bits::new(nvars),
+            vars_missing: Bits::new(nvars),
+            m: Meter {
+                steps: 0,
+                units: 0,
+                limits,
+                depth: 0,
+                deadline: limits.deadline.map(|d| Instant::now() + d),
+                cancel: opts.cancel,
+                next_check: 1024,
+                stop: None,
+            },
+            json_mode: false,
+            scratch: String::new(),
+            in_buf: Vec::new(),
+            parts_buf: Vec::new(),
+        };
+        if n > 0 {
+            run.slots.resize_with(n, || Value::Null);
+        }
+        let result = run.exec_entry(entry, &mut arg_vals);
+        release_all(&mut arg_vals);
+        if any {
+            let slots = recast(std::mem::take(&mut run.slots));
+            SLOTS.with(|c| c.set(slots));
+        }
+        let display = std::mem::take(&mut run.display);
+        DISPLAY.with(|c| c.set(display));
+        let mut scratch = std::mem::take(&mut run.scratch);
+        if scratch.capacity() > 0 && scratch.capacity() <= 65536 {
+            scratch.clear();
+            SCRATCH.with(|c| c.set(scratch));
+        }
+        let usage = Usage {
+            steps: run.m.steps,
+            allocated: run.m.units,
+        };
+        let result = result.map_err(|f| crate::diag::Error::one(self.diagnostic(&f)));
+        (result, usage)
+    }
 }
 
 /// A lambda passed to a library entry (`Run::callback`): when its
@@ -647,9 +860,12 @@ impl<'h> Run<'h> {
             // in this frame is in the function it calls.
             let node = &ast.nodes[id.index()];
             let next = match &node.kind {
-                NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
-                    self.const_lines(consts, *result)
+                NodeKind::Program {
+                    consts,
+                    result: Some(result),
+                    ..
                 }
+                | NodeKind::Block { consts, result } => self.const_lines(consts, *result),
                 NodeKind::Template { parts } => return self.template(node.span, parts),
                 NodeKind::List { items } => return self.list(items),
                 NodeKind::Map { entries } => return self.map(entries),
@@ -2830,6 +3046,45 @@ impl<'h> Run<'h> {
             Ok(()) => {
                 let code = self.p.code.get(body.index()).and_then(|c| c.as_ref());
                 self.body(*body, code, measure)
+            }
+            Err(f) => Err(f),
+        };
+        self.pop_frame(frame, saved);
+        r
+    }
+
+    /// F16 12.4 item 2: execute an entry call inside a fresh `Run`.
+    fn exec_entry(
+        &mut self,
+        entry: &'h crate::compile::CompiledEntry,
+        args: &mut [Value<'h>],
+    ) -> R<'h, Value<'h>> {
+        // 1. Needed non-lambda top-level `const` lines in text order.
+        for &c in &entry.needs {
+            self.const_line(c)?;
+        }
+        // 2. Charge 1 step and add 1 to depth.
+        self.charge(1)?;
+        let span = self.ast.span(entry.const_node);
+        self.depth_test(1, span)?;
+        self.m.depth += 1;
+        let l = entry.lambda_node;
+        let NodeKind::Lambda { params, body, .. } = &self.ast.nodes[l.index()].kind else {
+            return Err(self.internal(span));
+        };
+        // 3. Each supplied host argument is read (`03-host.md` 3.4.4).
+        for (v, &pid) in args.iter().zip(params.iter()) {
+            if matches!(v, Value::BadNum) {
+                return Err(self.host_number(Some(self.ast.span(pid))));
+            }
+        }
+        let frame = self.p.frames[l.index()];
+        let saved = self.push_frame(frame);
+        let r = match self.bind_params(l, args) {
+            Ok(()) => {
+                let code = self.p.code.get(body.index()).and_then(|c| c.as_ref());
+                // 4 & 5. Evaluate body and subtract 1 from depth on return.
+                self.body(*body, code, 1)
             }
             Err(f) => Err(f),
         };

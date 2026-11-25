@@ -93,7 +93,7 @@ export type { EnvOptions, WithOptions, LibraryNames, ChildOpaqueType, NamedType,
 
 // E.4 Programs.
 export { parse, Expr, Analysis, Program } from "./host/api.ts";
-export type { CallSite, Ref, Expected, CheckResult, Site, CompileOptions, SourceOptions, Usage, Vars } from "./host/api.ts";
+export type { CallSite, Ref, Expected, EntryExpected, Entry, EntryParam, CheckResult, Site, CompileOptions, SourceOptions, Usage, Vars } from "./host/api.ts";
 
 // E.5 Templates.
 export { parseTemplate, Template, formatTemplate } from "./host/api.ts";

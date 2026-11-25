@@ -200,6 +200,7 @@ function walk(root: A.Node, visit: Visit): void {
 function children(n: A.Node): A.Node[] {
   switch (n.kind) {
     case "Program":
+      return n.result !== null ? [...n.consts, n.result] : [...n.consts];
     case "Block":
       return [...n.consts, n.result];
     case "Const":
@@ -302,7 +303,7 @@ function scopesAt(root: A.Program, target: object): Bound[][] | null {
   };
   /** The scope as it is now: a later name is not in it. */
   const now = (scope: Bound[], own: Bound[] = NO_OWN): Open => ({ scope, len: scope.length, own });
-  const lines = (consts: A.Const[], result: A.Expr, scopes: Open[]): void => {
+  const lines = (consts: A.Const[], result: A.Expr | null, scopes: Open[]): void => {
     const scope: Bound[] = [];
     for (const c of consts) {
       // A const name is not in scope in its own value; a pattern's name is in the defaults to its right.
@@ -313,7 +314,7 @@ function scopesAt(root: A.Program, target: object): Bound[][] | null {
       if (found !== null) return;
       for (const b of patternNames(c.pattern)) scope.push({ ...b, lambda: c.value.kind === "Lambda" && c.pattern.kind === "NamePat" });
     }
-    visit(result, [now(scope), ...scopes]);
+    if (result !== null) visit(result, [now(scope), ...scopes]);
   };
   const visitPattern = (p: A.Pattern, scopes2: Open[]): void => {
     if (p.kind === "MapPat") {
@@ -770,6 +771,9 @@ class Context {
       };
       switch (n.kind) {
         case "Program":
+          for (const c of n.consts) visit(c, null);
+          if (n.result !== null) visit(n.result, exp);
+          break;
         case "Block":
           for (const c of n.consts) visit(c, null);
           visit(n.result, exp);

@@ -62,6 +62,14 @@ type Case struct {
 	// Docs gives the Doc of host functions, methods and opaque types
 	// (package F16 11.8). Nil when absent.
 	Docs map[string]string
+	// Entry, Args, Input and EntryReturns are the entry point fields of
+	// package F16 slice D2 (12.10).
+	Entry        *string
+	Args         []any
+	HasArgs      bool
+	Input        any
+	HasInput     bool
+	EntryReturns map[string]string
 	// Template is "string" or "value" when the text is a template (F2 4.1),
 	// else empty.
 	Template string
@@ -184,9 +192,12 @@ type Expect struct {
 	Sites    []Site
 	// Schema is the expected SchemaOf of the type (package F16 11.8): nil
 	// for a refusal. HasSchema says the field is present.
-	Schema    any
-	HasSchema bool
-	HasSites bool
+	Schema     any
+	HasSchema  bool
+	// Entries is the expected Entries list (package F16 12.10).
+	Entries    []ExpEntry
+	HasEntries bool
+	HasSites   bool
 	Value    any
 	HasValue bool
 	Truthy   *bool
@@ -308,14 +319,14 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts", "docs")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts", "docs", "entry", "args", "input", "entryReturns")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts", "docs",
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts", "docs", "entry", "args", "input", "entryReturns",
 		"format", "formatTemplate", "complete", "hover") // the last four: package F12 7
-	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json", "schema")
+	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json", "schema", "entries")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
-	analysisBanned = []string{"env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"}
+	analysisBanned = []string{"env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version", "entry", "args", "input", "entryReturns"}
 	refFields      = set("name", "path", "span")
 	callFields     = set("name", "namespace", "span", "args", "lambda")
 	// F1 7.1 and 7.2.
@@ -454,6 +465,12 @@ func (v *validator) file(raw any) (*File, error) {
 		if hasRet || hasRetS { // F10 10.1 item 1
 			delete(merged, "returns")
 			delete(merged, "returnsSchema")
+		}
+		_, hasArgs := m["args"]
+		_, hasInput := m["input"]
+		if hasArgs || hasInput { // F16 12.10: args and input count as one field
+			delete(merged, "args")
+			delete(merged, "input")
 		}
 		if hasSource || hasFile || hasConform || hasRender || hasRunner || toolKind(m) != "" { // F4 9.2 item 1, F8 7.4 item 1, F9 3.1 item 4, F12 7.4 item 1
 			delete(merged, "source")
@@ -653,6 +670,9 @@ func (v *validator) fields(m map[string]any, where string) error {
 				}
 			}
 		}
+	}
+	if err := v.validateD2Fields(m, where); err != nil {
+		return err
 	}
 	for _, k := range []string{"precondition", "check"} {
 		if x, ok := m[k]; ok {
@@ -946,7 +966,7 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	// 03-host.md 3.10.7: a case with "check": false states no type and no sites,
 	// and a check failure it expects has static codes only.
 	if c.Check != nil && !*c.Check {
-		if e.Type != nil || e.HasSites || e.HasSchema {
+		if e.Type != nil || e.HasSites || e.HasSchema || e.HasEntries {
 			return nil, v.invalid("%s: a case with \"check\": false states no type and no sites", where)
 		}
 		if e.Phase == "check" {
@@ -961,6 +981,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		return nil, v.invalid("%s: a failure of phase %s states one diagnostic", where, e.Phase)
 	}
 	c.Expect = e
+	if err := v.buildD2(c, m, where); err != nil {
+		return nil, err
+	}
 	if err := v.buildF10(c, m, where); err != nil {
 		return nil, err
 	}
@@ -1196,6 +1219,13 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 		if x, ok := m["schema"]; ok {
 			e.Schema, e.HasSchema = x, true
 		}
+		if x, ok := m["entries"]; ok { // F16 12.10
+			es, err := v.expEntries(x, where)
+			if err != nil {
+				return nil, err
+			}
+			e.Entries, e.HasEntries = es, true
+		}
 		if x, ok := m["description"]; ok {
 			d, ok := x.(map[string]any)
 			if !ok {
@@ -1341,7 +1371,7 @@ var ExtraStatic = map[string]bool{}
 var ConversionStatic = map[string]bool{"untagged-union": true, "check-limit": true}
 
 // EntryPointsStatic are the codes F16 adds in suite/entry-points.
-var EntryPointsStatic = map[string]bool{"untagged-union": true, "check-limit": true, "name-clash": true}
+var EntryPointsStatic = map[string]bool{"untagged-union": true, "check-limit": true, "name-clash": true, "bad-export": true}
 
 // RecursionStatic are the static codes of suite/recursion and
 // suite/messages-recursion.json (F17 8 item 5): those F16 adds, circular-type
