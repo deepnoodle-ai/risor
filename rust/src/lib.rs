@@ -115,7 +115,7 @@ pub use template::{parse_template, parse_template_with, Segment, Template, Templ
 
 // E.6: host functions and values.
 pub use api::{json_text, truthy};
-pub use eval::{Call, Stop};
+pub use eval::{Call, Remaining, Stop};
 pub use host::{Data, HostError, OpaqueRef};
 pub use value::Value;
 
