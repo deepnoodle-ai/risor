@@ -16,7 +16,7 @@ All numbers below are **measured** on one machine and are reproducible from
 - **Compile time (rules and short expressions).** Checked Risor v3 compiles
   small conditions in **2.6–4.8 µs** on maps (**3.0–6.6 µs** on structs) —
   **1.2x–2.2x faster** than `deepnoodle-ai/expr` and **1.4x–2.7x faster** than
-  `expr-lang/expr`. A host compiling 1,000 small rules spends roughly **3–9 ms**
+  `expr-lang/expr`. A host compiling 1,000 small rules spends roughly **3–7 ms**
   in Risor v3.
 - **Compile time (longer pipelines).** On multi-stage queries and nested
   branches, unchecked `deepnoodle-ai/expr` compiles 10–30% faster than checked
@@ -27,13 +27,14 @@ All numbers below are **measured** on one machine and are reproducible from
 - **Run time on maps (`map[string]any`).** Risor v3 is faster on every case
   measured: **1.3x–3.2x faster** than `deepnoodle-ai/expr` and **1.8x–2.8x
   faster** than `expr-lang/expr`, with **0 B / 0 allocs** on simple rules and
-  **5x–50x fewer allocations** on list queries.
+  **10x–100x fewer allocations** on list queries.
 - **Run time on Go structs.** With the F11 typed layer (`risor.TypeOf`), Risor
   v3 is **1.9x–4.1x faster** than `deepnoodle-ai/expr` across every case.
   Against `expr-lang/expr`'s bytecode VM, `expr-lang/expr` edges out Risor v3 on
   a 4-level field read (`63 ns` vs `71 ns`) and ties on optional coalescing
   (`81 ns` vs `82 ns`), while Risor v3 is **1.1x–1.6x faster** on rules,
-  branching and every list query, with **3x–7x fewer allocations**.
+  branching and every list query, with **3x–7x fewer allocations** on rules
+  and filter queries (`projection_100` is about even: 103 vs 113 allocs).
 - **Templates.** On pre-compiled host templates over maps, Risor v3 and
   `deepnoodle-ai/expr` run at parity (`478 ns` vs `479 ns` on a 5-field PR
   summary) and ~2.1x faster than `expr-lang/expr` string concatenation. On
@@ -45,7 +46,7 @@ All numbers below are **measured** on one machine and are reproducible from
 | Item | Value |
 | --- | --- |
 | Machine | Apple M4 Max (`darwin/arm64`) |
-| Go | `go1.26.2` (`ran`) |
+| Go | `go1.26.2` |
 | Risor v3 | `github.com/deepnoodle-ai/risor/go/v3` at commit `603f5b4c` |
 | `deepnoodle-ai/expr` | `v1.4.1` |
 | `expr-lang/expr` | `v1.18.1` |

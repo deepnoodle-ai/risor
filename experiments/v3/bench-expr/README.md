@@ -27,8 +27,10 @@ Published results and analysis live in [`docs/benchmarks.md`](../../../docs/benc
 
 ## Reproducing
 
-Run from this directory with `GOWORK=off` (this module is intentionally separate
-from `go/` so `go/go.mod` carries no benchmark dependencies):
+This harness is run by hand and is not wired into `.github/workflows/ci.yml`
+(so CI does not pull external `expr` modules or run `TestAgree`). Run from this
+directory with `GOWORK=off` (this module is intentionally separate from `go/` so
+`go/go.mod` carries no benchmark dependencies):
 
 ```bash
 cd experiments/v3/bench-expr
