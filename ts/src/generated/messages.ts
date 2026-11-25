@@ -273,6 +273,17 @@ export const CATALOG: CatalogEntry[] = [
     }
   },
   {
+    "code": "source-too-large",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "limit": "number"
+    },
+    "templates": {
+      "default": "the source text is longer than the limit of {limit} code points"
+    }
+  },
+  {
     "code": "unexpected-token",
     "phase": "parse",
     "caught": null,

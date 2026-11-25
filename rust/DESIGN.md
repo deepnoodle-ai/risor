@@ -20,8 +20,14 @@ specification, not here. This file records the crate's own choices.
   and, from S2, the depth limit. What opens no level is walked by a loop,
   in every pass: the parser, the resolver, the checker, the evaluator, the
   analysis, the formatter and completion and hover. `src/tests/flat.rs` runs
-  each flat form, 100,000 links long, through every entry point on a thread
-  with the stack stated below for the default depth limit.
+  each flat form, 100,000 links long or as many as fit in a source text,
+  through every entry point on a thread with the stack stated below for the
+  default depth limit.
+- **Every entry that takes source text checks its size first**
+  (`01-language.md` 2.1 items 4 to 6): `ParseOptions::admit` in
+  `src/syntax/parser.rs`, before the lexer. The byte length decides most
+  texts; a count of code points is made only between the limit and four
+  times it, and stops one past the limit.
 
 ## The public surface
 
@@ -31,9 +37,10 @@ grouped by the sections E.3 to E.8.
 
 | Where | Holds |
 | --- | --- |
-| `src/api.rs` | `Expected`, `CheckResult`, `CompileOptions`; `Env::check`, `compile`, `complete`, `hover`; `Program::run`, `run_with`, `measure`, `measure_with`, `check_result`; `truthy`, `json_text` |
+| `src/api.rs` | `Expected`, `CheckResult`, `CompileOptions`; `Env::check`, `compile`, `complete`, `complete_with`, `hover`, `hover_with`; `Program::run`, `run_with`, `measure`, `measure_with`, `check_result`; `truthy`, `json_text` |
 | `src/typ.rs` | The structural type API of R179: `Type`, `TypeKind`, `FieldType`, the constructors, `join`, `type_from_schema`, `conform`, `conform_all` |
-| `src/config.rs` | `load_value`, `load::<T>`, `LoadOptions`, `LoadError` |
+| `src/syntax/parser.rs` | `parse`, `parse_with`, `ParseOptions`, `SOURCE_LIMIT` |
+| `src/config.rs` | `load_value`, `load::<T>`, `load_with::<T>`, `LoadOptions`, `LoadError` |
 | `lib.rs` `__private` | Hidden: what `risor-derive` and the examples reach that is not part of the surface |
 | `src/testing/` | The case-file runner, the one public module (E.2 item 2) |
 

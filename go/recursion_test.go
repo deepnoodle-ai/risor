@@ -371,7 +371,7 @@ func TestManyTypeLines(t *testing.T) {
 	// how its time grows: near linear (it was quadratic).
 	env, err := risor.NewEnv()
 	assert.NoError(t, err)
-	x, err := risor.Parse(manyTypeLines(20000))
+	x, err := risor.Parse(manyTypeLines(10000)) // within the size of a source text
 	assert.NoError(t, err)
 	r, err := env.Check(x)
 	assert.NoError(t, err)
@@ -383,7 +383,7 @@ func BenchmarkManyTypeLines(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	for _, n := range []int{5000, 10000, 20000} {
+	for _, n := range []int{2500, 5000, 10000} {
 		x, err := risor.Parse(manyTypeLines(n))
 		if err != nil {
 			b.Fatal(err)

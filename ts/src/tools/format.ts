@@ -8,7 +8,8 @@ import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { lex } from "../syntax/lexer.ts";
 import { parse } from "../syntax/parser.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT, withinSourceLimit } from "../syntax/source.ts";
+import { sourceTooLarge } from "../syntax/messages.ts";
 import type { Span } from "../syntax/source.ts";
 import type { Token } from "../syntax/token.ts";
 import { parseTemplateText } from "../syntax/template.ts";
@@ -19,8 +20,9 @@ import type { Doc, Part } from "./doc.ts";
 /** The outcome of the formatter (f12 2.1). */
 export type FormatResult = { ok: true; text: string } | { ok: false; diagnostics: Diagnostic[] };
 
-/** Format a program (f12 2.1). */
-export function formatProgram(text: string): FormatResult {
+/** Format a program (f12 2.1). A text longer than the source limit gives its one diagnostic (01 2.1 item 6). */
+export function formatProgram(text: string, limit: number = SOURCE_LIMIT): FormatResult {
+  if (!withinSourceLimit(text, limit)) return { ok: false, diagnostics: [sourceTooLarge(limit)] };
   const source = new Source(text);
   const p = parse(source);
   if (!p.ok) return { ok: false, diagnostics: p.diagnostics };
@@ -31,8 +33,8 @@ export function formatProgram(text: string): FormatResult {
 }
 
 /** Format a template (f12 2.14). */
-export function formatTemplate(text: string): FormatResult {
-  const t = parseTemplateText(text);
+export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): FormatResult {
+  const t = parseTemplateText(text, limit);
   if (!t.ok) return { ok: false, diagnostics: t.diagnostics };
   const src = t.template.source;
   let out = "";

@@ -44,6 +44,10 @@ It needs no environment. A text gives the same parsed template, or the same
    source text of a program (`03-host.md` 3.4.5).
 2. Nothing is removed from the text. A U+FEFF at its start is a code point of
    the text and is counted in positions.
+   The whole template text is held to the size of a source text
+   (`01-language.md` 2.1 items 4 and 5): a template parse takes a source limit
+   as parse does (`03-host.md` 3.6.1 item 5), and a longer text is
+   `source-too-large`, with no span, before any part is read.
 3. The text is read from its start, left to right. At each place the first rule
    of this table that holds applies.
 

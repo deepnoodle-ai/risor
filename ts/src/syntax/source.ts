@@ -123,3 +123,37 @@ export function fromCodePoints(cps: ArrayLike<number>, start = 0, end = cps.leng
   }
   return s;
 }
+
+/** The size of a source text, and the largest source limit a host may give (01 2.1 item 4). */
+export const SOURCE_LIMIT = 1_048_576;
+
+/**
+ * Whether a text has at most `limit` code points (01 2.1 item 4), counted as
+ * positions are: in the decoded text, a U+FEFF at the start and each code
+ * point of a line end included. A lone surrogate decodes to one U+FFFD, so it
+ * counts once. Most texts are decided by their length alone: a text has at
+ * most as many code points as UTF-16 units, and at least half as many.
+ */
+export function withinSourceLimit(text: string, limit: number = SOURCE_LIMIT): boolean {
+  const n = text.length;
+  if (n <= limit) return true;
+  if (n > 2 * limit) return false;
+  // Each surrogate pair is one code point for two units.
+  let count = n;
+  for (let i = 0; i < n - 1; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const d = text.charCodeAt(i + 1);
+      if (d >= 0xdc00 && d <= 0xdfff) {
+        count--;
+        i++;
+      }
+    }
+  }
+  return count <= limit;
+}
+
+/** Whether a host's source limit is in range (03 3.6.1 item 5): a whole number from 0 to 1,048,576. */
+export function validSourceLimit(limit: unknown): limit is number {
+  return typeof limit === "number" && Number.isInteger(limit) && limit >= 0 && limit <= SOURCE_LIMIT;
+}

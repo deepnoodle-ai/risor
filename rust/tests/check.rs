@@ -258,7 +258,9 @@ fn checker_limits() {
     src.push_str(&vec!["f(1)"; 1000].join(" + "));
     let r = check(&e, &parse(&src).unwrap(), &Expected::None);
     assert!(r.is_empty());
-    let n = 100_000;
+    // 40,000 links, so that each form is within the size of a source text
+    // (`01-language.md` 2.1 item 4).
+    let n = 40_000;
     for src in [
         vec!["gate.failed"; n].join(" + "),
         format!("{}0", "false ? 1 : ".repeat(n)),

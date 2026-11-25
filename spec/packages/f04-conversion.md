@@ -18,7 +18,7 @@ It adds no run code, no message template, no library entry, no reserved word
 and no `declare` code. It raises the run code `not-conforming`, which Core
 reserves (`01-language.md` 14.5 item 3), with the three templates Core's
 catalog already holds for it. It reports the `parse` code `bad-type-text`, one
-of Core's 14 (`01-language.md` 14.2), and the check codes `never-conforms` and
+of Core's 15 (`01-language.md` 14.2), and the check codes `never-conforms` and
 `untagged-union` (`05-types.md` 16.2).
 
 The chapters of Core are cited by file and section: `05-types.md` 3.9 is
@@ -270,7 +270,7 @@ These rows join the table of `01-language.md` 13.1.
    100th `[` is `nesting-exceeded`.
 4. The left operand of `as` or `is` is not inside its level, as for every
    binary operator. So `x as any as any` is flat, and the rule of
-   `01-language.md` 13.2 item 6 holds for it: a chain of 100,000 `as` parses,
+   `01-language.md` 13.2 item 6 holds for it: a chain of 10,000 `as` parses,
    is checked and runs, and its length costs an implementation no stack.
 
 ## 3. Named types

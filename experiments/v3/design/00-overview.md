@@ -357,7 +357,8 @@ timing of imports, the message catalog and the direction for queries by name.
 D52 to D56 are five plans from the review of issues #640 and #641; the owner
 settled the direction of each on 2026-11-14, then withdrew D52 and trimmed D54
 to D56 on 2026-11-19. D57 and D58 were put and settled the same day. D59 is a
-recommendation the owner has not confirmed, and D60 is open.
+recommendation the owner has not confirmed, and D60 is open. D63 was put and settled
+on 2026-11-24.
 
 ### 4.1 Strategy
 
@@ -485,7 +486,7 @@ others' text:
 | Check codes | `recursion-needs-types` (Core: 27 become 28), `bad-export` (F16) and `circular-type` (F17, step E2, R264). The catalog's 29 become 32 |
 | Static codes (`05-types.md` 16.1, 22.1) | The first two: 11 become 13. 14 if `arg-mismatch` gains a static use (`18` 7.1 rule 3, a recommendation). `circular-type` is a static code of its package, as `name-clash` is of F16, and is not in Core's count |
 | Check templates | 1 for `recursion-needs-types`, 4 for `bad-export` (F16), 5 in F19 (four hints and `maybe-absent` `pattern`): 71 become 81. F17 adds 3 for step E2 (`circular-type` `direct` and `union`, `check-limit` `pairs`) and 5 for step E3 (`spec/packages/f17-recursion.md` 13.5), and F16's `fn-value` retires. That row counts planned templates. As built with steps E2 and E3, the catalogs hold 81: 72 in Core's, 1 in F16's and 8 in F17's (`14` 5.3 rows E2 and E3) |
-| Parse codes | 2 (F19: `async-await`, `statement-sequence`), with 4 templates: 58 become 60, and 97 templates 101. `type-annotation`, `type-declaration` and `export-statement` narrow and change their text, by my reading with no change of count (`17` 3.1) |
+| Parse codes | `source-too-large` (D63, Core: 14 become 15), with 1 template: 58 become 59, and 97 templates 98. Then 2 (F19: `async-await`, `statement-sequence`), with 4 templates: 59 become 61, and 98 templates 102. `type-annotation`, `type-declaration` and `export-statement` narrow and change their text, by my reading with no change of count (`17` 3.1) |
 | Declare codes | 2 (F16: `no-result`, `no-input-record`), beside the 9 of Core |
 | Reserved namespaces | 1 (`regexp`) |
 | The largest depth a host may set | 1,000 becomes 400 (D58): `03-host.md` 3.3.4, 3.6.1, 3.9.1 and the schema of 3.10.11 |
@@ -500,6 +501,7 @@ others' text:
 | D16 | Step and unit counts are fixed per specification version (L6) | Yes. Optimizations that stop early are then forbidden, and a wrong rate stays until the next version |
 | D17 | Defaults: 1,000,000 steps, 1,000,000 allocation units, depth 200, no deadline | Yes. A deadline is the one limit that is not deterministic |
 | D31 | Source nesting is at most 100 levels, fixed by the specification and not settable by a host, and the depth limit counts a call as 1 plus its nesting (R5, `02` 2.16) | Yes. Without it a deep program is an error in one implementation, a crash in another and a success in the third. Settle the numbers after the Rust reference evaluator has run the limit cases in its least favorable build (`01`, question 7). D58 settles the largest depth a host may set: 400 |
+| D63 | A limit on the size of a program's source text | **Settled by the owner, 2026-11-24.** A source text has at most 1,048,576 code points, counted as positions are, in the decoded text. A host may set a lower source limit, from 0, on each call that takes source text (parse, a template's parse, the formatter, completion, hover, the load); it cannot raise it. A longer text is the `parse` code `source-too-large`, with no span, found before the text is lexed. Completion and hover give their empty result. The flat forms of `01-language.md` 13.2 item 6 are cut from 100,000 to 10,000 so that they fit, and the time and memory of every tool are bounded through the size of the text. The source limit is not a declaration of the environment, so a description does not change (R320) |
 
 ### 4.5 Hosts and the repository
 
