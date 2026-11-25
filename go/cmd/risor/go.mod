@@ -1,4 +1,4 @@
-module github.com/deepnoodle-ai/risor/go/v3/cmd/risor
+module github.com/deepnoodle-ai/risor/go/cmd/risor
 
 go 1.26.0
 

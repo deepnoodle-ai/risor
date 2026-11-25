@@ -9,8 +9,7 @@ import (
 	"io"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/eval"
+	"github.com/deepnoodle-ai/risor/go/v3/risorcli"
 	"github.com/deepnoodle-ai/wonton/cli"
 )
 
@@ -96,7 +95,7 @@ func (f *configFlags) expected() ([]risor.LoadOption, any, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		s, err := casefile.DecodeJSON([]byte(text))
+		s, err := risorcli.DecodeJSON([]byte(text))
 		if err != nil {
 			return nil, nil, cmdErrorf("%s: %v", *f.schema, err)
 		}
@@ -172,7 +171,7 @@ func configCommand(ctx *cli.Context, isEval bool) int {
 	case f.format == "json":
 		text, err = risor.JSONText(v)
 	default:
-		text, err = rendering(env, v)
+		text, err = risorcli.RenderText(env, v)
 	}
 	if err != nil {
 		return fail(err)
@@ -207,23 +206,4 @@ func checkSteps(env *risor.Env, f *configFlags, schema any, source string) (stri
 		return "", errors.New("no check result")
 	}
 	return cr.Type.String(), nil
-}
-
-// rendering is the rendering of a value (01-language.md 12) under the
-// environment's depth limit. It is not a run, so it charges no steps or units.
-func rendering(env *risor.Env, v any) (string, error) {
-	depth := eval.DefaultLimits.Depth
-	if desc, err := env.Describe(); err == nil {
-		var d struct {
-			Limits struct{ Depth int } `json:"limits"`
-		}
-		if json.Unmarshal(desc, &d) == nil && d.Limits.Depth > 0 {
-			depth = d.Limits.Depth
-		}
-	}
-	text, d := eval.RenderText(v, depth)
-	if d != nil {
-		return "", &risor.Error{Diagnostics: []risor.Diagnostic{*d}}
-	}
-	return text, nil
 }

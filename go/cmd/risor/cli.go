@@ -12,8 +12,7 @@ import (
 	"unicode/utf8"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
+	"github.com/deepnoodle-ai/risor/go/v3/risorcli"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/env"
@@ -33,12 +32,15 @@ func cmdErrorf(format string, args ...any) error {
 	return &cmdError{fmt.Sprintf(format, args...)}
 }
 
+// maxWhole is 2^53 - 1, the largest whole number (02-evaluation.md 3.1 item 2).
+const maxWhole = 9007199254740991
+
 // wholeNumber reads a whole number (02-evaluation.md 3.1 item 2) of at
 // least min.
 func wholeNumber(name, v string, min int64) (int64, error) {
 	n, err := strconv.ParseInt(v, 10, 64)
-	if err != nil || n < min || n > value.MaxWhole {
-		return 0, cmdErrorf("%s takes a whole number from %d to %d, not %q", name, min, int64(value.MaxWhole), v)
+	if err != nil || n < min || n > maxWhole {
+		return 0, cmdErrorf("%s takes a whole number from %d to %d, not %q", name, min, int64(maxWhole), v)
 	}
 	return n, nil
 }
@@ -335,7 +337,7 @@ func (f *envFlags) environment() (*risor.Env, risor.Map, error) {
 		if err != nil {
 			return nil, nil, cmdErrorf("%s cannot be read: %v", f.varFile, err)
 		}
-		raw, err := casefile.DecodeJSON(data)
+		raw, err := risorcli.DecodeJSON(data)
 		if err != nil {
 			return nil, nil, cmdErrorf("%s: %v", f.varFile, err)
 		}

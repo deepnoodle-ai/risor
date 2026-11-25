@@ -121,7 +121,7 @@ lands.
 | `spec/core/` | The Core specification, five chapters: language, evaluation, host, library, types. Normative text only. |
 | `spec/packages/` | One chapter for each follow-on package. A package only adds: its chapter is the home of its rules, and the Core chapters point to it. |
 | `suite/` | Data every implementation shares: the library's records, the message templates, the case mapping, and case files in `suite/core-run/`, `suite/core-check/` and one directory for each package. `suite/README.md` lists them. `spec/core/03-host.md` 3.10 defines the case format. |
-| `go/` | The Go implementation: the module `github.com/deepnoodle-ai/risor/go/v3`, with no external dependencies, `internal/`, `risortest/`, `cmd/outcome/` and the separate CLI module in `go/cmd/risor/`. Its release tags carry the directory: `go/v3.x.y`. |
+| `go/` | The Go implementation: the module `github.com/deepnoodle-ai/risor/go/v3`, with no external dependencies, `internal/`, `risortest/`, `risorcli/`, `cmd/outcome/` and the separate CLI module `github.com/deepnoodle-ai/risor/go/cmd/risor` in `go/cmd/risor/`. Library release tags use `go/v3.x.y`; CLI release tags use `go/cmd/risor/vX.Y.Z`. |
 | `ts/` | The TypeScript implementation. No run-time dependencies. |
 | `rust/` | The Rust implementation. No library dependencies. |
 | `fuzz/` | The fuzzers that compare the three implementations with one another and test the checker's promise. Its own Go module. |
@@ -245,6 +245,13 @@ v3 alpha releases are tagged `go/v3.0.0-alpha.N` on `main`: the Go module in
 version of the old path `github.com/deepnoodle-ai/risor/v3`, and `go list -m
 -versions` and `@latest` fail there. The GitHub release is made from the
 `go/` tag.
+
+CLI releases (`module github.com/deepnoodle-ai/risor/go/cmd/risor` in
+`go/cmd/risor/`) are tagged `go/cmd/risor/vX.Y.Z`. Because `go install
+...@latest` rejects modules with a `replace` directive, tag `go/v3.x.y` first,
+pin `github.com/deepnoodle-ai/risor/go/v3` to that version in
+`go/cmd/risor/go.mod` without the local `replace` directive for the release
+commit, and tag `go/cmd/risor/vX.Y.Z`.
 
 The npm packages (`@deepnoodle/risor` and `@deepnoodle/risor-*`) release
 together on the tag `npm-v<version>`: set the version with `node

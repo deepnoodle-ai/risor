@@ -89,7 +89,7 @@ env, err := risor.NewEnv(
 The command-line program:
 
 ```bash
-go install github.com/deepnoodle-ai/risor/go/v3/cmd/risor@latest
+go install github.com/deepnoodle-ai/risor/go/cmd/risor@latest
 ```
 
 Run the tests from this directory. The conformance suite in `../suite` runs

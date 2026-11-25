@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,10 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/render"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/runner"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
+	risor "github.com/deepnoodle-ai/risor/go/v3"
+	"github.com/deepnoodle-ai/risor/go/v3/risorcli"
 	"github.com/deepnoodle-ai/wonton/cli"
 )
 
@@ -69,18 +66,18 @@ func (c *counts) status() int {
 	return 0
 }
 
-func (c *counts) add(r runner.Result) {
+func (c *counts) add(r risorcli.CaseResult) {
 	c.cases++
-	switch {
-	case r.Updated:
+	switch r.Status {
+	case "updated":
 		c.updated++
-	case r.Verdict == runner.Pass:
+	case "pass":
 		c.pass++
-	case r.Verdict == runner.Fail:
+	case "fail":
 		c.fail++
-	case r.Verdict == runner.Skip:
+	case "skip":
 		c.skip++
-	case r.Verdict == runner.Invalid:
+	case "invalid":
 		c.invalid++
 	}
 }
@@ -123,46 +120,39 @@ func testCommand(cc *cli.Context) int {
 			return false
 		}
 	}
-	ctx := &runner.Ctx{Update: f.update}
 	color := f.format == "text" && f.color.on(stdout, stdout)
 	for _, path := range files {
 		c.files++
-		lf, err := loadFile(path, f.update, stdin)
+		out, err := runCaseFile(path, f.update, selected, stdin)
 		if err != nil {
 			c.badFiles++
 			reason := err.Error()
-			var inv *casefile.InvalidError
-			if errors.As(err, &inv) {
-				reason = inv.Reason
-			}
 			if f.format == "json" {
 				fmt.Fprintln(stdout, jsonLine(map[string]any{"file": path, "message": reason, "status": "invalid"}))
 			} else {
 				fmt.Fprintf(stdout, "%s\n%s\n", path, paintWord("  INVALID", color))
 				for _, l := range strings.Split(reason, "\n") {
-					fmt.Fprintf(stdout, "    %s\n", render.Visible(l))
+					fmt.Fprintf(stdout, "    %s\n", risorcli.Visible(l))
 				}
 			}
 			continue
 		}
-		rs := runner.RunLoaded(ctx, lf, selected)
-		for _, r := range rs {
+		for _, r := range out.Results {
 			c.add(r)
 		}
 		if f.format == "json" {
-			for _, r := range rs {
+			for _, r := range out.Results {
 				fmt.Fprintln(stdout, caseLine(path, r))
 			}
-		} else if rep := runner.Report(rs); rep != "" {
-			fmt.Fprintf(stdout, "%s\n%s", path, paintReport(rep, color))
+		} else if out.Report != "" {
+			fmt.Fprintf(stdout, "%s\n%s", path, paintReport(out.Report, color))
 		}
 		if f.update && path != "-" {
-			text, written, err := runner.UpdatedText(lf, rs)
-			if err != nil {
-				fmt.Fprintf(stderr, "risor test: %s: %v\n", path, err)
+			if out.UpdateErr != nil {
+				fmt.Fprintf(stderr, "risor test: %s: %v\n", path, out.UpdateErr)
 				c.missing = true
-			} else if written {
-				if err := os.WriteFile(path, text, 0o644); err != nil {
+			} else if out.Written {
+				if err := os.WriteFile(path, out.UpdatedText, 0o644); err != nil {
 					fmt.Fprintf(stderr, "risor test: %s: %v\n", path, err)
 					c.missing = true
 				}
@@ -183,9 +173,9 @@ func testCommand(cc *cli.Context) int {
 	return c.status()
 }
 
-// loadFile reads a case file: a program case file when its name ends in
-// .test.risor, else JSON (F9 8.2 item 1).
-func loadFile(path string, update bool, stdin io.Reader) (*runner.LoadedFile, error) {
+// runCaseFile reads and runs a case file: a program case file when its name
+// ends in .test.risor, else JSON (F9 8.2 item 1).
+func runCaseFile(path string, update bool, selected func(string) bool, stdin io.Reader) (risorcli.CaseFileOutcome, error) {
 	var data []byte
 	var err error
 	if path == "-" {
@@ -194,21 +184,9 @@ func loadFile(path string, update bool, stdin io.Reader) (*runner.LoadedFile, er
 		data, err = os.ReadFile(path)
 	}
 	if err != nil {
-		return nil, &casefile.InvalidError{Path: path, Reason: err.Error()}
+		return risorcli.CaseFileOutcome{}, err
 	}
-	opts := casefile.Options{Update: update}
-	lf := &runner.LoadedFile{Text: data}
-	if strings.HasSuffix(path, ".test.risor") {
-		lf.Program = true
-		opts.Update = false
-		lf.File, err = runner.LoadProgram(data, path, opts)
-	} else {
-		lf.File, err = casefile.ParseWith(data, path, opts)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return lf, nil
+	return risorcli.RunCaseFile(path, data, update, selected)
 }
 
 // findFiles is F9 8.2: a file is run whatever its name; a directory is
@@ -268,106 +246,55 @@ func findFiles(p string) ([]string, error) {
 func lessCodePoints(a, b string) bool { return a < b }
 
 // caseLine is one line of the JSON output (F9 8.4).
-func caseLine(file string, r runner.Result) string {
-	m := map[string]any{"file": file, "name": r.Case, "status": r.Status()}
-	switch {
-	case r.Updated:
-	case r.Verdict == runner.Fail:
+func caseLine(file string, r risorcli.CaseResult) string {
+	m := map[string]any{"file": file, "name": r.Case, "status": r.Status}
+	switch r.Status {
+	case "updated":
+	case "fail":
 		ds := make([]any, len(r.Diffs))
 		for i, d := range r.Diffs {
-			ds[i] = d.Name
+			ds[i] = d
 		}
 		m["differs"] = ds
-	case r.Verdict == runner.Invalid:
+	case "invalid":
 		if r.Fixture != nil {
 			m["fixture"] = r.Fixture
 			m["message"] = r.Message
 		} else {
 			m["message"] = r.Reason
 		}
-	case r.Verdict == runner.Skip:
+	case "skip":
 		m["reason"] = r.Reason
 	}
 	return jsonLine(m)
 }
 
 func jsonLine(m map[string]any) string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteByte('{')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(value.QuoteJSON(k) + ":")
-		writeJSON(&b, m[k])
-	}
-	b.WriteByte('}')
-	return b.String()
-}
-
-func writeJSON(b *strings.Builder, v any) {
-	switch x := v.(type) {
-	case string:
-		b.WriteString(value.QuoteJSON(x))
-	case float64:
-		b.WriteString(value.FormatNumber(x))
-	case int:
-		fmt.Fprint(b, x)
-	case []any:
-		b.WriteByte('[')
-		for i, e := range x {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			writeJSON(b, e)
-		}
-		b.WriteByte(']')
-	default:
-		b.WriteString("null")
-	}
+	s, _ := risor.JSONText(m)
+	return s
 }
 
 // suiteCommand is risor test --suite (F9 8.6).
 func suiteCommand(f *testFlags, stdout, stderr io.Writer) int {
-	type entry struct {
-		rel string
-		run func() ([]runner.Result, error)
-	}
-	var es []entry
-	for _, d := range runner.SuiteDirs {
-		dir := filepath.Join(f.suite, d)
-		es = append(es, entry{d, func() ([]runner.Result, error) { return runner.RunSuiteDir(dir) }})
-	}
-	for _, c := range runner.SuiteCatalogs {
-		path, key := filepath.Join(f.suite, c.Rel), c.Key
-		es = append(es, entry{c.Rel, func() ([]runner.Result, error) { return runner.RunSuiteCatalog(path, key) }})
-	}
-	sort.Slice(es, func(i, j int) bool { return es[i].rel < es[j].rel })
 	var total counts
-	for _, e := range es {
-		rs, err := e.run()
-		if err != nil {
-			fmt.Fprintf(stderr, "risor test: %s: %v\n", filepath.Join(f.suite, e.rel), err)
+	for _, sec := range risorcli.RunSuite(f.suite) {
+		if sec.Err != nil {
+			fmt.Fprintf(stderr, "risor test: %s: %v\n", filepath.Join(f.suite, sec.Rel), sec.Err)
 			total.missing = true
 			continue
 		}
 		var c counts
-		for _, r := range rs {
+		for _, r := range sec.Results {
 			c.add(r)
 			total.add(r)
 		}
 		if f.format == "json" {
-			for _, r := range rs {
+			for _, r := range sec.Results {
 				fmt.Fprintln(stdout, caseLine(r.File, r))
 			}
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d skip, %d invalid\n", e.rel, c.pass, c.fail, c.skip, c.invalid)
+		fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d skip, %d invalid\n", sec.Rel, c.pass, c.fail, c.skip, c.invalid)
 	}
 	return total.status()
 }

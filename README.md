@@ -195,7 +195,7 @@ Env::builder().limits(Limits { steps: Some(10_000), allocation: Some(10_000),
 ## The CLI
 
 ```bash
-go install github.com/deepnoodle-ai/risor/go/v3/cmd/risor@latest
+go install github.com/deepnoodle-ai/risor/go/cmd/risor@latest
 
 risor eval program.risor --vars data.json   # run a program
 risor check program.risor --vars data.json  # check it without running it
