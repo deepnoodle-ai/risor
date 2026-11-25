@@ -108,6 +108,9 @@ type Token struct {
 	// prefixed literal and the pieces of a template.
 	ErrStart int
 	ErrEnd   int
+	// Doc is the description of the doc comment directly before the token
+	// (F16 11.2), or "". Only the parser's places of 11.2 read it.
+	Doc string
 }
 
 // The 26 reserved words (01-language.md 2.4).

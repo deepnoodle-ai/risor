@@ -88,12 +88,51 @@ export function lexPart(src: Source, start: number, dollar: number): Token[] {
   return new Lexer(src).runPart(start, dollar);
 }
 
+/**
+ * Package F16 slice D3: the text of a doc comment (f16 11.2), the code points
+ * after its opening `/**` and before its closing star and slash; undefined when the text is empty.
+ */
+function docText(cps: Uint32Array, from: number, to: number): string | undefined {
+  const lines: string[] = [];
+  let cur: number[] = [];
+  const flush = () => {
+    let i = 0;
+    while (i < cur.length && (cur[i] === 0x20 || cur[i] === 0x09)) i++;
+    if (i < cur.length && cur[i] === 0x2a) {
+      i++;
+      if (i < cur.length && cur[i] === 0x20) i++;
+    }
+    let j = cur.length;
+    while (j > i && (cur[j - 1] === 0x20 || cur[j - 1] === 0x09)) j--;
+    lines.push(fromCodePoints(cur, i, j));
+    cur = [];
+  };
+  for (let k = from; k < to; k++) {
+    const c = cps[k];
+    if (c === LF || c === CR) {
+      if (c === CR && k + 1 < to && cps[k + 1] === LF) k++;
+      flush();
+      continue;
+    }
+    cur.push(c);
+  }
+  flush();
+  let a = 0;
+  let b = lines.length;
+  while (a < b && lines[a] === "") a++;
+  while (b > a && lines[b - 1] === "") b--;
+  const text = lines.slice(a, b).join("\n");
+  return text === "" ? undefined : text;
+}
+
 class Lexer {
   /** Package F12: an interpolation left open at the end of the text ends there. */
   cut = false;
   private readonly cps: Uint32Array;
   private pos = 0;
   private gap = false;
+  /** Package F16 slice D3: the text of the doc comment that the next token takes, when one attaches (f16 11.2). */
+  private doc: string | undefined = undefined;
   private readonly stack: Frame[] = [];
   /** The `$` of a template part being lexed, or -1 (f02 2.2 item 6). */
   private partDollar = -1;
@@ -234,6 +273,10 @@ class Lexer {
   private tok(kind: Token["kind"], start: number, end: number, text: string): Token {
     const t: Token = { kind, start, end, text, gap: this.gap };
     this.gap = false;
+    if (this.doc !== undefined) {
+      t.doc = this.doc;
+      this.doc = undefined;
+    }
     return t;
   }
 
@@ -257,6 +300,8 @@ class Lexer {
         this.pos += 2;
         while (this.pos < cps.length && cps[this.pos] !== LF && cps[this.pos] !== CR) this.pos++;
         this.gap = true;
+        // f16 11.2: a line comment between a doc comment and its token: the doc comment does not attach.
+        this.doc = undefined;
         continue;
       }
       if (c === 0x2f && this.at(this.pos + 1) === 0x2a) {
@@ -273,6 +318,10 @@ class Lexer {
           this.pos++;
         }
         this.gap = true;
+        // f16 11.2: a doc comment begins `/**` and is not `/**/`; of two in a row the last attaches, and any
+        // other comment between a doc comment and its token keeps it from attaching.
+        const isDoc = this.pos - start >= 5 && cps[start + 2] === 0x2a;
+        this.doc = isDoc ? docText(cps, start + 3, this.pos - 2) : undefined;
         continue;
       }
       return;
@@ -584,6 +633,7 @@ class Lexer {
         f.cur.push({ k: "i", part: { kind: "interp", open: { start: i, end: i + 2 }, tokens } });
         this.pos = i + 2;
         this.gap = false;
+        this.doc = undefined;
         this.stack.push({ t: "interp", tokens, depth: 0 });
         return;
       }
@@ -673,6 +723,7 @@ class Lexer {
         f.parts.push({ kind: "interp", open: { start: i, end: i + 2 }, tokens });
         this.pos = i + 2;
         this.gap = false;
+        this.doc = undefined;
         this.stack.push({ t: "interp", tokens, depth: 0 });
         return;
       }

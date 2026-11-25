@@ -15,7 +15,7 @@ import { Source, SOURCE_LIMIT, withinSourceLimit } from "./source.ts";
 import type { Span } from "./source.ts";
 import { HOLE, isName, isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
-import type { TypeNode } from "../types/typetext.ts";
+import type { RecordField, TypeNode } from "../types/typetext.ts";
 import { END, parseMessage, sourceTooLarge } from "./messages.ts";
 
 /** The source nesting limit (01 13.2). Fixed by the specification. */
@@ -435,7 +435,8 @@ class Parser {
 
   /** TypeLine = "type" TName "=" PType ";" (f16 2.1). Its words open no level (2.4). */
   private typeLine(): A.TypeLine {
-    const start = this.advance().start; // type
+    const kw = this.advance(); // type
+    const start = kw.start;
     const n = this.cur;
     // f16 2.2 item 3: the name is read as a word; one letter is `bad-type-text`, template `letter`.
     if (n.text !== HOLE && !/^[A-Z][A-Za-z0-9_]+$/.test(n.text)) this.badType(n);
@@ -447,6 +448,7 @@ class Parser {
     this.expect(";");
     const line: A.TypeLine = { name: n.text, nameSpan: { start: n.start, end: n.end }, type, span: this.span(start) };
     if (supplied) line.supplied = true;
+    if (kw.doc !== undefined) line.doc = kw.doc;
     return line;
   }
 
@@ -465,7 +467,8 @@ class Parser {
   }
 
   private constLine(): A.Const {
-    const start = this.advance().start; // const
+    const kw = this.advance(); // const
+    const start = kw.start;
     const pattern = this.pattern();
     // Package F16 (f16 2.1): an annotation. Its value is an Expr only (2.2 rule 4).
     let type: A.TypeAnn | null = null;
@@ -486,7 +489,10 @@ class Parser {
       value = this.expr();
     }
     this.expect(";");
-    return { kind: "Const", pattern, type, value, span: this.span(start) };
+    const c: A.Const = { kind: "Const", pattern, type, value, span: this.span(start) };
+    // f16 11.2: a doc comment before the word `const` is the line's description.
+    if (kw.doc !== undefined) c.doc = kw.doc;
+    return c;
   }
 
   /** A branch (01 3.1, 3.2 rule 2, 3.4 rules 7 and 8). */
@@ -894,7 +900,7 @@ class Parser {
   private precord(spans: Map<TypeNode, Span>): TypeNode {
     const lb = this.advance();
     this.open(lb);
-    const fields: { key: string; optional: boolean; type: TypeNode }[] = [];
+    const fields: RecordField[] = [];
     let rest: "exact" | "any" | TypeNode = "exact";
     const seen = new Set<string>();
     for (;;) {
@@ -923,7 +929,10 @@ class Parser {
       }
       if (!this.isP(this.cur, ":")) this.badType(this.cur, "record");
       this.advance();
-      fields.push({ key, optional, type: this.ptype(spans) });
+      const field: RecordField = { key, optional, type: this.ptype(spans) };
+      // f16 11.2: a doc comment before a field's key is its description.
+      if (t.doc !== undefined) field.desc = t.doc;
+      fields.push(field);
       if (this.isP(this.cur, ",")) {
         this.advance();
         continue;
@@ -1419,7 +1428,9 @@ class Parser {
       this.advance();
       const span = { start: t.start, end: t.end };
       const pattern: A.NamePat = { kind: "NamePat", name: t.text === "_" ? null : t.text, span };
-      params.push({ kind: "Param", pattern, type: null, fn: null, default: null, span });
+      const p: A.Param = { kind: "Param", pattern, type: null, fn: null, default: null, span };
+      if (t.doc !== undefined) p.doc = t.doc;
+      params.push(p);
     } else {
       const lp = this.advance();
       this.open(lp, "params");
@@ -1452,6 +1463,7 @@ class Parser {
 
   /** Param = Pattern [ ":" PType ] [ "=" Expr ] | Name ":" PFn (f16 2.1). */
   private param(): A.Param {
+    const first = this.cur;
     const pattern = this.pattern();
     let type: A.TypeAnn | null = null;
     let fn: A.FnAnn | null = null;
@@ -1470,7 +1482,10 @@ class Parser {
       dflt = this.expr();
     }
     const end = dflt !== null ? this.outer(dflt).end : fn !== null ? fn.span.end : type !== null ? type.span.end : pattern.span.end;
-    return { kind: "Param", pattern, type, fn, default: dflt, span: { start: pattern.span.start, end } };
+    const p: A.Param = { kind: "Param", pattern, type, fn, default: dflt, span: { start: pattern.span.start, end } };
+    // f16 11.2: a doc comment before the first token of a parameter's pattern is its description.
+    if (first.doc !== undefined) p.doc = first.doc;
+    return p;
   }
 
   /** PFn = "(" [ Word ":" PType { "," Word ":" PType } ] ")" "=>" ( PType | "unknown" ). Its `(` opens a level (f16 2.4). */

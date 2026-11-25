@@ -59,6 +59,9 @@ type Case struct {
 	// Schemas declares variables by JSON Schema (package F1 7.1). Nil when
 	// absent.
 	Schemas map[string]*SchemaVar
+	// Docs gives the Doc of host functions, methods and opaque types
+	// (package F16 11.8). Nil when absent.
+	Docs map[string]string
 	// Template is "string" or "value" when the text is a template (F2 4.1),
 	// else empty.
 	Template string
@@ -176,6 +179,10 @@ type Expect struct {
 
 	Type     *string
 	Sites    []Site
+	// Schema is the expected SchemaOf of the type (package F16 11.8): nil
+	// for a refusal. HasSchema says the field is present.
+	Schema    any
+	HasSchema bool
 	HasSites bool
 	Value    any
 	HasValue bool
@@ -298,11 +305,11 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts", "docs")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts",
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts", "docs",
 		"format", "formatTemplate", "complete", "hover") // the last four: package F12 7
-	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
+	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json", "schema")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
 	analysisBanned = []string{"env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"}
@@ -602,6 +609,17 @@ func (v *validator) fields(m map[string]any, where string) error {
 			return v.invalid("%s: template is not \"string\" or \"value\"", where)
 		}
 	}
+	if x, ok := m["docs"]; ok { // F16 11.8
+		dm, ok := x.(map[string]any)
+		if !ok {
+			return v.invalid("%s: docs is not an object", where)
+		}
+		for k, val := range dm {
+			if _, ok := val.(string); !ok {
+				return v.invalid("%s: docs.%s is not a string", where, k)
+			}
+		}
+	}
 	if x, ok := m["schemas"]; ok {
 		sm, ok := x.(map[string]any)
 		if !ok {
@@ -845,6 +863,23 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	if x, ok := m["types"]; ok {
 		c.Types = buildNamedTypes(x)
 	}
+	if x, ok := m["docs"]; ok {
+		// F16 11.8: each key names a function, a method or an opaque type
+		// the case declares.
+		c.Docs = map[string]string{}
+		for k, val := range x.(map[string]any) {
+			_, fn := c.Functions[k]
+			_, me := c.Methods[k]
+			op := false
+			for _, o := range c.Opaque {
+				op = op || o == k
+			}
+			if !fn && !me && !op {
+				return nil, v.invalid("%s: docs has %q, which the case does not declare", where, k)
+			}
+			c.Docs[k] = val.(string)
+		}
+	}
 	if x, ok := m["schemas"]; ok {
 		c.Schemas = map[string]*SchemaVar{}
 		for name, val := range x.(map[string]any) {
@@ -905,7 +940,7 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	// 03-host.md 3.10.7: a case with "check": false states no type and no sites,
 	// and a check failure it expects has static codes only.
 	if c.Check != nil && !*c.Check {
-		if e.Type != nil || e.HasSites {
+		if e.Type != nil || e.HasSites || e.HasSchema {
 			return nil, v.invalid("%s: a case with \"check\": false states no type and no sites", where)
 		}
 		if e.Phase == "check" {
@@ -1144,6 +1179,9 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 		}
 		if x, ok := m["value"]; ok {
 			e.Value, e.HasValue = x, true
+		}
+		if x, ok := m["schema"]; ok {
+			e.Schema, e.HasSchema = x, true
 		}
 		if x, ok := m["description"]; ok {
 			d, ok := x.(map[string]any)

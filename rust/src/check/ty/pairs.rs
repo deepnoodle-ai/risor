@@ -540,7 +540,8 @@ impl Cx {
             return Ok(Ty::any());
         }
         let list = match (&a.list, &b.list) {
-            (Some(x), Some(y)) if Arc::ptr_eq(x, y) => Some(x.clone()),
+            // No shortcut for one shared element type: the Join builds
+            // its records, and they carry no description (F16 11.4).
             (Some(x), Some(y)) => Some(Arc::new(self.join(x, y)?)),
             (x, y) => x.clone().or(y.clone()),
         };
@@ -614,6 +615,7 @@ impl Cx {
                         None => Field {
                             ty: self.join(&fa.ty, &fb.ty)?,
                             optional: fa.optional || fb.optional,
+                            doc: Default::default(),
                         },
                         Some(fl) => {
                             let bs = self.join(&base(a, k, fa), &base(b, k, fb))?;
@@ -622,6 +624,7 @@ impl Cx {
                             Field {
                                 ty,
                                 optional: false,
+                                doc: Default::default(),
                             }
                         }
                     }
@@ -636,6 +639,7 @@ impl Cx {
                         None => Field {
                             ty: self.join(&f1.ty, &r2.rest)?,
                             optional: true,
+                            doc: Default::default(),
                         },
                         Some((bs, fl)) => {
                             let bs = self.join(bs, &r2.rest)?;
@@ -644,6 +648,7 @@ impl Cx {
                             Field {
                                 ty,
                                 optional: false,
+                                doc: Default::default(),
                             }
                         }
                     }

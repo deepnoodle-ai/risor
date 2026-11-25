@@ -70,6 +70,8 @@ pub struct ExpectResult {
     pub conform: Option<ConformExpect>,
     /// F6: the JSON text of the run's value (`f06-groups.md` 11.2).
     pub json: Option<String>,
+    /// F16 11.8: SchemaOf of the checked type, `null` when it is refused.
+    pub schema: Option<Json>,
 }
 
 /// A conform result (F4 9.2).
@@ -288,6 +290,8 @@ pub struct Case {
     /// `Type.method` and its stub (3.10.4 item 2).
     pub methods: Vec<(String, Stub)>,
     pub functions: Vec<(String, Stub)>,
+    /// F16 11.8: the `Doc` of each declaration that has one, by its key.
+    pub docs: Vec<(String, String)>,
     pub reject: Option<Vec<String>>,
     /// The removed library entries (`03-host.md` 3.10.3).
     pub removed: Vec<String>,
@@ -353,7 +357,8 @@ impl std::fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
-const HEADER_FIELDS: [&str; 23] = [
+const HEADER_FIELDS: [&str; 24] = [
+    "docs",
     "facts",
     "returnsSchema",
     "load",
@@ -379,7 +384,8 @@ const HEADER_FIELDS: [&str; 23] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 33] = [
+const CASE_FIELDS: [&str; 34] = [
+    "docs",
     "format",
     "formatTemplate",
     "complete",
@@ -742,6 +748,23 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             methods.push((key.clone(), stub));
         }
     }
+    // F16 11.8: `docs` names declarations of the case, with strings.
+    let mut docs = Vec::new();
+    if let Some(d) = get("docs") {
+        let m = d.as_obj().ok_or("docs is not an object")?;
+        for (k, v) in m {
+            let text = v
+                .as_str()
+                .ok_or_else(|| format!("the doc of {k:?} is not a string"))?;
+            let declared = functions.iter().any(|(f, _)| f == k)
+                || methods.iter().any(|(f, _)| f == k)
+                || strings(get("opaque")).contains(k);
+            if !declared {
+                return Err(format!("docs names {k:?}, which the case does not declare"));
+            }
+            docs.push((k.clone(), text.to_string()));
+        }
+    }
     let limits = get("limits")
         .map(|l| Limits {
             steps: l
@@ -791,7 +814,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     // 3.10.10 item 17: an unchecked case states nothing that needs the check.
     if !check {
         let bad = match &expect {
-            Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
+            Expect::Result(r) => r.ty.is_some() || r.sites.is_some() || r.schema.is_some(),
             Expect::Failure(f) => {
                 f.phase == Phase::Check
                     && f.diagnostics
@@ -951,6 +974,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         opaque,
         methods,
         functions,
+        docs,
         reject: get("reject").map(|v| strings(Some(v))),
         removed: strings(get("removed")),
         facts: get("facts")
@@ -1259,6 +1283,8 @@ fn read_expect(v: &Json) -> V<Expect> {
             "json" => {
                 x.as_str().ok_or("expect.json is not a string")?;
             }
+            // F16 11.8: any JSON value, `null` for a refusal.
+            "schema" => {}
             "analysis" => {
                 if obj.len() != 1 {
                     return Err("expect has analysis and another field".into());
@@ -1293,6 +1319,7 @@ fn read_expect(v: &Json) -> V<Expect> {
         analysis: v.get("analysis").cloned(),
         conform: None,
         json: v.get("json").and_then(|j| j.as_str()).map(String::from),
+        schema: v.get("schema").cloned(),
     }))
 }
 
@@ -1740,6 +1767,7 @@ fn render_case(
         opaque,
         methods: Vec::new(),
         functions: Vec::new(),
+        docs: Vec::new(),
         reject: None,
         removed: Vec::new(),
         facts: None,
@@ -1980,6 +2008,11 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             Ok(())
         }
         "render" => Ok(()),
+        // F16 11.8: its keys are tested against the case's declarations.
+        "docs" => match v {
+            Json::Obj(_) => Ok(()),
+            _ => Err("docs is not an object".into()),
+        },
         "runner" => match v {
             Json::Str(_) | Json::Obj(_) | Json::Arr(_) => Ok(()),
             _ => Err("runner is not a string, an object or an array".into()),
@@ -2200,6 +2233,7 @@ fn runner_case(
         opaque: Vec::new(),
         methods: Vec::new(),
         functions: Vec::new(),
+        docs: Vec::new(),
         reject: None,
         removed: Vec::new(),
         facts: None,

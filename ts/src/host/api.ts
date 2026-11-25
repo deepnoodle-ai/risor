@@ -36,6 +36,7 @@ import { depth, fromNode, printType, printUnfolded, opaque as opaqueType, SIZE_L
 import type { Ref as InnerRef, Type as InnerType } from "../types/type.ts";
 import { CONFORM_STEPS, conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
+import { SchemaRefused, schemaOf as innerSchemaOf, jsonText as schemaJsonText } from "../types/schemaof.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { compareText } from "../value/value.ts";
 import { analyze } from "../syntax/analysis.ts";
@@ -108,6 +109,11 @@ export interface HostFunction {
    * value is a crash: `function-panic`.
    */
   call(handle: Call, ...args: unknown[]): unknown;
+  /**
+   * Its documentation (f16 11.6). Hover shows it as given; an empty string is
+   * no documentation. It is not part of the environment's description.
+   */
+  doc?: string;
 }
 
 export interface OpaqueType {
@@ -115,6 +121,8 @@ export interface OpaqueType {
   test(value: unknown): boolean;
   /** Methods: the receiver is the first argument of `call`. */
   methods?: Record<string, HostFunction>;
+  /** Its documentation (f16 11.6), as for a host function. */
+  doc?: string;
 }
 
 export interface Limits {
@@ -164,6 +172,8 @@ export interface EnvOptions {
 export interface ChildOpaqueType {
   test?(value: unknown): boolean;
   methods?: Record<string, HostFunction>;
+  /** Its documentation (f16 11.6). A type the child replaces brings its own; one it keeps keeps the parent's unless given. */
+  doc?: string;
 }
 
 /** The declarations of a child environment (03 3.3.2). */
@@ -324,6 +334,29 @@ function schemaType(schema: unknown, options: SchemaOption[]): InnerType {
     if (e instanceof SchemaError) throw declareError("bad-type", e.message);
     throw e;
   }
+}
+
+/**
+ * The JSON Schema of a type (package F16 slice D3, f16 11.5), as a plain JSON
+ * value. Throws RisorError `bad-type` for a type that holds an opaque type or
+ * a type variable, or two recursive types of one name, and for an invalid type.
+ */
+export function schemaOf(t: Type): unknown {
+  try {
+    return innerSchemaOf(innerType(t));
+  } catch (e) {
+    if (e instanceof SchemaRefused) throw declareError("bad-type", e.message);
+    throw e;
+  }
+}
+
+/**
+ * The text of a type's JSON Schema (f16 11.5): its JSON form, with no white
+ * space and the keys of every object in code point order, the same text in
+ * every implementation. Throws as `schemaOf` does.
+ */
+export function schemaText(t: Type): string {
+  return schemaJsonText(schemaOf(t) as Parameters<typeof schemaJsonText>[0]);
 }
 
 /** The type of a JSON Schema with options (package F1, f01 3, 4). Throws RisorError `bad-type`. */
@@ -609,6 +642,20 @@ export class Env<V = any, N = any> {
   }
 
   private readonly checkEnv: CheckEnv;
+
+  /**
+   * Internal: the `Doc` of a host function (`name`), a method (`Type.method`)
+   * or an opaque type (f16 11.6), or null when it has none or it is empty.
+   */
+  docOf(kind: "function" | "method" | "opaque", name: string): string | null {
+    let d: string | undefined;
+    if (kind === "function") d = this.environment.functions.has(name) ? this.options.functions?.[name]?.doc : undefined;
+    else if (kind === "method") {
+      const dot = name.indexOf(".");
+      d = this.environment.methods.has(name) ? this.options.opaque?.[name.slice(0, dot)]?.methods?.[name.slice(dot + 1)]?.doc : undefined;
+    } else d = this.environment.opaque.has(name) ? this.options.opaque?.[name]?.doc : undefined;
+    return typeof d === "string" && d !== "" ? d : null;
+  }
 
   /**
    * An environment from a description (f01 5.4). It has no implementation of
@@ -922,12 +969,16 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
   const childTypes = new Set(options.opaqueNames ?? Object.entries(options.opaque ?? {}).filter(([, o]) => o.test !== undefined).map(([k]) => k));
   const opaqueNames = [...pe.opaque].filter((t) => !childTypes.has(t));
   const opaque: Record<string, OpaqueType> = {};
-  for (const t of opaqueNames) opaque[t] = { test: p.opaque?.[t]?.test ?? (() => false), methods: { ...(p.opaque?.[t]?.methods ?? {}) } };
+  for (const t of opaqueNames) opaque[t] = { test: p.opaque?.[t]?.test ?? (() => false), methods: { ...(p.opaque?.[t]?.methods ?? {}) }, doc: p.opaque?.[t]?.doc };
   for (const [t, o] of Object.entries(options.opaque ?? {})) {
-    if (childTypes.has(t)) opaque[t] = { test: o.test ?? (() => false), methods: { ...(o.methods ?? {}) } };
-    else if (opaque[t] !== undefined) Object.assign(opaque[t].methods!, o.methods ?? {});
+    // f16 11.6 item 4: a replacement brings its own Doc; a type kept keeps its parent's.
+    if (childTypes.has(t)) opaque[t] = { test: o.test ?? (() => false), methods: { ...(o.methods ?? {}) }, doc: o.doc };
+    else if (opaque[t] !== undefined) {
+      Object.assign(opaque[t].methods!, o.methods ?? {});
+      if (o.doc !== undefined) opaque[t].doc = o.doc;
+    }
     // A method of a type neither declares: declare reports it (bad-signature).
-    else opaque[t] = { test: () => false, methods: { ...(o.methods ?? {}) } };
+    else opaque[t] = { test: () => false, methods: { ...(o.methods ?? {}) }, doc: o.doc };
   }
   for (const t of childTypes) if (!opaqueNames.includes(t)) opaqueNames.push(t);
   // f04 3.4: the parent's named types, less those the child declares.

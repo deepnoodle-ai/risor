@@ -245,7 +245,7 @@ func (c *conv) prim(p *typetext.Prim) *Type {
 			c.fail("the key %q is written twice", f.Key)
 		}
 		seen[f.Key] = true
-		fs = append(fs, Field{Key: f.Key, Type: c.typ(f.Type), Optional: f.Optional})
+		fs = append(fs, Field{Key: f.Key, Type: c.typ(f.Type), Optional: f.Optional, Doc: f.Doc})
 	}
 	rest := Never
 	if p.Record.HasRest {

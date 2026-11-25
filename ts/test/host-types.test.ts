@@ -4,7 +4,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, descriptionText, Env, parse, RisorError, typeFromSchema } from "../src/host/api.ts";
+import { createEnv, descriptionText, Env, parse, RisorError, schemaOf, schemaText, typeFromSchema } from "../src/host/api.ts";
 import { close, meet, pick } from "../src/types/schema.ts";
 import { ANY, INT, NEVER, STRING, printType, record } from "../src/types/type.ts";
 import type { Rec } from "../src/types/type.ts";
@@ -114,5 +114,29 @@ describe("f01 3.10 item 5: a shared $ref target is mapped once", () => {
     assert.equal(typeFromSchema({ type: "object", properties: { a: { type: "string" } } }, ["closed"]).toString(), "{a?: string}");
     assert.equal(declareCode(() => typeFromSchema({ type: "int" })), "bad-type");
     assert.equal(declareCode(() => typeFromSchema({ $defs: { x: { $ref: "#/$defs/x" } }, $ref: "#/$defs/x" })), "bad-type");
+  });
+});
+
+describe("f16 11.5, 11.6: schemaOf, schemaText and Doc", () => {
+  test("schemaOf gives the JSON value, schemaText its text, and a refusal is bad-type", () => {
+    const env = createEnv({ opaque: { Tok: { test: () => false, doc: "A token." } } });
+    const t = env.parseType('{/** The city. */ city: string, "10"?: int, "2"?: "a" | "b"}');
+    assert.deepEqual(schemaOf(t), {
+      type: "object",
+      properties: { "10": { type: "integer" }, "2": { enum: ["a", "b"], type: "string" }, city: { description: "The city.", type: "string" } },
+      required: ["city"],
+      additionalProperties: false,
+    });
+    assert.equal(
+      schemaText(t),
+      '{"additionalProperties":false,"properties":{"10":{"type":"integer"},"2":{"enum":["a","b"],"type":"string"},"city":{"description":"The city.","type":"string"}},"required":["city"],"type":"object"}',
+    );
+    assert.equal(declareCode(() => schemaOf(env.parseType("Tok[]"))), "bad-type");
+    // The Doc of an opaque type is not in the description of the environment (f16 11.6 item 3).
+    assert.ok(!descriptionText(env.describe()).includes("A token."));
+  });
+  test("a host function's Doc reaches hover", () => {
+    const env = createEnv({ functions: { rate: { type: "(code: string) => float", call: () => 1, doc: "The rate." } } });
+    assert.equal(env.hover('rate("EUR")', { line: 1, column: 1 })?.doc, "The rate.");
   });
 });

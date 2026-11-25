@@ -59,6 +59,8 @@ type Type struct {
 	size, depth int32
 	// deep caches hasDeepRefs: 0 not yet known, 1 no, 2 yes.
 	deep int32
+	// docs caches hasDocs the same way.
+	docs int32
 }
 
 // Field is one field of a record.
@@ -71,6 +73,10 @@ type Field struct {
 	// the fill and the fill apart, and Type is their Join. Fill is nil for a
 	// field with no fill.
 	Base, Fill *Type
+	// Doc is the field's description (F16 11.4), or "". No rule that
+	// compares or prints types reads it, and a field that a Join or a Meet
+	// builds from two records has none.
+	Doc string
 }
 
 // BaseOf is a field's base: its type when it has no fill.
@@ -346,6 +352,48 @@ func JoinAll(ts []*Type) *Type {
 	return r
 }
 
+// hasDocs reports whether a field of t, at any depth outside references,
+// has a description.
+func hasDocs(t *Type) bool {
+	switch atomic.LoadInt32(&t.docs) {
+	case 1:
+		return false
+	case 2:
+		return true
+	}
+	found := false
+	if t.list != nil && hasDocs(t.list) {
+		found = true
+	}
+	recs := []*Record{}
+	if t.rec != nil {
+		recs = append(recs, t.rec)
+	}
+	if t.uni != nil {
+		recs = append(recs, ownVariants(t)...)
+	}
+	for _, r := range recs {
+		if found {
+			break
+		}
+		for _, f := range r.Fields {
+			if f.Doc != "" || hasDocs(f.Type) {
+				found = true
+				break
+			}
+		}
+		if !found && r.Rest != nil && hasDocs(r.Rest) {
+			found = true
+		}
+	}
+	if found {
+		atomic.StoreInt32(&t.docs, 2)
+	} else {
+		atomic.StoreInt32(&t.docs, 1)
+	}
+	return found
+}
+
 // HasDeepRefs reports whether t has a reference at any depth of its parts,
 // not looking into the definitions.
 func HasDeepRefs(t *Type) bool { return hasDeepRefs(t) }
@@ -405,7 +453,10 @@ func (c *rctx) join(a, b *Type) *Type {
 	if a.any || b.any {
 		return Any
 	}
-	if a == b {
+	if a == b && !hasDocs(a) {
+		// A type with descriptions is joined by the rules below, so that
+		// the records Core's Join builds have none, as for two types that
+		// are not one (F16 11.4).
 		return a
 	}
 	if a.IsNever() {
@@ -734,7 +785,7 @@ func Merge(r *Record, m *Type) *Record {
 	var fs []Field
 	for _, mf := range mr.Fields {
 		if !mf.Optional {
-			fs = append(fs, Field{Key: mf.Key, Type: mf.Type, Optional: false})
+			fs = append(fs, Field{Key: mf.Key, Type: mf.Type, Optional: false, Doc: mf.Doc})
 			continue
 		}
 		rt := r.Rest
@@ -1119,7 +1170,7 @@ func Subst(t *Type, sol map[string]*Type) *Type {
 	if c.rec != nil {
 		fs := make([]Field, len(c.rec.Fields))
 		for i, f := range c.rec.Fields {
-			fs[i] = Field{Key: f.Key, Type: Subst(f.Type, sol), Optional: f.Optional}
+			fs[i] = Field{Key: f.Key, Type: Subst(f.Type, sol), Optional: f.Optional, Doc: f.Doc}
 		}
 		c.rec = &Record{Fields: fs, Rest: Subst(c.rec.Rest, sol)}
 	}
@@ -1385,7 +1436,7 @@ func (k *closer) closeT(t *Type) *Type {
 	closeRec := func(r *Record) *Record {
 		fs := make([]Field, len(r.Fields))
 		for i, f := range r.Fields {
-			fs[i] = Field{Key: f.Key, Type: k.closeT(f.Type), Optional: f.Optional}
+			fs[i] = Field{Key: f.Key, Type: k.closeT(f.Type), Optional: f.Optional, Doc: f.Doc}
 		}
 		rest := k.closeT(r.Rest)
 		if r.Closable {

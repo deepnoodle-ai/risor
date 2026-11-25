@@ -306,6 +306,9 @@ The record of an `object`:
    So `unevaluatedProperties: false` does not make the record exact.
 6. A record prints by `05-types.md` 3.9: no fields and rest R prints `map<R>`,
    no fields and rest `never` prints `{}`.
+7. With package F16, slice D3, a key of `properties` whose own schema object
+   has a `description` that is a string and not empty gives its field that
+   description (`spec/packages/f16-entry-points.md` 11.5 item 5).
 
 | Schema (each with `"type": "object"`) | Type |
 | --- | --- |
@@ -440,7 +443,8 @@ is sound: a keyword of a validator only takes values away.
 | `$id` | `bad-type` below the root | On the root |
 | `$dynamicRef`, `$recursiveRef` | `bad-type` | Never on a walked schema |
 | `$schema`, `$anchor`, `$dynamicAnchor`, `$vocabulary`, `$comment` | — | Always |
-| `title`, `description`, `examples`, `example`, `deprecated`, `readOnly`, `writeOnly` | — | Always |
+| `description` | With package F16, slice D3: on a property's own schema object, the field's description (`spec/packages/f16-entry-points.md` 11.5 item 5) | Elsewhere; always without that slice |
+| `title`, `examples`, `example`, `deprecated`, `readOnly`, `writeOnly` | — | Always |
 | `format`, `contentEncoding`, `contentMediaType`, `contentSchema` | — | Always. `format` gives no type: a `date-time` is a `string` |
 | `multipleOf`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | — | Always. `multipleOf: 1` does not give `int` |
 | `minLength`, `maxLength`, `pattern` | — | Always |
@@ -565,7 +569,9 @@ the mapping meets in that schema: nested, in `items`, in a branch, and through
 2. A type from a schema or from a host type is described the same way. The
    schema and the host type are not kept.
 3. **No schema is given back.** This package has no mapping from a type to a
-   JSON Schema.
+   JSON Schema. Package F16, slice D3, replaces this item: every binding gains
+   `SchemaOf`, a type's JSON Schema (`spec/packages/f16-entry-points.md`
+   11.5).
 
 ### 5.2 Printing a signature
 
@@ -877,4 +883,5 @@ These are added to the schema of `03-host.md` 3.10.11: the property below in
 3. Not in this package: a named type declared by schema (F4); the tagged union
    a schema's branches give (F5, which turns the error of 3.9 into a type); an
    expected result given by schema, and a closed schema for a config file
-   (F10); a JSON Schema produced from a type.
+   (F10); a JSON Schema produced from a type, which package F16, slice D3,
+   adds (`spec/packages/f16-entry-points.md` 11.5).

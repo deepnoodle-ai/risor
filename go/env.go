@@ -98,6 +98,9 @@ type Function struct {
 	Name string
 	Type string
 	Impl Native
+	// Doc documents the function (package F16, slice D3): hover gives it.
+	// It is not in the environment's description.
+	Doc string
 	// bind is set by Func and Methods.
 	bind *derivation
 }
@@ -110,6 +113,9 @@ func (f Function) apply(e *Env) { e.addFunc(f) }
 type OpaqueType struct {
 	Name    string
 	Methods map[string]Function
+	// Doc documents the type (package F16, slice D3): hover on its name
+	// gives it.
+	Doc string
 	// bind is set by Methods.
 	bind *opaqueBinding
 }
@@ -202,11 +208,13 @@ type funcDecl struct {
 	name, ns string
 	sig      *typetext.Sig
 	impl     Native
+	doc      string // F16 11.6
 }
 
 type opaqueDecl struct {
 	name    string
 	methods map[string]*funcDecl
+	doc     string // F16 11.6
 }
 
 // Env is an environment: the declarations a program is compiled and run
@@ -466,7 +474,7 @@ func (e *Env) addFunc(f Function) {
 		return
 	}
 	e.own["f:"+f.Name] = true
-	e.funcs[f.Name] = &funcDecl{name: name, ns: ns, sig: sig, impl: f.Impl}
+	e.funcs[f.Name] = &funcDecl{name: name, ns: ns, sig: sig, impl: f.Impl, doc: f.Doc}
 }
 
 func (e *Env) addOpaque(o OpaqueType) {
@@ -484,7 +492,7 @@ func (e *Env) addOpaque(o OpaqueType) {
 			e.errf(x.code, x.msg)
 		}
 	}
-	od := &opaqueDecl{name: o.Name, methods: map[string]*funcDecl{}}
+	od := &opaqueDecl{name: o.Name, methods: map[string]*funcDecl{}, doc: o.Doc}
 	for m, f := range o.Methods {
 		if !e.bound(o.Name+"."+m, f) {
 			continue
@@ -493,7 +501,7 @@ func (e *Env) addOpaque(o OpaqueType) {
 		if !ok {
 			continue
 		}
-		od.methods[m] = &funcDecl{name: m, sig: sig, impl: f.Impl}
+		od.methods[m] = &funcDecl{name: m, sig: sig, impl: f.Impl, doc: f.Doc}
 	}
 	e.opaque[o.Name] = od
 }
@@ -514,11 +522,11 @@ func Method(typeName, method string, f Function) Decl {
 		if !ok {
 			return
 		}
-		cp := &opaqueDecl{name: od.name, methods: map[string]*funcDecl{}}
+		cp := &opaqueDecl{name: od.name, methods: map[string]*funcDecl{}, doc: od.doc}
 		for k, v := range od.methods {
 			cp.methods[k] = v
 		}
-		cp.methods[method] = &funcDecl{name: method, sig: sig, impl: f.Impl}
+		cp.methods[method] = &funcDecl{name: method, sig: sig, impl: f.Impl, doc: f.Doc}
 		e.opaque[typeName] = cp
 	})
 }

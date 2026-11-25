@@ -61,6 +61,9 @@ struct Lexer<'a> {
     /// lexer stops with `CUT_OPEN`.
     cut: bool,
     open_at_end: Vec<bool>,
+    /// F16 11.2: the span of the doc comment met last, while only white
+    /// space has followed it.
+    pending_doc: Option<Range>,
 }
 
 /// The code of the error `lex_cut` gives where the text ends inside an
@@ -101,6 +104,7 @@ pub fn lex_part(
         comments: Vec::new(),
         cut: false,
         open_at_end: Vec::new(),
+        pending_doc: None,
     };
     lx.run()?;
     let end = lx.part.and_then(|p| p.end).unwrap_or(src.len());
@@ -125,6 +129,7 @@ fn lexer(src: &Source) -> Lexer<'_> {
         comments: Vec::new(),
         cut: false,
         open_at_end: Vec::new(),
+        pending_doc: None,
     }
 }
 
@@ -177,6 +182,25 @@ pub fn lex_cut(src: &Source) -> CutLex {
     }
 }
 
+/// The text of a doc comment (F16 11.2), `None` when it is empty. `c` is
+/// the whole comment, `/**` to `*/`.
+pub fn doc_text(c: &[char]) -> Option<std::sync::Arc<str>> {
+    let inner: String = c[3..c.len() - 2].iter().collect();
+    let inner = inner.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = inner
+        .split('\n')
+        .map(|l| {
+            let l = l.trim_start_matches([' ', '\t']);
+            let l = l.strip_prefix('*').unwrap_or(l);
+            let l = l.strip_prefix(' ').unwrap_or(l);
+            l.trim_end_matches([' ', '\t'])
+        })
+        .collect();
+    let first = lines.iter().position(|l| !l.is_empty())?;
+    let last = lines.iter().rposition(|l| !l.is_empty())?;
+    Some(std::sync::Arc::from(lines[first..=last].join("\n")))
+}
+
 const MAX_WHOLE: u128 = (1u128 << 53) - 1;
 
 fn is_hex(c: char) -> bool {
@@ -212,6 +236,7 @@ impl<'a> Lexer<'a> {
             span,
             diag: span,
             code: None,
+            doc: None,
         });
     }
 
@@ -264,7 +289,12 @@ impl<'a> Lexer<'a> {
                 self.push(Tok::Eof, n, n);
                 return Ok(());
             }
+            let doc = self.pending_doc.take();
+            let first = self.out.len();
             self.token()?;
+            if let (Some(d), Some(t)) = (doc, self.out.get_mut(first)) {
+                t.doc = doc_text(&self.s[d.start as usize..d.end as usize]);
+            }
             if self.part.as_ref().is_some_and(|p| p.end.is_some()) {
                 return Ok(());
             }
@@ -283,6 +313,7 @@ impl<'a> Lexer<'a> {
                         self.i += 1;
                     }
                     self.comments.push(Range::new(start, self.i));
+                    self.pending_doc = None;
                 }
                 '/' if self.at(self.i + 1) == Some('*') => {
                     let start = self.i;
@@ -303,6 +334,9 @@ impl<'a> Lexer<'a> {
                     }
                     self.i = j + 2;
                     self.comments.push(Range::new(start, self.i));
+                    // F16 11.1: `/**` begins a doc comment, but `/**/`.
+                    let is_doc = self.i - start > 4 && self.s[start + 2] == '*';
+                    self.pending_doc = is_doc.then(|| Range::new(start, self.i));
                 }
                 _ => break,
             }
@@ -491,6 +525,7 @@ impl<'a> Lexer<'a> {
                     span: Range::new(start, end),
                     diag: Range::new(start, j),
                     code: None,
+                    doc: None,
                 });
                 return Ok(());
             }
@@ -520,6 +555,7 @@ impl<'a> Lexer<'a> {
             span: Range::new(start, end),
             diag: Range::new(start, start + 3),
             code: None,
+            doc: None,
         });
     }
 
@@ -821,6 +857,7 @@ impl<'a> Lexer<'a> {
                         span: Range::new(start, end),
                         diag: open,
                         code: Some((code::TEXT_BLOCK_OPEN, open)),
+                        doc: None,
                     });
                     return Ok(());
                 }

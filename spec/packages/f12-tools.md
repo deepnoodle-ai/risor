@@ -72,7 +72,8 @@ numbers without a file are of this chapter.
    6 bind the implementation that ships the CLI, the REPL or the editor
    grammar.
 2. Packages are offered in the order of `03-host.md` 3.11 item 2: F3, F1, F2,
-   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16 slice D1, F17, F12. F12 is
+   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16 slice D1, F17, F16 slice D3,
+   F12. F12 is
    the last. So an implementation that offers F12 offers every form of F3, F4
    and F7, the templates of F2, the groups of F6 with every function of F13,
    the renderings of F8, the report of F9, the commands of F10, the host facts
@@ -892,7 +893,11 @@ When the hole is a string literal, the candidates are string values, kind
 5. `doc` comes only from a library record. A host function and a method of an
    opaque type have none in 3.0: neither a declaration in type text nor a
    description (F1 5.3) carries one, so their `doc` is null. A later minor
-   version may add a field for it; a binding does not invent one.
+   version may add a field for it; a binding does not invent one. Package
+   F16, slice D3, replaces this item: a host function, a method and an opaque
+   type have a `Doc`, and a `const` line, a parameter, a type line and a field
+   a description, which hover gives (`spec/packages/f16-entry-points.md`
+   11.7).
 6. Any other word, a keyword or a type word among them, has no hover.
 7. **A call of a lambda by its own name** (F17) is the name of a `Call` of a
    const-bound lambda. Its type is that of the `Call`: the result type for a

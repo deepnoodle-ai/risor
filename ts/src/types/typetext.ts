@@ -28,6 +28,8 @@ export interface RecordField {
   key: string;
   optional: boolean;
   type: TypeNode;
+  /** Package F16 slice D3: the field's description, from a doc comment before its key (f16 11.2). */
+  desc?: string;
 }
 
 /** `exact`: no Rest. `any`: `...` alone. Otherwise `...T`. */
@@ -324,7 +326,9 @@ class TypeParser {
         optional = true;
       }
       this.expect(":");
-      fields.push({ key, optional, type: this.type() });
+      const field: RecordField = { key, optional, type: this.type() };
+      if (t.doc !== undefined) field.desc = t.doc;
+      fields.push(field);
       if (this.isP(this.cur, ",")) {
         this.advance();
         continue;

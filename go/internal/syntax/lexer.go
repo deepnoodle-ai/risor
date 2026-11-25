@@ -53,6 +53,10 @@ type lexer struct {
 	// cut is set for the text before a cut of package F12 (tools.go): an
 	// interpolation the end of the text leaves open ends there.
 	cut bool
+	// doc is the text of the doc comment that the next token takes (F16
+	// 11.2): set at the end of a doc comment, and cleared by any other
+	// comment and by each token.
+	doc string
 }
 
 type interp struct {
@@ -87,6 +91,7 @@ func (l *lexer) emit(t Token) {
 	if t.ErrStart == 0 && t.ErrEnd == 0 {
 		t.ErrStart, t.ErrEnd = t.Start, t.End
 	}
+	t.Doc, l.doc = l.doc, ""
 	l.toks = append(l.toks, t)
 }
 
@@ -143,6 +148,7 @@ func (l *lexer) skipSpace() *Error {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			l.pos++
 		case c == '/' && l.peek(1) == '/':
+			l.doc = ""
 			for l.pos < len(l.src) && !isLineEnd(l.src[l.pos]) {
 				l.pos++
 			}
@@ -159,6 +165,7 @@ func (l *lexer) skipSpace() *Error {
 				}
 				l.pos++
 			}
+			l.doc = DocText(l.src[start:l.pos])
 		default:
 			return nil
 		}
@@ -699,4 +706,29 @@ func (l *lexer) templateText(tmplStart, pieceStart int, headIdx int) *Error {
 			l.pos++
 		}
 	}
+}
+
+// DocText is the description a block comment gives (F16 11.2): the text of
+// a doc comment, or "" for any other comment and for an empty text.
+func DocText(c []rune) string {
+	if len(c) < 5 || c[2] != '*' || string(c) == "/**/" {
+		return ""
+	}
+	body := string(c[3 : len(c)-2])
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
+	lines := strings.Split(body, "\n")
+	for i, ln := range lines {
+		ln = strings.TrimLeft(ln, " \t")
+		ln = strings.TrimPrefix(ln, "*")
+		ln = strings.TrimPrefix(ln, " ")
+		lines[i] = strings.TrimRight(ln, " \t")
+	}
+	for len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }

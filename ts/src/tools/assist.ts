@@ -956,25 +956,27 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
   const e = env.environment;
   const same = (s: Span) => s.start === word.start && s.end === word.end;
   // f17 12.8 item 2: a recursive type is printed by its unfolding.
-  const rec = (type: Type, decl: Span | null, name: string): HoverResult => ({
+  // f16 11.7: the doc of a type line is its description; of an opaque type, its Doc; else null.
+  const rec = (type: Type, decl: Span | null, name: string, doc: string | null = null): HoverResult => ({
     kind: "type",
     span: src.lineSpan(word),
     type: soleRef(type)?.name === name ? printUnfolded(type) : printType(type),
     signature: null,
-    doc: null,
+    doc,
     declaration: decl === null ? null : src.lineSpan(decl),
   });
+  const lineRec = (type: Type, l: A.TypeLine, name: string) => rec(type, l.nameSpan, name, l.doc ?? null);
   const fromEnv = (name: string): HoverResult | null => {
     const n = e.named.get(name);
     if (n !== undefined) return rec(n, null, name);
-    if (e.opaque.has(name)) return rec(opaque(name), null, name);
+    if (e.opaque.has(name)) return rec(opaque(name), null, name, env.docOf("opaque", name));
     return null;
   };
   // f16 7.3 items 1 and 2: the name of a type line stands for what the line declares.
   for (const l of prog.types) {
     if (!same(l.nameSpan)) continue;
     const t = res.typeLines.get(l);
-    return t !== undefined ? rec(t, l.nameSpan, l.name) : fromEnv(l.name);
+    return t !== undefined ? lineRec(t, l, l.name) : fromEnv(l.name);
   }
   // f17 12.8 item 2: a name in the type of type line i is resolved by 12.2 item 1: the last
   // line of the name at or before i, else the first after it.
@@ -987,7 +989,7 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
       for (let j = 0; j <= i; j++) if (prog.types[j].name === name) line = prog.types[j];
       if (line === null) for (let j = i + 1; j < prog.types.length && line === null; j++) if (prog.types[j].name === name) line = prog.types[j];
       const t = line === null ? undefined : res.typeLines.get(line);
-      return line !== null && t !== undefined ? rec(t, line.nameSpan, name) : null;
+      return line !== null && t !== undefined ? lineRec(t, line, name) : null;
     }
   }
   // A type name in an annotation, or in `as` and `is`.
@@ -1004,7 +1006,7 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
       let last: A.TypeLine | null = null;
       for (const l of prog.types) if (l.name === name && l.span.end <= word.start) last = l;
       const t = last === null ? undefined : res.typeLines.get(last);
-      if (last !== null && t !== undefined) return rec(t, last.nameSpan, name);
+      if (last !== null && t !== undefined) return lineRec(t, last, name);
       return fromEnv(name);
     }
   }
@@ -1030,12 +1032,33 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
   }
   for (const [t, slot] of res.catchSlots) if (t.nameSpan !== null) slotSpan.set(slot, t.nameSpan);
   let out: HoverResult | null = null;
-  const lambdaDecl = (l: A.Lambda): Span | null => {
-    let s: Span | null = null;
+  // f16 11.7: the descriptions of const lines and parameters whose pattern is a name, by that name's pattern and slot.
+  const patDoc = new Map<object, string>();
+  walk(prog, (n) => {
+    if ((n.kind === "Const" || n.kind === "Param") && n.doc !== undefined && n.pattern.kind === "NamePat") patDoc.set(n.pattern, n.doc);
+    return undefined;
+  });
+  const slotDoc = new Map<number, string>();
+  for (const [node, slot] of res.slots) {
+    const d = patDoc.get(node);
+    if (d !== undefined) slotDoc.set(slot, d);
+  }
+  const docOfSlot = (slot: number) => slotDoc.get(slot) ?? null;
+  const docOfParam = (p: A.Param) => (p.pattern.kind === "NamePat" ? (p.doc ?? null) : null);
+  const lambdaConst = (l: A.Lambda): A.Const | null => {
+    let c: A.Const | null = null;
     walk(prog, (n) => {
-      if (n.kind === "Const" && n.value === l && n.pattern.kind === "NamePat") s = n.pattern.span;
+      if (n.kind === "Const" && n.value === l && n.pattern.kind === "NamePat") c = n;
     });
-    return s;
+    return c;
+  };
+  const lambdaDecl = (l: A.Lambda): Span | null => lambdaConst(l)?.pattern.span ?? null;
+  const lambdaDoc = (l: A.Lambda): string | null => lambdaConst(l)?.doc ?? null;
+  // f16 11.7: the field the check read: of the receiver's record alternative, null taken out, a reference unfolded.
+  const fieldDoc = (m: A.Member): string | null => {
+    const rt = chk.types.get(m.x);
+    const a = rt === undefined ? null : alts(nonnull(rt));
+    return a?.map?.fields.get(m.name)?.desc ?? null;
   };
   walk(prog, (n) => {
     if (out !== null) return false;
@@ -1047,13 +1070,13 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
           if (e.groups.has(n.name) || e.namespaces.has(n.name)) out = rec("namespace", null);
           break;
         }
-        if (r.k === "slot") out = rec("name", tp(n), null, null, slotSpan.has(r.slot) ? ls(slotSpan.get(r.slot)!) : null);
+        if (r.k === "slot") out = rec("name", tp(n), null, docOfSlot(r.slot), slotSpan.has(r.slot) ? ls(slotSpan.get(r.slot)!) : null);
         else if (r.k === "var") out = rec("variable", tp(n));
         // f17 13.7 item 3: the name of a function parameter given on, or where a value is needed.
-        else if (r.k === "fn") out = rec("lambda", null, printFnType(r.param, res), null, ls(r.param.pattern.span));
+        else if (r.k === "fn") out = rec("lambda", null, printFnType(r.param, res), docOfParam(r.param), ls(r.param.pattern.span));
         else if (r.k === "lambda") {
           const d = lambdaDecl(res.lambdas[r.id]);
-          out = rec("lambda", null, null, null, d === null ? null : ls(d));
+          out = rec("lambda", null, null, lambdaDoc(res.lambdas[r.id]), d === null ? null : ls(d));
         }
         break;
       }
@@ -1069,17 +1092,17 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         const t = res.targets.get(n);
         if (t !== undefined && t.k === "lambda") {
           const d = lambdaDecl(res.lambdas[t.id]);
-          out = { ...rec("lambda", tp(n), null, null, d === null ? null : ls(d)) };
+          out = { ...rec("lambda", tp(n), null, lambdaDoc(res.lambdas[t.id]), d === null ? null : ls(d)) };
           break;
         }
         // f17 13.7 item 3: a call of a function parameter gives the call's type.
         if (t !== undefined && t.k === "fn") {
-          out = rec("lambda", tp(n), printFnType(t.param, res), null, ls(t.param.pattern.span));
+          out = rec("lambda", tp(n), printFnType(t.param, res), docOfParam(t.param), ls(t.param.pattern.span));
           break;
         }
         const host = e.functions.get(full);
         if (host !== undefined) {
-          out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named));
+          out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), env.docOf("function", full));
           break;
         }
         const lib = FUNCTIONS.get(full) ?? GROUP_FUNCTIONS.get(full);
@@ -1097,7 +1120,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         if (target !== undefined) {
           const full = `${(n.x as A.Ident).name}.${n.name}`;
           const host = e.functions.get(full);
-          if (host !== undefined) out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named));
+          if (host !== undefined) out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), env.docOf("function", full));
           else {
             const lib = GROUP_FUNCTIONS.get(full);
             out = rec("function", tp(n), lib?.record.signature ?? null, lib === undefined ? null : (GROUP_DOCS.get(full) ?? null));
@@ -1126,6 +1149,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
               const md = e.methods.get(`${o}.${n.name}`);
               if (md !== undefined) {
                 signature = printSignature(md.sig, e.opaque, e.named);
+                doc = env.docOf("method", `${o}.${n.name}`);
                 break;
               }
             }
@@ -1147,7 +1171,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
           out = rec("constant", k?.type ?? tp(n), null, GROUP_DOCS.get(full) ?? null);
           break;
         }
-        out = rec("field", tp(n));
+        out = rec("field", tp(n), null, fieldDoc(n));
         break;
       }
       case "NamePat": {
@@ -1156,11 +1180,11 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         // f17 13.7 item 3: a function parameter where it is declared.
         const fp = slot === undefined ? undefined : res.fnSlots.get(slot);
         if (fp !== undefined) {
-          out = rec("lambda", null, printFnType(fp, res), null, ls(n.span));
+          out = rec("lambda", null, printFnType(fp, res), patDoc.get(n) ?? null, ls(n.span));
           break;
         }
         const t = slot === undefined ? undefined : chk.slotTypes[slot];
-        out = rec("name", t === undefined ? null : printType(t), null, null, ls(n.span));
+        out = rec("name", t === undefined ? null : printType(t), null, patDoc.get(n) ?? null, ls(n.span));
         break;
       }
       case "MapPat":

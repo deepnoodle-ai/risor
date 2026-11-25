@@ -11,7 +11,7 @@ use crate::library;
 use crate::schema::SchemaOptions;
 use crate::types::text::{parse_sig, parse_type, Rest, Sig, Type};
 use crate::value::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,6 +28,8 @@ pub struct HostFn {
     pub base: String,
     pub sig: Sig,
     pub imp: Option<HostImpl>,
+    /// F16 11.6: its documentation, or none.
+    pub doc: Option<Arc<str>>,
 }
 
 #[derive(Clone)]
@@ -36,6 +38,8 @@ pub struct HostMethod {
     pub name: String,
     pub sig: Sig,
     pub imp: Option<HostImpl>,
+    /// F16 11.6: its documentation, or none.
+    pub doc: Option<Arc<str>>,
 }
 
 /// The limits of a run (`03-host.md` 3.6.1). `None` turns a limit off.
@@ -81,6 +85,8 @@ pub struct EnvData {
     /// into `vars`, its members in code point order of their names; each
     /// distinct set once, in the order of `f14-host-facts.md` 9.1.
     pub facts: Vec<Vec<u32>>,
+    /// F16 11.6: the documentation of the opaque types that have one.
+    pub opaque_docs: BTreeMap<String, Arc<str>>,
 }
 
 /// A built environment. It does not change, and is cheap to clone and safe
@@ -342,7 +348,17 @@ pub struct EnvBuilder {
     groups: Vec<String>,
     /// F14: the host facts `someNotNull` declared, as written.
     facts: Vec<Vec<String>>,
+    /// F16 11.6: the documentation given, by what it documents.
+    docs: Vec<(DocOf, String)>,
     parent: Option<Env>,
+}
+
+/// What a `Doc` documents (F16 11.6).
+#[derive(Clone, PartialEq, Eq)]
+enum DocOf {
+    Function(String),
+    Method(String, String),
+    Opaque(String),
 }
 
 impl EnvBuilder {
@@ -518,6 +534,34 @@ impl EnvBuilder {
     /// A method by its key, `"Token.owner"`, with an implementation or none.
     pub(crate) fn method_decl(mut self, key: &str, sig: &str, imp: Option<HostImpl>) -> Self {
         self.methods.push((key.to_string(), sig.to_string(), imp));
+        self
+    }
+
+    /// The documentation of a host function this builder declares (F16
+    /// 11.6): hover shows it as given. It is not part of the environment's
+    /// description, and an empty text is none. Documentation of a function
+    /// the builder does not declare has no effect.
+    pub fn function_doc(mut self, name: &str, doc: &str) -> Self {
+        self.docs
+            .push((DocOf::Function(name.to_string()), doc.to_string()));
+        self
+    }
+
+    /// The documentation of a method this builder declares (F16 11.6), as
+    /// [`EnvBuilder::function_doc`].
+    pub fn method_doc(mut self, type_name: &str, name: &str, doc: &str) -> Self {
+        self.docs.push((
+            DocOf::Method(type_name.to_string(), name.to_string()),
+            doc.to_string(),
+        ));
+        self
+    }
+
+    /// The documentation of an opaque type this builder declares (F16
+    /// 11.6), as [`EnvBuilder::function_doc`].
+    pub fn opaque_doc(mut self, name: &str, doc: &str) -> Self {
+        self.docs
+            .push((DocOf::Opaque(name.to_string()), doc.to_string()));
         self
     }
 
@@ -773,6 +817,7 @@ impl EnvBuilder {
                 ),
                 Ok(sig) if !sig_types(&sig, &names, &mut bad) => {}
                 Ok(sig) => methods.push(HostMethod {
+                    doc: doc_of(&self.docs, &DocOf::Method(t.to_string(), m.to_string())),
                     type_name: t.to_string(),
                     name: m.to_string(),
                     sig,
@@ -845,6 +890,7 @@ impl EnvBuilder {
             };
             if let Some(sig) = sig {
                 functions.push(HostFn {
+                    doc: doc_of(&self.docs, &DocOf::Function(name.clone())),
                     namespace: ns.map(String::from),
                     base: base.to_string(),
                     name,
@@ -1083,8 +1129,21 @@ impl EnvBuilder {
                     .collect()
             })
             .collect();
+        // F16 11.6 item 4: a child keeps the documentation it inherits,
+        // and an opaque type it declares again brings its own.
+        let mut opaque_docs: BTreeMap<String, Arc<str>> = parent
+            .as_ref()
+            .map(|p| p.opaque_docs.clone())
+            .unwrap_or_default();
+        for o in &self.opaque {
+            opaque_docs.remove(o);
+            if let Some(d) = doc_of(&self.docs, &DocOf::Opaque(o.clone())) {
+                opaque_docs.insert(o.clone(), d);
+            }
+        }
         Ok(Env {
             data: Arc::new(EnvData {
+                opaque_docs,
                 vars,
                 var_types,
                 functions,
@@ -1099,6 +1158,15 @@ impl EnvBuilder {
             }),
         })
     }
+}
+
+/// The last documentation given for a declaration; an empty text is none.
+fn doc_of(docs: &[(DocOf, String)], of: &DocOf) -> Option<Arc<str>> {
+    docs.iter()
+        .rev()
+        .find(|(k, _)| k == of)
+        .filter(|(_, d)| !d.is_empty())
+        .map(|(_, d)| Arc::from(d.as_str()))
 }
 
 /// The fields that the record type text of `vars` declares.

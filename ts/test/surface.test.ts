@@ -60,7 +60,7 @@ describe("E.2: the root exports the surface and nothing else", () => {
       "Analysis", "Env", "Expr", "HostError", "LoadError", "Program", "RisorError", "Template", "Type",
       "conform", "conformAll", "createEnv", "decode", "descriptionText", "exactRecordType", "format", "formatTemplate",
       "join", "jsonText", "listType", "literalType", "loadValue", "mapType", "nullable", "opaqueTypeNamed",
-      "parse", "parseTemplate", "recordType", "renderDetail", "renderJSON", "renderLine", "taggedUnionType", "truthy",
+      "parse", "parseTemplate", "recordType", "renderDetail", "renderJSON", "renderLine", "schemaOf", "schemaText", "taggedUnionType", "truthy",
       "typeAny", "typeBool", "typeFloat", "typeFromSchema", "typeInt", "typeNever", "typeNull", "typeString", "unionType",
     ]);
   });

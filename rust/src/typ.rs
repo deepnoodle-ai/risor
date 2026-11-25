@@ -447,6 +447,7 @@ pub fn record_type(fields: &[FieldType], rest: &Type) -> Type {
         let field = cty::Field {
             ty: f.ty.ty.clone(),
             optional: f.optional,
+            doc: Default::default(),
         };
         if m.insert(f.key.clone(), field).is_some() {
             return invalid(format!("the key {:?} is written twice", f.key));
@@ -538,6 +539,25 @@ pub fn type_from_schema(schema: &str, opts: SchemaOptions) -> Result<Type, Error
     let bad = |m: String| Error::one(Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m));
     let j = crate::json::parse(schema).map_err(bad)?;
     crate::schema::ty_schema(&j, opts).map(strong).map_err(bad)
+}
+
+/// SchemaOf(T) (`f16-entry-points.md` 11.5): the JSON Schema of a type, as
+/// its JSON text: no white space, the keys of every object in code point
+/// order, so two implementations give the same text for one type. A field's
+/// description is its `"description"`; a recursive type is written once,
+/// under `"$defs"`. Refused with the `declare` error `bad-type` when the
+/// type holds an opaque type or a type variable, or reaches two recursive
+/// types of one name; an invalid type gives its own error. It charges
+/// nothing and needs no environment.
+pub fn schema_of(t: &Type) -> Result<String, Error> {
+    let ty = t.ty().map_err(bad_type)?;
+    crate::schema::schema_of(ty)
+        .map(|j| crate::json::to_text(&j))
+        .map_err(bad_type)
+}
+
+fn bad_type(m: String) -> Error {
+    Error::one(Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m))
 }
 
 /// The options of [`conform_with`] and [`conform_all_with`]
