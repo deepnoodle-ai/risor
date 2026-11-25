@@ -121,9 +121,9 @@ package.
    parameters are part of version `3.0`. The record of `walk` and the entries of
    `suite/messages-recursion.json` have `since` `3.0`. This package adds no
    version number and no version marker.
-2. With this package an implementation offers 79 library entries: the 53 of
-   Core, the 8 of F6, the 6 of F7, the 11 of F13, and `walk`. 60 of them are
-   in the group `core`: Core's 53, F7's 6 and `walk`.
+2. With this package an implementation offers 82 library entries: the 56 of
+   Core, the 8 of F6, the 6 of F7, the 11 of F13, and `walk`. 63 of them are
+   in the group `core`: Core's 56, F7's 6 and `walk`.
 
 ### 1.4 Packages this one requires
 

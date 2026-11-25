@@ -57,9 +57,9 @@ sites), `spec/packages/f02-templates-analysis.md` (analysis paths),
 1. The projection and the entries of this package are part of version `3.0`.
    Every record has `since` `3.0`. This package adds no version number and no
    version marker.
-2. With this package an implementation offers 59 library entries: the 53 of
-   Core and the 6 that this package adds. The list methods are 27 and the map
-   methods 4. With F6 it offers 67, with F13 78, and with F17 79.
+2. With this package an implementation offers 62 library entries: the 56 of
+   Core and the 6 that this package adds. The list methods are 29 and the map
+   methods 4. With F6 it offers 70, with F13 81, and with F17 82.
 
 ### 1.4 Packages this one requires
 

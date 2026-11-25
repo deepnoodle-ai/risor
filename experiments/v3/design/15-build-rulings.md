@@ -800,7 +800,22 @@ simplest reading was taken. Each ruling below is open for the owner.
 | R383 | **A type whose schema F1 cannot read is outside the law** (F16 11.5 item 8). F1 reads a schema of depth 64 at most; an `anyOf` adds a level that type depth does not count, so `(int[]...[]) \| null` at type depth 64 gives a schema of depth 65. SchemaOf does not refuse it: the schema is still right, and a host may not map it back. Counting schema levels in type depth would change every limit of `05-types.md` 2.5 for one corner. From the review of #692. |
 | R384 | **`docs` stands where `functions` may** (F16 11.8): the header, a program case, a completion and a hover case. A format case and a render case take no `functions`, so a `docs` there could name nothing. From the review of #692. |
 
-## 29. Feedback to authors, package F19 (D56, track F)
+## 29. `indexOf` and `findIndex` (D66)
+
+Issue #640, friction 7: with no regular expressions, a tool author who takes a
+value out of text has only chains of `split`. The owner settled D66: three
+Core entries that give null on a miss. These rulings record how they were
+built.
+
+| # | Ruling |
+| --- | --- |
+| R386 | **The three entries are Core, in the group `core`,** with their records in `suite/library.json` beside `find`, `startsWith` and `slice`, not in a package. They pass test T1 of `14` 2.1, as the other text and list methods do, so they change Core (`00` 4, "Where the plans meet", row "Core before 3.0 is final"). The test held in fact: a new list method changed the expectation of an existing case, the completion of `user.tags.fi` in `suite/tools/complete.json`, which now lists `findIndex`. Each is added at the end of its group, `04-library.md` 5.3.14, 5.4.23 and 5.4.24, so no section number moves. Core has 56 entries: 15 functions and 41 methods (14 of strings, 24 of lists, 3 of maps). With the packages the library has 82, 63 of them in the group `core`. `indexOf` names two entries, as `slice` does (`04-library.md` 1.1 item 3). |
+| R387 | **`s.indexOf(search)` charges `sz(s)` steps and 0 units,** wherever the occurrence is and when there is none. The charge is fixed by the receiver before the search, as for `split` and `slice`, so it does not depend on how far a search went. The search obeys the bound of `04-library.md` 3.5 rule 5. The position counts code points, as `len` and `slice` do, so `s.slice(s.indexOf(t) ?? 0)` is exact on any text. The empty string is found at 0. |
+| R388 | **`xs.indexOf(x)` compares by `==` and charges what `x in xs` charges** (`02-evaluation.md` 5.3), as each comparison is made. A formula symbol is added for it, `e` (`04-library.md` 4.2, 4.3): the formula grammar could not state the common prefix of two strings or the walk of `==` on two lists. The parameter is `x: T`, a type variable with no bound, so null is accepted at run time (2.4 item 4, 2.6). In the checker `x` binds `T` as any plain argument does (`05-types.md` 13.5 step 2), so `ints.indexOf("a")` checks, with the type `int \| null`, and gives null. `in` reports `never-equal` for the same mistake; giving `indexOf` that diagnostic would need a rule of its own in the checker, and is left for a later change. |
+| R389 | **No start position argument.** `04-library.md` 1.2 lets a later version add an optional last parameter to an entry, so leaving it out closes nothing. Today `s.slice(i).indexOf(t)`, plus `i`, searches from a position `i` from 0 to `len(s)`; a negative `i` is first resolved as `slice` resolves it (`04-library.md` 3.10). A start position would raise questions with no case behind them yet: whether `sz(s)` still counts the skipped text, and what a position past the end means for the empty string. |
+| R390 | **`findIndex` follows `find` exactly:** the same callback, called with the element and its index; 2 steps for each element visited, then the call; it stops at the first truthy result; a callback's failure is the call's. It does not narrow, as its result is an index. Unlike `find`, it tells a null element that matches from no match. With D66 the row of `06` 2.8, "Deliberately absent", that left out `indexOf` and `findIndex` is removed, and so is the row `indexOf` of the foreign names in `20` 3.3 (`20-6`): `indexOf` is now an entry, so a `no-method` hint for it cannot arise. The `wrong` lists of the three records name `index`, `find` (of a string, as Python writes it), `strpos`, `search`, `position`, `indexWhere`, `findFirstIndex` and `find_index`. |
+
+## 30. Feedback to authors, package F19 (D56, track F)
 
 Package F19 is plan `20` less what track B built (R212, R215 to R217, R260)
 and less what the owner dropped (20-8, 20-10). Its chapter is

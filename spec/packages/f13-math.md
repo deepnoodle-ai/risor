@@ -30,8 +30,8 @@ records file of a group, the shared failures).
 2. Every entry is exact (2.1). The records have `exact` `true`.
 3. `suite/library-math.json` has 11 records, one for each entry, in the format
    of F6 3.2.
-4. With F6 and this package an implementation offers 72 library entries: the
-   53 of Core, the 8 of F6 and these 11.
+4. With F6 and this package an implementation offers 75 library entries: the
+   56 of Core, the 8 of F6 and these 11.
 
 ### 1.2 Packages this one requires
 

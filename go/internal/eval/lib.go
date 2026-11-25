@@ -102,6 +102,9 @@ func (f *fenv) Sym(s byte) int64 {
 		return f.p
 	case 'g':
 		return f.g
+	case 'e':
+		// list.indexOf charges its comparisons as they run (indexIn).
+		return 0
 	}
 	return L(f.n)
 }
@@ -911,6 +914,15 @@ var implemented = map[string]libFunc{
 	},
 	"string.padStart": func(r *run, c *libCall) any { return r.pad(c, true) },
 	"string.padEnd":   func(r *run, c *libCall) any { return r.pad(c, false) },
+	"string.indexOf": func(r *run, c *libCall) any {
+		s := c.recv.(string)
+		r.charge(c, fenv{c: c})
+		i := textIndex(s, c.args[0].(string))
+		if i < 0 {
+			return nil
+		}
+		return numBox(float64(utf8.RuneCountInString(s[:i])))
+	},
 
 	// 5.4 Lists.
 	"list.filter": func(r *run, c *libCall) any {
@@ -994,6 +1006,22 @@ var implemented = map[string]libFunc{
 				}
 				return e
 			}
+		}
+		return nil
+	},
+	"list.findIndex": func(r *run, c *libCall) any {
+		lam, n := c.args[0].(*fn), c.n()
+		for i := 0; i < n; i++ {
+			if v, _, _ := r.callbackAt(c, lam, i); value.Truthy(v) {
+				return numBox(float64(i))
+			}
+		}
+		return nil
+	},
+	"list.indexOf": func(r *run, c *libCall) any {
+		// The comparisons charge as x in xs does: the symbol e.
+		if i := r.indexIn(c.args[0], c.recv, c.span); i >= 0 {
+			return numBox(float64(i))
 		}
 		return nil
 	},

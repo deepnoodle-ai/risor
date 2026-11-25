@@ -73,7 +73,7 @@ grouped by the sections E.3 to E.8.
 | `src/compile.rs` | S2 | Name resolution to slots and their places in each call's frame, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
 | `src/eval/code.rs` | — | The compiled form of the hot node kinds: a tree of closures built with the program, which the walk tries first |
-| `src/eval/lib.rs` | S3 | The library entries: the 53 of Core, the 6 queries of F7 and `walk` of F17; the entries of the groups (F6, F13) run in `eval/groups.rs`. The argument tests of every entry from its record's signature, and the table of formulas of all 79, which a test holds equal to the record files |
+| `src/eval/lib.rs` | S3 | The library entries: the 56 of Core, the 6 queries of F7 and `walk` of F17; the entries of the groups (F6, F13) run in `eval/groups.rs`. The argument tests of every entry from its record's signature, and the table of formulas of all 82, which a test holds equal to the record files |
 | `src/casemap.rs` | S3 | The case table, from `suite/casemap.json` |
 | `src/check/ty.rs` | S4 | Types (`05-types.md` 2): Join, Fits, Merge, Truthy, Falsy, the helpers of 4.5, printing (3.9), and reading type text |
 | `src/check/mod.rs` | S4 | The checker: the type rules of sections 5 to 18 over the resolution that `compile::resolve` gives, sites, classes, the expected result, and `compile_checked` |

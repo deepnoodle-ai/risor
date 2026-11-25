@@ -593,6 +593,11 @@
        "detail": "(f: (item: T, index: int) => unknown) => T | null"
       },
       {
+       "label": "findIndex",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => unknown) => int | null"
+      },
+      {
        "label": "first",
        "kind": "method",
        "detail": "() => T | null"
