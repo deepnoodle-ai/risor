@@ -18,8 +18,8 @@ This chapter is normative. It specifies follow-on package F8. It adds to Core:
 It adds no run code, no run template, no node kind, no reserved word, no library
 entry, no cost row and no limit. It changes no value, no count, no class, no
 type and no site. It changes the code of a `parse` diagnostic only where 2 says,
-and keeps its span except where 2.8 says. A trace, a rendering and `ConformAll`
-charge nothing.
+and keeps its span except where 2.8 says. A trace and a rendering charge
+nothing. `ConformAll` counts steps as the function of F4 7.3 does (6.4).
 
 The chapters of Core are cited by file and section: `03-host.md` 3.8 is section
 3.8 of `spec/core/03-host.md`. F3 is `spec/packages/f03-strings.md`, F2
@@ -1051,7 +1051,7 @@ Every binding gives a second conformance function beside the one of F4 7.
 | Matter | Rule |
 | --- | --- |
 | Takes | A value, a type resolved as F4 7.1 says, and a maximum, a whole number. A maximum less than 1 is read as 1 |
-| Gives | A list of `not-conforming` diagnostics, at most the maximum, in the order of 6.2. Each is as the function of F4 7 gives one: class `value`, a path, a message by F4 4.4, no span and an empty trace. The list is empty exactly when the value conforms. A limit ends it with that limit's diagnostic (6.4) |
+| Gives | A list of `not-conforming` diagnostics, at most the maximum, in the order of 6.2. Each is as the function of F4 7 gives one: class `value`, a path, a message by F4 4.4, no span and an empty trace. When the walk ends within its limits, the list is empty exactly when the value conforms. A limit ends it with that limit's diagnostic (6.4), also for a value that conforms |
 | Agrees with | Its first diagnostic, when there is one, is the diagnostic that the function of F4 7, `x as T` and `x is T` give: the same path and the same message, for every value and type |
 | Changes | Nothing. The value is not copied, filled in or trimmed |
 | Cost | Steps, by 6.4. It is not a run: it has no program, no usage, no allocation limit, no deadline and no cancellation |

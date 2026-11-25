@@ -1114,25 +1114,23 @@ reports every failure.
   NaN. At a place typed `any` the value is not looked at, and a later read of
   it fails as before.
 
-**Decision: it takes no limits, and it charges nothing.** `07` did not say.
+**Decision: it is not a run, and it counts steps against a step limit of its
+own** (D64; `spec/packages/f04-conversion.md` 7.3 is the authority). `07` did
+not say. The first version of this decision charged nothing; issue #678 showed
+that shared host data then takes exponential time.
 
 | Question | Answer |
 | --- | --- |
-| Is it a run? | No. It has no program, no usage and no cancellation signal. The environment's limits are limits of a run and do not apply |
-| What bounds its work? | The value. It visits a value at most once for each way the type reaches it, so on data shaped as a tree, as all parsed JSON is, the work is at most the size of the data. It builds nothing when the value conforms, and one bounded message when it does not |
+| Is it a run? | No. It has no program, no usage and no cancellation signal. The environment's limits are limits of a run and do not apply: the function takes a type, not an environment |
+| What bounds its work? | Its step limit: the default, 1,000,000, or one the host gives. It charges the steps a run's walk charges, and fails with `steps-exceeded` past the limit. It builds nothing when the value conforms, and one bounded message when it does not |
 | What bounds its depth? | The type. A type is at most 64 levels deep (`03`, 2.17), so the walk's recursion is bounded by text the host wrote, whatever the data. Cyclic host data cannot make it loop |
-| What is not bounded? | A host value in which one list or map is reached by many paths is visited once for each path. The walk keeps no memory of what it has seen. (I) |
-| A host that wants the limits and a count | Runs the test as a program: `v as T`, compiled once, with `v` declared `any`. That is a run, with steps, a budget and a deadline, and the same answer |
-
-Alternative: a step limit as an argument, with the count returned. Why not: it
-gives the function a second result and a second way to fail, for a bound the
-one-node program already provides. The data is in the host's memory and the
-host has usually just parsed it, which cost more than the walk will.
+| Shared data | A host value in which one list or map is reached by many paths is visited, and charged, once for each path. The walk keeps no memory of what it has seen, so the step limit bounds it |
+| A host that wants a count or a deadline | Runs the test as a program: `v as T`, compiled once, with `v` declared `any`. That is a run, with steps, a budget and a deadline, and the same answer |
 
 **Every failure** (`10-8`). `x as T` reports the first failure, and its cost is
 exact because it stops (`07`, 2.3). A host that loads a config file or checks a
-request body wants them all. The host's function charges nothing, so it can go
-on. Every binding gives a second function for this: `ConformAll` in Go,
+request body wants them all. The host's function is not a run, so it can go
+on, counting steps against the same limit (F8 6.4). Every binding gives a second function for this: `ConformAll` in Go,
 `conformAll` in TypeScript and `conform_all` in Rust.
 
 | Matter | Rule |
@@ -1144,7 +1142,7 @@ on. Every binding gives a second function for this: `ConformAll` in Go,
 | Maximum | The walk stops when it has that many failures. A host that must say "and more" asks for one more than it shows |
 | Gives | A list of `not-conforming` diagnostics, each as the first function gives it. Empty when the value conforms |
 | Agrees with | Its first diagnostic is the one that the first function and `x as T` report, for every value and type. The suite holds them together (A.11) |
-| Cost | It is not a run and charges nothing. Its work is bounded by the value and its depth by the type, as above. What it builds is bounded by the maximum |
+| Cost | It is not a run. It counts steps as the first function does, against the same limit (F8 6.4). Its depth is bounded by the type, as above. What it builds is bounded by the maximum |
 
 Alternative: a maximum as a third argument of the first function. Why not: the
 first function gives one diagnostic or none, and its result would become a
@@ -1168,7 +1166,8 @@ fixed order, and the first four are the stages and functions above.
 
 - **Step 4 is always made** (`12-3`). A result that came through `any` passes
   the check and may not conform. One walk makes the decode's precondition a
-  tested fact. It is not a run and charges nothing.
+  tested fact. It is not a run and is not part of the run's usage. It counts
+  steps against the default limit of the conformance function (F10 5.2).
 - **The decode** (`12-4`) does what the host language's usual JSON decoder does
   with the JSON text of the value (A.3), with unknown fields refused. An
   implementation need not make the text. The decode copies: what it gives
@@ -2811,7 +2810,7 @@ of the package root, to a package under `go/internal/` that `go/cmd/risor` impor
 | `O:E9` | A host function or method has no callback parameter (A.4), and the calls analysis lists are complete (A.8) |
 | `O:Y3`, `O:Y4` | "null" throughout, and every type text in TypeScript's spelling. Go's `nil` keeps its name where Go is meant. `risor.Nil` and `risor.Dynamic` are now `risor.Null` and `risor.Any`, and Rust's `View::Nil` is `View::Null` |
 | `O:X1`, `O:X2` | A binding is `const` (A.2, A.8). The result of an `if` is a result like any other, and its test is a tested position (A.3) |
-| `O:V1` to `O:V5` | Named types are the eighth kind of declaration, in one set of names with opaque types (A.2). The conformance function, with no limits (A.13). `not-conforming` with a path field (A.6). The second kind of conformance case (A.11). `NamedType`, `Conform`, `Opaque` and their equivalents (Parts B to D; host case 5) |
+| `O:V1` to `O:V5` | Named types are the eighth kind of declaration, in one set of names with opaque types (A.2). The conformance function, with a step limit of its own (A.13, D64). `not-conforming` with a path field (A.6). The second kind of conformance case (A.11). `NamedType`, `Conform`, `Opaque` and their equivalents (Parts B to D; host case 5) |
 | `O:R1` to `O:R9` | Part D. A.3 no longer assumes a binding can inspect a host value by reflection |
 | `O:D46` (`08`) | Positions and origins for the text block and the raw string, and the three `parse` codes (A.6). The lexer that ends a template segment reads raw strings (A.7). A string literal is a literal in every form (A.8). The editor grammar (A.12, B.11) |
 | `O:D47` (`09`) | `bad-type` for records with no tag, and `untagged-union` in the check phase (A.2, A.6). "Fits through its form" decides where `result-mismatch` is reported (A.3). The walk reads the tag first (A.13). `Tag` and `Variants` on `Type` (B.2) |

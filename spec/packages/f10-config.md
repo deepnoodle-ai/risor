@@ -198,9 +198,9 @@ value v.
    each part of the result fits its part of T, and a fit that uses `any` is a
    `dynamic` site (15.1, "A fit that used any").
 2. So step 4 of a load fails only when the check recorded a `dynamic` site,
-   or the precondition failed. In an environment that rejects the class
-   `dynamic` (`05-types.md` 17), step 4 fails only when the precondition
-   failed.
+   the precondition failed, or its walk reached a limit (5.2 item 1). In an
+   environment that rejects the class `dynamic` (`05-types.md` 17), step 4
+   fails only when the precondition failed or its walk reached a limit.
 
 ### 3.2 A type from a schema says less than the schema
 
@@ -367,6 +367,7 @@ its diagnostics.
 | --- | --- |
 | A part of the result came through `any`: a variable typed `any`, `json.parse`, a field of an open record's rest | `{auth: a}`, `a: any`, with `a` = `{kind: "token"}` against the union of 13.1: path `["auth", "header"]`, `required field "header" is missing` |
 | A host value broke its declared type (the precondition) | `x`, declared `{port: int}`, supplied `{port: "80"}`: path `["port"]`, `expected int, found "80"` |
+| The walk reached a limit (5.2 item 1): more than 1,000,000 steps, or nesting past 200 | A result that holds one list at each of 30 levels, `const a = [b, b]` at each level: `steps-exceeded`, with no path |
 
 1. By 3.1, nothing else makes step 4 fail.
 2. Under `closed`, a key that reaches the result through `any` and that the
