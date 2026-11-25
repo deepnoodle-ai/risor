@@ -23,15 +23,17 @@ func Program(source string) (string, *syntax.Error, *syntax.File) {
 	if lerr != nil { // cannot happen: the text parsed
 		return "", lerr, f
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width)
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds))
 	out = strings.TrimRight(out, " \n") + "\n"
 	return out, nil, f
 }
 
 // run builds the document twice: first to learn the kept tokens, then with
-// the comments attached (2.12), and lays it out.
-func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int) string {
+// the comments attached (2.12), and lays it out. ends is the prefix count of
+// line ends of src, shared by every run over the same text.
+func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds) string {
 	b := newBuilder(src, toks, from)
+	b.lineEnds = ends
 	build(b)
 	b.attach()
 	b.reset()
@@ -64,8 +66,8 @@ type builder struct {
 	// first of an element other than the first.
 	first, last int
 	elemStart   bool
-	// lineEnds[i] is the number of line ends in src[:i] (lineEndsIn).
-	lineEnds []int
+	// lineEnds counts the line ends of src (lineEndsIn).
+	lineEnds *lineEnds
 }
 
 func newBuilder(src []rune, toks []syntax.Token, from int) *builder {
@@ -134,24 +136,30 @@ func (b *builder) reset() {
 	b.first, b.last, b.elemStart = -1, -1, false
 }
 
+// lineEnds is a prefix count of the line ends of a text: before[i] is the
+// number in src[:i]. It is made on first use, once for each text, so the runs
+// of a template's parts share it.
+type lineEnds struct{ before []int }
+
 // lineEndsIn counts the line ends in src[a:b], CR LF as one, in constant
-// time from a prefix count. Counting from a each time made attach take time
+// time from the prefix count. Counting from a each time made attach take time
 // that grew with the square of the number of comments after one token.
 func (b *builder) lineEndsIn(a, c int) int {
 	if a >= c {
 		return 0
 	}
-	if b.lineEnds == nil {
-		b.lineEnds = make([]int, len(b.src)+1)
+	le := b.lineEnds
+	if le.before == nil {
+		le.before = make([]int, len(b.src)+1)
 		for i, r := range b.src {
-			n := b.lineEnds[i]
+			n := le.before[i]
 			if r == '\r' || (r == '\n' && (i == 0 || b.src[i-1] != '\r')) {
 				n++
 			}
-			b.lineEnds[i+1] = n
+			le.before[i+1] = n
 		}
 	}
-	n := b.lineEnds[c] - b.lineEnds[a]
+	n := le.before[c] - le.before[a]
 	if b.src[a] == '\n' && a > 0 && b.src[a-1] == '\r' {
 		n++ // the LF of a CR LF that the count gave to the CR before a
 	}
