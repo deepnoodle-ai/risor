@@ -54,6 +54,8 @@ type Program struct {
 	file       *syntax.File
 	whole      syntax.Span // the program's span: a limit diagnostic's (run.go)
 	root       code
+	hasResult  bool
+	entries    map[string]*entryPoint
 	top        int     // the number of values of the program's frame (frames.go)
 	nvars      int     // the variables the program reads, numbered densely
 	constSlots [][]int // for Entry: the indexes in the program's frame of each top-level const line
@@ -141,12 +143,15 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 	}()
 	var root code
 	var constSlots [][]int
+	var hasResult bool
+	var entries map[string]*entryPoint
 	if cfg.Entry {
 		root, constSlots = c.entry(prog.Consts, prog.Result)
+		hasResult = true
 	} else {
-		root = c.block(prog.Consts, prog.Result)
+		root, hasResult, entries = c.compileTop(prog)
 	}
-	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, top: c.ly.top, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
+	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, hasResult: hasResult, entries: entries, top: c.ly.top, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the

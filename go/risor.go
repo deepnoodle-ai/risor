@@ -141,11 +141,15 @@ func AsInt(v any) (int64, bool) {
 func (x *Expr) Text() string {
 	r := x.tree.Result
 	if r == nil {
-		return ""
+		sp := x.tree.Span()
+		return x.file.Text(sp.Start, sp.End)
 	}
 	start, end := r.Span().Start, r.Span().End
-	if len(x.tree.Consts) > 0 {
+	if len(x.tree.Consts) > 0 && x.tree.Consts[0].Span().Start < start {
 		start = x.tree.Consts[0].Span().Start
+	}
+	if len(x.tree.Types) > 0 && x.tree.Types[0].Span.Start < start {
+		start = x.tree.Types[0].Span.Start
 	}
 	return x.file.Text(start, end)
 }

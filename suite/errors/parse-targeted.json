@@ -1875,7 +1875,7 @@
       1,
       7
      ],
-     "message": "a program exports no name; its value is its last expression"
+     "message": "export marks only a top-level const-bound lambda; write export const at the top level of a program"
     }
    ]
   }

@@ -293,7 +293,9 @@ item 2 keeps. They are tried in this order.
    reports `undefined-function` when nothing declares `typeof`. With package
    F16, `type` at the start of a top-level line, followed by an upper-case
    word and `=`, begins a type line, and E17 does not hold there
-   (`spec/packages/f16-entry-points.md` 2.2, 2.5).
+   (`spec/packages/f16-entry-points.md` 2.2, 2.5); and `export` at the start of
+   a top-level line, directly before `const`, begins an `Export`, and E18 does
+   not hold there (`spec/packages/f16-entry-points.md` 12.2).
 5. E21: in `a?[i]` the conditional's `:` should stand at the end of input. In `c
    ? [1] : [2]`, with the `:`, nothing fails.
 6. E23 covers `x => { x + 1 }`. B9 covers `x => { if (c) { 1 } else { 2 } }`. B3
@@ -436,16 +438,15 @@ With this package the `parse` phase has 60 codes: the 16 of `01-language.md`
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
 2. `messages-parse.json` has one entry for each of the 60 codes of 2.11, with 99
    templates. `messages-check.json` has one entry for each of the 30 check codes
-   (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
-   and a template in a file of its own (`spec/packages/f16-entry-points.md`
-   9.1). Package F17 adds the code `circular-type`, with two templates, the
-   template `pairs` of `check-limit`, and five templates of existing codes, in
-   another (`spec/packages/f17-recursion.md` 9 and 13.5): 81 check templates
-   in all.
-   Package F19 adds 2 parse codes with 4 templates, and 5 check templates,
-   in `suite/messages-feedback.json`
+   (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds two codes
+   (`name-clash` and `bad-export`) with five templates in a file of its own
+   (`spec/packages/f16-entry-points.md` 9.1, 12.9). Package F17 adds the code
+   `circular-type`, with two templates, the template `pairs` of `check-limit`,
+   and five templates of existing codes, in another
+   (`spec/packages/f17-recursion.md` 9 and 13.5). Package F19 adds 2 parse
+   codes with 4 templates, and 5 check templates, in `suite/messages-feedback.json`
    (`spec/packages/f19-author-feedback.md` 7): 62 parse codes with 103
-   templates, and 86 check templates, in all.
+   templates, and 90 check templates, in all.
 3. An entry of either file has no field `caught`.
 4. The `cases` of an entry are case files of `03-host.md` 3.10 with the
    additions of 7, with no header. Each template has at least one case that
@@ -595,7 +596,7 @@ one template, its name is `default`.
 |  | `compound` | `{token} does not exist: a binding cannot be changed; bind a new name with const` | One of +=, -=, *=, /=, %=, **=, ??=, \|\|=, &&=. token is that token |
 |  | `increment` | `++ does not exist: a binding cannot be changed; write x + 1` | The token ++ |
 | `import-statement` | `default` | `there are no imports in 3.0; a host passes shared data as a variable` |  |
-| `export-statement` | `default` | `a program exports no name; its value is its last expression` |  |
+| `export-statement` | `default` | `export marks only a top-level const-bound lambda; write export const at the top level of a program` |  |
 | `block-without-const` | `default` | `a lambda body in braces is a map; write the expression without braces, or start a block with a const line` |  |
 | `lambda-in-pattern` | `default` | `a lambda is bound to a name, not to a pattern` |  |
 | `slice-syntax` | `default` | `there is no slice syntax; write x.slice(a, b)` |  |

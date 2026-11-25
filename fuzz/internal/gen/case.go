@@ -104,6 +104,17 @@ type Case struct {
 	// written by the generator of package F17, step E3. It is not written
 	// to the case file.
 	E3 bool
+	// D2 is set when the case exercises export const entry points and the
+	// Call stage of package F16, slice D2. It is not written to the case file.
+	D2 bool
+	// Entry, Args, Input and EntryReturns are the case fields of package
+	// F16, slice D2 (f16-entry-points.md 12.10).
+	Entry        string
+	Args         []any
+	HasArgs      bool
+	Input        any
+	HasInput     bool
+	EntryReturns map[string]string
 }
 
 // Text gives the program text: the printed tree, or the mangled source.
@@ -312,6 +323,30 @@ func (c *Case) JSON() []byte {
 	}
 	if c.Returns != "" {
 		o.field("returns", jsonValue(c.Returns))
+	}
+	if len(c.EntryReturns) > 0 {
+		keys := make([]string, 0, len(c.EntryReturns))
+		for k := range c.EntryReturns {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var ero obj
+		for _, k := range keys {
+			ero.field(k, jsonValue(c.EntryReturns[k]))
+		}
+		o.field("entryReturns", ero.done())
+	}
+	if c.Entry != "" {
+		o.field("entry", jsonValue(c.Entry))
+		if c.HasArgs {
+			args := c.Args
+			if args == nil {
+				args = []any{}
+			}
+			o.field("args", jsonValue(args))
+		} else if c.HasInput {
+			o.field("input", jsonValue(c.Input))
+		}
 	}
 	if len(c.Groups) > 0 {
 		names := make([]any, len(c.Groups))

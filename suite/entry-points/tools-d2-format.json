@@ -1,0 +1,37 @@
+[
+  {
+    "name": "single export const with no result",
+    "format": "export   const   add=(a:int,b:int)=>a+b;",
+    "expect": {"formatted": "export const add = (a: int, b: int) => a + b;\n"}
+  },
+  {
+    "name": "export const with a result expression",
+    "format": "export const dbl=(x:int)=>x*2;dbl(3)",
+    "expect": {"formatted": "export const dbl = (x: int) => x * 2;\ndbl(3)\n"}
+  },
+  {
+    "name": "multiple exports with type and helper const and blank lines preserved",
+    "format": "type Pair={a:int,b:int};\n\nconst offset=10;\n\nexport const add=(p:Pair):int=>p.a+p.b+offset;\n\nexport const ping=()=>\"pong\";",
+    "expect": {"formatted": "type Pair = {a: int, b: int};\n\nconst offset = 10;\n\nexport const add = (p: Pair): int => p.a + p.b + offset;\n\nexport const ping = () => \"pong\";\n"}
+  },
+  {
+    "name": "doc comment before export stays attached",
+    "format": "/** Doubles a number. */\nexport const dbl = (x: int) => x * 2;",
+    "expect": {"formatted": "/** Doubles a number. */\nexport const dbl = (x: int) => x * 2;\n"}
+  },
+  {
+    "name": "comment between export and const stays in place",
+    "format": "export /* c */ const f = () => 1;",
+    "expect": {"formatted": "export /* c */ const f = () => 1;\n"}
+  },
+  {
+    "name": "trailing line comment on a no-result program",
+    "format": "export const f = () => 1; // entry\n",
+    "expect": {"formatted": "export const f = () => 1; // entry\n"}
+  },
+  {
+    "name": "long export const parameter list wraps",
+    "format": "export const weather = (city: string, units: \"metric\" | \"imperial\" = \"metric\", includeForecast: bool = false): string => city;",
+    "expect": {"formatted": "export const weather = (\n  city: string,\n  units: \"metric\" | \"imperial\" = \"metric\",\n  includeForecast: bool = false,\n): string => city;\n"}
+  }
+]

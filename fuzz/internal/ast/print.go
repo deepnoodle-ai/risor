@@ -90,11 +90,13 @@ func Print(p *Program) string {
 	var w printer
 	w.typeLines(p.Types)
 	w.consts(p.Consts)
-	w.expr(p.Result, LevelExpr)
-	if p.Semi {
-		w.s(";")
+	if p.Result != nil {
+		w.expr(p.Result, LevelExpr)
+		if p.Semi {
+			w.s(";")
+		}
 	}
-	return w.b.String()
+	return strings.TrimRight(w.b.String(), " ")
 }
 
 // PrintExpr writes one expression as source text.
@@ -157,11 +159,13 @@ func PrintSpans(p *Program) (string, []NodeSpan) {
 	w := printer{rec: true, line: 1, col: 1, spans: map[Expr]Span{}, lamBodies: map[string]Span{}}
 	w.typeLines(p.Types)
 	w.consts(p.Consts)
-	w.expr(p.Result, LevelExpr)
-	if p.Semi {
-		w.s(";")
+	if p.Result != nil {
+		w.expr(p.Result, LevelExpr)
+		if p.Semi {
+			w.s(";")
+		}
 	}
-	return w.b.String(), w.nodes
+	return strings.TrimRight(w.b.String(), " "), w.nodes
 }
 
 // typeLines writes the type lines of package F16.
@@ -173,6 +177,9 @@ func (w *printer) typeLines(ts []TypeLine) {
 
 func (w *printer) consts(cs []*Const) {
 	for _, c := range cs {
+		if c.Exported {
+			w.s("export ")
+		}
 		w.s("const ")
 		pats := w.pattern(c.Pat)
 		if c.Type != "" {

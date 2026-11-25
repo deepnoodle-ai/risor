@@ -1,0 +1,155 @@
+{
+  "env": "{tenant: string}",
+  "types": [{"name": "Order", "type": "{id: string}"}],
+  "cases": [
+    {
+      "name": "completion inside export const body sees parameter and entry name as lambda",
+      "complete": "const base = 1;\nexport const calc = (count: int) => c‸",
+      "expect": {
+        "completion": {
+          "span": [2, 37, 2, 38],
+          "items": [
+            {"label": "count", "kind": "name", "detail": "int", "insert": "count"},
+            {"label": "calc", "kind": "lambda", "detail": null, "insert": "calc"},
+            {"label": "ceil", "kind": "function", "detail": "(x: float) => int", "insert": "ceil"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "completion in parameter annotation of export const is types context",
+      "complete": "export const handle = (o: O‸",
+      "expect": {
+        "completion": {
+          "span": [1, 27, 1, 28],
+          "items": [
+            {"label": "Order", "kind": "type", "detail": null, "insert": "Order"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "completion in result annotation of export const is types context",
+      "complete": "export const handle = (x: int): O‸",
+      "expect": {
+        "completion": {
+          "span": [1, 33, 1, 34],
+          "items": [
+            {"label": "Order", "kind": "type", "detail": null, "insert": "Order"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "completion in name of export const has no context",
+      "complete": "export const c‸",
+      "expect": {
+        "completion": {
+          "span": [1, 14, 1, 15],
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "completion after export const sees exported entry as lambda",
+      "complete": "export const greet = (s: string) => s;\ngr‸",
+      "expect": {
+        "completion": {
+          "span": [2, 1, 2, 3],
+          "items": [
+            {"label": "greet", "kind": "lambda", "detail": null, "insert": "greet"}
+          ]
+        }
+      }
+    },
+    {
+      "name": "hover on entry point name at declaration shows doc attached to export",
+      "hover": "/** Doubles n. */\nexport const ‸dbl = (n: int) => n * 2;",
+      "expect": {
+        "hover": {
+          "kind": "name",
+          "span": [2, 14, 2, 17],
+          "type": null,
+          "signature": null,
+          "doc": "Doubles n.",
+          "declaration": [2, 14, 2, 17]
+        }
+      }
+    },
+    {
+      "name": "hover on entry point name when doc is between export and const gives null doc",
+      "hover": "export /** Not attached. */ const ‸dbl = (n: int) => n * 2;",
+      "expect": {
+        "hover": {
+          "kind": "name",
+          "span": [1, 35, 1, 38],
+          "type": null,
+          "signature": null,
+          "doc": null,
+          "declaration": [1, 35, 1, 38]
+        }
+      }
+    },
+    {
+      "name": "hover on call of entry point from another entry point in a no-result program",
+      "hover": "/** Doubles n. */\nexport const dbl = (n: int) => n * 2;\nexport const quad = (n: int) => ‸dbl(dbl(n));",
+      "expect": {
+        "hover": {
+          "kind": "lambda",
+          "span": [3, 33, 3, 36],
+          "type": "int",
+          "signature": null,
+          "doc": "Doubles n.",
+          "declaration": [2, 14, 2, 17]
+        }
+      }
+    },
+    {
+      "name": "hover on entry point passed as lambda argument",
+      "hover": "/** Doubles n. */\nexport const dbl = (n: int) => n * 2;\n[1, 2].map(‸dbl)",
+      "expect": {
+        "hover": {
+          "kind": "lambda",
+          "span": [3, 12, 3, 15],
+          "type": null,
+          "signature": null,
+          "doc": "Doubles n.",
+          "declaration": [2, 14, 2, 17]
+        }
+      }
+    },
+    {
+      "name": "hover on parameter of entry point shows type and doc",
+      "hover": "export const greet = (/** User name. */ ‸name: string) => name;",
+      "expect": {
+        "hover": {
+          "kind": "name",
+          "span": [1, 41, 1, 45],
+          "type": "string",
+          "signature": null,
+          "doc": "User name.",
+          "declaration": [1, 41, 1, 45]
+        }
+      }
+    },
+    {
+      "name": "hover on export keyword gives null",
+      "hover": "‸export const f = () => 1;",
+      "expect": {"hover": null}
+    },
+    {
+      "name": "hover on variable inside no-result program",
+      "hover": "export const who = () => ‸tenant;",
+      "expect": {
+        "hover": {
+          "kind": "variable",
+          "span": [1, 26, 1, 32],
+          "type": "string",
+          "signature": null,
+          "doc": null,
+          "declaration": null
+        }
+      }
+    }
+  ]
+}

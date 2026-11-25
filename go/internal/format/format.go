@@ -530,9 +530,13 @@ type line struct {
 }
 
 // lines is body over const lines and type lines in the order of the text.
+// result may be nil for a program with no result expression (F16 12.8).
 func (b *builder) lines(ls []line, result syntax.Node, sep atom) []part {
 	var out []part
-	n := len(ls) + 1
+	n := len(ls)
+	if result != nil {
+		n++
+	}
 	for k := 0; k < n; k++ {
 		var doc func() part
 		var firstSrc int
@@ -655,13 +659,19 @@ func (b *builder) node(n syntax.Node) part {
 	case *syntax.Const:
 		c := b.at(n.Span().Start)
 		semi := b.ending(n.Span().End)
+		var head []part
+		if n.Exported {
+			head = []part{b.tok(c), pSpace, b.tok(c + 1), pSpace}
+		} else {
+			head = []part{b.tok(c), pSpace}
+		}
 		if n.Type != nil { // an annotation of package F16 (F12 2.13)
 			colon := b.ending(n.Pattern.Span().End) + 1
 			eq := b.ending(n.Type.Span.End) + 1
-			return []part{b.tok(c), pSpace, b.pattern(n.Pattern), b.tok(colon), pSpace, b.ptype(n.Type), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi)}
+			return append(head, b.pattern(n.Pattern), b.tok(colon), pSpace, b.ptype(n.Type), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi))
 		}
 		eq := b.next(n.Pattern.Span().End, syntax.Assign)
-		return []part{b.tok(c), pSpace, b.pattern(n.Pattern), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi)}
+		return append(head, b.pattern(n.Pattern), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi))
 	case *syntax.Block:
 		lb, rb := b.at(n.Span().Start), b.ending(n.Span().End)
 		o := b.brace(lb)

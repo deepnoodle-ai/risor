@@ -275,12 +275,14 @@ func (*NamePat) isPat() {}
 func (*MapPat) isPat()  {}
 func (*ListPat) isPat() {}
 
-// Const is const p = e;. Value may be a *Lambda when Pat is a NamePat.
-// Type is the annotation of package F16, as text, or "".
+// Const is [export] const p = e;. Value may be a *Lambda when Pat is a NamePat.
+// Type is the annotation of package F16, as text, or "". Exported is set for
+// export const of package F16, slice D2.
 type Const struct {
-	Pat   Pattern
-	Type  string
-	Value Expr
+	Exported bool
+	Pat      Pattern
+	Type     string
+	Value    Expr
 }
 
 // TypeLine is type Name = T; of package F16 (f16-entry-points.md 2.1).

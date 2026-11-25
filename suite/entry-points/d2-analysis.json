@@ -1,0 +1,60 @@
+[
+  {
+    "name": "an export const with no result is not a literal and collects refs and calls inside the lambda",
+    "source": "const base = cfg.base;\nexport const greet = (name: string) => fmt(base, name);",
+    "expect": {
+      "analysis": {
+        "calls": [
+          {"name": "fmt", "namespace": null, "span": [2, 40, 2, 55], "args": [[2, 44, 2, 48], [2, 50, 2, 54]], "lambda": true}
+        ],
+        "literal": false,
+        "names": ["cfg"],
+        "refs": [
+          {"name": "cfg", "path": ["base"], "span": [1, 14, 1, 22]}
+        ],
+        "segments": null
+      }
+    }
+  },
+  {
+    "name": "an export const calling itself and another entry point does not list bound lambda calls as free calls",
+    "source": "export const a = (n: int): int => n <= 0 ? 0 : a(n - 1);\nexport const b = (n: int) => a(n) + extra;",
+    "expect": {
+      "analysis": {
+        "calls": [],
+        "literal": false,
+        "names": ["extra"],
+        "refs": [
+          {"name": "extra", "path": [], "span": [2, 37, 2, 42]}
+        ],
+        "segments": null
+      }
+    }
+  },
+  {
+    "name": "an export const with a literal result expression is still not a literal",
+    "source": "export const f = () => 1;\n42",
+    "expect": {
+      "analysis": {
+        "calls": [],
+        "literal": false,
+        "names": [],
+        "refs": [],
+        "segments": null
+      }
+    }
+  },
+  {
+    "name": "a pure export const with no result has no free names or calls",
+    "source": "export const add = (a: int, b: int) => a + b;",
+    "expect": {
+      "analysis": {
+        "calls": [],
+        "literal": false,
+        "names": [],
+        "refs": [],
+        "segments": null
+      }
+    }
+  }
+]

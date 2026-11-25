@@ -145,6 +145,15 @@ recursive lambdas that walk the data. A loose program also writes a cycle with
 no guard, a reference beside a type of its kind, a wrong field, or a value
 that does not fit. `-noe2` leaves the forms out, and `-nof16` does too.
 
+And the `export const` entry points and Call stage of package F16, slice D2
+(`spec/packages/f16-entry-points.md` 12), in about one case in ten: an exported
+`const`-bound lambda with zero to two typed parameters (including single record
+parameters and optional defaults), with or without a result expression, called
+positionally (`args`) or by record (`input`), with optional `entryReturns`. A
+loose program also writes `bad-export` forms, unknown entry names, wrong
+arities, and non-conforming arguments. `-nod2` leaves the forms out, and
+`-nof16` does too.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -197,6 +206,7 @@ The status is 1 when there was any finding, else 0.
 | `-nof17` | Leave out the guards and the calls of `walk` of F17 |
 | `-nof16` | Leave out the type lines and annotations of F16 |
 | `-noe1`, `-noe2`, `-noe3` | Leave out the typed recursive lambdas of F17's step E1, the recursive type lines of its step E2, or the function parameters of its step E3 |
+| `-nod2` | Leave out the `export const` entry points and Call stage of F16's slice D2 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |

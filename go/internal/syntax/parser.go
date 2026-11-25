@@ -242,9 +242,15 @@ func (p *parser) program() *Program {
 	m := p.mark()
 	var consts []*Const
 	var types []*TypeLine
+	hasExport := false
 	for {
 		if p.tok.isWord("const") {
 			consts = append(consts, p.constLine())
+			continue
+		}
+		if p.tok.isWord("export") && p.peek(1).isWord("const") {
+			consts = append(consts, p.exportLine())
+			hasExport = true
 			continue
 		}
 		if p.typeLineStart() {
@@ -252,6 +258,9 @@ func (p *parser) program() *Program {
 			continue
 		}
 		break
+	}
+	if p.tok.Kind == EOF && hasExport {
+		return &Program{base: p.base(m), Consts: consts, Types: types}
 	}
 	res := p.expr()
 	semi := p.tok.Kind == Semi
@@ -265,6 +274,18 @@ func (p *parser) program() *Program {
 		p.unexpected()
 	}
 	return &Program{base: p.base(m), Consts: consts, Types: types, Result: res}
+}
+
+// exportLine parses "export const ..." (F16 12.2). A doc comment attaches
+// at export, not at const, and the Const span runs from export to ";".
+func (p *parser) exportLine() *Const {
+	m, doc := p.mark(), p.tok.Doc
+	p.next() // export
+	c := p.constLine()
+	c.span.Start = m.start
+	c.Exported = true
+	c.Doc = doc
+	return c
 }
 
 // typeLineStart reports whether a type line of package F16 starts at the

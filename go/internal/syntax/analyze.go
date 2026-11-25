@@ -283,7 +283,7 @@ loop:
 // Literal reports the value of a program that is a literal expression
 // (F2 3.7): null, a bool, a float64, a string, []any or map[string]any.
 func Literal(p *Program) (any, bool) {
-	if len(p.Consts) > 0 {
+	if len(p.Consts) > 0 || p.Result == nil {
 		return nil, false
 	}
 	return literal(p.Result)

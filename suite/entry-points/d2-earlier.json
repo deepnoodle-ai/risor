@@ -1,0 +1,14 @@
+[
+  {
+    "name": "errors/errors-core-texts: core-run/parse-follow-on: text a later package covers: export const a = 1; a",
+    "source": "export const a = 1; a",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 20],
+        "message": "export marks a const-bound lambda; a is not one"
+      }]
+    }
+  }
+]

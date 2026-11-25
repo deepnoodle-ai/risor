@@ -1,0 +1,358 @@
+[
+  {
+    "name": "not-lambda: named value",
+    "source": "export const x = 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 20],
+        "message": "export marks a const-bound lambda; x is not one"
+      }]
+    }
+  },
+  {
+    "name": "not-lambda: annotated const value",
+    "source": "export const x: int = 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 25],
+        "message": "export marks a const-bound lambda; x is not one"
+      }]
+    }
+  },
+  {
+    "name": "not-lambda: discard pattern reports only not-lambda and not binds-nothing",
+    "source": "export const _ = 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 20],
+        "message": "export marks a const-bound lambda; this line is not one"
+      }]
+    }
+  },
+  {
+    "name": "not-lambda: map pattern",
+    "source": "export const {a} = {a: 1};",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 27],
+        "message": "export marks a const-bound lambda; this line is not one"
+      }]
+    }
+  },
+  {
+    "name": "not-lambda: list pattern",
+    "source": "export const [a] = [1];",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 24],
+        "message": "export marks a const-bound lambda; this line is not one"
+      }]
+    }
+  },
+  {
+    "name": "not-lambda: value is still walked for other static errors",
+    "source": "export const x = missing;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "bad-export",
+          "span": [1, 1, 1, 26],
+          "message": "export marks a const-bound lambda; x is not one"
+        },
+        {
+          "code": "undefined-name",
+          "span": [1, 18, 1, 25]
+        }
+      ]
+    }
+  },
+  {
+    "name": "unannotated: bare parameter",
+    "source": "export const f = x => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 18, 1, 19],
+        "message": "parameter x of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: parenthesized parameter",
+    "source": "export const f = (x) => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 20],
+        "message": "parameter x of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: second parameter only",
+    "source": "export const f = (a: int, b) => a;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 27, 1, 28],
+        "message": "parameter b of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: discard parameter uses 1-based position",
+    "source": "export const f = (_ = 1) => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 24],
+        "message": "parameter 1 of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: destructured map parameter uses 1-based position",
+    "source": "export const f = (a: int, {x}) => a + x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 27, 1, 30],
+        "message": "parameter 2 of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: destructured list parameter uses 1-based position",
+    "source": "export const f = ([a]) => a;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 22],
+        "message": "parameter 1 of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "unannotated: multiple parameters each report one diagnostic",
+    "source": "export const f = (a, b) => a;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "bad-export",
+          "span": [1, 19, 1, 20],
+          "message": "parameter a of the entry point f needs a type"
+        },
+        {
+          "code": "bad-export",
+          "span": [1, 22, 1, 23],
+          "message": "parameter b of the entry point f needs a type"
+        }
+      ]
+    }
+  },
+  {
+    "name": "parameter with unknown type name does not also report unannotated",
+    "source": "export const f = (x: Nope) => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "undefined-name",
+        "span": [1, 22, 1, 26]
+      }]
+    }
+  },
+  {
+    "name": "fn-parameter: single function parameter",
+    "source": "export const f = (g: (x: int) => int) => g(1);",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 37],
+        "message": "parameter g of the entry point f is a function, which a host cannot pass"
+      }]
+    }
+  },
+  {
+    "name": "fn-parameter: second parameter",
+    "source": "export const f = (x: int, cb: () => string) => cb();",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 27, 1, 43],
+        "message": "parameter cb of the entry point f is a function, which a host cannot pass"
+      }]
+    }
+  },
+  {
+    "name": "binds-nothing: discard const beside an export",
+    "source": "const _ = 1; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 13],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  },
+  {
+    "name": "binds-nothing: empty map pattern beside an export",
+    "source": "const {} = {a: 1}; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 19],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  },
+  {
+    "name": "binds-nothing: empty list pattern beside an export",
+    "source": "const [] = [1]; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 16],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  },
+  {
+    "name": "binds-nothing: list pattern of discards beside an export",
+    "source": "const [_, _] = [1, 2]; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 23],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  },
+  {
+    "name": "binds-nothing: after an export line as well",
+    "source": "export const f = () => 1; const _ = 2;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 27, 1, 39],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  },
+  {
+    "name": "const _ inside a block of an entry point is allowed",
+    "source": "export const f = () => { const _ = 1; 2 };",
+    "entry": "f",
+    "expect": {"value": 2}
+  },
+  {
+    "name": "duplicate entry point names",
+    "source": "export const f = () => 1;\nexport const f = () => 2;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "duplicate-name",
+        "span": [2, 14, 2, 15]
+      }]
+    }
+  },
+  {
+    "name": "entry point duplicating a helper const",
+    "source": "const f = 1;\nexport const f = () => 2;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "duplicate-name",
+        "span": [2, 14, 2, 15]
+      }]
+    }
+  },
+  {
+    "name": "entry point shadowing a namespace",
+    "groups": ["math"],
+    "source": "export const math = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "shadows-namespace",
+        "span": [1, 14, 1, 18]
+      }]
+    }
+  },
+  {
+    "name": "NoCheck still reports bad-export not-lambda",
+    "check": false,
+    "source": "export const x = 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 20],
+        "message": "export marks a const-bound lambda; x is not one"
+      }]
+    }
+  },
+  {
+    "name": "NoCheck still reports bad-export unannotated",
+    "check": false,
+    "source": "export const f = (x) => x;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 20],
+        "message": "parameter x of the entry point f needs a type"
+      }]
+    }
+  },
+  {
+    "name": "NoCheck still reports bad-export fn-parameter",
+    "check": false,
+    "source": "export const f = (g: (x: int) => int) => g(1);",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 19, 1, 37],
+        "message": "parameter g of the entry point f is a function, which a host cannot pass"
+      }]
+    }
+  },
+  {
+    "name": "NoCheck still reports bad-export binds-nothing",
+    "check": false,
+    "source": "const _ = 1; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [{
+        "code": "bad-export",
+        "span": [1, 1, 1, 13],
+        "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+      }]
+    }
+  }
+]

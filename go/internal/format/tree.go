@@ -41,10 +41,16 @@ func tree(b *strings.Builder, n syntax.Node, src []rune) {
 			sub(n.Consts[ci])
 			ci++
 		}
-		sub(n.Result)
+		if n.Result != nil {
+			sub(n.Result)
+		}
 		w(")")
 	case *syntax.Const:
-		w("(const")
+		if n.Exported {
+			w("(export-const")
+		} else {
+			w("(const")
+		}
 		sub(n.Pattern)
 		if n.Type != nil {
 			w(" ")

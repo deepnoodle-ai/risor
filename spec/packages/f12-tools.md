@@ -73,7 +73,7 @@ numbers without a file are of this chapter.
    grammar.
 2. Packages are offered in the order of `03-host.md` 3.11 item 2: F3, F1, F2,
    F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16 slice D1, F17, F16 slice D3,
-   F19, F12. F12 is the last. So an implementation that offers F12 offers
+   F19, F16 slice D2, F12. F12 is the last. So an implementation that offers F12 offers
    every form of F3, F4
    and F7, the templates of F2, the groups of F6 with every function of F13,
    the renderings of F8, the report of F9, the commands of F10, the host facts

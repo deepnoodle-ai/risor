@@ -166,6 +166,9 @@ const (
 	CodeUnsupportedVersion = "unsupported-version"
 	CodeNoImplementation   = "no-implementation"
 	CodeBadLimit           = "bad-limit"
+	CodeNoResult           = "no-result"
+	CodeNoInputRecord      = "no-input-record"
+	CodeArity              = "arity"
 )
 
 // MaxDepth is the largest depth limit a host may set (03-host.md 3.6.1). A

@@ -45,6 +45,9 @@ type Options struct {
 	// the calls that give a lambda at one. NoF16 leaves them out too: a
 	// function type is one of F16's annotations.
 	NoE3 bool
+	// NoD2 leaves out export const entry points and the Call stage of
+	// package F16, slice D2. NoF16 leaves them out too.
+	NoD2 bool
 	// Exclude names library entries not to call, by name.
 	Exclude map[string]bool
 }
@@ -95,6 +98,7 @@ type Gen struct {
 	e1      bool // the program has a typed recursive lambda (F17, step E1)
 	e2      bool // the program has a recursive type line (F17, step E2)
 	e3      bool // the program has a function parameter (F17, step E3)
+	d2      bool // the program has an export const entry point (F16, slice D2)
 	types   []ast.TypeLine
 
 	// Packages F4 and F5.
@@ -158,8 +162,13 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 	if flat == 0 {
 		flat = 2
 	}
+	didFlat := false
 	if c.Returns == "" && r.IntN(100) < flat {
 		c.Prog.Result = g.flatChain(c.Prog.Result)
+		didFlat = true
+	}
+	if !didFlat && !opts.NoF16 && !opts.NoD2 && r.IntN(10) == 0 {
+		g.applyD2(c)
 	}
 	if mode == Mangled {
 		c.Source = g.mangle(ast.Print(c.Prog))
@@ -170,6 +179,7 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 	c.E1 = g.e1
 	c.E2 = g.e2
 	c.E3 = g.e3
+	c.D2 = g.d2
 	c.NoCheck = r.IntN(100) < opts.NoCheckShare
 	share := opts.LimitShare
 	if share == 0 {

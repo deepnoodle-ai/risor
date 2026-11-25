@@ -29,9 +29,9 @@ func TestBuild(t *testing.T) {
 	assert.True(t, Caught("divide-by-zero"))
 	assert.False(t, Caught("steps-exceeded"))
 	// 19 run codes, with package F8 the 60 parse and 30 check codes, with
-	// package F16 name-clash, with F17 circular-type, and with F19
-	// async-await and statement-sequence.
-	assert.Equal(t, len(Codes()), 113)
+	// package F16 name-clash and bad-export, with F17 circular-type, and
+	// with F19 async-await and statement-sequence.
+	assert.Equal(t, len(Codes()), 114)
 	assert.Equal(t, Build("undefined-name", "hint", Word("name", "Math"), Word("fix", strings.Repeat("x", 80))), "Math is not defined; "+strings.Repeat("x", 80))
 	assert.Equal(t, Build("check-limit", "pairs"), "comparing the types here takes more than 4096 pairs of types")
 }

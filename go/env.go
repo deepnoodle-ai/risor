@@ -641,9 +641,11 @@ func (e *Env) compile(x *Expr, opts []CheckOption, entry func(*eval.Config)) (*P
 	if err != nil {
 		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
 	}
-	prog := &Program{p: p, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}
+	entries, entryMap := buildEntries(x.tree, res, cr)
+	prog := &Program{p: p, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr),
+		entries: entries, entryMap: entryMap}
 	if cr != nil {
-		prog.result = sync.OnceValue(func() *CheckResult { return checkResult(x, cr) })
+		prog.result = sync.OnceValue(func() *CheckResult { return checkResult(x, res, cr) })
 	}
 	return prog, nil
 }
@@ -661,6 +663,9 @@ type Program struct {
 	host map[[4]int]bool
 	// val is set for a checked program: the nodes with a value site.
 	val map[[4]int]bool
+	// entries and entryMap are the program's exported entry points (F16 12.6).
+	entries  []Entry
+	entryMap map[string]*entryMeta
 }
 
 // CheckResult gives the result of the check the compile made, as Check
@@ -683,8 +688,13 @@ func (p *Program) Run(ctx context.Context, vars Vars) (any, error) {
 }
 
 // Measure runs the program and also returns its usage, for a run that fails
-// as for one that succeeds.
+// as for one that succeeds. On a program with no result expression (F16
+// 12.4), it fails with the declare error no-result and charges nothing.
 func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
+	if !p.p.HasResult() {
+		return nil, Usage{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}}}
+	}
 	if vars == nil {
 		vars = Map(nil)
 	}

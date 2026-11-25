@@ -78,6 +78,9 @@ func onlyConsts(x *risor.Expr, text string) bool {
 	if err != nil {
 		return false
 	}
+	if p.Result == nil {
+		return false
+	}
 	_, isNull := p.Result.(*syntax.Null)
 	return isNull && p.Result.Span().Start >= len([]rune(strings.TrimPrefix(text, string(rune(0xFEFF)))))
 }
