@@ -299,5 +299,117 @@
   "expect": {
    "formatted": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.m\n/* lead */ ([1])\n"
   }
+ },
+ {
+  "name": "a block comment that starts with /*/",
+  "format": "1 /*/x*/",
+  "expect": {
+   "formatted": "1 /*/x*/\n"
+  }
+ },
+ {
+  "name": "an empty block comment",
+  "format": "1 /**/",
+  "expect": {
+   "formatted": "1 /**/\n"
+  }
+ },
+ {
+  "name": "a block comment after the parenthesis of an if test",
+  "format": "if (/* why */ c) { 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (/* why */ c) { 1 } else { 2 }\n"
+  }
+ },
+ {
+  "name": "a block comment after the bracket of an index",
+  "format": "a[/* why */ 0]",
+  "expect": {
+   "formatted": "a[/* why */ 0]\n"
+  }
+ },
+ {
+  "name": "a block comment after the bracket of an optional index",
+  "format": "a?.[/* why */ 0]",
+  "expect": {
+   "formatted": "a?.[/* why */ 0]\n"
+  }
+ },
+ {
+  "name": "a block comment after the bracket of a computed key",
+  "format": "{[/* k */ k]: 1}",
+  "expect": {
+   "formatted": "{[/* k */ k]: 1}\n"
+  }
+ },
+ {
+  "name": "a block comment after the brace of a branch",
+  "format": "if (c) {/* why */ 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (c) { /* why */ 1 } else { 2 }\n"
+  }
+ },
+ {
+  "name": "a block comment after the brace of a block",
+  "format": "{/* why */ const a = 1; a }",
+  "expect": {
+   "formatted": "{ /* why */\n  const a = 1;\n  a\n}\n"
+  }
+ },
+ {
+  "name": "a block comment after the brace of a match",
+  "format": "match x {/* why */ 1 => 2, _ => 3 }",
+  "expect": {
+   "formatted": "match x { /* why */ 1 => 2, _ => 3 }\n"
+  }
+ },
+ {
+  "name": "a block comment after the parenthesis of a match guard",
+  "format": "match x { 1 if (/* why */ c) => 2, _ => 3 }",
+  "expect": {
+   "formatted": "match x { 1 if (/* why */ c) => 2, _ => 3 }\n"
+  }
+ },
+ {
+  "name": "a block comment after the parenthesis of a catch",
+  "format": "try { 1 } catch (/* e */ e) { 2 }",
+  "expect": {
+   "formatted": "try { 1 } catch (/* e */ e) { 2 }\n"
+  }
+ },
+ {
+  "name": "a block comment in the empty parameters of a function type",
+  "format": "const g = (f: (/* none */) => int) => 1; 0",
+  "expect": {
+   "formatted": "const g = (f: (/* none */) => int) => 1;\n0\n"
+  }
+ },
+ {
+  "name": "a block comment after the brace of a record type",
+  "format": "const g = (f: {/* why */ a: int}) => 1; 0",
+  "expect": {
+   "formatted": "const g = (f: {/* why */ a: int}) => 1;\n0\n"
+  }
+ },
+ {
+  "name": "a block comment after the angle bracket of a map type",
+  "format": "const g = (f: map</* v */ int>) => 1; 0",
+  "expect": {
+   "formatted": "const g = (f: map</* v */ int>) => 1;\n0\n"
+  }
+ },
+ {
+  "name": "two block comments after an opening bracket",
+  "format": "f(/* a */ /* b */ c)",
+  "expect": {
+   "formatted": "f(/* a */ /* b */ c)\n"
+  }
+ },
+ {
+  "name": "two block comments in empty brackets",
+  "format": "f(/* a */ /* b */)",
+  "expect": {
+   "formatted": "f(/* a */ /* b */)\n"
+  }
  }
 ]

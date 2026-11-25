@@ -503,11 +503,29 @@ it, and is written there. No comment is lost or written twice.
    is attached before the first kept token that starts after it, or, when there
    is none, to the end of the text.
 4. **A trailing comment** is written after its token: a space, then the comment.
-   No space is written before a block comment directly after an opening bracket,
-   and one space is written after such a comment when the bracket's sequence has
-   an element: `f(/* no args */)`, `[/* first */ 1, 2]`. A line comment is
-   followed by `after-comment`. Several trailing comments of one token are
-   written in their order.
+   A line comment is followed by `after-comment`. Several trailing comments of
+   one token are written in their order.
+
+   After an opening bracket, a block comment stands where the bracket's first
+   token inside would stand. The table gives the brackets. The `{` of a block,
+   of a branch and of a `match` is not in it: a space or a break always follows
+   that brace, so its comments are written as those of any token, as in
+   `{ /* why */ 1 }`.
+
+   | Opening bracket | Example |
+   | --- | --- |
+   | `(` of a call, a lambda's parameters or a function type's | `f(/* why */ c)`, `(/* none */) => int` |
+   | `(` of an `if` test, a `match` guard or a `catch` | `if (/* why */ c)`, `catch (/* e */ e)` |
+   | `[` of a list, an index, an optional index or a computed key | `[/* first */ 1, 2]`, `a[/* why */ 0]`, `a?.[/* why */ 0]` |
+   | `{` of a map or a record type | `{/* why */ a: 1}` |
+   | `<` of a map type | `map</* v */ int>` |
+   | `(` and `[` of a program type | `(/* why */ int \| null)[]` |
+
+   1. No space is written between the bracket and its first trailing comment
+      when that comment is a block comment.
+   2. When the last trailing comment of the bracket is a block comment, one
+      space is written after it, unless the bracket's closing bracket is the
+      next token: `f(/* no args */)`, `f(/* a */ /* b */ c)`.
 5. **After an element.** The trailing comments of the last token of an element
    are written after the whole element's document, and after its comma when the
    formatter writes one. The elements are those of a sequence (2.9), the `const`
