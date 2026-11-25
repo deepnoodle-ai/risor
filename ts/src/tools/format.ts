@@ -26,49 +26,27 @@ export function formatProgram(text: string, limit: number = SOURCE_LIMIT): Forma
   const source = new Source(text);
   const p = parse(source);
   if (!p.ok) return { ok: false, diagnostics: p.diagnostics };
-  if (deepestLevel(p.program) + READER_LEVELS <= 100) return { ok: true, text: programText(source, p.program, false) };
-  // Too deep for the pairs for the reader (f12 2.6 item 4): the plain text,
-  // then the pairs if the plain text, without the source's own parentheses
-  // that no rule asks for, leaves room for them. Deciding on the plain text
-  // keeps the formatter idempotent.
-  const plain = programText(source, p.program, true);
-  const again = parse(new Source(plain));
-  if (!again.ok || deepestLevel(again.program) + READER_LEVELS > 100) return { ok: true, text: plain };
-  return { ok: true, text: programText(again.source, again.program, false) };
-}
-
-/** The most levels that the pairs for the reader add around a token (f12 2.6 item 3). */
-const READER_LEVELS = 2;
-
-function programText(source: Source, program: A.Program, plain: boolean): string {
   const tokens = lex(source).filter((t) => t.kind !== "eof");
-  const f = new Formatter(source, tokens, 0, source.length, plain);
-  return finish(layout(f.build((b) => b.program(program))));
+  const f = new Formatter(source, tokens, 0, source.length, tooDeep(deepestLevel(p.program)));
+  const doc = f.build((b) => b.program(p.program));
+  return { ok: true, text: finish(layout(doc)) };
 }
 
-/** Format a template (f12 2.14). The pairs for the reader are decided as for a program. */
+/** Whether a text reaching level `deepest` gets no pairs for the reader, which add up to 2 levels (f12 2.6 items 3 and 4). */
+function tooDeep(deepest: number): boolean {
+  return deepest + 2 > 100;
+}
+
+/** Format a template (f12 2.14). */
 export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): FormatResult {
   const t = parseTemplateText(text, limit);
   if (!t.ok) return { ok: false, diagnostics: t.diagnostics };
-  if (templateDeepest(t.template) + READER_LEVELS <= 100) return { ok: true, text: templateText(t.template, false) };
-  const plain = templateText(t.template, true);
-  const again = parseTemplateText(plain, SOURCE_LIMIT);
-  if (!again.ok || templateDeepest(again.template) + READER_LEVELS > 100) return { ok: true, text: plain };
-  return { ok: true, text: templateText(again.template, false) };
-}
-
-type ParsedTemplate = Extract<ReturnType<typeof parseTemplateText>, { ok: true }>["template"];
-
-function templateDeepest(t: ParsedTemplate): number {
-  let d = 0;
-  for (const seg of t.segments) if (seg.kind !== "text") d = Math.max(d, deepestLevel(seg.expr));
-  return d;
-}
-
-function templateText(template: ParsedTemplate, plain: boolean): string {
-  const src = template.source;
+  const src = t.template.source;
+  let deepest = 0;
+  for (const seg of t.template.segments) if (seg.kind !== "text") deepest = Math.max(deepest, deepestLevel(seg.expr));
+  const plain = tooDeep(deepest);
   let out = "";
-  for (const seg of template.segments) {
+  for (const seg of t.template.segments) {
     const raw = src.slice(seg.span.start, seg.span.end);
     if (seg.kind === "text") {
       out += raw;
@@ -84,7 +62,7 @@ function templateText(template: ParsedTemplate, plain: boolean): string {
     if (!trimmed.includes("\n") && !f.hasLineComment) out += "${{ " + trimmed + " }}";
     else out += raw;
   }
-  return out;
+  return { ok: true, text: out };
 }
 
 /** The text ends with exactly one U+000A (f12 2.1 item 5). */

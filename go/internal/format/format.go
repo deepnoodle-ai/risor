@@ -23,35 +23,19 @@ func Program(source string) (string, *syntax.Error, *syntax.File) {
 	if err != nil {
 		return "", err, f
 	}
-	return withReaders(f, prog), nil, f
-}
-
-// withReaders formats a parsed text by format, and decides the pairs for
-// the reader for the whole text (2.6 item 4). A text that nests deeper than
-// 100 levels less readerLevels is formatted without them first. That text,
-// its plain text, may nest less, since the source's own parentheses that no
-// rule asks for are gone; it is parsed again to decide. The pairs are
-// decided on the plain text's levels so that the formatter is idempotent.
-func withReaders(f *syntax.File, prog *syntax.Program) string {
-	if f.Deepest()+readerLevels <= syntax.MaxLevels {
-		return formatProgram(f, prog, false)
-	}
-	out := formatProgram(f, prog, true)
-	pf := syntax.NewFile(out)
-	prog, err := syntax.Parse(pf)
-	if err != nil || pf.Deepest()+readerLevels > syntax.MaxLevels {
-		return out
-	}
-	return formatProgram(pf, prog, false)
-}
-
-func formatProgram(f *syntax.File, prog *syntax.Program, plain bool) string {
 	toks, lerr := syntax.Lex(f)
 	if lerr != nil { // cannot happen: the text parsed
-		panic("format: " + lerr.Error())
+		return "", lerr, f
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds), plain)
-	return strings.TrimRight(out, " \n") + "\n"
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds), tooDeep(f))
+	out = strings.TrimRight(out, " \n") + "\n"
+	return out, nil, f
+}
+
+// tooDeep reports whether the text f reaches a level at which the pairs for
+// the reader could pass the limit: then none is written (2.6 item 4).
+func tooDeep(f *syntax.File) bool {
+	return f.Deepest()+readerLevels > syntax.MaxLevels
 }
 
 // run builds the document twice: first to learn the kept tokens, then with

@@ -300,12 +300,10 @@ These parentheses are added for the reader. Each changes no tree.
    that no such pair of another run encloses, through any brackets:
    `a * b / c % d` is written `((a * b) / c) % d`, and `a * b / c % d * e` flat.
    So a token is inside at most 2 of these pairs.
-4. **The nesting limit.** The plain text is the formatted text with none of
-   the pairs of the second table. When the source reaches a level above 98
-   (`01-language.md` 13.1), the formatted text is the plain text, unless the
-   plain text, parsed, reaches no level above 98: then it is the plain text
-   formatted with the pairs. So the formatted text always parses, and a text
-   that nests no deeper than 98 levels is formatted with its pairs.
+4. **The nesting limit.** When the source reaches a level above 98
+   (`01-language.md` 13.1), the formatter writes none of the pairs of the
+   second table. Otherwise it writes them by item 3. So the formatted text
+   always parses.
 
 ### 2.7 Literals and line ends
 

@@ -529,20 +529,6 @@
   }
  },
  {
-  "name": "a run nested 98 levels deep has its pairs, which take the text to 100 levels",
-  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
-  "expect": {
-   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
-  }
- },
- {
-  "name": "the source's own parentheses do not decide: the run has its pairs once they are gone",
-  "format": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a * b / c))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
-  "expect": {
-   "formatted": "(a * b) / c\n"
-  }
- },
- {
   "name": "a match subject that is a run of 4 operators beginning with { keeps the pair around the whole subject",
   "format": "match ({} * a / b * c * d) { _ => 0 }",
   "expect": {

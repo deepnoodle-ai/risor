@@ -2552,6 +2552,12 @@ fn op_level(op: BinaryOp) -> u8 {
     }
 }
 
+/// Whether a text that reaches level `deepest` gets no pairs for the reader,
+/// which add up to 2 levels (2.6 items 3 and 4).
+fn too_deep(deepest: u16) -> bool {
+    deepest + 2 > 100
+}
+
 /// Whether `xo`, the left operand's operator of `op`, is in `op`'s run: both
 /// of `*`, `/` and `%`, or both `||` (2.6 item 3).
 fn same_run(op: BinaryOp, xo: BinaryOp) -> bool {
@@ -2595,31 +2601,6 @@ pub fn format(text: &str) -> Result<String, Error> {
 /// `declare` error `bad-limit`.
 pub fn format_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
     let parsed = crate::syntax::parse_with(text, opts)?;
-    if fits_readers(parsed.ast.deepest) {
-        return program_text(&parsed, false);
-    }
-    // Too deep for the pairs for the reader (2.6 item 4): the plain text,
-    // then the pairs if the plain text, without the source's own
-    // parentheses that no rule asks for, leaves room for them. Deciding on
-    // the plain text keeps the formatter idempotent.
-    let plain = program_text(&parsed, true)?;
-    match crate::syntax::parse(&plain) {
-        Ok(again) if fits_readers(again.ast.deepest) => program_text(&again, false),
-        _ => Ok(plain),
-    }
-}
-
-/// The most levels that the pairs for the reader add around a token (2.6
-/// item 3).
-const READER_LEVELS: u16 = 2;
-
-/// Whether a text that reaches level `deepest` has room for the pairs for
-/// the reader.
-fn fits_readers(deepest: u16) -> bool {
-    deepest + READER_LEVELS <= 100
-}
-
-fn program_text(parsed: &crate::syntax::Expr, plain: bool) -> Result<String, Error> {
     let src = &parsed.source;
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
     let mut s = run(
@@ -2630,7 +2611,7 @@ fn program_text(parsed: &crate::syntax::Expr, plain: bool) -> Result<String, Err
         &toks,
         &comments,
         Some(WIDTH),
-        plain,
+        too_deep(parsed.ast.deepest),
     );
     s.push('\n');
     Ok(s)
@@ -2645,18 +2626,7 @@ pub fn format_template(text: &str) -> Result<String, Error> {
 /// range is the `declare` error `bad-limit`.
 pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
     let t = parse_template_with(text, opts)?;
-    if fits_readers(t.deepest()) {
-        return template_text(&t, false);
-    }
-    // As for a program (`format_with`).
-    let plain = template_text(&t, true)?;
-    match parse_template_with(&plain, ParseOptions::default()) {
-        Ok(again) if fits_readers(again.deepest()) => template_text(&again, false),
-        _ => Ok(plain),
-    }
-}
-
-fn template_text(t: &crate::template::Template, plain: bool) -> Result<String, Error> {
+    let plain = too_deep(t.deepest());
     let src: &Source = t.source();
     let ch = src.chars();
     let before = line_ends_before(ch);
