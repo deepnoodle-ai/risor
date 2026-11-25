@@ -86,7 +86,8 @@ env, err := risor.NewEnv(
   reflection, a few nanoseconds over a hand-written one. The rest use
   reflection, about 150 ns a call. `Function.Reflective` tells which.
 
-The command-line program:
+The command-line program (`@latest` works after the first CLI release tag,
+`go/cmd/risor/vX.Y.Z`; from a clone, run `cd go/cmd/risor && go install .`):
 
 ```bash
 go install github.com/deepnoodle-ai/risor/go/cmd/risor@latest

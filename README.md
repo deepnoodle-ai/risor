@@ -195,7 +195,11 @@ Env::builder().limits(Limits { steps: Some(10_000), allocation: Some(10_000),
 ## The CLI
 
 ```bash
+# After the first CLI release tag (go/cmd/risor/vX.Y.Z):
 go install github.com/deepnoodle-ai/risor/go/cmd/risor@latest
+
+# From a clone of this repository:
+cd go/cmd/risor && go install .
 
 risor eval program.risor --vars data.json   # run a program
 risor check program.risor --vars data.json  # check it without running it

@@ -58,12 +58,6 @@ func (s *Session) Reset() {
 	s.undo = nil
 }
 
-// Held is the program text of the held const lines.
-func (s *Session) Held() string { return s.held }
-
-// HeldLines is the number of held const lines.
-func (s *Session) HeldLines() int { return s.heldVals.Lines() }
-
 // Eval evaluates one entry in the session.
 func (s *Session) Eval(entry string) EntryResult {
 	if strings.TrimSpace(entry) == "" {

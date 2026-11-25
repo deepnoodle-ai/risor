@@ -1,8 +1,13 @@
-// Package risorcli holds the engine-backed helpers for the risor command-line
-// program (module github.com/deepnoodle-ai/risor/go/cmd/risor): the REPL
-// session, case-file and conformance-suite runners, text value rendering, and
-// strict JSON decoding. It is not part of the Risor v3 host API
-// (spec/core/03-host.md); its symbols may change to follow the CLI.
+// Package risorcli is a CLI-only support package for the risor command-line
+// program (module github.com/deepnoodle-ai/risor/go/cmd/risor). It exists so
+// that the CLI module can stay separate from github.com/deepnoodle-ai/risor/go/v3
+// without importing go/internal/, keeping go/v3 dependency-free.
+//
+// This package is not part of the Risor v3 host embedding API
+// (spec/core/03-host.md) and carries no host API stability guarantee: hosts
+// should embed github.com/deepnoodle-ai/risor/go/v3 and test with
+// github.com/deepnoodle-ai/risor/go/v3/risortest. Symbols here may change or
+// be removed to follow the CLI.
 package risorcli
 
 import (
@@ -11,7 +16,6 @@ import (
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/eval"
-	"github.com/deepnoodle-ai/risor/go/v3/internal/render"
 )
 
 // DecodeJSON reads one JSON value under the strict rules of the specification
@@ -38,9 +42,4 @@ func RenderText(env *risor.Env, v any) (string, error) {
 		return "", &risor.Error{Diagnostics: []risor.Diagnostic{*d}}
 	}
 	return text, nil
-}
-
-// Visible writes each control character in s as an escape (F8 1.1).
-func Visible(s string) string {
-	return render.Visible(s)
 }

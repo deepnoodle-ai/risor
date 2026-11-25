@@ -132,7 +132,7 @@ func testCommand(cc *cli.Context) int {
 			} else {
 				fmt.Fprintf(stdout, "%s\n%s\n", path, paintWord("  INVALID", color))
 				for _, l := range strings.Split(reason, "\n") {
-					fmt.Fprintf(stdout, "    %s\n", risorcli.Visible(l))
+					fmt.Fprintf(stdout, "    %s\n", visible(l))
 				}
 			}
 			continue
@@ -323,4 +323,37 @@ func paintReport(rep string, color bool) string {
 		lines[i] = paintWord(l, true)
 	}
 	return strings.Join(lines, "")
+}
+
+// visible writes each control character in s as an escape (F8 1.1).
+func visible(s string) string {
+	clean := true
+	for _, r := range s {
+		if r < 0x20 || (r >= 0x7F && r <= 0x9F) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	const hex = "0123456789abcdef"
+	for _, r := range s {
+		switch {
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r < 0x20 || (r >= 0x7F && r <= 0x9F):
+			b.WriteString(`\u00`)
+			b.WriteByte(hex[r>>4])
+			b.WriteByte(hex[r&15])
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

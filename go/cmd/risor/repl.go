@@ -41,9 +41,6 @@ func (s *session) coreSession() *risorcli.Session {
 	return s.core
 }
 
-func (s *session) held() string   { return s.coreSession().Held() }
-func (s *session) heldLines() int { return s.coreSession().HeldLines() }
-
 // result is what an entry shows.
 type result struct {
 	value string // the value's JSON form, and U+000A; empty for none

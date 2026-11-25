@@ -40,9 +40,11 @@ approval before 3.0.0 freezes.
      part's slice in Go, but the whole source text in TypeScript and Rust (P3).
    - `load` / `load_value` accepts a cancellation signal in Go (`ctx`) and
      TypeScript (`signal`), but not in Rust (P7).
-3. **Public vs. should-be-internal exports.** Go's boundary (`risor` +
-   `risortest`, everything else in `go/internal/`) is clean. TypeScript and Rust
-   both leak internals:
+3. **Public vs. should-be-internal exports.** Go's host embedding boundary
+   (`risor` + `risortest`, everything else in `go/internal/`) is clean; #708
+   also added a CLI-only companion package (`risor/risorcli`, outside the host
+   API stability promise) so `go/cmd/risor` can live in its own module while
+   `go/v3` stays zero-dependency. TypeScript and Rust both leak internals:
    - Rust `risor::testing` makes six submodules `pub mod` and re-exports ~35
      internal conformance-suite runner functions and types (P4).
    - Rust `Value<'h>` is a `pub enum` exposing internal representation variants
@@ -184,8 +186,11 @@ Every default was verified directly in source code against
 
 ### 6.1 Go (`github.com/deepnoodle-ai/risor/go/v3`)
 
-Two public library packages (`risor` and `risor/risortest`); 22 `internal/`
-packages; two CLI binaries (`cmd/risor`, `cmd/outcome`).
+Two public host library packages (`risor` and `risor/risortest`); one CLI-only
+companion package (`risor/risorcli`, outside the frozen host embedding API);
+23 `internal/` packages; one in-module binary (`cmd/outcome`). The `risor` CLI
+lives in its own module (`github.com/deepnoodle-ai/risor/go/cmd/risor` in
+`go/cmd/risor/`, split out in #708 so `go/v3` has zero external dependencies).
 
 #### Package `risor` (32 constants, 10 variables, 46 types, 15 standalone functions)
 
@@ -270,6 +275,22 @@ packages; two CLI binaries (`cmd/risor`, `cmd/outcome`).
 - `Verdict` (`Name`, `Status`, `Diffs`, `Fixture`, `Message`, `Reason`,
   `Expect`; `Report()`), `Diff` (`Name`, `Expected`, `Found`), `Origin`
   (`Name`, `Line`, `Column`, `Indent`).
+
+#### Package `risor/risorcli` (CLI-only companion, outside frozen host API; 5 functions, 5 types)
+
+Added by #708 so `github.com/deepnoodle-ai/risor/go/cmd/risor` can live in its
+own module without importing `go/internal/` while `go/v3` stays
+zero-dependency. It is not part of the host embedding API stability promise
+(hosts embed `risor` and test with `risortest`) and exports only the minimal
+surface `go/cmd/risor` calls:
+
+- Strict JSON & value rendering: `DecodeJSON(data)`, `RenderText(env, v)`.
+- REPL session: `Session` (`NewSession(env, vars)`; `Eval`, `Reset`,
+  `EOFError`), `EntryResult` (`Value`, `Diagnostics`, `Err`, `More`).
+- Case-file & suite runner: `RunCaseFile`, `CaseFileOutcome` (`Results`,
+  `Report`, `UpdatedText`, `Written`, `UpdateErr`), `CaseResult` (`File`,
+  `Case`, `Status`, `Diffs`, `Fixture`, `Message`, `Reason`), `RunSuite`,
+  `SuiteSection` (`Rel`, `Results`, `Err`).
 
 ### 6.2 TypeScript (`@deepnoodle/risor`)
 
