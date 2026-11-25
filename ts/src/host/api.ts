@@ -17,7 +17,7 @@ import { Source, SOURCE_LIMIT, validSourceLimit } from "../syntax/source.ts";
 import type { Position } from "../syntax/source.ts";
 import { arity, parseSignature } from "../types/typetext.ts";
 import { compileProgram, HostError } from "../eval/compile.ts";
-import type { CallHandle, CompileEnv, HostImpl } from "../eval/compile.ts";
+import type { CallHandle, CompileEnv, HostImpl, Remaining } from "../eval/compile.ts";
 import { LIMIT_CODES, RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
 import { ABSENT_VAR, Run } from "../eval/run.ts";
 import type { VarSource } from "../eval/run.ts";
@@ -76,8 +76,9 @@ import { renderDetail as renderDetailOf, renderJSON as renderJSONOf, renderLine 
 export { HostError, RisorError };
 export type { Diagnostic, Pos, Span, Usage, TemplateMode, SchemaOption };
 
-/** The handle a host function is called with (03 3.5): it charges steps and allocation units. */
+/** The handle a host function is called with (03 3.5): it charges steps and allocation units, and gives what is left. */
 export type Call = CallHandle;
+export type { Remaining };
 
 /** A completion (package F12, f12 3.1): the span it replaces and the candidates. */
 export interface Completion {
@@ -862,8 +863,8 @@ export class Env<V = any, N = any> {
    * functions are one space, opaque types another (03 3.3.4 item 1). An opaque
    * type the child declares (with `test`) replaces the parent's whole; one given
    * with methods only adds or replaces those methods. The clash rules apply to
-   * the child as it stands. Rejected classes and limits are the parent's unless
-   * given; entries removed add up. Throws RisorError of phase `declare`.
+   * the child as it stands. Rejected classes are the parent's unless given, and
+   * each limit is the parent's unless given; entries removed add up. Throws RisorError of phase `declare`.
    */
   with<
     const M extends Record<string, string> = {},
@@ -907,6 +908,11 @@ export class Env<V = any, N = any> {
 }
 
 /** Internal: a child environment, with the declarations the runner gives. */
+/** The keys of `o` whose value is not undefined. */
+function definedOnly<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
   const p = parent.declared;
   const pe = parent.environment;
@@ -952,7 +958,9 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
     opaque,
     opaqueNames,
     reject: options.reject ?? (p.reject !== undefined ? p.reject : [...pe.reject]),
-    limits: options.limits ?? p.limits,
+    // Field by field: a limit the child does not give is the parent's (03 3.3.2).
+    // A key whose value is undefined is not given, as in createEnv.
+    limits: options.limits === undefined ? p.limits : { ...p.limits, ...definedOnly(options.limits) },
     without: [...pe.removed, ...(options.without ?? [])],
     // f06 2.6 item 1: the parent's groups and the child's own.
     groups: [...pe.groups, ...(options.groups ?? [])],

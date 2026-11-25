@@ -56,7 +56,8 @@ type HostFunc func(c *Call, args []any) (any, error)
 // Call is the call handle a host function receives (03-host.md 3.5.2). It
 // is valid until the function returns (item 6). A later use,
 // from any goroutine, charges nothing and changes no run: Charge and
-// Allocate return ErrCallEnded and Context gives a cancelled context.
+// Allocate return ErrCallEnded, Remaining gives 0 and 0, and Context gives
+// a cancelled context.
 //
 // Each call has its own handle. Its state is changed atomically: a use moves
 // it from active to busy and back, and the end of the call moves it from
@@ -161,6 +162,27 @@ func (c *Call) Allocate(units int64) error {
 		return &LimitError{Code: f.code}
 	}
 	return nil
+}
+
+// Remaining returns the steps and the allocation units left in the run's
+// budget (03-host.md 3.5.2 item 3): each limit less what the run has
+// charged so far, which counts the one step of this call and what the
+// function has charged. A limit that is off gives NoLimit. A charge that
+// failed charged nothing, so it does not change what Remaining gives. A use
+// after the function returned gives 0 and 0.
+func (c *Call) Remaining() (steps, units int64) {
+	if !c.enter() {
+		return 0, 0
+	}
+	defer c.leave()
+	steps, units = NoLimit, NoLimit
+	if c.r.maxSteps >= 0 {
+		steps = c.r.maxSteps - c.r.steps
+	}
+	if c.r.maxUnits >= 0 {
+		units = c.r.maxUnits - c.r.units
+	}
+	return steps, units
 }
 
 // failure is a run failure on its way to a try or to the host.

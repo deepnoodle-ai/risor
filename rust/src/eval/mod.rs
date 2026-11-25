@@ -107,6 +107,15 @@ impl Meter {
     }
 }
 
+/// What is left of a run's budget (`03-host.md` 3.5.2 item 3): each limit
+/// less what the run has charged. `None`: the limit is off. The fields are
+/// those of `Limits`, so a nested run takes them as they are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Remaining {
+    pub steps: Option<u64>,
+    pub allocation: Option<u64>,
+}
+
 /// A limit was passed; the host function should return.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stop;
@@ -137,6 +146,20 @@ impl Call<'_> {
             self.m.stop = Some(c);
             Stop
         })
+    }
+
+    /// The steps and units left in the run, counting the call's own step
+    /// and what the function has charged. A charge that failed charged
+    /// nothing, so it does not change this.
+    pub fn remaining(&self) -> Remaining {
+        Remaining {
+            steps: self.m.limits.steps.map(|l| l.saturating_sub(self.m.steps)),
+            allocation: self
+                .m
+                .limits
+                .allocation
+                .map(|l| l.saturating_sub(self.m.units)),
+        }
     }
 
     pub fn cancelled(&self) -> bool {
