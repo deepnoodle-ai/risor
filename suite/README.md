@@ -73,7 +73,7 @@ A line is one JSON object with these fields, in this order.
 | Field | Value |
 | --- | --- |
 | `name` | The case's name |
-| `description` | When the case has `schemas` (package F1) or `types` (package F4, 9.5) and its environment was built: the environment's description |
+| `description` | When the case has `schemas` (package F1) or `types` (package F4, 9.5; an empty list counts) and its environment was built: the environment's description |
 | `type`, `sites` | The inferred type as printed text, and the sites of the check, when the check passed. Absent for a case with `"check": false` |
 | `phase` | `null` when the run gave a value. Otherwise the phase that failed: `"parse"`, `"declare"`, `"check"` or `"run"` |
 | `value` | The result as JSON, when `phase` is null. An opaque value is written as in a case file: `{"$opaque": {"type": T, "id": N}}` |

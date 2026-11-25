@@ -301,7 +301,7 @@ of failure, and the message prints the type found: `expected int, found any`.
 | A `const` line, `const p: T = e;` | e | T | `result-mismatch`: `result`, `missing`, `extra` | Each place of failure |
 | A default, `(x: T = d)` | d | T | The same | The same |
 | A result annotation, `(...): R => b` | b | R | The same | The same |
-| An argument of a call by name at `(x: T)` | The argument | T; with a default, `T \| null` | `arg-mismatch`: `argument`, `missing`, `extra`; or `maybe-null` when it fits but for null | The same |
+| An argument of a call by name at `(x: T)` | The argument | T; with a default, `T \| null` | `arg-mismatch`: `argument`, `missing`, `extra`; or `maybe-null` when it fits but for null, by `spec/core/05-types.md` 15.2 | The same |
 | A plain argument of a call by name at `(f: (...) => R)` | | | `arg-mismatch`, template `function`: `param` the parameter's name, `name` the lambda's. With F17 a static rule, and the template may be `parameter-at-fn` (`spec/packages/f17-recursion.md` 13.2 rule 3) | The argument |
 | A value the library passes to `(x: T)` (3.4) | Q | T | `arg-mismatch`, template `argument` | The annotation |
 | A value the library passes to `(f: (...) => R)` | | | None: with F17 a lambda that has an `Fn` parameter is never passed (`spec/packages/f17-recursion.md` 13.2 rule 8) | |

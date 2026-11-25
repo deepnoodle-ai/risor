@@ -339,6 +339,11 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 			}
 			c.synth(a, fs)
 		}
+		// A rejected dynamic site gives the receiver the type never, so
+		// the call records nothing more (17).
+		if rejected {
+			return types.Never
+		}
 		// 13.3: the call may fail by a library method or an opaque method of
 		// that name marked !.
 		sp := m.Span()
@@ -1090,7 +1095,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 		code, tmpl := "arg-mismatch", "argument"
 		if k == formResult || k == formAnnot {
 			code, tmpl = "result-mismatch", "result"
-		} else if at != nil && at.HasNull() && fitsK(types.Nonnull(at), w, k) {
+		} else if at != nil && at.HasNull() && !types.Nonnull(at).IsNever() && fitsK(types.Nonnull(at), w, k) {
 			c.m("", ty("type", at)).diag("maybe-null", sp)
 			return
 		}
