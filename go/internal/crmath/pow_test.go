@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // powExactBig is powExact as it was with math/big, the oracle for the

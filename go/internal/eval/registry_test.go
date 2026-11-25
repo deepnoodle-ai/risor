@@ -4,9 +4,9 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/typetext"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // The registry has exactly the entries of library.json, and each entry's

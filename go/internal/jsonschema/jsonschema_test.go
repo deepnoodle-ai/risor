@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/types"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func rec(closable bool, rest *types.Type, fs ...types.Field) *types.Type {

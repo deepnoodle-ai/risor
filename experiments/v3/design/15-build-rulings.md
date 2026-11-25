@@ -24,7 +24,7 @@ Section 7 of `14` was taken as recommended.
 | Codes | Code names are as the design documents write them. |
 | Line | Core and follow-on are as `14` sections 2, 3 and 5 say. |
 | D8, D10 to D13, D15 to D17, D21, D25, D31 | As recommended in `00`. |
-| D23 | Open. Go tests use wonton's `assert` until it is settled. |
+| D23 | Settled by the owner (2026-11-25, #708). `go/` has no external dependencies; tests use the standard library and `go/cmd/risor` is its own module. |
 | Layout | `spec/`, `suite/`, `go/`, `ts/`, `rust/`. v2's code stays on the branch for now. |
 | Parser | Each lexer and parser is written by hand, a Pratt parser. Settled by the owner. |
 

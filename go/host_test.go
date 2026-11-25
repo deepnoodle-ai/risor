@@ -12,7 +12,7 @@ import (
 	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // compile compiles without the type rules: these tests are of the run.

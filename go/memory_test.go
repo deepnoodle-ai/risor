@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // The constants that risor.go publishes (02-evaluation.md 8.5 item 2).

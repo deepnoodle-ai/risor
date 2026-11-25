@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/risortest"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func write(t *testing.T, dir, name, text string) string {

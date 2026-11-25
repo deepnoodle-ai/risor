@@ -9,7 +9,7 @@ import (
 	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Rules seen at the Go API: a const-bound lambda named as an argument is a

@@ -3,8 +3,8 @@ package types
 import (
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/typetext"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 var opaque = map[string]bool{"Time": true, "Date": true}

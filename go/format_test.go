@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/runner"
