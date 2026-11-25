@@ -148,10 +148,10 @@ export const FOREIGN_NAMES: ForeignRow[] = [
       "list"
     ],
     "entries": [
-      "list.last",
+      "list.first",
       "list.slice"
     ],
-    "fix": "values never change: use xs.last() and xs.slice(...)"
+    "fix": "values never change: use xs.first() and xs.slice(1)"
   },
   {
     "written": "concat",

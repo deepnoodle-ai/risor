@@ -779,8 +779,11 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             for a in r.args.iter().flatten() {
                 check_opaque(a, n)?;
             }
-            if let Answer::Result(v) = &r.answer {
-                check_opaque(v, n)?;
+            match &r.answer {
+                Answer::Result(v) => check_opaque(v, n)?,
+                // F19 5.3: a `failed` object's `data` is read as `vars` are.
+                Answer::Failure { data: Some(v), .. } => check_opaque(v, n)?,
+                _ => {}
             }
         }
     }

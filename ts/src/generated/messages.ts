@@ -1033,7 +1033,7 @@ export const CATALOG: CatalogEntry[] = [
     "templates": {
       "field": "field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first",
       "index": "the key may be absent from {type}: read it with ?.[ ], and add ?? and a default",
-      "pattern": "field {key} may be absent from {type}: give it a default in the pattern, as {key} = ..."
+      "pattern": "field {key} may be absent from {type}: give the field a default in the pattern, with = and a value"
     }
   },
   {

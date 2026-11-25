@@ -216,10 +216,27 @@ func excerpt(b *strings.Builder, lines []string, sp diag.Span) {
 // a Risor diagnostic (package F19 5.2).
 const maxCauseDepth = 8
 
+// risorCause is the cause of a diagnostic when it is a Risor failure with a
+// diagnostic and the depth allows it, else nil. Finding it runs the host
+// error's own methods (Unwrap, As), so a crash there writes no cause.
+func risorCause(d *diag.Diagnostic, depth int) (de *diag.Error) {
+	if depth >= maxCauseDepth || d.Cause == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			de = nil
+		}
+	}()
+	if errors.As(d.Cause, &de) && de != nil && len(de.Diagnostics) > 0 {
+		return de
+	}
+	return nil
+}
+
 func jsonOf(b *strings.Builder, d *diag.Diagnostic, depth int) {
 	b.WriteByte('{')
-	var de *diag.Error
-	if depth < maxCauseDepth && d.Cause != nil && errors.As(d.Cause, &de) && de != nil && len(de.Diagnostics) > 0 {
+	if de := risorCause(d, depth); de != nil {
 		b.WriteString(`"cause":`)
 		jsonOf(b, &de.Diagnostics[0], depth+1)
 		b.WriteByte(',')

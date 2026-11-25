@@ -445,6 +445,26 @@ fn a_stub_with_no_type_reads_the_base() {
     );
 }
 
+/// F19 5.3: a `failed` stub error's `data` is read as `vars` are, so an
+/// opaque value in it names a declared type.
+#[test]
+fn a_failed_stub_errors_data_names_declared_opaque_types() {
+    let file = |opaque: &str, data: &str| {
+        format!(
+            r#"{{{opaque}"cases": [{{"name": "a", "source": "try {{ f() }} catch (e) {{ 1 }}",
+            "functions": {{"f": {{"type": "() => int !", "calls": [{{"error":
+            {{"code": "failed", "message": "m", "data": {data}}}}}]}}}},
+            "expect": {{"value": 1}}}}]}}"#
+        )
+    };
+    let env = crate::env::Env::default();
+    let ghost = r#"{"$opaque": {"type": "Ghost", "id": 0}}"#;
+    assert!(crate::testing::from_text(&file("", ghost), false, &env).is_err());
+    let declared = r#""opaque": ["Ghost"], "#;
+    assert!(crate::testing::from_text(&file(declared, ghost), false, &env).is_ok());
+    assert!(crate::testing::from_text(&file("", r#"{"a": [1]}"#), false, &env).is_ok());
+}
+
 /// Package F10: `suite/config/` (`f10-config.md` 10.3).
 #[test]
 fn config_package() {

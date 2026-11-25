@@ -155,7 +155,7 @@
       "key": "string"
     },
     "templates": {
-      "pattern": "field {key} may be absent from {type}: give it a default in the pattern, as {key} = ..."
+      "pattern": "field {key} may be absent from {type}: give the field a default in the pattern, with = and a value"
     },
     "when": {
       "pattern": "f19-author-feedback.md 2: a field of a map pattern with no default. type is the record bound"
@@ -176,7 +176,7 @@
                 1,
                 13
               ],
-              "message": "field \"limit\" may be absent from {limit?: int, q: string}: give it a default in the pattern, as \"limit\" = ..."
+              "message": "field \"limit\" may be absent from {limit?: int, q: string}: give the field a default in the pattern, with = and a value"
             }
           ]
         }

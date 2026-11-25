@@ -637,6 +637,8 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     for (const row of st.calls) {
       if (row.args !== undefined) opaqueOk(row.args, "a stub's args");
       if (row.result !== undefined) opaqueOk(row.result.value, "a stub's result");
+      // f19 5.3: a `failed` error's data is read as vars are.
+      if (typeof row.error === "object" && row.error.data !== undefined) opaqueOk(row.error.data, "a stub's error data");
     }
   }
   if (c.expect.kind === "result" && c.expect.value !== undefined) opaqueOk(c.expect.value.value, "the expected value");

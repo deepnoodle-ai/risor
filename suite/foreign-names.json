@@ -18,6 +18,6 @@
   {"written": "push", "place": "method", "kinds": ["list"], "fix": "values never change: build a new list with [...xs, x]"},
   {"written": "unshift", "place": "method", "kinds": ["list"], "fix": "values never change: build a new list with [x, ...xs]"},
   {"written": "pop", "place": "method", "kinds": ["list"], "entries": ["list.last", "list.slice"], "fix": "values never change: use xs.last() and xs.slice(...)"},
-  {"written": "shift", "place": "method", "kinds": ["list"], "entries": ["list.last", "list.slice"], "fix": "values never change: use xs.last() and xs.slice(...)"},
+  {"written": "shift", "place": "method", "kinds": ["list"], "entries": ["list.first", "list.slice"], "fix": "values never change: use xs.first() and xs.slice(1)"},
   {"written": "concat", "place": "method", "kinds": ["list"], "fix": "use spread: [...xs, ...ys]"}
 ]

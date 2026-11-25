@@ -176,7 +176,7 @@ its parameters do not change.
 | --- | --- | --- |
 | `field` | `field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first` | A plain read, as today |
 | `index` | `the key may be absent from {type}: read it with ?.[ ], and add ?? and a default` | An index read of a record, as today |
-| `pattern` | `field {key} may be absent from {type}: give it a default in the pattern, as {key} = ...` | A field of a map pattern with no default (`05:` 12.2) |
+| `pattern` | `field {key} may be absent from {type}: give the field a default in the pattern, with = and a value` (the chapter, R358) | A field of a map pattern with no default (`05:` 12.2) |
 
 `{key}` is a `string` (`03:` 3.8.3), so it prints with its quotes: `as "limit" =
 ...`. *Why the quotes are kept:* a key need not be a `Word`, and a second kind
@@ -229,7 +229,8 @@ fix. The first rows:
 | `has` | method of a list or a map | `use the operator in: x in xs, or key in m` |
 | `push` | method of a list | `values never change: build a new list with [...xs, x]` |
 | `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
-| `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `pop` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `shift` | method of a list | `values never change: use xs.first() and xs.slice(1)` (the chapter, R355) |
 | `concat` | method of a list | `use spread: [...xs, ...ys]` |
 | `indexOf` | method of a list or a string | `use in, or find(...)` |
 

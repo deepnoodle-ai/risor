@@ -91,10 +91,11 @@ third. The code and its parameters do not change.
 | --- | --- | --- |
 | `field` | `field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first` | A field or a `String` key, as before, but not a field of a map pattern |
 | `index` | `the key may be absent from {type}: read it with ?.[ ], and add ?? and a default` | An index read of a record, as before |
-| `pattern` | `field {key} may be absent from {type}: give it a default in the pattern, as {key} = ...` | A field of a map pattern with no default (`05-types.md` 12.2). type is the record bound |
+| `pattern` | `field {key} may be absent from {type}: give the field a default in the pattern, with = and a value` | A field of a map pattern with no default (`05-types.md` 12.2). type is the record bound |
 
-1. `{key}` is a `string` (`03-host.md` 3.8.3), so it prints with its quotes:
-   `as "limit" = ...`.
+1. The text of `pattern` names no syntax: a key that is not a name needs
+   `"key": name = d`, and a name needs `name = d` (`01-language.md` 3.1,
+   `Field`), and one text cannot show both (`15-build-rulings.md` R358).
 2. The texts of `field` and `index` are Core's templates, so they change in
    Core's catalog file, as F17 changed two (F17 9). A build without this
    package prints them too. Each is true without it.
@@ -162,7 +163,8 @@ The rows:
 | `has` | method of a list or a map | `use the operator in: x in xs, or key in m` |
 | `push` | method of a list | `values never change: build a new list with [...xs, x]` |
 | `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
-| `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `pop` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
+| `shift` | method of a list | `values never change: use xs.first() and xs.slice(1)` |
 | `concat` | method of a list | `use spread: [...xs, ...ys]` |
 
 1. A row of the table that names several texts is one row of the file for
@@ -171,8 +173,8 @@ The rows:
    environment offers every entry of its `entries`, so a fix never names a
    removed entry (`03-host.md` 3.3.1 item 6). The rows with `entries` are
    `Math` (`round`, `floor`), `Object` (`map.keys`, `map.values`,
-   `map.entries`), `Array.isArray` (`type`), and `pop` and `shift`
-   (`list.last`, `list.slice`). So with `map.keys` removed, `Object.keys(m)`
+   `map.entries`), `Array.isArray` (`type`), `pop` (`list.last`, `list.slice`) and `shift`
+   (`list.first`, `list.slice`). So with `map.keys` removed, `Object.keys(m)`
    is `Object is not defined`, with no fix.
 3. The written text of a row of place `name` or `function` is never the name
    of an entry of a library table, and that of a row of place `method` never
@@ -332,7 +334,8 @@ Neither code has a parameter.
    run gave `fail`. The code stays `function-error`.
 2. A chain of nested runs keeps the innermost data, as it keeps the innermost
    message (`03-host.md` 3.5.3 item 7).
-3. The data is read as a host value, in place (`03-host.md` 3.4). The class,
+3. The data is read as a host value (`03-host.md` 3.4), as the binding reads
+   any. The class,
    the span and the message of the `function-error` do not change.
 
 ### 5.2 `cause` in the JSON form
