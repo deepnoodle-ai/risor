@@ -957,12 +957,12 @@ export class Env<V = any, N = any> {
   }
 }
 
-/** Internal: a child environment, with the declarations the runner gives. */
 /** The keys of `o` whose value is not undefined. */
 function definedOnly<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
+/** Internal: a child environment, with the declarations the runner gives. */
 export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
   const p = parent.declared;
   const pe = parent.environment;
