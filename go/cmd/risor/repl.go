@@ -13,6 +13,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/hooks"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/replrun"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
 	"github.com/deepnoodle-ai/wonton/cli"
@@ -54,19 +55,20 @@ type result struct {
 }
 
 // entryKind classifies an entry's text: whether it parses with an
-// expression, parses as const lines alone, needs more lines, or fails.
-func entryKind(text string) (hasExpr bool, ok bool, more bool, err error) {
-	if _, err := risor.Parse(text); err == nil {
-		return true, true, false, nil
+// expression, parses as const lines alone (and whether it needs a trailing
+// null to parse), needs more lines, or fails.
+func entryKind(text string) (hasExpr, needNull, ok, more bool, err error) {
+	if x, err := risor.Parse(text); err == nil {
+		return hooks.Tree(x).Result != nil, false, true, false, nil
 	} else {
 		if x, err2 := risor.Parse(text + "\nnull"); err2 == nil && onlyConsts(x, text) {
-			return false, true, false, nil
+			return false, true, true, false, nil
 		}
 		ds, _ := diagnosticsOf(err)
 		if len(ds) > 0 && atEnd(ds[0], text) {
-			return false, false, true, nil
+			return false, false, false, true, nil
 		}
-		return false, false, false, err
+		return false, false, false, false, err
 	}
 }
 
@@ -116,7 +118,7 @@ func (s *session) eval(entry string) result {
 	if strings.TrimSpace(entry) == "" {
 		return result{}
 	}
-	hasExpr, ok, more, err := entryKind(entry)
+	hasExpr, needNull, ok, more, err := entryKind(entry)
 	if more {
 		return result{more: true}
 	}
@@ -124,7 +126,7 @@ func (s *session) eval(entry string) result {
 		return result{diags: s.render(err, entry, 0)}
 	}
 	text := entry
-	if !hasExpr {
+	if needNull {
 		text += "\nnull"
 	}
 	full, k := s.program(text)
@@ -695,7 +697,7 @@ func repl(s *session, in lineReader, stdout, stderr io.Writer) int {
 	}
 	if len(pending) > 0 {
 		// The input ended inside an entry: show why it does not parse.
-		_, _, _, err := entryKind(strings.Join(pending, "\n"))
+		_, _, _, _, err := entryKind(strings.Join(pending, "\n"))
 		if err == nil {
 			_, err = risor.Parse(strings.Join(pending, "\n"))
 		}

@@ -156,15 +156,20 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 // Run runs the program. It returns the value or one run diagnostic, and the
 // usage in both cases.
 func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, d *diag.Diagnostic) {
+	if !p.hasResult {
+		return nil, Usage{}, &diag.Diagnostic{Phase: diag.PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}
+	}
 	result, usage, _, d = p.RunEntry(ctx, vars)
 	return result, usage, d
 }
 
 // RunEntry runs the program as Run does. For a program compiled as an
 // entry (Config.Entry) that succeeds, it also gives the values of each
-// top-level const line, by the slots of its pattern.
+// top-level const line, by the slots of its pattern; when the entry has no
+// result expression, it still runs its new const lines and gives a nil value.
 func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Usage, held [][]any, d *diag.Diagnostic) {
-	if !p.hasResult {
+	if !p.hasResult && !p.cfg.Entry {
 		return nil, Usage{}, nil, &diag.Diagnostic{Phase: diag.PhaseDeclare, Code: diag.CodeNoResult,
 			Message: "the program has no result expression"}
 	}
@@ -285,7 +290,8 @@ func (c *compiler) block(consts []*syntax.Const, result syntax.Node) code {
 }
 
 // entry compiles the top level of a REPL entry (Config.Entry). A held
-// lambda line is compiled, since calls name it, but not run.
+// lambda line is compiled, since calls name it, but not run. When result is
+// nil, the new const lines still run and the entry returns nil.
 func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int, bool) {
 	held := c.cfg.Held
 	if len(held) > len(consts) {
@@ -303,10 +309,21 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 	}
-	if result == nil {
-		return nil, slots, false
+	var body code
+	if result != nil {
+		body = c.block(consts[len(held):], result)
+	} else {
+		cs := make([]code, len(consts)-len(held))
+		for i, k := range consts[len(held):] {
+			cs[i] = c.constLine(k)
+		}
+		body = func(r *run) any {
+			for _, k := range cs {
+				k(r)
+			}
+			return nil
+		}
 	}
-	body := c.block(consts[len(held):], result)
 	return func(r *run) any {
 		for i, vals := range held {
 			for j, s := range slots[i] {
@@ -314,7 +331,7 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 		return body(r)
-	}, slots, true
+	}, slots, result != nil
 }
 
 // patternSlots are the slots a const pattern binds, in the order of the

@@ -100,12 +100,29 @@ func TestReplSession(t *testing.T) {
 	r = s.eval("const z = 1 / 0;")
 	assert.True(t, r.diags != "")
 	assert.Equal(t, s.held, held)
-	// An export-only entry has no result expression: it returns no-result, not internal-error.
-	r = s.eval("export const g = (x: int) => x;")
-	assert.Equal(t, r.value, "")
-	assert.True(t, strings.Contains(r.diags, "error[no-result]"), r.diags)
-	assert.False(t, strings.Contains(r.diags, "internal-error"), r.diags)
-	assert.Equal(t, s.held, held)
+	// An export-only entry has no result expression: it succeeds with no value
+	// and holds its const lines for later entries (F12 5 items 3-4).
+	const exportLine = "export const g = (x: int): int => x + 1;"
+	r = s.eval(exportLine)
+	assert.Equal(t, r, result{})
+	assert.Equal(t, s.held, held+"\n"+exportLine)
+	assert.Equal(t, s.eval("g(41)").value, "42\n")
+	// An export-only entry with a companion value const evaluates and holds both.
+	const multiExport = "const inc = 5;\nexport const addInc = (x: int): int => x + inc;"
+	heldWithG := s.held
+	r = s.eval(multiExport)
+	assert.Equal(t, r, result{})
+	assert.Equal(t, s.held, heldWithG+"\n"+multiExport)
+	assert.Equal(t, s.eval("addInc(37)").value, "42\n")
+	// A runtime-failing export-only entry evaluates its const lines and holds nothing.
+	heldBeforeFail := s.held
+	heldLinesBeforeFail := s.heldVals.Lines()
+	r = s.eval("export const bad = (x: int): int => x;\nconst boom = 1 / (a - 7);")
+	assert.True(t, strings.Contains(r.diags, "error[divide-by-zero]"), r.diags)
+	assert.Equal(t, s.held, heldBeforeFail)
+	assert.Equal(t, s.heldVals.Lines(), heldLinesBeforeFail)
+	// An explicit null expression still prints null.
+	assert.Equal(t, s.eval("null").value, "null\n")
 	assert.Equal(t, s.eval("\"s\"").value, "\"s\"\n")
 }
 
