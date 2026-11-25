@@ -218,10 +218,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # Node 22.18+ enables native TypeScript stripping for ts/src/index.ts.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ">=22.18.0 <23"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
 
       - name: Check generated library reference
         run: node docs/scripts/generate-library-docs.mjs --check

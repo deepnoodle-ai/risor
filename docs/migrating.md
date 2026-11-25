@@ -234,6 +234,7 @@ sprintf("%s <%s>", u?.name ?? "anon", lower(u.email))
 
 Before (`expr-lang/expr`):
 
+<!-- risor-verify: {"mode":"go-skip"} -->
 ```go
 program, err := expr.Compile(`order.total > 100 && user.role in ["admin", "owner"]`,
     expr.Env(envSchema),
@@ -245,6 +246,7 @@ allowed := out.(bool)
 
 Before (`deepnoodle-ai/expr`):
 
+<!-- risor-verify: {"mode":"go-skip"} -->
 ```go
 program, err := dexpr.Compile(`order.total > 100 && contains(["admin", "owner"], user.role)`,
     dexpr.WithBuiltins(),
@@ -256,6 +258,7 @@ out, err := program.Run(ctx, data)
 
 After (Risor v3):
 
+<!-- risor-verify: {"mode":"go","imports":["context"],"params":"ctx context.Context, data map[string]any","use":["err","allowed"]} -->
 ```go
 import risor "github.com/deepnoodle-ai/risor/go/v3"
 
@@ -283,6 +286,7 @@ Risor type directly from your Go struct with `risor.TypeOf[T]()`. Risor v3 reads
 structs in place using `json` struct tags and activates the reflection-free
 typed layer:
 
+<!-- risor-verify: {"mode":"go","imports":["context"],"params":"ctx context.Context","use":["out","err"]} -->
 ```go
 type Order struct {
     Total   float64 `json:"total"`
@@ -304,6 +308,7 @@ Hosts that inspect which variables, paths, or functions a rule reads before
 fetching data use `expr.Analyze()` — it requires no environment and never runs
 the program:
 
+<!-- risor-verify: {"mode":"go","use":["err","report"]} -->
 ```go
 expr, err := risor.Parse(`order.total > 100 && customer.tier == "gold"`)
 report := expr.Analyze()
@@ -322,6 +327,7 @@ Replace `deepnoodle-ai/expr`'s `NewTemplate` (`${...}`) with
 Hello, ${{ user.name }} (${{ user.role }})!
 ```
 
+<!-- risor-verify: {"mode":"go","imports":["context"],"params":"ctx context.Context, env *risor.Env, user any","use":["err","text"]} -->
 ```go
 tmpl, err := risor.ParseTemplate(`Hello, ${{ user.name }} (${{ user.role }})!`)
 prog, err := env.Compile(tmpl.Program(risor.ModeString))
@@ -336,6 +342,7 @@ compile `tmpl.Program(risor.ModeValue)`.
 
 Use `risor.Func` to expose Go functions without manually writing type wrappers:
 
+<!-- risor-verify: {"mode":"go","imports":["strings"],"use":["env","err"]} -->
 ```go
 env, err := risor.NewEnv(
     risor.Var("title", "string"),
@@ -645,6 +652,7 @@ When you genuinely need regex matching, expose a Go `regexp` helper as a host
 function (using a non-reserved namespace such as `re.match`) and charge work
 proportional to input size through `*risor.Call`:
 
+<!-- risor-verify: {"mode":"go","imports":["regexp"],"use":["reMatch"]} -->
 ```go
 reMatch := risor.Func("re.match", func(c *risor.Call, pattern, text string) (bool, error) {
     if err := c.Charge(int64(len(pattern) + len(text))); err != nil {
@@ -692,6 +700,7 @@ The Go module path changed from `github.com/deepnoodle-ai/risor/v2` to
 
 Before (Risor v2):
 
+<!-- risor-verify: {"mode":"go-skip"} -->
 ```go
 result, err := risor.Eval(ctx, code,
     risor.WithEnv(map[string]any{
@@ -704,6 +713,7 @@ result, err := risor.Eval(ctx, code,
 
 After (Risor v3):
 
+<!-- risor-verify: {"mode":"go","params":"ctx context.Context","use":["out","usage","err"]} -->
 ```go
 import (
     "context"
@@ -755,6 +765,7 @@ out, usage, err := prog.Measure(ctx, risor.Map{
 
 #### Calling `export const` entry points and exporting JSON Schema
 
+<!-- risor-verify: {"mode":"go","imports":["context"],"params":"ctx context.Context, env *risor.Env","use":["ok","err"]} -->
 ```go
 expr, err := risor.Parse(`
 /** Decide whether to approve a transfer. */
@@ -771,7 +782,7 @@ prog, err := env.Compile(expr)
 for _, entry := range prog.Entries() {
     if entry.InputType != nil {
         schema, err := risor.SchemaOf(*entry.InputType)
-        _ = schema
+        _, _ = schema, err
     }
 }
 
