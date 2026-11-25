@@ -463,7 +463,17 @@ one rounding, and must not compute in a wider format.
    with the same key.
 3. **Before the memory is taken.** A value's units are charged after the steps
    of the operation that creates it and before it is built. Where the size
-   depends on the work, it is found first.
+   depends on the work, it is found first. One kind of library entry may build
+   its result before it charges the units: an entry whose result creates no
+   new text, and whose slots and entries number at most a constant times the
+   elements or entries of its receiver. The memory it takes early is then
+   bounded by its input. Such an entry charges the same steps and units, raises
+   the same failure, and calls its callbacks in the same order as if it charged
+   first. The grouping entries are of this kind: `groupBy`, `toMap` and
+   `unique`, and `uniqueBy`, `indexBy` and `countBy` of F7. Every other value
+   is charged first. That includes each entry whose result can be larger than
+   its input: `range`, `repeat`, `padStart`, `padEnd`, `flat`, `flatMap` and
+   `join`.
 4. **As written.** A literal costs its units each time it is evaluated, even if
    an implementation builds it once. An intermediate value costs its units even
    if an implementation never builds it.

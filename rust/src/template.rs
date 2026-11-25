@@ -9,7 +9,7 @@ use crate::diag::Error;
 use crate::source::{Range, Source, Span};
 use crate::syntax::ast::{Ast, NodeId, NodeKind, TemplatePart};
 use crate::syntax::lexer::lex_part;
-use crate::syntax::parser::parse_parts;
+use crate::syntax::parser::{parse_parts, ParseOptions};
 use crate::syntax::token::{StrForm, Tok, Token, P};
 use crate::syntax::Expr;
 
@@ -64,6 +64,14 @@ pub struct Template {
 /// Parse a template text (2.1 to 2.3). A failure has phase `parse` and one
 /// diagnostic: the first. A U+FEFF at the start is a code point of the text.
 pub fn parse_template(text: &str) -> Result<Template, Error> {
+    parse_template_with(text, ParseOptions::default())
+}
+
+/// Parse a template with options: a lower source limit, which holds the
+/// whole template text (2.1 item 2). A limit out of range is the `declare`
+/// error `bad-limit`.
+pub fn parse_template_with(text: &str, opts: ParseOptions) -> Result<Template, Error> {
+    opts.admit(text)?;
     let source = Source::raw(text);
     let s = source.chars();
     let n = s.len();

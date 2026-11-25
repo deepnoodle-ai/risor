@@ -43,11 +43,100 @@ impl Expr {
     }
 }
 
+/// The largest source limit, and the default: a source text has at most
+/// this many code points (`01-language.md` 2.1 item 4).
+pub const SOURCE_LIMIT: usize = 1_048_576;
+
+/// The options of each call that takes source text (`03-host.md` 3.6.1 item
+/// 5): parse, the parse of a template, the formatter, completion, hover and
+/// the load of a config file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParseOptions {
+    /// The most code points a text may have, counted in the text as given,
+    /// a U+FEFF at the start and each code point of a line end included.
+    /// From 0 to [`SOURCE_LIMIT`], the default; a larger value is the
+    /// `declare` error `bad-limit`. A longer text is the `parse` error
+    /// `source-too-large`, with no span.
+    pub source_limit: usize,
+}
+
+impl Default for ParseOptions {
+    fn default() -> ParseOptions {
+        ParseOptions {
+            source_limit: SOURCE_LIMIT,
+        }
+    }
+}
+
+impl ParseOptions {
+    /// The source limit, or `bad-limit` when it is out of range.
+    pub(crate) fn limit(self) -> Result<usize, Error> {
+        if self.source_limit > SOURCE_LIMIT {
+            return Err(Error::one(Diagnostic::bare(
+                Phase::Declare,
+                code::BAD_LIMIT,
+                format!(
+                    "the source limit {} is outside 0 to {SOURCE_LIMIT}",
+                    self.source_limit
+                ),
+            )));
+        }
+        Ok(self.source_limit)
+    }
+
+    /// Apply the options to a text, before anything else reads it
+    /// (`01-language.md` 2.1 items 4 to 6): `bad-limit` for a limit out of
+    /// range, `source-too-large` for a text longer than the limit.
+    pub(crate) fn admit(self, text: &str) -> Result<(), Error> {
+        let limit = self.limit()?;
+        if within(text, limit) {
+            return Ok(());
+        }
+        let msg = crate::messages::build(
+            code::SOURCE_TOO_LARGE,
+            "default",
+            &[("limit", limit.to_string())],
+        );
+        Err(Error::one(Diagnostic::bare(
+            Phase::Parse,
+            code::SOURCE_TOO_LARGE,
+            msg,
+        )))
+    }
+
+    /// Whether a text is within the options; false for a limit out of
+    /// range. For completion and hover, which never fail.
+    pub(crate) fn admits(self, text: &str) -> bool {
+        self.admit(text).is_ok()
+    }
+}
+
+/// Whether a text has at most `limit` code points. A code point is one to
+/// four bytes of UTF-8, so the byte length decides most texts without a
+/// count; the count stops one past the limit.
+pub(crate) fn within(text: &str, limit: usize) -> bool {
+    let n = text.len();
+    if n <= limit {
+        return true;
+    }
+    if n > limit.saturating_mul(4) {
+        return false;
+    }
+    text.chars().nth(limit).is_none()
+}
+
 /// Parse the text of a program. A failure has phase `parse` and one
 /// diagnostic: the first, with the targeted code of `f08-errors.md` 2 where
 /// one applies.
 pub fn parse(text: &str) -> Result<Expr, Error> {
-    parse_with(text, false)
+    parse_with(text, ParseOptions::default())
+}
+
+/// Parse with options: a lower source limit. A limit out of range is the
+/// `declare` error `bad-limit`.
+pub fn parse_with(text: &str, opts: ParseOptions) -> Result<Expr, Error> {
+    opts.admit(text)?;
+    parse_text(text, false)
 }
 
 /// Parse as `parse` does, but give the Core diagnostic: the first diagnostic
@@ -55,10 +144,11 @@ pub fn parse(text: &str) -> Result<Expr, Error> {
 /// item 1), with its message.
 #[cfg(test)]
 pub fn parse_core(text: &str) -> Result<Expr, Error> {
-    parse_with(text, true)
+    ParseOptions::default().admit(text)?;
+    parse_text(text, true)
 }
 
-fn parse_with(text: &str, core: bool) -> Result<Expr, Error> {
+fn parse_text(text: &str, core: bool) -> Result<Expr, Error> {
     let source = Source::new(text);
     let ast = {
         let toks = lex(&source).map_err(|d| {
@@ -92,7 +182,8 @@ fn parse_with(text: &str, core: bool) -> Result<Expr, Error> {
 }
 
 /// The `parse` codes of Core and of F3 and F4 (`01-language.md` 14.2).
-const CORE_CODES: [&str; 14] = [
+const CORE_CODES: [&str; 15] = [
+    code::SOURCE_TOO_LARGE,
     code::UNEXPECTED_TOKEN,
     code::UNEXPECTED_CHARACTER,
     code::UNTERMINATED_STRING,

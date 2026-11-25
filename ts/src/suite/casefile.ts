@@ -6,6 +6,7 @@ import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
 import { parseType } from "../types/typetext.ts";
 import { MAX_DEPTH } from "../host/env.ts";
+import { SOURCE_LIMIT } from "../syntax/source.ts";
 
 export type LineSpan = [number, number, number, number];
 
@@ -142,7 +143,8 @@ export interface Case {
   /** Package F14: host facts someNotNull, each the list of its members (f14 10.1). */
   facts?: string[][];
   vars?: JsonObject;
-  limits?: { steps?: number; allocation?: number; depth?: number };
+  /** `source` is the source limit of the parse (03 3.6.1 item 5, 3.10.3). */
+  limits?: { steps?: number; allocation?: number; depth?: number; source?: number };
   precondition?: boolean;
   /** 03 3.10.3: library entries the environment removes (`len`, `string.repeat`). */
   removed?: string[];
@@ -219,8 +221,8 @@ const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "run
 
 /** Package F12: the fields of a case of the tools (f12 7.1 to 7.3). */
 const TOOL_FIELDS = ["format", "formatTemplate", "complete", "hover"] as const;
-const FORMAT_ALLOWED = ["name", "format", "formatTemplate", "env", "vars", "skip", "expect"];
-const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "skip", "expect"];
+const FORMAT_ALLOWED = ["name", "format", "formatTemplate", "env", "vars", "limits", "skip", "expect"];
+const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "limits", "skip", "expect"];
 const CANDIDATE_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "key", "literal", "type"]);
 // f16 7.3: the hover kind `type`.
 const HOVER_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "type"]);
@@ -360,6 +362,8 @@ function checkShared(o: JsonObject, where: string): void {
         if (!isInt(v, 0)) fail(`${where}: limits.${k} is not a whole number of 0 or more`);
       } else if (k === "depth") {
         if (!isInt(v, 1) || v > MAX_DEPTH) fail(`${where}: limits.depth is not from 1 to ${MAX_DEPTH}`);
+      } else if (k === "source") {
+        if (!isInt(v, 0) || v > SOURCE_LIMIT) fail(`${where}: limits.source is not from 0 to ${SOURCE_LIMIT}`);
       } else fail(`${where}: limits has a field ${k}`);
     }
   }
@@ -1004,6 +1008,8 @@ function toolCase(header: JsonObject, raw: JsonObject, tools: string[], where: s
   if ("groups" in merged) c.groups = merged.groups as string[];
   if ("types" in merged) c.types = merged.types as Case["types"];
   if ("returns" in merged) c.returns = merged.returns as string;
+  // f12 7.1, 7.2: of limits, a tool uses source alone.
+  if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("skip" in raw) c.skip = raw.skip as string;
   if ("expect" in raw) c.rawExpect = raw.expect;
   void opts;

@@ -341,21 +341,22 @@ func TestInvalidText(t *testing.T) {
 }
 
 // What opens no level costs no stack: these long flat programs run
-// (01-language.md 13.2 rule 6).
+// (01-language.md 13.2 rule 6). n is four times the rule's 10,000, and each
+// text stays within the size of a source text (2.1).
 func TestFlatPrograms(t *testing.T) {
-	n := 100000
+	n := 40000
 	env, _ := risor.NewEnv(risor.VarRecord("{c: bool, m: map<any>}"))
 	var consts strings.Builder
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&consts, "const a%d = %d;\n", i, i)
 	}
-	consts.WriteString("a99999")
+	fmt.Fprintf(&consts, "a%d", n-1)
 	cases := map[string]any{
 		strings.Repeat("1 + ", n) + "1":                                          float64(n + 1),
 		"m" + strings.Repeat("?.a", n):                                           nil,
 		strings.Repeat("c ? 1 : ", n) + "2":                                      2.0,
 		"if (c) { 1 }" + strings.Repeat(" else if (c) { 1 }", n) + " else { 2 }": 2.0,
-		consts.String():                     99999.0,
+		consts.String():                     float64(n - 1),
 		strings.Repeat("null ?? ", n) + "3": 3.0,
 	}
 	for src, want := range cases {

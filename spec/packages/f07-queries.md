@@ -187,7 +187,7 @@ This row joins the table of `01-language.md` 13.1.
 5. A chain of projections, each ended by a method call, is flat by item 3:
    `xs[*].map(x => x)[*].map(x => x)` holds one level at each star, and none
    at its end. So the rule of `01-language.md` 13.2 item 6 holds for it: a
-   chain of 100,000 such links parses, is checked and runs, and its length
+   chain of 10,000 such links parses, is checked and runs, and its length
    costs an implementation no stack.
 
 | Text | Levels open at `x` |

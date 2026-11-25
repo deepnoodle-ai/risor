@@ -514,7 +514,7 @@ describe("01 13: nesting", () => {
     err(nest(101, "1 2"), "nesting-exceeded");
   });
   test("what opens no level costs no stack", () => {
-    const n = 100000;
+    const n = 10000;
     ok(Array.from({ length: n }, (_, i) => String(i)).join(" + "));
     ok("x" + ".f()".repeat(n));
     ok("a ? 1 : ".repeat(n) + "2");

@@ -1,8 +1,9 @@
 //! What opens no level costs no stack (`01-language.md` 13.1 and 13.2 item
 //! 6, `f04-conversion.md` 2.8, `f07-queries.md` 2.5).
 //!
-//! Each flat form is written 100,000 links long and goes through every
-//! entry point of the crate: parsing, analysis, the formatter, the check,
+//! Each flat form is written 100,000 links long, or as many as fit in a
+//! source text of 1,048,576 code points (2.1 item 4; 13.2 item 6 names
+//! 10,000), and goes through every entry point of the crate: parsing, analysis, the formatter, the check,
 //! a compile with and without the check, a run, completion, hover, a
 //! template and a load. Each test runs on a thread with the stack that
 //! `DESIGN.md` (Stack) states for the default depth limit in this build,
@@ -114,6 +115,9 @@ struct Form {
     /// The links of the text the formatter is given. Fewer than `N` only
     /// where the formatted text grows as the square of the links.
     format: usize,
+    /// The links of the form. `N` but where `N` links would be longer than
+    /// a source text may be.
+    links: usize,
     /// Whether the form is an expression, which a template part holds.
     expression: bool,
     /// Whether a compile without the check fails too, with the code of
@@ -139,6 +143,7 @@ impl Form {
             steps,
             units,
             format: N,
+            links: N,
             expression: true,
             static_rule: false,
             hover: None,
@@ -160,6 +165,15 @@ impl Form {
         }
     }
 
+    /// The same form, `links` links long.
+    fn links(self, links: usize) -> Form {
+        Form {
+            links,
+            format: self.format.min(links),
+            ..self
+        }
+    }
+
     /// A form whose check fails at a limit that `05-types.md` 20 states;
     /// a compile without the check runs it to `value`.
     fn over_the_limit(src: fn(usize) -> String, value: &str, steps: u64, units: u64) -> Form {
@@ -173,6 +187,18 @@ impl Form {
 /// The parts of a form, joined: `n` of them, each from its index.
 fn each(n: usize, sep: &str, part: impl Fn(usize) -> String) -> String {
     (0..n).map(part).collect::<Vec<_>>().join(sep)
+}
+
+/// A name of three code points for each index below 103,194, so that a
+/// record or a map of 100,000 entries fits in a source text. It starts with
+/// an upper-case letter, so it is never a reserved word.
+fn key(i: usize) -> String {
+    const REST: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
+    let (a, rest) = (i / (63 * 63), i % (63 * 63));
+    [b'A' + a as u8, REST[rest / 63], REST[rest % 63]]
+        .iter()
+        .map(|&b| b as char)
+        .collect()
 }
 
 /// The position after the last code point of a text.
@@ -251,7 +277,7 @@ fn run_expr(
 /// One form through every entry point.
 fn through_every_entry_point(form: &Form) {
     let env = env();
-    let src = (form.src)(N);
+    let src = (form.src)(form.links);
     let name: String = src.chars().take(40).collect();
 
     // Parsing and analysis.
@@ -462,17 +488,19 @@ fn projections_between_method_calls() {
                 |n| format!("[[y]]{}", "[*].map(x => x)".repeat(n)),
                 "string[][]",
                 "[[\"a\"]]",
-                500_000,
-                400_004,
-            ),
+                250_000,
+                200_004,
+            )
+            .links(50_000),
             // Projections with a read.
             Form::new(
                 |n| format!("[{{a: y}}]{}", "[*].a.map(x => {a: x})".repeat(n / 2)),
                 "{a: string}[]",
                 "[{\"a\":\"a\"}]",
-                300_000,
-                350_005,
-            ),
+                240_000,
+                280_005,
+            )
+            .links(80_000),
         ]
     });
 }
@@ -606,7 +634,8 @@ fn lines_and_parts_of_the_limit() {
                 "2",
                 0,
                 0,
-            ),
+            )
+            .links(50_000),
             Form {
                 expression: false,
                 ..Form::new(
@@ -622,7 +651,8 @@ fn lines_and_parts_of_the_limit() {
                     0,
                     0,
                 )
-            },
+            }
+            .links(40_000),
             Form::new(
                 |n| format!("[{}]", vec!["n"; n].join(", ")),
                 "int[]",
@@ -638,20 +668,20 @@ fn lines_and_parts_of_the_limit() {
 /// item, entry, argument"). A record of 100,000 fields has size 100,001,
 /// over the limit of `05-types.md` 20.7: the check gives `check-limit` at
 /// the map, and a compile without the check runs it. One entry fewer is at
-/// the limit, and checks.
+/// the limit, and checks. The keys are short ([`key`]) and no space stands
+/// between the entries, so that 100,000 of them fit in a source text.
 #[test]
 fn arguments_and_entries() {
     on_the_stated_stack(|| {
         let n = N as u64;
         // A literal map of 100,000 entries: its JSON, with its keys in order.
-        let mut keys: Vec<String> = (0..N).map(|i| format!("k{i}")).collect();
+        let mut keys: Vec<(String, usize)> = (0..N).map(|i| (key(i), i)).collect();
         keys.sort();
         let map = format!(
             "{{{}}}",
             each(keys.len(), ",", |i| format!(
                 "\"{}\":{}",
-                keys[i],
-                &keys[i][1..]
+                keys[i].0, keys[i].1
             ))
         );
         vec![
@@ -662,26 +692,35 @@ fn arguments_and_entries() {
                 n,
                 0,
             ),
-            Form::over_the_limit(
-                |n| format!("len({{{}}})", each(n, ", ", |i| format!("k{i}: n"))),
-                &N.to_string(),
-                1,
-                2 * n + 1,
-            ),
-            Form::new(
-                |n| format!("len({{{}}})", each(n - 1, ", ", |i| format!("k{i}: n"))),
-                "int",
-                &(N - 1).to_string(),
-                1,
-                2 * n - 1,
-            ),
+            Form {
+                format: 10_000,
+                ..Form::over_the_limit(
+                    |n| format!("len({{{}}})", each(n, ",", |i| format!("{}:n", key(i)))),
+                    &N.to_string(),
+                    1,
+                    2 * n + 1,
+                )
+            },
+            Form {
+                format: 10_000,
+                ..Form::new(
+                    |n| format!("len({{{}}})", each(n - 1, ",", |i| format!("{}:n", key(i)))),
+                    "int",
+                    &(N - 1).to_string(),
+                    1,
+                    2 * n - 1,
+                )
+            },
             // A literal program: analysis gives its value (F2 3.7).
-            Form::over_the_limit(
-                |n| format!("{{{}}}", each(n, ", ", |i| format!("k{i}: {i}"))),
-                &map,
-                0,
-                2 * n + 1,
-            ),
+            Form {
+                format: 10_000,
+                ..Form::over_the_limit(
+                    |n| format!("{{{}}}", each(n, ",", |i| format!("{}:{i}", key(i)))),
+                    &map,
+                    0,
+                    2 * n + 1,
+                )
+            },
         ]
     });
 }
@@ -690,7 +729,6 @@ fn arguments_and_entries() {
 #[test]
 fn arms_and_their_literals() {
     on_the_stated_stack(|| {
-        let n = N as u64;
         vec![
             Form::new(
                 |n| {
@@ -699,9 +737,10 @@ fn arms_and_their_literals() {
                 },
                 "int",
                 "-1",
-                n + 2,
+                50_002,
                 0,
-            ),
+            )
+            .links(50_000),
             Form::new(
                 |n| {
                     let lits = each(n, " | ", |i| format!("\"k{i}\""));
@@ -711,7 +750,8 @@ fn arms_and_their_literals() {
                 "2",
                 2,
                 0,
-            ),
+            )
+            .links(80_000),
         ]
     });
 }
@@ -723,7 +763,8 @@ fn arms_and_their_literals() {
 #[test]
 fn parameters_and_patterns() {
     on_the_stated_stack(|| {
-        let n = N as u64;
+        const L: usize = 50_000;
+        let n = L as u64;
         vec![
             Form::program(
                 |n| {
@@ -734,7 +775,8 @@ fn parameters_and_patterns() {
                 "0",
                 2,
                 0,
-            ),
+            )
+            .links(L),
             Form::program(
                 |n| {
                     let fields = each(n - 1, "", |i| format!(", k{} = k{i}", i + 1));
@@ -744,7 +786,8 @@ fn parameters_and_patterns() {
                 "0",
                 n,
                 0,
-            ),
+            )
+            .links(L),
             Form::program(
                 |n| {
                     let elems = each(n - 1, "", |i| format!(", a{} = a{i}", i + 1));
@@ -754,7 +797,8 @@ fn parameters_and_patterns() {
                 "0",
                 n,
                 0,
-            ),
+            )
+            .links(L),
         ]
     });
 }
@@ -762,7 +806,8 @@ fn parameters_and_patterns() {
 /// The alternatives and the fields of a program type (F4 2.8), and `type`
 /// lines (F16 2.4). A record type of 100,000 fields is over the size limit,
 /// a static rule (F4 6.1): every compile gives `check-limit`. One field
-/// fewer is at the limit, and the walk reads each field.
+/// fewer is at the limit, and the walk reads each field. Its fields have
+/// short names ([`key`]), so that 100,000 of them fit in a source text.
 #[test]
 fn program_types_and_type_lines() {
     on_the_stated_stack(|| {
@@ -774,7 +819,8 @@ fn program_types_and_type_lines() {
                 "false",
                 1,
                 0,
-            ),
+            )
+            .links(80_000),
             Form::new(
                 |n| {
                     let alts = each(n - 1, " | ", |i| format!("\"k{i}\""));
@@ -784,30 +830,41 @@ fn program_types_and_type_lines() {
                 "1",
                 2,
                 0,
-            ),
+            )
+            .links(80_000),
             Form {
                 static_rule: true,
+                format: 10_000,
                 ..Form::over_the_limit(
-                    |n| format!("r is {{{}}}", each(n, ", ", |i| format!("k{i}?: int"))),
+                    |n| format!("r is {{{}}}", each(n, ",", |i| format!("{}?:int", key(i)))),
                     "",
                     0,
                     0,
                 )
             },
-            Form::new(
-                |n| format!("r is {{{}}}", each(n - 1, ", ", |i| format!("k{i}?: int"))),
-                "bool",
-                "false",
-                n + 3,
-                0,
-            ),
+            Form {
+                format: 10_000,
+                ..Form::new(
+                    |n| {
+                        format!(
+                            "r is {{{}}}",
+                            each(n - 1, ",", |i| format!("{}?:int", key(i)))
+                        )
+                    },
+                    "bool",
+                    "false",
+                    n + 3,
+                    0,
+                )
+            },
             Form::program(
                 |n| format!("{}\nn", each(n, "\n", |i| format!("type T{i} = int;"))),
                 "int",
                 "1",
                 0,
                 0,
-            ),
+            )
+            .links(50_000),
             // Each line names the line before it.
             Form::program(
                 |n| {
@@ -818,7 +875,8 @@ fn program_types_and_type_lines() {
                 "1",
                 1,
                 0,
-            ),
+            )
+            .links(40_000),
         ]
     });
 }
@@ -828,7 +886,6 @@ fn program_types_and_type_lines() {
 #[test]
 fn template_parts_and_comments() {
     on_the_stated_stack(|| {
-        let n = N as u64;
         vec![
             Form::new(
                 |n| format!("`{}`", "${y}".repeat(n)),
@@ -839,13 +896,19 @@ fn template_parts_and_comments() {
             ),
             Form::new(|n| format!("{}n", "/* c */ ".repeat(n)), "int", "1", 0, 0),
             Form::new(|n| format!("{}n", "// c\n".repeat(n)), "int", "1", 0, 0),
-            Form::new(
-                |n| format!("[{}n]", "n, /* c */ ".repeat(n)),
-                "int[]",
-                &format!("[{}]", vec!["1"; N + 1].join(",")),
-                0,
-                n + 2,
-            ),
+            // The formatter writes each item on a line of its own, with its
+            // comment: 13 code points for each link.
+            Form {
+                format: 50_000,
+                ..Form::new(
+                    |n| format!("[{}n]", "n, /* c */ ".repeat(n)),
+                    "int[]",
+                    &format!("[{}]", vec!["1"; 90_001].join(",")),
+                    0,
+                    90_002,
+                )
+            }
+            .links(90_000),
         ]
     });
 }

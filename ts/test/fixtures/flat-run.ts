@@ -1,6 +1,6 @@
 // One part of test/flat.test.ts, in a process of its own: `node flat-run.ts PART`.
 // PART is the name of a form of flat-forms.ts, which then goes through every
-// entry point of the binding with 100,000 links; or `formatted text`,
+// entry point of the binding with 10,000 links; or `formatted text`,
 // `diagnostics` or `runner`. It prints `ok`, or it throws.
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { FORMS } from "./flat-forms.ts";
 import type { FlatForm } from "./flat-forms.ts";
 
 /** The links of each program. */
-const LINKS = 100000;
+const LINKS = 10000;
 
 /** The repeats that give a form at least this many links. */
 const repeats = (f: FlatForm, links: number) => Math.ceil(links / (f.per ?? 1));
@@ -223,7 +223,7 @@ function diagnostics(): void {
   }
 }
 
-// The three programs of the report that this file answers, with the outcomes it gives for 100,000 links.
+// The three programs of the report that this file answers, with the outcomes it gives for 10,000 links.
 const REPORTED = [
   { name: "as", source: "y" + " as any".repeat(LINKS), type: "any", value: "a", steps: 0, units: 0 },
   { name: "projection", source: "[[y]]" + "[*].map(x => x)".repeat(LINKS), type: "string[][]", value: [["a"]], steps: 5 * LINKS, units: 4 * LINKS + 4 },

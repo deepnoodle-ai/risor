@@ -10,7 +10,7 @@ import { printSignature } from "../host/api.ts";
 import { ParseError } from "../syntax/diagnostic.ts";
 import { lexCut } from "../syntax/lexer.ts";
 import { parse, parseTokens } from "../syntax/parser.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT, validSourceLimit, withinSourceLimit } from "../syntax/source.ts";
 import type { LineSpan, Position, Span } from "../syntax/source.ts";
 import { HOLE } from "../syntax/token.ts";
 import type { Token } from "../syntax/token.ts";
@@ -426,7 +426,9 @@ function recordDoc(r: { [k: string]: unknown }): string | null {
 // ---- completion (f12 3.5 to 3.12) ------------------------------------------------
 
 /** Completion at a position (f12 3.1). */
-export function complete(env: Env, text: string, pos: Position, returns?: Expected): CompletionResult {
+export function complete(env: Env, text: string, pos: Position, returns?: Expected, limit: number = SOURCE_LIMIT): CompletionResult {
+  // f12 3.1 item 5: over the source limit, or given a limit out of range, an empty list at the position.
+  if (!validSourceLimit(limit) || !withinSourceLimit(text, limit)) return { span: [pos.line, pos.column, pos.line, pos.column], items: [] };
   const src = new Source(text);
   const cut = offsetOf(src, pos);
   const span = (a: number, b: number): LineSpan => src.lineSpan({ start: a, end: b });
@@ -905,7 +907,9 @@ function escapeIn(v: string, quote: string): string {
 
 // ---- hover (f12 3.13) ----------------------------------------------------------
 
-export function hover(env: Env, text: string, pos: Position, returns?: Expected): HoverResult | null {
+export function hover(env: Env, text: string, pos: Position, returns?: Expected, limit: number = SOURCE_LIMIT): HoverResult | null {
+  // f12 3.1 item 5: over the source limit, or given a limit out of range, no hover.
+  if (!validSourceLimit(limit) || !withinSourceLimit(text, limit)) return null;
   const src = new Source(text);
   const at = offsetOf(src, pos);
   if (at < 0 || at >= src.length) return null;

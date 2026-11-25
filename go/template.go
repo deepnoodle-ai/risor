@@ -49,8 +49,12 @@ type Segment struct {
 
 // ParseTemplate parses a template text (F2 2.1 to 2.3). It needs no
 // environment. On failure the error is an *Error with one diagnostic of
-// phase parse, with a position in the whole template text.
-func ParseTemplate(text string) (*Template, error) {
+// phase parse, with a position in the whole template text. opts may lower
+// the source limit, which holds for the whole template text (F2 2.1).
+func ParseTemplate(text string, opts ...ParseOption) (*Template, error) {
+	if err := checkSource(text, opts); err != nil {
+		return nil, err
+	}
 	if !utf8.ValidString(text) {
 		text = value.ReplaceInvalid(text)
 	}

@@ -24,3 +24,18 @@ test('"check": false with a check code that is not static makes the file invalid
   assert.equal(read([{ name: "a", source: "1", check: false, expect: failure("kind") }]).ok, false);
   assert.ok(read([{ name: "a", source: "x", check: false, expect: failure("undefined-name") }]).ok);
 });
+
+test('"limits.source" is a whole number from 0 to 1,048,576, in a program case and a tool case (03 3.10.3; f12 7.1, 7.2)', () => {
+  const limits = (l: unknown) => read([{ name: "a", source: "1", limits: l, expect: {} }]).ok;
+  assert.ok(limits({ source: 0 }));
+  assert.ok(limits({ source: 1048576, steps: 3 }));
+  assert.equal(limits({ source: -1 }), false);
+  assert.equal(limits({ source: 1048577 }), false);
+  assert.equal(limits({ source: 1.5 }), false);
+  assert.equal(limits({ size: 3 }), false);
+  assert.ok(read([{ name: "a", format: "1", limits: { source: 1 }, expect: { formatted: "1\n" } }]).ok);
+  assert.ok(read({ env: "{u: int}", cases: [{ name: "a", complete: "u‸", limits: { source: 1 }, expect: { completion: { span: [1, 1, 1, 2], items: [] } } }] }).ok);
+  assert.ok(read([{ name: "a", hover: "u‸", limits: { source: 1 }, expect: { hover: null } }]).ok);
+  assert.equal(read([{ name: "a", format: "1", limits: { source: -1 }, expect: { formatted: "1\n" } }]).ok, false);
+  assert.equal(read([{ name: "a", format: "1", limits: { nope: 1 }, expect: { formatted: "1\n" } }]).ok, false);
+});

@@ -37,6 +37,10 @@
   {"name": "a variable named _ (AG3)", "env": "{_: int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
   {"name": "a function named _ (AG3)", "functions": {"_": "() => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
   {"name": "a function with two namespace prefixes (AG3)", "functions": {"a.b.c": "() => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
-  {"name": "a variable whose key is not a name (AA4)", "env": "{\"a-b\": int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}}
+  {"name": "a variable whose key is not a name (AA4)", "env": "{\"a-b\": int}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a function in a reserved namespace with a malformed signature: the name error is reported, the signature's may be (3.3.4 item 4)", "functions": {"json.f": "("}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
+  {"name": "a function in a reserved namespace whose signature names an undeclared type: the name error is reported", "functions": {"time.g": "(x: Nope) => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
+  {"name": "a function named with a reserved word and a malformed signature: the name error is reported", "functions": {"if": "("}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a variable named with a reserved word whose type is undeclared: the name error is reported", "env": "{if: Nope}", "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}}
  ]
 }

@@ -139,7 +139,7 @@ describe("05 section 20: the checker's limits", () => {
     assert.ok(!c.ok && c.diagnostics.some((d) => d.code === "check-limit"));
   });
   test("20.6: long flat programs are checked by loops", () => {
-    const n = 100000;
+    const n = 10000;
     assert.deepEqual(codes(Array.from({ length: n }, () => "x").join(" + ")), []);
     assert.deepEqual(codes("x > 0" + " && x > 0".repeat(n)), []);
     assert.deepEqual(codes("x > 0 ? 1 : ".repeat(n) + "2"), []);

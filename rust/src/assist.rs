@@ -14,7 +14,7 @@ use crate::library;
 use crate::source::{Range, Source, Span};
 use crate::syntax::ast::{Ast, EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
 use crate::syntax::lexer::{lex_cut, CUT_OPEN};
-use crate::syntax::parser::{parse_repair, HOLE};
+use crate::syntax::parser::{parse_repair, ParseOptions, HOLE};
 use crate::syntax::token::{StrForm, Tok, Token, P};
 use crate::syntax::Expr;
 use crate::value::Kind;
@@ -931,15 +931,25 @@ fn has_type_hole(t: &PType) -> bool {
 }
 
 /// RawCompletion at `offset`, a count of code points of `text` after a U+FEFF
-/// at its start (3.5).
-pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) -> RawCompletion {
-    let src = Source::new(text);
-    let ch = src.chars();
+/// at its start (3.5). A text the options do not admit gives an empty list
+/// at the position, and nothing of it is read but its length (3.1 item 5).
+pub(crate) fn complete(
+    env: &Env,
+    text: &str,
+    expected: &Want,
+    offset: usize,
+    opts: ParseOptions,
+) -> RawCompletion {
     let at = Range::new(offset, offset);
     let empty = |span: Range| RawCompletion {
         span,
         items: Vec::new(),
     };
+    if !opts.admits(text) {
+        return empty(at);
+    }
+    let src = Source::new(text);
+    let ch = src.chars();
     if offset > ch.len() {
         return empty(at);
     }
@@ -1302,8 +1312,18 @@ fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Range, q: char) -
 
 // ---- hover -----------------------------------------------------------------------
 
-/// RawHover at `offset` (3.13).
-pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Option<RawHover> {
+/// RawHover at `offset` (3.13). A text the options do not admit gives no
+/// hover (3.1 item 5).
+pub(crate) fn hover(
+    env: &Env,
+    text: &str,
+    expected: &Want,
+    offset: usize,
+    opts: ParseOptions,
+) -> Option<RawHover> {
+    if !opts.admits(text) {
+        return None;
+    }
     let src = Source::new(text);
     let ch = src.chars();
     if offset >= ch.len() || !is_word_char(ch[offset]) {

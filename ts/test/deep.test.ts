@@ -31,7 +31,7 @@ test("the deepest programs run with a 656 KB stack", () => {
 
 test("long flat programs need no stack (01 13.2 rule 6)", async () => {
   const { createEnv, execute, parse } = await import("../src/host/api.ts");
-  const n = 100000;
+  const n = 10000;
   const env = createEnv({ varRecord: "{m: any}", limits: { steps: null, allocation: null } });
   const m: Record<string, unknown> = {};
   m.a = m;

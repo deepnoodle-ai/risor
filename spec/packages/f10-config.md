@@ -319,6 +319,7 @@ adds no rule to it. As a contract of a load it is:
 | Input | Rule |
 | --- | --- |
 | The source text | As for parse (`03-host.md` 3.4.5 item 3). Reading a file is the host's work, not the binding's: a load takes text |
+| A source limit | Optional, as for parse (`03-host.md` 3.6.1 item 5). Step 1 applies it |
 | The origin | The name a binding gives the text, for its diagnostics. Not specified |
 | An environment | As for compile (`03-host.md` 3.3) |
 | The expected type T | Type text, a schema (2.1), a named type, or a type derived from a host type (F1 6) |

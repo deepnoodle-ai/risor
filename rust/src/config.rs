@@ -14,6 +14,7 @@
 //! let opts = LoadOptions {
 //!     expected: Expected::text("{port: int}"),
 //!     max: 1,
+//!     ..LoadOptions::default()
 //! };
 //! let got = load_value(&env, "{port: 8080}", &vars, opts).unwrap();
 //! assert!(matches!(got, risor::Data::Map(_)));
@@ -27,6 +28,7 @@ use crate::env::Env;
 use crate::eval::Usage;
 use crate::host::{Data, Vars};
 use crate::hosttype::HostType;
+use crate::syntax::{ParseOptions, SOURCE_LIMIT};
 
 /// The options of a load (`f10-config.md` 5.1).
 #[derive(Clone, Debug, PartialEq)]
@@ -38,6 +40,9 @@ pub struct LoadOptions {
     pub expected: Expected,
     /// The most `not-conforming` diagnostics step 4 reports; 0 is read as 1.
     pub max: usize,
+    /// The source limit (5.1), which step 1 applies; by default
+    /// [`SOURCE_LIMIT`]. A limit out of range is `bad-limit`, at step 0.
+    pub source_limit: usize,
 }
 
 impl Default for LoadOptions {
@@ -45,6 +50,7 @@ impl Default for LoadOptions {
         LoadOptions {
             expected: Expected::None,
             max: 1,
+            source_limit: SOURCE_LIMIT,
         }
     }
 }
@@ -95,6 +101,10 @@ pub fn load_value(
     opts: LoadOptions,
 ) -> Result<Data, LoadError> {
     // Step 0.
+    let parse = ParseOptions {
+        source_limit: opts.source_limit,
+    };
+    parse.limit().map_err(|e| fail(0, e.diagnostics, None))?;
     let ty = match opts
         .expected
         .want(env)
@@ -114,18 +124,20 @@ pub fn load_value(
             ))
         }
     };
-    run_steps(env, text, ty, vars, opts.max).map(|l| l.value)
+    run_steps(env, text, parse, ty, vars, opts.max).map(|l| l.value)
 }
 
 fn run_steps(
     env: &Env,
     text: &str,
+    parse: ParseOptions,
     ty: crate::check::ty::Ty,
     vars: &dyn Vars,
     max: usize,
 ) -> Result<Loaded<Data>, LoadError> {
     // Step 1.
-    let parsed = crate::syntax::parse(text).map_err(|e| fail(1, e.diagnostics, None))?;
+    let parsed =
+        crate::syntax::parse_with(text, parse).map_err(|e| fail(1, e.diagnostics, None))?;
     // Step 2: always with the check.
     let (program, _) = compile_checked(env, parsed, &Want::Type(ty.clone()))
         .map_err(|e| fail(2, e.diagnostics, None))?;
@@ -158,6 +170,19 @@ pub fn load<H: Decode + HostType>(
     vars: &dyn Vars,
     max: usize,
 ) -> Result<H, LoadError> {
+    load_with(env, text, vars, max, ParseOptions::default())
+}
+
+/// [`load`] with parse options: a lower source limit, which step 1 applies.
+/// A limit out of range is `bad-limit`, at step 0.
+pub fn load_with<H: Decode + HostType>(
+    env: &Env,
+    text: &str,
+    vars: &dyn Vars,
+    max: usize,
+    parse: ParseOptions,
+) -> Result<H, LoadError> {
+    parse.limit().map_err(|e| fail(0, e.diagnostics, None))?;
     let ty = crate::hosttype::type_of::<H>().map_err(|e| {
         fail(
             0,
@@ -169,7 +194,7 @@ pub fn load<H: Decode + HostType>(
             None,
         )
     })?;
-    let got = run_steps(env, text, ty.into_ty(), vars, max)?;
+    let got = run_steps(env, text, parse, ty.into_ty(), vars, max)?;
     let v = crate::value::Value::from_data(&got.value);
     // Step 5.
     crate::decode::decode_max::<H>(&v, max).map_err(|d| fail(5, d, Some(got.usage)))
@@ -198,7 +223,11 @@ mod tests {
     #[test]
     fn the_steps_in_order() {
         let e = env();
-        let opts = |expected: Expected, max: usize| LoadOptions { expected, max };
+        let opts = |expected: Expected, max: usize| LoadOptions {
+            expected,
+            max,
+            ..LoadOptions::default()
+        };
         let r = load_value(
             &e,
             "{port: 1}",
@@ -264,7 +293,11 @@ mod tests {
             },
         )
         .unwrap();
-        let opts = |expected: Expected| LoadOptions { expected, max: 1 };
+        let opts = |expected: Expected| LoadOptions {
+            expected,
+            max: 1,
+            ..LoadOptions::default()
+        };
         let r = load_value(&e, "{port: 1, prot: 2}", &vars(""), opts(s.clone()));
         assert_eq!(r.unwrap_err().step, 2);
         let r = load_value(
