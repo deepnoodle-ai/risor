@@ -20,6 +20,9 @@ pub struct Foreign {
     pub written: String,
     pub place: String,
     pub kinds: Vec<String>,
+    /// The entries the fix names, as a removal names them: the row applies
+    /// only when the environment offers every one (3.3 item 2).
+    pub entries: Vec<String>,
     pub fix: String,
 }
 
@@ -37,18 +40,21 @@ pub fn foreign() -> &'static [Foreign] {
                         .unwrap_or_default()
                         .to_string()
                 };
-                Foreign {
-                    written: s("written"),
-                    place: s("place"),
-                    kinds: e
-                        .get("kinds")
+                let list = |k: &str| -> Vec<String> {
+                    e.get(k)
                         .and_then(|k| k.as_arr())
                         .map(|a| {
                             a.iter()
                                 .filter_map(|k| k.as_str().map(String::from))
                                 .collect()
                         })
-                        .unwrap_or_default(),
+                        .unwrap_or_default()
+                };
+                Foreign {
+                    written: s("written"),
+                    place: s("place"),
+                    kinds: list("kinds"),
+                    entries: list("entries"),
                     fix: s("fix"),
                 }
             })
@@ -56,16 +62,27 @@ pub fn foreign() -> &'static [Foreign] {
     })
 }
 
-/// The fix of the foreign row of a text and a place that applies (3.3).
-fn foreign_fix(written: &str, place: &str, kind: Option<&str>) -> Option<String> {
+/// The fix of the foreign row of a text and a place that applies (3.3): a
+/// row whose entries the environment does not all offer is passed over.
+fn foreign_fix(env: &Env, written: &str, place: &str, kind: Option<&str>) -> Option<String> {
     foreign()
         .iter()
         .find(|r| {
             r.written == written
                 && r.place == place
                 && (place != "method" || kind.is_some_and(|k| r.kinds.iter().any(|x| x == k)))
+                && r.entries.iter().all(|n| is_offered(env, n))
         })
         .map(|r| r.fix.clone())
+}
+
+/// Whether the environment offers the entry a removal would name `name`.
+fn is_offered(env: &Env, name: &str) -> bool {
+    library::records().iter().enumerate().any(|(i, r)| {
+        library::entry_name(i) == name
+            && !env.data().removed.contains(&i)
+            && r.group.as_ref().is_none_or(|g| env.group_on(g))
+    })
 }
 
 /// The receiver kind of a method's record, as a word.
@@ -120,20 +137,20 @@ fn in_wrong(r: &Record, n: &str) -> bool {
 pub fn name_fix(env: &Env, name: &str, field: Option<&str>) -> Option<String> {
     if let Some(f) = field {
         let text = format!("{name}.{f}");
-        if let Some(fix) = foreign_fix(&text, "name-field", None) {
+        if let Some(fix) = foreign_fix(env, &text, "name-field", None) {
             return Some(fix);
         }
         if let Some(fix) = forms(offered(env).filter(|r| in_wrong(r, &text))) {
             return Some(fix);
         }
     }
-    foreign_fix(name, "name", None)
+    foreign_fix(env, name, "name", None)
 }
 
 /// `undefined-function` (3.4 rows 1 and 3). `name` is the name as written,
 /// with its namespace.
 pub fn function_fix(env: &Env, name: &str) -> Option<String> {
-    foreign_fix(name, "function", None)
+    foreign_fix(env, name, "function", None)
         .or_else(|| forms(offered(env).filter(|r| in_wrong(r, name))))
         .or_else(|| forms(offered(env).filter(|r| r.receiver.is_some() && r.name == name)))
 }
@@ -142,7 +159,7 @@ pub fn function_fix(env: &Env, name: &str) -> Option<String> {
 /// `list`, `map` or `number`; any other receiver takes no hint (item 5).
 pub fn method_fix(env: &Env, kind: Option<&str>, name: &str) -> Option<String> {
     let kind = kind.filter(|k| matches!(*k, "string" | "list" | "map" | "number"))?;
-    foreign_fix(name, "method", Some(kind))
+    foreign_fix(env, name, "method", Some(kind))
         .or_else(|| {
             forms(
                 offered(env).filter(|r| {

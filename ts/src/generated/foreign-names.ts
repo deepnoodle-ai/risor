@@ -4,6 +4,7 @@ export interface ForeignRow {
   written: string;
   place: "name" | "name-field" | "function" | "method";
   kinds?: ("string" | "list" | "map")[];
+  entries?: string[];
   fix: string;
 }
 
@@ -11,6 +12,10 @@ export const FOREIGN_NAMES: ForeignRow[] = [
   {
     "written": "Math",
     "place": "name",
+    "entries": [
+      "round",
+      "floor"
+    ],
     "fix": "Risor has no Math object: write round(...), floor(...) and so on"
   },
   {
@@ -21,6 +26,11 @@ export const FOREIGN_NAMES: ForeignRow[] = [
   {
     "written": "Object",
     "place": "name",
+    "entries": [
+      "map.keys",
+      "map.values",
+      "map.entries"
+    ],
     "fix": "Risor has no Object: use the methods keys, values and entries"
   },
   {
@@ -31,6 +41,9 @@ export const FOREIGN_NAMES: ForeignRow[] = [
   {
     "written": "Array.isArray",
     "place": "name-field",
+    "entries": [
+      "type"
+    ],
     "fix": "use type(x) == \"list\""
   },
   {
@@ -122,6 +135,10 @@ export const FOREIGN_NAMES: ForeignRow[] = [
     "kinds": [
       "list"
     ],
+    "entries": [
+      "list.last",
+      "list.slice"
+    ],
     "fix": "values never change: use xs.last() and xs.slice(...)"
   },
   {
@@ -129,6 +146,10 @@ export const FOREIGN_NAMES: ForeignRow[] = [
     "place": "method",
     "kinds": [
       "list"
+    ],
+    "entries": [
+      "list.last",
+      "list.slice"
     ],
     "fix": "values never change: use xs.last() and xs.slice(...)"
   },

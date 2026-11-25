@@ -13,6 +13,9 @@ func TestForeignRows(t *testing.T) {
 	assert.Equal(t, len(foreign), 21)
 	for _, r := range foreign {
 		assert.True(t, utf8.RuneCountInString(r.Fix) <= 64, r.Written)
+		for _, n := range r.Entries {
+			assert.True(t, IsEntryName(n), n)
+		}
 		switch r.Place {
 		case "name", "function":
 			for _, e := range AllEntries {

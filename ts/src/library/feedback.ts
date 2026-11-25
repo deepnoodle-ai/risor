@@ -62,10 +62,20 @@ function forms(ns: Named[]): string | null {
   return [...set].sort(compareText).slice(0, 3).join(" or ");
 }
 
-function foreign(written: string, place: string, kind?: string): string | null {
+/** An entry named as a removal names it (03 3.3.1): `round`, `json.parse`, or a method as `list.last`. */
+function offeredByName(o: Offered, name: string): boolean {
+  const dot = name.indexOf(".");
+  const kind = dot < 0 ? "" : name.slice(0, dot);
+  if (kind === "string" || kind === "list" || kind === "map") return o.methods.get(kind)?.has(name.slice(dot + 1)) === true;
+  return o.functions.has(name);
+}
+
+function foreign(o: Offered, written: string, place: string, kind?: string): string | null {
   for (const r of FOREIGN_NAMES) {
     if (r.written !== written || r.place !== place) continue;
     if (place === "method" && !(r.kinds ?? []).includes(kind as "string")) continue;
+    // f19 3.3 item 2: a row applies only when every entry its fix names is offered.
+    if (!(r.entries ?? []).every((e) => offeredByName(o, e))) continue;
     return r.fix;
   }
   return null;
@@ -83,16 +93,16 @@ function wrongEntries(o: Offered, text: string, keep: (n: Named) => boolean = ()
 export function nameHint(o: Offered, name: string, step: string | null): string | null {
   if (step !== null) {
     const text = `${name}.${step}`;
-    const fix = foreign(text, "name-field") ?? forms(wrongEntries(o, text));
+    const fix = foreign(o, text, "name-field") ?? forms(wrongEntries(o, text));
     if (fix !== null) return fix;
   }
-  return foreign(name, "name");
+  return foreign(o, name, "name");
 }
 
 /** f19 3.4 rows 1 and 3: an `undefined-function` named `name`, its namespace included. */
 export function functionHint(o: Offered, name: string): string | null {
   return (
-    foreign(name, "function") ??
+    foreign(o, name, "function") ??
     forms(wrongEntries(o, name)) ??
     forms((methodByName.get(name) ?? []).filter((n) => offered(o, n)))
   );
@@ -101,7 +111,7 @@ export function functionHint(o: Offered, name: string): string | null {
 /** f19 3.4 rows 1 and 4: a `no-method` named `name` on a receiver of one kind. */
 export function methodHint(o: Offered, kind: HintKind, name: string): string | null {
   return (
-    foreign(name, "method", kind) ??
+    foreign(o, name, "method", kind) ??
     forms(wrongEntries(o, name, (n) => !("fn" in n) && n.kind === kind)) ??
     forms(wrongEntries(o, name, (n) => "fn" in n)) ??
     forms((fnByName.get(name) ?? []).map((fn) => ({ fn })).filter((n) => offered(o, n)))

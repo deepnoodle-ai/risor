@@ -20,6 +20,10 @@ type Foreign struct {
 	Written string   `json:"written"`
 	Place   string   `json:"place"`
 	Kinds   []string `json:"kinds"`
+	// Entries are the entries the fix names, by the names of 03-host.md
+	// 3.3.1; the row applies only when the environment offers each
+	// (F19 3.3).
+	Entries []string `json:"entries"`
 	Fix     string   `json:"fix"`
 }
 
@@ -46,7 +50,7 @@ func (o Offer) offered(e *Entry) bool {
 	return ok && f == e
 }
 
-func foreignFix(written, place, kind string) string {
+func (o Offer) foreignFix(written, place, kind string) string {
 	for _, r := range foreign {
 		if r.Written != written || r.Place != place {
 			continue
@@ -60,9 +64,30 @@ func foreignFix(written, place, kind string) string {
 				continue
 			}
 		}
+		if !o.offersAll(r.Entries) {
+			continue
+		}
 		return r.Fix
 	}
 	return ""
+}
+
+// offersAll reports whether the environment offers each entry, named as a
+// removal names it: round, list.last.
+func (o Offer) offersAll(names []string) bool {
+	for _, n := range names {
+		found := false
+		for _, e := range AllEntries {
+			if e.EntryName() == n && o.offered(e) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // form is the entry form of F19 3.4 item 2.
@@ -108,19 +133,19 @@ func wrongHas(e *Entry, n string) bool {
 func (o Offer) NameFix(name, field string) string {
 	if field != "" {
 		nf := name + "." + field
-		if f := foreignFix(nf, "name-field", ""); f != "" {
+		if f := o.foreignFix(nf, "name-field", ""); f != "" {
 			return f
 		}
 		if f := o.forms(func(e *Entry) bool { return wrongHas(e, nf) }); f != "" {
 			return f
 		}
 	}
-	return foreignFix(name, "name", "")
+	return o.foreignFix(name, "name", "")
 }
 
 // FunctionFix is the fix of an undefined-function (rows 1 and 3).
 func (o Offer) FunctionFix(name string) string {
-	if f := foreignFix(name, "function", ""); f != "" {
+	if f := o.foreignFix(name, "function", ""); f != "" {
 		return f
 	}
 	if f := o.forms(func(e *Entry) bool { return wrongHas(e, name) }); f != "" {
@@ -134,7 +159,7 @@ func (o Offer) FunctionFix(name string) string {
 func (o Offer) MethodFix(k value.Kind, name string) string {
 	switch k {
 	case value.String, value.List, value.Map:
-		if f := foreignFix(name, "method", KindWord(k)); f != "" {
+		if f := o.foreignFix(name, "method", KindWord(k)); f != "" {
 			return f
 		}
 		if f := o.forms(func(e *Entry) bool { return e.IsMethod() && e.Kind == k && wrongHas(e, name) }); f != "" {

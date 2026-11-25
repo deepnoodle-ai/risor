@@ -133,6 +133,7 @@ entry stands for. It is a JSON array of rows.
 | `written` | The text written: a name, or `N.f` for the place `name-field` |
 | `place` | `name`, `name-field`, `function` or `method` |
 | `kinds` | For `method` only: the receiver kinds the row applies to, a list of `string`, `list` and `map` |
+| `entries` | When the fix names library entries: those entries, each named as a removal names it (`03-host.md` 3.3.1), as `round` or `list.last`. Absent when the fix names none |
 | `fix` | The fix, at most 64 code points |
 
 | Place | Applies to |
@@ -166,7 +167,14 @@ The rows:
 
 1. A row of the table that names several texts is one row of the file for
    each: 21 rows in all.
-2. The written text of a row of place `name` or `function` is never the name
+2. **A row names only offered entries.** A row applies only when the
+   environment offers every entry of its `entries`, so a fix never names a
+   removed entry (`03-host.md` 3.3.1 item 6). The rows with `entries` are
+   `Math` (`round`, `floor`), `Object` (`map.keys`, `map.values`,
+   `map.entries`), `Array.isArray` (`type`), and `pop` and `shift`
+   (`list.last`, `list.slice`). So with `map.keys` removed, `Object.keys(m)`
+   is `Object is not defined`, with no fix.
+3. The written text of a row of place `name` or `function` is never the name
    of an entry of a library table, and that of a row of place `method` never
    the name of a method of the row's kinds. So a row never hides an entry.
 

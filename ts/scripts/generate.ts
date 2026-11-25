@@ -116,7 +116,7 @@ export function generated(): Record<string, string> {
       `export const RECURSION_LIBRARY: LibraryRecord[] = ${JSON.stringify(recursion, null, 2)};\n`,
     "foreign-names.ts":
       head.replace("%s", "foreign-names.json") +
-      'export interface ForeignRow {\n  written: string;\n  place: "name" | "name-field" | "function" | "method";\n  kinds?: ("string" | "list" | "map")[];\n  fix: string;\n}\n\n' +
+      'export interface ForeignRow {\n  written: string;\n  place: "name" | "name-field" | "function" | "method";\n  kinds?: ("string" | "list" | "map")[];\n  entries?: string[];\n  fix: string;\n}\n\n' +
       `export const FOREIGN_NAMES: ForeignRow[] = ${JSON.stringify(foreign, null, 2)};\n`,
     "casemap.ts":
       head.replace("%s", "casemap.json") +
