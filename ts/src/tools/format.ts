@@ -135,8 +135,10 @@ class Formatter {
   private elementStarts = new Set<number>();
   /** Closing brackets of a sequence with elements. */
   private closers = new Set<number>();
-  /** Opening brackets of a sequence with elements. */
-  private openWithElements = new Set<number>();
+  /** The opening braces of a block, a branch and a `match`, which a space or a break follows (f12 2.12 item 4). */
+  private braces = new Set<number>();
+  /** The `<` of a `map<...>` type, an opening bracket (f12 2.12 item 4). */
+  private angles = new Set<number>();
 
   /** No pairs for the reader in the whole text (f12 2.6 item 4). */
   private readonly plain: boolean;
@@ -192,7 +194,7 @@ class Formatter {
           line = true;
           this.hasLineComment = true;
         } else {
-          const e = gap.indexOf("*/", at);
+          const e = gap.indexOf("*/", at + 2);
           text = e < 0 ? gap.slice(at, at + 1) : gap.slice(at, e + 2);
           line = false;
         }
@@ -406,16 +408,15 @@ class Formatter {
   private trailDoc(cs: Comment[], i: number): Doc {
     const out: Doc[] = [];
     const t = this.toks[i];
-    const opening = t.kind === "punct" && OPEN.has(t.text);
+    // After an opening bracket, a first block comment has no space before it, and the
+    // comments are followed by a space when the closing bracket does not follow them.
+    const opening = this.angles.has(i) || (t.kind === "punct" && OPEN.has(t.text) && !this.braces.has(i));
     cs.forEach((c, n) => {
-      if (opening && !c.line && n === 0) {
-        out.push(this.commentText(c));
-        if (this.openWithElements.has(i)) out.push(SP);
-      } else {
-        out.push(SP, this.commentText(c));
-      }
+      if (opening && !c.line && n === 0) out.push(this.commentText(c));
+      else out.push(SP, this.commentText(c));
       if (c.line) out.push(AFTER);
     });
+    if (opening && !cs[cs.length - 1].line && this.match.get(i) !== i + 1) out.push(SP);
     return out;
   }
 
@@ -528,7 +529,6 @@ class Formatter {
   /** seq(o, xs, c) (f12 2.9): `open` and `close` are token indices. */
   seq(open: number, xs: { d: Doc; first: number }[], close: number): Doc {
     if (xs.length === 0) return [this.tok(open), this.tok(close, { noLead: false })];
-    this.openWithElements.add(open);
     this.closers.add(close);
     const inner: Doc[] = [S];
     xs.forEach((x, n) => {
@@ -614,6 +614,7 @@ class Formatter {
       // A Block that is the whole content of a branch: one tree with the branch.
       body = this.body(content.consts, content.result);
     } else body = this.body([], content);
+    this.braces.add(lb);
     return [this.tok(lb), indent([L, body, this.leadMark(rb)]), L, this.tok(rb, { noLead: true })];
   }
 
@@ -661,7 +662,7 @@ class Formatter {
         return [this.tok(op), space ? " " : "", this.paren(x, need)];
       }
       case "Binary":
-        return e.op === "**" ? this.power(e) : this.operators(e, opts.unindented === true);
+        return e.op === "**" ? this.power(e, opts.unindented === true) : this.operators(e, opts.unindented === true);
       case "As":
         return this.operators(e, false);
       case "Cond":
@@ -681,6 +682,7 @@ class Formatter {
       case "Block": {
         const lb = this.at(e.span.start);
         const rb = this.match.get(lb)!;
+        this.braces.add(lb);
         return [this.tok(lb), indent([H, this.body(e.consts, e.result), this.leadMark(rb)]), H, this.tok(rb, { noLead: true })];
       }
       case "Match":
@@ -729,12 +731,16 @@ class Formatter {
     return { d: [key, this.tok(colon), this.assigned(en.value)], first };
   }
 
-  /** `x ** y` (f12 2.8 item 3): its left operand is a primary, so it is no part of a left spine. */
-  private power(e: A.Binary): Doc {
+  /**
+   * `x ** y` (f12 2.8 item 3): its left operand is a primary, so it is no part of a left spine.
+   * An `unindented` run has no `i( )` (f12 2.8 items 2 and 4).
+   */
+  private power(e: A.Binary, unindented: boolean): Doc {
     const need = this.level(e.x) < 11;
     const needR = this.level(e.y) < 9;
     const opI = this.find("**", this.outer(e.x).end);
-    return group([this.paren(e.x, need), SP, this.tok(opI), indent([L, this.paren(e.y, needR)])]);
+    const tail: Doc = [L, this.paren(e.y, needR)];
+    return group([this.paren(e.x, need), SP, this.tok(opI), unindented ? tail : indent(tail)]);
   }
 
   /**
@@ -961,6 +967,7 @@ class Formatter {
     const lb = this.find("{", this.outer(s).end);
     const rb = this.match.get(lb)!;
     const subjText = this.subjectNeedsParens(s);
+    this.braces.add(lb);
     const inner: Doc[] = [];
     e.arms.forEach((arm, n) => {
       const first = this.at(arm.span.start);
@@ -1166,7 +1173,10 @@ class Formatter {
         moved = i;
       } else if (t.kind === "punct" && t.text === "|") out.push(SP, this.tok(i), SP);
       else if (t.kind === "punct" && t.text === ":") out.push(this.tok(i), SP);
-      else out.push(this.tok(i));
+      else {
+        if (t.kind === "punct" && t.text === "<") this.angles.add(i);
+        out.push(this.tok(i));
+      }
       i++;
     }
     return out;

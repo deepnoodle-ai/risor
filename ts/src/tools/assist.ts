@@ -493,7 +493,7 @@ export function complete(env: Env, text: string, pos: Position, returns?: Expect
     if (prev !== undefined && prev.kind === "punct" && (prev.text === "." || prev.text === "?.")) return result([]);
     return result(envNames(env, new Set()));
   }
-  const { resolution, check } = env.assistCheck(prog, before, returns);
+  const { resolution, check } = env.assistCheck(prog, returns);
   const ctx = new Context(env, prog, resolution, check, returns);
   if (holeString !== null) ctx.holeQuote = holeString.quote;
   return result(ctx.candidates(hole, holeString !== null));
@@ -947,7 +947,7 @@ export function hover(env: Env, text: string, pos: Position, returns?: Expected,
     prog = repair(ts, progSrc);
   }
   if (prog === null) return null;
-  const { resolution, check } = env.assistCheck(prog, progSrc, returns);
+  const { resolution, check } = env.assistCheck(prog, returns);
   return hoverRecord(env, prog, resolution, check, { start: ws, end: we }, src);
 }
 

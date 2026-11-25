@@ -839,17 +839,18 @@ export class Env<V = any, N = any> {
   /**
    * Internal. Package F12: the static rules and the check of a program the
    * assist stage repaired (f12 3.3 item 4), with the types of its nodes. Its
-   * diagnostics are not reported.
+   * diagnostics are not reported, so their messages are not built: the spans
+   * of a repaired program can lie past the end of its source text.
    */
-  assistCheck(program: import("../syntax/ast.ts").Program, source: Source, expected?: Expected): { resolution: import("../eval/static.ts").Resolution; check: import("../types/check.ts").CheckResult } {
+  assistCheck(program: import("../syntax/ast.ts").Program, expected?: Expected): { resolution: import("../eval/static.ts").Resolution; check: import("../types/check.ts").CheckResult } {
     let exp: CheckExpected = { kind: "none" };
     try {
       exp = this.expected(expected);
     } catch {
       exp = { kind: "none" };
     }
-    const s = staticRules(program, this.staticEnv, source);
-    const c = check(program, s.resolution, this.checkEnv, exp, s.diagnostics, source);
+    const s = staticRules(program, this.staticEnv);
+    const c = check(program, s.resolution, this.checkEnv, exp, s.diagnostics);
     return { resolution: s.resolution, check: c };
   }
 
