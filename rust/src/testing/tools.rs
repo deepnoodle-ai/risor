@@ -371,8 +371,6 @@ fn assist_result(case: &Case, tc: &ToolCase) -> Result<Json, crate::diag::Error>
     })
 }
 
-/// Format a text with the options: the case's source limit for its own
-/// text, the default for the laws (7.1 item 4).
 /// Whether the source of a format case nests deeper than 96 levels, where
 /// the idempotent law does not hold (F12 2.2 item 4).
 fn near_limit(tc: &ToolCase, text: &str) -> bool {
@@ -383,6 +381,8 @@ fn near_limit(tc: &ToolCase, text: &str) -> bool {
     deepest.is_ok_and(|d| d > 96)
 }
 
+/// Format a text with the options: the case's source limit for its own
+/// text, the default for the laws (7.1 item 4).
 fn format_text(
     tc: &ToolCase,
     text: &str,
