@@ -792,7 +792,7 @@ func compareDiagnostics(c *casefile.Case, got []risor.Diagnostic, checked bool) 
 	case "declare": // without regard to order (03-host 3.10.7 item 6)
 		// A name error may come with errors in type text that are not
 		// specified, so further reported ones are not compared for it.
-		if len(got) < len(e.Diagnostics) || (len(got) != len(e.Diagnostics) && !declareNameCodes[e.Diagnostics[0].Code]) {
+		if len(got) < len(e.Diagnostics) || (len(got) != len(e.Diagnostics) && (len(e.Diagnostics) == 0 || !declareNameCodes[e.Diagnostics[0].Code])) {
 			return d
 		}
 		used := make([]bool, len(got))
