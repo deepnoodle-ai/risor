@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -17,7 +18,8 @@ type Line struct {
 	HasType  bool
 	Sites    []any // the sites the check gave, each {"class", "span"}
 	HasSites bool
-	Phase    string // "" when the run gave a value
+	Phase    string // "" when phase is null or absent
+	HasPhase bool
 	Value    any
 	HasValue bool
 	Diags    []map[string]any
@@ -27,8 +29,16 @@ type Line struct {
 	HasDescription, HasAnalysis bool
 	Steps                       any // nil when absent
 	Units                       any
-	Raw                         string
+	// Fields holds every decoded top-level JSON field on the line so Diff
+	// compares every field emitted by any outcome line shape (conform, render,
+	// runner, tools, etc.).
+	Fields map[string]any
+	Raw    string
 }
+
+// nonPhaseKeys are top-level keys that identify valid outcome lines without a
+// phase field: render (F8), runner (F9), and successful tools cases (F12).
+var nonPhaseKeys = []string{"line", "invalid", "verdicts", "formatted", "completion", "hover"}
 
 // Parse reads one line.
 func Parse(raw string) (*Line, error) {
@@ -40,7 +50,14 @@ func Parse(raw string) (*Line, error) {
 	if dec.More() {
 		return nil, fmt.Errorf("text after the object")
 	}
-	l := &Line{Raw: raw}
+	l := &Line{Fields: make(map[string]any, len(m)), Raw: raw}
+	for k, v := range m {
+		var val any
+		if err := json.Unmarshal(v, &val); err != nil {
+			return nil, fmt.Errorf("%s: %w", k, err)
+		}
+		l.Fields[k] = val
+	}
 	get := func(k string, into any) error {
 		v, ok := m[k]
 		if !ok {
@@ -70,11 +87,22 @@ func Parse(raw string) (*Line, error) {
 	if err := get("phase", &phase); err != nil {
 		return nil, fmt.Errorf("phase: %w", err)
 	}
-	if _, ok := m["phase"]; !ok {
-		return nil, fmt.Errorf("no phase")
-	}
-	if phase != nil {
-		l.Phase = *phase
+	if _, ok := m["phase"]; ok {
+		l.HasPhase = true
+		if phase != nil {
+			l.Phase = *phase
+		}
+	} else {
+		valid := false
+		for _, k := range nonPhaseKeys {
+			if _, ok := m[k]; ok {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("no phase")
+		}
 	}
 	if v, ok := m["value"]; ok {
 		l.HasValue = true
@@ -154,18 +182,29 @@ func (l *Line) Kind() string {
 	return l.Phase + ":" + l.Code()
 }
 
+// canonicalDiagFields is the order in which known diagnostic fields are compared.
+var canonicalDiagFields = []string{"code", "span", "class", "message", "path", "trace"}
+
+// canonicalExtraTopFields are known top-level fields beyond the core program
+// fields, compared in deterministic order (conform, render, runner, tools).
+var canonicalExtraTopFields = []string{
+	"conforms", "path", "message", "agree", "failures",
+	"line", "detail", "json",
+	"invalid", "verdicts", "report", "text",
+	"formatted", "completion", "hover",
+}
+
 // Diff compares two lines as suite/README.md says: equal apart from the
-// spelling of a number. For a run failure of class limit the span and the
-// usage are not fixed (03-host.md 3.6.1 item 4, 3.6.3 item 3; suite/README.md),
-// so only the code, class and message are compared. It gives "" when the
-// lines agree, else the name of the first field that differs.
+// spelling of a number, across every field written on the line. For a run
+// failure of class limit the span, trace and usage are not fixed (03-host.md
+// 3.6.1 item 4, 3.6.3 item 3; suite/README.md; f08-errors.md 8), so only the
+// fixed fields are compared. It gives "" when the lines agree, else the name
+// of the first field that differs.
 func Diff(a, b *Line) string {
 	if a.Name != b.Name {
 		return "name"
 	}
-	// description and analysis belong to packages an implementation may not
-	// offer: each is compared only when both lines have it.
-	if a.HasDescription && b.HasDescription && !Equal(a.Description, b.Description) {
+	if a.HasDescription != b.HasDescription || (a.HasDescription && !Equal(a.Description, b.Description)) {
 		return "description"
 	}
 	if a.HasType != b.HasType || a.Type != b.Type {
@@ -174,62 +213,108 @@ func Diff(a, b *Line) string {
 	if a.HasSites != b.HasSites || !Equal(a.Sites, b.Sites) {
 		return "sites"
 	}
-	if a.Phase != b.Phase {
+	if a.HasPhase != b.HasPhase || a.Phase != b.Phase {
 		return "phase"
 	}
 	if a.HasValue != b.HasValue || !Equal(a.Value, b.Value) {
 		return "value"
 	}
-	if len(a.Diags) != len(b.Diags) {
+	_, hasDiagsA := a.Fields["diagnostics"]
+	_, hasDiagsB := b.Fields["diagnostics"]
+	if hasDiagsA != hasDiagsB || len(a.Diags) != len(b.Diags) {
 		return "diagnostics.count"
 	}
 	limit := a.IsLimit() || b.IsLimit()
-	var fields []string
-	switch a.Phase {
-	case "parse", "check":
-		fields = []string{"code", "span"}
-	case "declare":
-		fields = []string{"code"}
-	case "run":
-		fields = []string{"code", "span", "class", "message"}
-		if limit {
-			fields = []string{"code", "class", "message"}
-		}
-	}
-	// Package F8 adds a message to parse and check diagnostics and a trace
-	// to a run diagnostic (f08-errors.md 8). Each is compared among the
-	// implementations that write it.
-	var extra []string
-	switch a.Phase {
-	case "parse", "check":
-		extra = []string{"message"}
-	case "run":
-		extra = []string{"trace"}
-	}
 	for i := range a.Diags {
-		for _, f := range fields {
-			if !Equal(a.Diags[i][f], b.Diags[i][f]) {
-				return "diagnostics." + f
-			}
+		if d := diffDiag(a.Diags[i], b.Diags[i], limit); d != "" {
+			return "diagnostics." + d
 		}
-		for _, f := range extra {
-			x, okA := a.Diags[i][f]
-			y, okB := b.Diags[i][f]
-			if okA && okB && !Equal(x, y) {
-				return "diagnostics." + f
-			}
+	}
+	checked := map[string]bool{
+		"name": true, "description": true, "type": true, "sites": true,
+		"phase": true, "value": true, "diagnostics": true,
+		"steps": true, "units": true, "analysis": true,
+	}
+	for _, k := range canonicalExtraTopFields {
+		checked[k] = true
+		if !sameField(a.Fields, b.Fields, k) {
+			return k
 		}
 	}
 	if !limit {
-		if !Equal(a.Steps, b.Steps) {
+		if !sameField(a.Fields, b.Fields, "steps") {
 			return "steps"
 		}
-		if !Equal(a.Units, b.Units) {
+		if !sameField(a.Fields, b.Fields, "units") {
 			return "units"
 		}
 	}
-	if a.HasAnalysis && b.HasAnalysis && !Equal(a.Analysis, b.Analysis) {
+	if a.HasAnalysis != b.HasAnalysis || (a.HasAnalysis && !Equal(a.Analysis, b.Analysis)) {
 		return "analysis"
+	}
+	var other []string
+	for k := range a.Fields {
+		if !checked[k] {
+			other = append(other, k)
+		}
+	}
+	for k := range b.Fields {
+		if !checked[k] {
+			if _, inA := a.Fields[k]; !inA {
+				other = append(other, k)
+			}
+		}
+	}
+	sort.Strings(other)
+	for _, k := range other {
+		if !sameField(a.Fields, b.Fields, k) {
+			return k
+		}
+	}
+	return ""
+}
+
+func sameField(a, b map[string]any, k string) bool {
+	va, okA := a[k]
+	vb, okB := b[k]
+	if okA != okB {
+		return false
+	}
+	if !okA {
+		return true
+	}
+	return Equal(va, vb)
+}
+
+func diffDiag(a, b map[string]any, limit bool) string {
+	checked := make(map[string]bool, len(canonicalDiagFields))
+	for _, f := range canonicalDiagFields {
+		checked[f] = true
+		if limit && (f == "span" || f == "trace") {
+			continue
+		}
+		if !sameField(a, b, f) {
+			return f
+		}
+	}
+	var other []string
+	for k := range a {
+		if !checked[k] {
+			other = append(other, k)
+		}
+	}
+	for k := range b {
+		if !checked[k] {
+			if _, inA := a[k]; !inA {
+				other = append(other, k)
+			}
+		}
+	}
+	sort.Strings(other)
+	for _, k := range other {
+		if !sameField(a, b, k) {
+			return k
+		}
 	}
 	return ""
 }

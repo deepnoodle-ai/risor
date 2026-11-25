@@ -2094,7 +2094,7 @@ class Checker {
     const missing = [...r.fields].filter(([k, fl]) => !fl.optional && !items.some((it) => gives(it, k)?.sure === true)).map(([k]) => k).sort(compareText);
     if (missing.length > 0) this.say(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place, "missing", { key: missing[0] });
     const reported = new Set<A.Spread>();
-    for (const k of [...keys, null]) {
+    for (const k of [...[...keys].sort(compareText), null]) {
       const gs = items.map((it) => gives(it, k));
       let first = 0;
       for (let i = gs.length - 1; i >= 0; i--) {
@@ -2105,6 +2105,12 @@ class Checker {
       }
       const fl = k === null ? undefined : r.fields.get(k);
       const rt = fl !== undefined ? fl.type : r.rest;
+      const extraShown = (): Type => {
+        // `expected` is the record; a record of a reference's definition prints as the reference, whatever
+        // stands beside it (f17 12.6 item 4). A variant chosen from a union prints whole.
+        const owner = isAny(want) ? undefined : want.refs?.find((x) => x.def !== undefined && !isAny(x.def) && x.def.map === r);
+        return owner !== undefined ? refType(owner) : { map: r };
+      };
       for (let i = first; i < items.length; i++) {
         const g = gs[i];
         if (g === null) continue;
@@ -2112,11 +2118,7 @@ class Checker {
         if ("written" in it) {
           const en = it.written;
           if (fl === undefined && isNever(r.rest)) {
-            // `expected` is the record; a record of a reference's definition prints as the reference, whatever
-            // stands beside it (f17 12.6 item 4).
-            const owner = isAny(want) ? undefined : want.refs?.find((x) => x.def !== undefined && !isAny(x.def) && (x.def.map === r || x.def.union?.variants.includes(r) === true));
-            const shown: Type = owner !== undefined ? refType(owner) : { map: r };
-            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType(shown), key: it.key });
+            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType(extraShown()), key: it.key });
             continue;
           }
           this.fitForm(en.value, rt, code, en.shorthand ? (en.key as { span: Span }).span : undefined, owners);
@@ -2126,7 +2128,11 @@ class Checker {
         const fit = fits(g.type, rt);
         if (fit === 0 || (fit === 2 && this.strict)) {
           reported.add(it.spread);
-          this.fitFail(code(g.type, rt), it.spread.value.span, g.type, rt);
+          if (k !== null && fl === undefined && isNever(r.rest)) {
+            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", it.spread.value.span, "extra", { expected: printType(extraShown()), key: k });
+          } else {
+            this.fitFail(code(g.type, rt), it.spread.value.span, g.type, rt);
+          }
         } else if (fit === 2 && it.m !== "any") this.site("dynamic", it.spread.value.span, ...owners);
       }
     }

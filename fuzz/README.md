@@ -26,15 +26,19 @@ none on any implementation. It is not in `go.work`. Run Go here with
 2. **Run.** Each implementation runs the file through its `outcome` command
    (`suite/README.md`). Each command writes one JSON line for each case.
 3. **Compare.** The lines for one case are compared as `suite/README.md` says:
-   equal apart from the spelling of a number. That covers the `type` and the
-   `sites` of the check (in order, with their spans), the phase, the value or
-   every diagnostic, and the counts. The fields `description` and `analysis`
-   belong to packages an implementation may not offer: each is compared among
-   the implementations that write it, and ignored where only one does. Numbers
-   compare as doubles, so `2` and `2.0` agree. For a run failure of class
-   `limit`, only the code, the class and the message are compared: the span and
-   the usage are not fixed (`03-host.md` 3.6.1, 3.6.3). A crash, a timeout, a
-   status other than 0 and a missing line are differences too.
+   equal apart from the spelling of a number, across every field written on the
+   line. That covers `description`, `type`, `sites` (in order, with their
+   spans), `phase`, `value`, every diagnostic and its fields (`code`, `span`,
+   `class`, `message`, `path`, `trace`, and any extra field), `steps`, `units`,
+   `analysis`, conform fields (including `conforms`, `path`, `message`, `agree`
+   and full `failures` lists), render fields (`line`, `detail`, `json`), runner
+   fields (`invalid`, `verdicts`, `report`, `text`), tools fields (`formatted`,
+   `completion`, `hover`), and any other top-level field. Numbers compare as
+   doubles, so `2` and `2.0` agree. For a run failure of class `limit`, only the
+   fixed fields (`code`, `class`, `message`) are compared: `span`, `trace`,
+   `steps` and `units` are not fixed (`03-host.md` 3.6.1, 3.6.3;
+   `f08-errors.md` 8). A crash, a timeout, a status other than 0 and a missing
+   line are differences too.
 4. **Shrink.** Each difference is made smaller while it stays the same
    difference, and written to `findings/`.
 
@@ -342,3 +346,9 @@ small parser written from the grammar, and the spans of nodes), the comparer on
 canned lines, the reducer on a fake difference, that one seed gives one file,
 type text read and printed and the conformance of values (18.1), that every
 value set conforms, and the judge of the promise on canned lines.
+
+## Campaign records
+
+- [CAMPAIGN.md](CAMPAIGN.md) — Pre-3.0 freeze differential and checker-soundness
+  campaign (#703): 50,500 differential cases, 35,000 soundness programs
+  (175,000 runs), full suite replay, and all 9 findings fixed.
