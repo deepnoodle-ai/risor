@@ -1417,10 +1417,13 @@ impl<'h> Run<'h> {
                 if r.kind() != Kind::List {
                     return Err(self.result_kind(name, &r, span));
                 }
-                // Keep the inner list and count total elements; charge steps
-                // and allocation units before flattening (02-evaluation.md 6.2
-                // item 3).
-                g.counted = g.counted.saturating_add(r.len().unwrap_or(0));
+                // Keep the inner list and count total elements with checked
+                // arithmetic; charge steps and allocation units before
+                // flattening (02-evaluation.md 6.2 item 3).
+                g.counted = g
+                    .counted
+                    .checked_add(r.len().unwrap_or(0))
+                    .ok_or_else(|| self.limit(super::ALLOCATION_EXCEEDED, None))?;
                 g.out.push(r);
             }
             Each::Some if r.truthy() => return Ok(Some(Value::Bool(true))),
@@ -1471,7 +1474,10 @@ impl<'h> Run<'h> {
             Each::FlatMap => {
                 let k = g.counted as u64;
                 self.charge(k)?;
-                self.alloc(1 + k)?;
+                let units = k
+                    .checked_add(1)
+                    .ok_or_else(|| self.limit(super::ALLOCATION_EXCEEDED, None))?;
+                self.alloc(units)?;
                 let mut flat = Vec::with_capacity(g.counted);
                 for inner in g.out {
                     for j in 0..inner.len().unwrap_or(0) {

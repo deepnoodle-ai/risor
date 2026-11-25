@@ -56,6 +56,13 @@ const MaxWhole = 9007199254740991
 // Go pointer (e.g., var x any; x = &x) cannot overflow the stack.
 const maxPtrDepth = 64
 
+// deepPointer wraps a pointer that reached maxPtrDepth in Read so subsequent
+// KindOf / Equal / typed dispatch sees OpaqueKind directly instead of
+// dereferencing the remaining pointer chain again.
+type deepPointer struct {
+	v any
+}
+
 // KindOf returns the kind of a value.
 func KindOf(v any) Kind {
 	return kindOf(v, 0)
@@ -75,7 +82,7 @@ func kindOf(v any, ptrDepth int) Kind {
 		return List
 	case map[string]any:
 		return Map
-	case Opaque:
+	case Opaque, deepPointer:
 		return OpaqueKind
 	default:
 		return reflectKind(v, ptrDepth)
@@ -180,7 +187,7 @@ func readAt(v any, ptrDepth int) (any, ReadError) {
 		return Num(float64(x)), ReadOK
 	case float32:
 		return Read(float64(x))
-	case Opaque:
+	case Opaque, deepPointer:
 		return v, ReadOK
 	case encoding.TextMarshaler:
 		if s, ok := marshalText(x); ok {
@@ -194,7 +201,7 @@ func readAt(v any, ptrDepth int) (any, ReadError) {
 			return nil, ReadOK
 		}
 		if ptrDepth >= maxPtrDepth {
-			return v, ReadOK
+			return deepPointer{v}, ReadOK
 		}
 		return readAt(rv.Elem().Interface(), ptrDepth+1)
 	// F1 6.2: a value of a named bool, string or number type, such as

@@ -102,7 +102,7 @@ describe("adversarial: limits and OOM-before-charge", () => {
     assert.equal(got, 10_000);
     assert.ok(performance.now() - t0 < 2_000, "time.duration took too long");
 
-    // Huge fraction uses O(1) scratch memory and charges 0 allocation units.
+    // Huge fraction uses fixed-column scratch memory and charges 0 allocation units.
     const zeroAlloc = env.with({ limits: { steps: 1_000_000, allocation: 0 } });
     const hugeFrac = "1." + "0".repeat(200_000) + "5s";
     const measured = zeroAlloc.compile(parse("time.duration(s)")).measure({ s: hugeFrac, xs: [], m: {}, x: null });
@@ -348,6 +348,14 @@ describe("adversarial: editor tools on hostile text", () => {
       assert.ok(out.length > 0);
       assert.ok(performance.now() - t0 < 2_000, `tokens() took too long on ${JSON.stringify(text.slice(0, 20))}`);
     }
+
+    // Unterminated template tail scanned via local index in templateText()
+    // must count toward the recovery budget so the line-by-line fallback trips.
+    const longTail = "`${\n".repeat(1_000) + "`" + "a".repeat(200_000);
+    const tTail = performance.now();
+    const tailOut = tokens(longTail);
+    assert.ok(tailOut.length > 0);
+    assert.ok(performance.now() - tTail < 500, `tokens() took too long on long template tail (${performance.now() - tTail}ms)`);
   });
 
   test("tokens() pins colours after the line-by-line recovery fallback trips", () => {

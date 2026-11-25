@@ -142,6 +142,8 @@ class Lexer {
   cut = false;
   private readonly cps: Uint32Array;
   private pos = 0;
+  /** Furthest code-point index inspected, including local-index scans in templateText/blockText. */
+  private maxPos = 0;
   private gap = false;
   /** Package F16 slice D3: the text of the doc comment that the next token takes, when one attaches (f16 11.2). */
   private doc: string | undefined = undefined;
@@ -159,6 +161,7 @@ class Lexer {
 
   /** A lexical diagnostic, with its message from the catalog (f08 3.4); `token` is the text of the span. */
   private fail(code: string, start: number, end: number, template = "default", params: Record<string, unknown> = {}): never {
+    if (end > this.maxPos) this.maxPos = end;
     const ps = { token: start === end && start >= this.cps.length ? END : fromCodePoints(this.cps, start, end), ...params };
     throw new ParseError(code, { start, end }, parseMessage(code, template, ps));
   }
@@ -201,7 +204,7 @@ class Lexer {
         const outer = this.stack[1];
         if (outer.t === "tmpl" || outer.t === "block") at = outer.token.start;
       }
-      return { tokens, error: at, scanned: Math.max(this.pos, at) };
+      return { tokens, error: at, scanned: Math.max(this.pos, this.maxPos, at) };
     }
   }
 
@@ -639,6 +642,7 @@ class Lexer {
     let i = this.pos;
     for (;;) {
       if (i >= cps.length) {
+        if (i > this.maxPos) this.maxPos = i;
         this.fail("unterminated-string", f.token.start, cps.length, "text-block");
       }
       const c = cps[i];
@@ -648,6 +652,7 @@ class Lexer {
         return;
       }
       if (!f.raw && c === BS) {
+        if (i > this.maxPos) this.maxPos = i;
         const n = this.at(i + 1);
         if (n === LF || n === CR) this.fail("line-continuation", i, i + 1);
         if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "text-block");
@@ -731,6 +736,7 @@ class Lexer {
     let i = this.pos;
     for (;;) {
       if (i >= cps.length) {
+        if (i > this.maxPos) this.maxPos = i;
         this.fail("unterminated-string", f.token.start, cps.length, "template");
       }
       const c = cps[i];
@@ -757,6 +763,7 @@ class Lexer {
         return;
       }
       if (c === BS) {
+        if (i > this.maxPos) this.maxPos = i;
         const n = this.at(i + 1);
         if (n === LF || n === CR) {
           this.fail("line-continuation", i, i + 1);

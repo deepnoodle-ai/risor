@@ -199,7 +199,8 @@ func TestAdversarialOpaqueAndHostBoundary(t *testing.T) {
 	assert.Equal(t, got, false)
 
 	// Regression: cyclic Go pointer (var cyc any; cyc = &cyc) must not stack-overflow
-	// in value.KindOf / value.Read.
+	// in value.KindOf / value.Read, and a 65-level pointer chain ending at int(1)
+	// must stay consistently opaque across type(x), x == x, and x == 1.
 	var cyc any
 	cyc = &cyc
 	cEnv, err := risor.NewEnv(risor.Var("x", "any"))
@@ -211,6 +212,27 @@ func TestAdversarialOpaqueAndHostBoundary(t *testing.T) {
 	kindStr, err := pX.Run(ctx, risor.Map{"x": cyc})
 	assert.NoError(t, err)
 	assert.Equal(t, kindStr, "opaque")
+
+	var p65 any = int(1)
+	for range 65 {
+		p := new(any)
+		*p = p65
+		p65 = p
+	}
+	kindStr, err = pX.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	assert.Equal(t, kindStr, "opaque")
+
+	astSelfEq, err := risor.Parse(`[x == x, x == 1]`)
+	assert.NoError(t, err)
+	pSelfEq, err := cEnv.Compile(astSelfEq)
+	assert.NoError(t, err)
+	eqRes, err := pSelfEq.Run(ctx, risor.Map{"x": p65})
+	assert.NoError(t, err)
+	assert.Equal(t, eqRes, []any{true, false})
+	cycEqRes, err := pSelfEq.Run(ctx, risor.Map{"x": cyc})
+	assert.NoError(t, err)
+	assert.Equal(t, cycEqRes, []any{true, false})
 
 	// Host function panic is uncatchable and nested RisorError cause depth caps at 8 in JSON.
 	pEnv, err := risor.NewEnv(risor.Function{

@@ -8,8 +8,8 @@ use super::{fail, Run, R};
 use crate::messages::json_string;
 use crate::number;
 use crate::source::Range;
-use crate::value::{size, MapVal, Str, Value};
-use std::collections::HashSet;
+use crate::value::{release, size, MapVal, Str, Value};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const MAX_SAFE: &str = "9007199254740991";
@@ -183,7 +183,7 @@ enum Frame<'h> {
     },
     Object {
         entries: Vec<(Str<'h>, Value<'h>)>,
-        keys: HashSet<String>,
+        keys: HashMap<String, usize>,
         key: Option<String>,
     },
 }
@@ -409,7 +409,7 @@ impl<'a> JsonScan<'a> {
                     self.i += 1;
                     stack.push(Frame::Object {
                         entries: Vec::new(),
-                        keys: HashSet::new(),
+                        keys: HashMap::new(),
                         key: None,
                     });
                     depth = depth.max(stack.len() as u32);
@@ -516,10 +516,15 @@ impl<'a> JsonScan<'a> {
                     Some(Frame::Object { entries, keys, key }) => {
                         let k = key.take()?;
                         if build {
-                            keys.insert(k.clone());
-                            entries.push((Str::new(k), v));
+                            if let Some(&idx) = keys.get(&k) {
+                                release(std::mem::replace(&mut entries[idx].1, v));
+                            } else {
+                                let idx = entries.len();
+                                keys.insert(k.clone(), idx);
+                                entries.push((Str::new(k), v));
+                            }
                         } else {
-                            keys.insert(k);
+                            keys.entry(k).or_insert(0);
                         }
                         self.ws();
                         if self.eat(b',') {
@@ -538,12 +543,16 @@ impl<'a> JsonScan<'a> {
                         if !self.eat(b'}') {
                             return None;
                         }
-                        let Some(Frame::Object { entries, keys, .. }) = stack.pop() else {
+                        let Some(Frame::Object {
+                            mut entries, keys, ..
+                        }) = stack.pop()
+                        else {
                             return None;
                         };
                         u += 1 + 2 * keys.len() as u64;
                         v = if build {
-                            Value::Map(Rc::new(MapVal::from_written(entries)))
+                            entries.sort_unstable_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+                            Value::Map(Rc::new(MapVal(entries)))
                         } else {
                             Value::Null
                         };
@@ -813,10 +822,13 @@ fn format_time(t: f64) -> Option<String> {
 
 // Fixed-width decimal accumulator for `time.duration`: every binary64 value
 // and midpoint between adjacent binary64 values terminates by 10^-1075 (half of
-// the smallest subnormal 2^-1074) and overflows below 10^309. Keeping 1,120
-// fractional columns (45 guard digits below 10^-1075) and 320 integer columns
-// bounds scratch memory to O(1) while rounding every valid duration to the
-// exact nearest binary64, ties to even.
+// the smallest subnormal 2^-1074) and overflows below 10^309. The 1,120
+// fractional columns (45 guard digits below 10^-1075), 320 integer columns,
+// and streaming tail windows use O(1) scratch memory; on the exact-comparison
+// path (when lower and upper estimates straddle a binary64 midpoint),
+// `compare_duration_tail` additionally retains O(k) term records, where `k` is
+// the number of terms with nonzero truncated tails. Every valid duration rounds
+// to the exact nearest binary64, ties to even.
 const DUR_FRAC_COLS: usize = 1120;
 const DUR_INT_COLS: usize = 320;
 const DUR_TOTAL_COLS: usize = DUR_FRAC_COLS + DUR_INT_COLS;

@@ -431,9 +431,12 @@ implement(null, "time.format", (c) => {
 
 // Fixed-width decimal accumulator for `time.duration` (f06 7.4): every binary64
 // value and midpoint terminates by 10^-1075 (half of 2^-1074) and overflows
-// below 10^309. Keeping 1,120 fractional columns (45 guard digits) and 320
-// integer columns bounds scratch memory to O(1) while preserving exact
-// round-to-nearest-even and handling carries of any magnitude up to overflow.
+// below 10^309. The 1,120 fractional columns (45 guard digits), 320 integer
+// columns, and streaming tail windows use O(1) scratch memory; on the
+// exact-comparison path (when lower and upper estimates straddle a binary64
+// midpoint), `compareDurationTail` additionally retains O(k) term records,
+// where `k` is the number of terms with nonzero truncated tails. Every valid
+// duration preserves exact round-to-nearest-even and handles carries up to overflow.
 const DUR_FRAC_COLS = 1120;
 const DUR_INT_COLS = 320;
 const DUR_TOTAL_COLS = DUR_FRAC_COLS + DUR_INT_COLS;
