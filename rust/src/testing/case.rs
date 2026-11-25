@@ -41,6 +41,9 @@ pub struct Limits {
     pub steps: Option<u64>,
     pub allocation: Option<u64>,
     pub depth: Option<u64>,
+    /// The source limit of the parse (`03-host.md` 3.10.3), not a
+    /// declaration of the environment.
+    pub source: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -733,6 +736,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
                 .map(|v| v as u64),
             depth: l
                 .get("depth")
+                .and_then(|v| v.as_integer())
+                .map(|v| v as u64),
+            source: l
+                .get("source")
                 .and_then(|v| v.as_integer())
                 .map(|v| v as u64),
         })
@@ -1833,7 +1840,8 @@ fn check_field(k: &str, v: &Json) -> V<()> {
                 match lk.as_str() {
                     "steps" | "allocation" if n >= 0.0 => {}
                     "depth" if (1.0..=400.0).contains(&n) => {}
-                    "steps" | "allocation" | "depth" => {
+                    "source" if (0.0..=1_048_576.0).contains(&n) => {}
+                    "steps" | "allocation" | "depth" | "source" => {
                         return Err(format!("limits.{lk} is out of range"))
                     }
                     _ => return Err(format!("limits has the field {lk:?}")),

@@ -308,7 +308,7 @@ mod tests {
     }
 
     /// F8 3.1, F16 9.1 and F17 9 and 13.5: `messages-check.json` has 30 codes
-    /// and 72 templates, `messages-parse.json` 59 codes and 98 templates;
+    /// and 72 templates, `messages-parse.json` 60 codes and 99 templates;
     /// F16's file adds the code `name-clash`; F17's adds the code
     /// `circular-type`, with two templates, a template of `check-limit`, and
     /// five templates of four existing codes: 32 check codes and 81 templates.
@@ -328,7 +328,7 @@ mod tests {
             (es.len(), t)
         };
         assert_eq!(count(CHECK_SOURCE), (30, 72));
-        assert_eq!(count(PARSE_SOURCE), (59, 98));
+        assert_eq!(count(PARSE_SOURCE), (60, 99));
         assert_eq!(count(ENTRY_POINTS_SOURCE), (1, 1));
         assert_eq!(count(RECURSION_SOURCE), (6, 8));
         let c = catalog();

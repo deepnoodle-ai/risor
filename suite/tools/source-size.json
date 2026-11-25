@@ -1,0 +1,115 @@
+{
+ "env": "{user: {name: string}}",
+ "cases": [
+  {
+   "name": "format: a text of exactly the source limit is formatted",
+   "format": "1+2",
+   "limits": {
+    "source": 3
+   },
+   "expect": {
+    "formatted": "1 + 2\n"
+   }
+  },
+  {
+   "name": "format: a text over the source limit gives no text",
+   "format": "1 + 2",
+   "limits": {
+    "source": 4
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "source-too-large"
+     }
+    ]
+   }
+  },
+  {
+   "name": "format: a template over the source limit gives no text",
+   "formatTemplate": "a ${{ 1 }}",
+   "limits": {
+    "source": 9
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "source-too-large"
+     }
+    ]
+   }
+  },
+  {
+   "name": "complete: within the source limit",
+   "complete": "use‸",
+   "limits": {
+    "source": 3
+   },
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "variable"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "complete: over the source limit gives an empty list at the position",
+   "complete": "use‸ ",
+   "limits": {
+    "source": 3
+   },
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      4,
+      1,
+      4
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "hover: within the source limit",
+   "hover": "us‸er",
+   "limits": {
+    "source": 4
+   },
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ],
+     "type": "{name: string}"
+    }
+   }
+  },
+  {
+   "name": "hover: over the source limit gives no hover",
+   "hover": "us‸er.name",
+   "limits": {
+    "source": 4
+   },
+   "expect": {
+    "hover": null
+   }
+  }
+ ]
+}

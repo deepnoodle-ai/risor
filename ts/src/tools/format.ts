@@ -8,7 +8,8 @@ import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { lex } from "../syntax/lexer.ts";
 import { parse } from "../syntax/parser.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT, withinSourceLimit } from "../syntax/source.ts";
+import { sourceTooLarge } from "../syntax/messages.ts";
 import type { Span } from "../syntax/source.ts";
 import type { Token } from "../syntax/token.ts";
 import { parseTemplateText } from "../syntax/template.ts";
@@ -20,18 +21,21 @@ import type { Doc, Part } from "./doc.ts";
 export type FormatResult = { ok: true; text: string } | { ok: false; diagnostics: Diagnostic[] };
 
 /**
- * Format a program (f12 2.1). The pairs for the reader (2.6) are written only
- * where the text inside them stays within 100 levels (2.6 item 3), which is
- * decided on the levels of the plain text: the formatted text without those
- * pairs. So when the program has a place for one, it is formatted twice: to
- * the plain text, and then the plain text, parsed again, with the pairs.
+ * Format a program (f12 2.1). A text longer than the source limit gives its
+ * one diagnostic (01 2.1 item 6). The pairs for the reader (2.6) are written
+ * only where the text inside them stays within 100 levels (2.6 item 3), which
+ * is decided on the levels of the plain text: the formatted text without
+ * those pairs. So when the program has a place for one, it is formatted
+ * twice: to the plain text, and then the plain text, parsed again, with the
+ * pairs. The plain text is the formatter's own, so the source limit is not
+ * applied to it again; one the parser still refuses is given as it is.
  */
-export function formatProgram(text: string): FormatResult {
+export function formatProgram(text: string, limit: number = SOURCE_LIMIT): FormatResult {
+  if (!withinSourceLimit(text, limit)) return { ok: false, diagnostics: [sourceTooLarge(limit)] };
   const first = formatProgramWith(text, false);
   if (!first.result.ok || !first.sawReader) return first.result;
   const second = formatProgramWith(first.result.text, true);
-  if (!second.result.ok) throw new Error("format: the plain text does not parse");
-  return second.result;
+  return second.result.ok ? second.result : first.result;
 }
 
 function formatProgramWith(text: string, readers: boolean): { result: FormatResult; sawReader: boolean } {
@@ -45,16 +49,15 @@ function formatProgramWith(text: string, readers: boolean): { result: FormatResu
 }
 
 /** Format a template (f12 2.14), twice when a part has a place for a pair for the reader, as a program is. */
-export function formatTemplate(text: string): FormatResult {
-  const first = formatTemplateWith(text, false);
+export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): FormatResult {
+  const first = formatTemplateWith(text, false, limit);
   if (!first.result.ok || !first.sawReader) return first.result;
-  const second = formatTemplateWith(first.result.text, true);
-  if (!second.result.ok) throw new Error("format: the plain text does not parse");
-  return second.result;
+  const second = formatTemplateWith(first.result.text, true, SOURCE_LIMIT);
+  return second.result.ok ? second.result : first.result;
 }
 
-function formatTemplateWith(text: string, readers: boolean): { result: FormatResult; sawReader: boolean } {
-  const t = parseTemplateText(text);
+function formatTemplateWith(text: string, readers: boolean, limit: number): { result: FormatResult; sawReader: boolean } {
+  const t = parseTemplateText(text, limit);
   if (!t.ok) return { result: { ok: false, diagnostics: t.diagnostics }, sawReader: false };
   const src = t.template.source;
   let out = "";

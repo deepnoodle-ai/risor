@@ -2,6 +2,7 @@
 // the catalog that scripts/generate.ts makes from suite/messages-parse.json.
 
 import { CATALOG } from "../generated/messages.ts";
+import type { Diagnostic } from "./diagnostic.ts";
 
 const BY_CODE = new Map(CATALOG.map((e) => [e.code, e]));
 
@@ -52,6 +53,11 @@ function render(kind: string, v: unknown): string {
     default:
       return String(v);
   }
+}
+
+/** The one diagnostic of a text longer than the source limit (01 2.1 item 5): no span. */
+export function sourceTooLarge(limit: number): Diagnostic {
+  return { phase: "parse", code: "source-too-large", message: parseMessage("source-too-large", "default", { limit }) };
 }
 
 /** A parse message: the template of a code, each parameter rendered by its kind and cut (f08 3.3). */

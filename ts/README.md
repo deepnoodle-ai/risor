@@ -59,6 +59,16 @@ try {
 }
 ```
 
+A source text has at most 1,048,576 code points. A longer one is the parse
+error `source-too-large`, found before the text is read. Each call that takes
+source text (`parse`, `parseTemplate`, `format`, `formatTemplate`,
+`env.complete`, `env.hover` and `loadValue`) takes a lower limit as an option:
+
+```ts
+parse(text, { sourceLimit: 10_000 });
+env.complete(text, { line: 1, column: 4 }, undefined, { sourceLimit: 10_000 });
+```
+
 ## Tools for editors
 
 | Call | Does |

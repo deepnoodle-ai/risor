@@ -31,6 +31,8 @@ impl fmt::Display for Phase {
 
 /// The `parse` codes of Core (`01-language.md` 14.2).
 pub mod code {
+    /// A text longer than the source limit (`01-language.md` 2.1 item 5).
+    pub const SOURCE_TOO_LARGE: &str = "source-too-large";
     pub const UNEXPECTED_TOKEN: &str = "unexpected-token";
     pub const UNEXPECTED_CHARACTER: &str = "unexpected-character";
     pub const UNTERMINATED_STRING: &str = "unterminated-string";

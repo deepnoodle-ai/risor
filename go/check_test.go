@@ -137,9 +137,11 @@ func TestCheckedClass(t *testing.T) {
 }
 
 // What opens no level is checked by a loop (20.6): long flat programs check.
+// n is four times the 10,000 of 01-language.md 13.2 item 6, and each text
+// stays within the size of a source text (2.1).
 func TestCheckFlatPrograms(t *testing.T) {
 	env, _ := risor.NewEnv(risor.VarRecord("{c: bool, m: map<any>}"))
-	n := 100000
+	n := 40000
 	var consts strings.Builder
 	for i := 0; i < n; i++ {
 		consts.WriteString("const a" + strings.Repeat("x", 0) + itoa(i) + " = " + itoa(i) + ";\n")

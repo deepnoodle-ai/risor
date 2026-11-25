@@ -1,0 +1,63 @@
+{
+ "cases": [
+  {
+   "name": "a template of exactly the source limit parses",
+   "template": "string",
+   "source": "a${{ 1 }}",
+   "limits": {
+    "source": 9
+   },
+   "expect": {
+    "value": "a1"
+   }
+  },
+  {
+   "name": "a template over the source limit is source-too-large",
+   "template": "string",
+   "source": "ab${{ 1 }}",
+   "limits": {
+    "source": 9
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "source-too-large"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template over the source limit is refused before its parts are read",
+   "template": "value",
+   "source": "${{ @@@ }}",
+   "limits": {
+    "source": 9
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "source-too-large"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a U+FEFF at the start of a template counts",
+   "template": "string",
+   "source": "﻿ab",
+   "limits": {
+    "source": 2
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "source-too-large"
+     }
+    ]
+   }
+  }
+ ]
+}

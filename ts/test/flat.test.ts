@@ -1,6 +1,6 @@
 // 01 13.1, 13.2 rule 6, f04 2.8, f07 2.5: what opens no nesting level costs no
 // stack, in any pass. Each form of fixtures/flat-forms.ts is written with
-// 100,000 links and goes through every entry point of the binding: parse, the
+// 10,000 links and goes through every entry point of the binding: parse, the
 // static rules and the checker, compile and run with and without the check,
 // the analysis, the formatter and its laws, completion, hover, the tokens, and
 // a template. The value, the steps and the allocation units of each run are
@@ -23,7 +23,7 @@ import { FORMS } from "./fixtures/flat-forms.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 
 /** The links of each program. */
-const LINKS = 100000;
+const LINKS = 10000;
 
 /**
  * Run a script in a process of its own, with the stack of test/deep.test.ts:
@@ -50,7 +50,7 @@ describe("what opens no level costs no stack (01 13.2 rule 6)", { concurrency: M
   test("a diagnostic at the end of a long flat program", () => part("diagnostics"));
   test("the runner of case files on long flat cases", () => part("runner"));
 
-  // The three programs of the report that this file answers, with the outcomes it gives for 100,000 links.
+  // The three programs of the report that this file answers, with the outcomes it gives for 10,000 links.
   const REPORTED = [
     { name: "as", source: "y" + " as any".repeat(LINKS), type: "any", value: "a", steps: 0, units: 0 },
     { name: "projection", source: "[[y]]" + "[*].map(x => x)".repeat(LINKS), type: "string[][]", value: [["a"]], steps: 5 * LINKS, units: 4 * LINKS + 4 },

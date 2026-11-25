@@ -13,8 +13,12 @@ import (
 // Format gives the formatted text of a program (F12 2.1): the canonical
 // text, with a line width of 80 and an indentation of two spaces. It needs
 // no environment and does not check the program. A text that does not parse
-// gives an *Error with its first parse diagnostic.
-func Format(source string) (string, error) {
+// gives an *Error with its first parse diagnostic. opts may lower the
+// source limit.
+func Format(source string, opts ...ParseOption) (string, error) {
+	if err := checkSource(source, opts); err != nil {
+		return "", err
+	}
 	if !utf8.ValidString(source) {
 		source = value.ReplaceInvalid(source)
 	}
@@ -28,8 +32,12 @@ func Format(source string) (string, error) {
 // FormatTemplate gives the formatted text of a template (F12 2.14): each
 // text run as it stands, and each part's expression laid out on one line
 // between "${{ " and " }}" when it can be. A template that does not parse
-// gives an *Error with its first parse diagnostic.
-func FormatTemplate(source string) (string, error) {
+// gives an *Error with its first parse diagnostic. opts may lower the
+// source limit.
+func FormatTemplate(source string, opts ...ParseOption) (string, error) {
+	if err := checkSource(source, opts); err != nil {
+		return "", err
+	}
 	if !utf8.ValidString(source) {
 		source = value.ReplaceInvalid(source)
 	}

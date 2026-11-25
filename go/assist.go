@@ -137,8 +137,12 @@ func (a *assist) slotType(key any) *types.Type {
 func (a *assist) span(start, end int) Span { return a.file.Span(start, end) }
 
 // Complete lists the candidates of completion at a position of a source
-// text (F12 3.2 to 3.12). opts may give the expected result.
+// text (F12 3.2 to 3.12). opts may give the expected result, and a
+// SourceLimit; a text over the source limit gives an empty list.
 func (e *Env) Complete(source string, pos Pos, opts ...CheckOption) (out Completion) {
+	if checkSource(source, opts) != nil {
+		return Completion{Span: Span{Start: pos, End: pos}, Items: []Candidate{}}
+	}
 	if !utf8.ValidString(source) {
 		source = value.ReplaceInvalid(source)
 	}
@@ -1159,8 +1163,12 @@ func stringContent(s string, quote rune) string {
 }
 
 // Hover gives the hover record of the word at a position of a source text
-// (F12 3.13), or nil. opts may give the expected result.
+// (F12 3.13), or nil. opts may give the expected result, and a
+// SourceLimit; a text over the source limit has no hover.
 func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
+	if checkSource(source, opts) != nil {
+		return nil
+	}
 	if !utf8.ValidString(source) {
 		source = value.ReplaceInvalid(source)
 	}

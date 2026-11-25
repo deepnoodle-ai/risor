@@ -70,7 +70,7 @@ describe("f02 3: analysis", () => {
     assert.deepEqual(parseTemplate("x ${{ a.b }}").analyze("string").refs.map((r) => r.path), [["b"]]);
   });
   test("long flat programs and many parts need no host stack (3.1 item 5)", () => {
-    const n = 100_000;
+    const n = 10_000;
     const sum = parse(Array.from({ length: n }, (_, i) => `v${i % 10}`).join(" + ")).analyze();
     assert.equal(sum.names.length, 10);
     assert.equal(sum.refs.length, n);

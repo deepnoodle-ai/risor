@@ -11,12 +11,12 @@ import type * as A from "./ast.ts";
 import { ParseError } from "./diagnostic.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { lex } from "./lexer.ts";
-import { Source } from "./source.ts";
+import { Source, SOURCE_LIMIT, withinSourceLimit } from "./source.ts";
 import type { Span } from "./source.ts";
 import { HOLE, isName, isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
 import type { TypeNode } from "../types/typetext.ts";
-import { END, parseMessage } from "./messages.ts";
+import { END, parseMessage, sourceTooLarge } from "./messages.ts";
 
 /** The source nesting limit (01 13.2). Fixed by the specification. */
 export const MAX_LEVELS = 100;
@@ -25,8 +25,13 @@ export type ParseResult =
   | { ok: true; program: A.Program; source: Source }
   | { ok: false; diagnostics: Diagnostic[]; source: Source };
 
-/** Parse a program. Never throws for any text. */
-export function parse(text: string | Source): ParseResult {
+/**
+ * Parse a program. Never throws for any text. A text longer than `limit` code
+ * points is `source-too-large` before it is lexed (01 2.1 items 4 and 5); a
+ * Source given is already decoded, and its caller has applied the limit.
+ */
+export function parse(text: string | Source, limit: number = SOURCE_LIMIT): ParseResult {
+  if (typeof text === "string" && !withinSourceLimit(text, limit)) return { ok: false, diagnostics: [sourceTooLarge(limit)], source: new Source("") };
   const source = typeof text === "string" ? new Source(text) : text;
   try {
     return { ok: true, program: parseProgram(source), source };

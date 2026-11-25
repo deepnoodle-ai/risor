@@ -1,5 +1,50 @@
 [
   {
+    "code": "source-too-large",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "limit": "number"
+    },
+    "templates": {
+      "default": "the source text is longer than the limit of {limit} code points"
+    },
+    "cases": [
+      {
+        "name": "source-too-large: one code point over a source limit of 5",
+        "source": "1 + 23",
+        "limits": {
+          "source": 5
+        },
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "source-too-large",
+              "message": "the source text is longer than the limit of 5 code points"
+            }
+          ]
+        }
+      },
+      {
+        "name": "source-too-large: the limit is counted in code points",
+        "source": "\"\u00e9\ud83d\ude00\"",
+        "limits": {
+          "source": 3
+        },
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "source-too-large",
+              "message": "the source text is longer than the limit of 3 code points"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "code": "unexpected-token",
     "phase": "parse",
     "since": "3.0",

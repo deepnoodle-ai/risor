@@ -1,6 +1,6 @@
 // One part of test/flat.test.ts, in a process of its own: `node flat-run.ts PART`.
 // PART is the name of a form of flat-forms.ts, which then goes through every
-// entry point of the binding with 100,000 links; or `formatted text`,
+// entry point of the binding with 10,000 links; or `formatted text`,
 // `diagnostics` or `runner`. It prints `ok`, or it throws.
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { FORMS } from "./flat-forms.ts";
 import type { FlatForm } from "./flat-forms.ts";
 
 /** The links of each program. */
-const LINKS = 100000;
+const LINKS = 10000;
 
 /** The repeats that give a form at least this many links. */
 const repeats = (f: FlatForm, links: number) => Math.ceil(links / (f.per ?? 1));
@@ -142,9 +142,10 @@ function everyEntryPoint(f: FlatForm): void {
   if (f.format === "text") formatLaws(source, "format");
   else {
     // f12 2.8 indents each `else` branch two more than the one before, so the text grows
-    // with the square of the length. 2,000 branches are 8 million code points; 100,000
-    // would be 20,000 million, which is more than a string can hold.
-    formatLaws(f.source(2000), "format, 2,000 repeats");
+    // with the square of the length. 500 branches are about 500,000 code points, within the
+    // size of a source text (01 2.1 item 4), which the second format reads; 10,000 would be
+    // 200 million.
+    formatLaws(f.source(500), "format, 500 repeats");
   }
 
   // A template whose one part is the program. A part holds no `const` line and no type line.
@@ -221,7 +222,7 @@ function diagnostics(): void {
   }
 }
 
-// The three programs of the report that this file answers, with the outcomes it gives for 100,000 links.
+// The three programs of the report that this file answers, with the outcomes it gives for 10,000 links.
 const REPORTED = [
   { name: "as", source: "y" + " as any".repeat(LINKS), type: "any", value: "a", steps: 0, units: 0 },
   { name: "projection", source: "[[y]]" + "[*].map(x => x)".repeat(LINKS), type: "string[][]", value: [["a"]], steps: 5 * LINKS, units: 4 * LINKS + 4 },

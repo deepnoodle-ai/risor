@@ -789,8 +789,10 @@ func compareDiagnostics(c *casefile.Case, got []risor.Diagnostic, checked bool) 
 				return d
 			}
 		}
-	case "declare": // without regard to order
-		if len(got) != len(e.Diagnostics) {
+	case "declare": // without regard to order (03-host 3.10.7 item 6)
+		// A name error may come with errors in type text that are not
+		// specified, so further reported ones are not compared for it.
+		if len(got) < len(e.Diagnostics) || (len(got) != len(e.Diagnostics) && (len(e.Diagnostics) == 0 || !declareNameCodes[e.Diagnostics[0].Code])) {
 			return d
 		}
 		used := make([]bool, len(got))
@@ -901,13 +903,22 @@ func formatGot(ss []risor.Site) string {
 	return "[" + strings.Join(parts, "; ") + "]"
 }
 
+// sourceOpts gives the case's source limit as a parse option, when the
+// case's limits give one (03-host.md 3.10.3).
+func sourceOpts(c *casefile.Case) []risor.ParseOption {
+	if c.Limits == nil || c.Limits.Source == nil {
+		return nil
+	}
+	return []risor.ParseOption{risor.SourceLimit(*c.Limits.Source)}
+}
+
 // parseCase is step 3 of 3.10.5: the text as a program, or as a template in
 // the case's mode (F2 4.1).
 func parseCase(c *casefile.Case) (*risor.Expr, error) {
 	if c.Template == "" {
-		return risor.Parse(c.Source)
+		return risor.Parse(c.Source, sourceOpts(c)...)
 	}
-	t, err := risor.ParseTemplate(c.Source)
+	t, err := risor.ParseTemplate(c.Source, sourceOpts(c)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1073,3 +1084,7 @@ func runConform(cr *caseRun) Result {
 	}
 	return Result{Verdict: Pass}
 }
+
+// declareNameCodes are the declare codes of a refused name (03-host 3.3.4
+// item 4). A case that expects one does not compare further diagnostics.
+var declareNameCodes = map[string]bool{"reserved-namespace": true, "bad-name": true, "name-clash": true}

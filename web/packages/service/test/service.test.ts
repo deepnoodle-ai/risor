@@ -183,6 +183,19 @@ describe("localService", () => {
     const bad = await service.format("{a:");
     assert.equal(bad.ok, false);
   });
+
+  test("a text over the source limit: one problem with no offsets, and no completion or hover", async () => {
+    const big = "1" + " ".repeat(1048576);
+    const want = { phase: "parse", code: "source-too-large", message: "the source text is longer than the limit of 1048576 code points" };
+    assert.deepEqual(await env.check(big), [want]);
+    assert.deepEqual(await env.validate(big), [want]);
+    assert.deepEqual(await service.format(big), { ok: false, problems: [want] });
+    assert.deepEqual(await env.run(big), { ok: false, stage: "compile", problems: [want] });
+    assert.deepEqual(await env.complete("order." + " ".repeat(1048576), 6), { from: 6, to: 6, items: [] });
+    assert.equal(await env.hover("order" + " ".repeat(1048576), 1), null);
+    // At the limit, the text is read.
+    assert.deepEqual(await env.check("1" + " ".repeat(1048575)), []);
+  });
 });
 
 /** A worker that answers in the same process, after a turn, and can hang on runs. */
