@@ -388,7 +388,9 @@ describe("01 3.3: precedence and associativity", () => {
     ["a ? b : c ? d : e", "(a ? b : (c ? d : e))"],
     ["a || b && c", "(a || (b && c))"],
     ["a && b || c", "((a && b) || c)"],
-    ["a == b < c", "(a == (b < c))"],
+    ["a == (b < c)", "(a == (b < c))"],
+    ["a + b < c", "((a + b) < c)"],
+    ["a == b && c", "((a == b) && c)"],
     ["a < b + c", "(a < (b + c))"],
     ["a + b * c", "(a + (b * c))"],
     ["a - b - c", "((a - b) - c)"],
@@ -398,8 +400,8 @@ describe("01 3.3: precedence and associativity", () => {
     ["- -a", "(-(-a))"],
     ["--a", "(-(-a))"],
     ["a ?? b ?? c", "((a ?? b) ?? c)"],
-    ["a in b == c not in d", "((a in b) == (c not-in d))"],
-    ["1 < 2 < 3", "((1 < 2) < 3)"],
+    ["(a in b) == (c not in d)", "((a in b) == (c not-in d))"],
+    ["(1 < 2) < 3", "((1 < 2) < 3)"],
     ["a * b ** c", "(a * (b ** c))"],
   ];
   for (const [src, want] of cases) test(src, () => assert.equal(show(result(src)), want));

@@ -153,6 +153,11 @@ export interface Binary extends Base {
   op: BinaryOp;
   x: Expr;
   y: Expr;
+  /**
+   * The highest level that a token of the node opens (01 13.1), for the
+   * formatter's pairs for the reader (f12 2.6 item 3).
+   */
+  peak?: number;
 }
 
 export interface Cond extends Base {

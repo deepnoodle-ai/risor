@@ -140,12 +140,7 @@ function everyEntryPoint(f: FlatForm): void {
 
   // The formatter.
   if (f.format === "text") formatLaws(source, "format");
-  else if (f.format === "nested") {
-    // f12 2.6 writes parentheses for the reader around each left operand here: the text of
-    // more than 100 of them nests too deep to parse, so the laws are tested at 40 repeats.
-    assert.equal(typeof through("format", () => format(source)), "string");
-    formatLaws(f.source(40), "format, 40 repeats");
-  } else {
+  else {
     // f12 2.8 indents each `else` branch two more than the one before, so the text grows
     // with the square of the length. 2,000 branches are 8 million code points; 100,000
     // would be 20,000 million, which is more than a string can hold.

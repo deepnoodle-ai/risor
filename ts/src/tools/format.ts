@@ -19,23 +19,46 @@ import type { Doc, Part } from "./doc.ts";
 /** The outcome of the formatter (f12 2.1). */
 export type FormatResult = { ok: true; text: string } | { ok: false; diagnostics: Diagnostic[] };
 
-/** Format a program (f12 2.1). */
+/**
+ * Format a program (f12 2.1). The pairs for the reader (2.6) are written only
+ * where the text inside them stays within 100 levels (2.6 item 3), which is
+ * decided on the levels of the plain text: the formatted text without those
+ * pairs. So when the program has a place for one, it is formatted twice: to
+ * the plain text, and then the plain text, parsed again, with the pairs.
+ */
 export function formatProgram(text: string): FormatResult {
-  const source = new Source(text);
-  const p = parse(source);
-  if (!p.ok) return { ok: false, diagnostics: p.diagnostics };
-  const tokens = lex(source).filter((t) => t.kind !== "eof");
-  const f = new Formatter(source, tokens, 0, source.length);
-  const doc = f.build((b) => b.program(p.program));
-  return { ok: true, text: finish(layout(doc)) };
+  const first = formatProgramWith(text, false);
+  if (!first.result.ok || !first.sawReader) return first.result;
+  const second = formatProgramWith(first.result.text, true);
+  if (!second.result.ok) throw new Error("format: the plain text does not parse");
+  return second.result;
 }
 
-/** Format a template (f12 2.14). */
+function formatProgramWith(text: string, readers: boolean): { result: FormatResult; sawReader: boolean } {
+  const source = new Source(text);
+  const p = parse(source);
+  if (!p.ok) return { result: { ok: false, diagnostics: p.diagnostics }, sawReader: false };
+  const tokens = lex(source).filter((t) => t.kind !== "eof");
+  const f = new Formatter(source, tokens, 0, source.length, readers);
+  const doc = f.build((b) => b.program(p.program));
+  return { result: { ok: true, text: finish(layout(doc)) }, sawReader: f.sawReader };
+}
+
+/** Format a template (f12 2.14), twice when a part has a place for a pair for the reader, as a program is. */
 export function formatTemplate(text: string): FormatResult {
+  const first = formatTemplateWith(text, false);
+  if (!first.result.ok || !first.sawReader) return first.result;
+  const second = formatTemplateWith(first.result.text, true);
+  if (!second.result.ok) throw new Error("format: the plain text does not parse");
+  return second.result;
+}
+
+function formatTemplateWith(text: string, readers: boolean): { result: FormatResult; sawReader: boolean } {
   const t = parseTemplateText(text);
-  if (!t.ok) return { ok: false, diagnostics: t.diagnostics };
+  if (!t.ok) return { result: { ok: false, diagnostics: t.diagnostics }, sawReader: false };
   const src = t.template.source;
   let out = "";
+  let sawReader = false;
   for (const seg of t.template.segments) {
     const raw = src.slice(seg.span.start, seg.span.end);
     if (seg.kind === "text") {
@@ -45,14 +68,15 @@ export function formatTemplate(text: string): FormatResult {
     // The part's tokens, without the closing delimiter.
     const toks = lexPart(src, seg.span.start + 3, seg.span.start).filter((x) => x.kind !== "interpEnd" && x.kind !== "eof");
     const closeStart = raw.endsWith("}}") ? seg.span.end - 2 : seg.span.end - 1;
-    const f = new Formatter(src, toks, seg.span.start + 3, closeStart);
+    const f = new Formatter(src, toks, seg.span.start + 3, closeStart, readers);
     const body = layout(f.build((b) => b.expr(seg.expr)), Infinity);
+    sawReader ||= f.sawReader;
     // `trim` takes off what `\s` matches: white space and line ends.
     const trimmed = body.trim();
     if (!trimmed.includes("\n") && !f.hasLineComment) out += "${{ " + trimmed + " }}";
     else out += raw;
   }
-  return { ok: true, text: out };
+  return { result: { ok: true, text: out }, sawReader };
 }
 
 /** The text ends with exactly one U+000A (f12 2.1 item 5). */
@@ -112,6 +136,12 @@ class Formatter {
   /** Line ends in the blank space directly before each token. */
   readonly nlBefore: number[] = [];
   hasLineComment = false;
+  /** Whether the pairs for the reader are written (f12 2.6 item 3). */
+  private readonly readers: boolean;
+  /** Whether a place for a pair for the reader was met. */
+  sawReader = false;
+  /** The pairs for the reader written around the node being built. */
+  private rdepth = 0;
 
   // Pass state.
   private kept = new Set<number>();
@@ -126,7 +156,8 @@ class Formatter {
   /** Opening brackets of a sequence with elements. */
   private openWithElements = new Set<number>();
 
-  constructor(src: Source, toks: Token[], from: number, to: number) {
+  constructor(src: Source, toks: Token[], from: number, to: number, readers = false) {
+    this.readers = readers;
     this.src = src;
     this.toks = toks;
     toks.forEach((t, i) => this.byStart.set(t.start, i));
@@ -738,11 +769,29 @@ class Formatter {
       spine.push(x);
       x = x.x;
     }
+    // The parentheses around the left operand of each node of the spine, and
+    // the pairs for the reader around each node, decided from the outermost
+    // in (f12 2.6 item 3).
+    const outerDepth = this.rdepth;
+    const leftParen: boolean[] = new Array(spine.length);
+    const depthAt: number[] = new Array(spine.length);
+    let r = outerDepth;
+    for (let k = 0; k < spine.length; k++) {
+      depthAt[k] = r;
+      const n = spine[k];
+      if (n.kind === "As") continue;
+      const need = this.needLeft(n.x, n);
+      const rd = !need && this.reader(n.x, n, r, "left");
+      leftParen[k] = need || rd;
+      if (rd) r++;
+    }
     // The document of the left operand of spine[i], without its parentheses.
+    this.rdepth = r;
     let d: Doc = this.expr(x);
     let i = spine.length - 1;
     while (i >= 0) {
       const n = spine[i];
+      this.rdepth = depthAt[i];
       if (n.kind === "As") {
         const left = n.x;
         const need = this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!");
@@ -753,19 +802,47 @@ class Formatter {
       }
       // A run of one level: from *n* outward, while the next operator is of the level and takes this one bare.
       const p = binLevel(n.op);
-      const head: Doc = [this.needLeft(n.x, n) ? ["(", d, ")"] : d, SP, this.opTok(n)];
-      const tail: Doc[] = [L, this.paren(n.y, this.needRight(n.y, n))];
+      const head: Doc = [leftParen[i] ? ["(", d, ")"] : d, SP, this.opTok(n)];
+      const tail: Doc[] = [L, this.right(n.y, n)];
       let j = i - 1;
       for (; j >= 0; j--) {
         const m = spine[j];
-        if (m.kind !== "Binary" || binLevel(m.op) !== p || this.needLeft(spine[j + 1], m)) break;
-        tail.push(SP, this.opTok(m), L, this.paren(m.y, this.needRight(m.y, m)));
+        if (m.kind !== "Binary" || binLevel(m.op) !== p || leftParen[j]) break;
+        this.rdepth = depthAt[j];
+        tail.push(SP, this.opTok(m), L, this.right(m.y, m));
       }
       // The run of the whole expression is the one that `unindented` is about.
       d = group([head, unindented && j < 0 ? tail : indent(tail)]);
       i = j;
     }
+    this.rdepth = outerDepth;
     return d;
+  }
+
+  /** The right operand of a binary operator, in its parentheses (f12 2.6). */
+  private right(y: A.Expr, parent: A.Binary): Doc {
+    if (this.needRight(y, parent)) return this.paren(y, true);
+    if (!this.reader(y, parent, this.rdepth, "right")) return this.expr(y);
+    this.rdepth++;
+    const d = this.expr(y);
+    this.rdepth--;
+    return ["(", d, ")"];
+  }
+
+  /**
+   * Whether x is written in a pair for the reader (f12 2.6, the second table),
+   * inside `depth` such pairs: only when the highest level that a token of x
+   * opens in the plain text, plus the pairs around it, plus one, is 100 or
+   * less (2.6 item 3). The formatter decides these pairs on its own plain
+   * text, parsed again, so `peak` is the level of the plain text.
+   */
+  private reader(x: A.Expr, parent: A.Binary, depth: number, side: "left" | "right"): boolean {
+    if (x.kind !== "Binary") return false;
+    const mul = (o: string): boolean => o === "*" || o === "/" || o === "%";
+    const row = (x.op === "&&" && parent.op === "||") || (side === "left" && mul(x.op) && mul(parent.op) && (x.op !== parent.op || x.op === "%"));
+    if (!row) return false;
+    this.sawReader = true;
+    return this.readers && (x.peak ?? 0) + depth + 1 <= 100;
   }
 
   private opTok(n: A.Binary): Doc {
@@ -784,12 +861,8 @@ class Formatter {
     if (parent.op === "**") return lx < 11;
     let need = lx < p || (x.kind === "Binary" && x.op === "??");
     if ((parent.op === "in" || parent.op === "not-in") && x.kind === "Unary" && x.op === "!") need = true;
-    // Parentheses for the reader.
-    if (x.kind === "Binary") {
-      if (x.op === "&&" && parent.op === "||") need = true;
-      if (["*", "/", "%"].includes(x.op) && ["*", "/", "%"].includes(parent.op) && (x.op !== parent.op || x.op === "%")) need = true;
-      if ((x.op === "==" || x.op === "!=") && (parent.op === "==" || parent.op === "!=")) need = true;
-    }
+    // A comparison inside a comparison (01 3.4 rule 13).
+    if (isComparison(parent) && isComparison(x)) need = true;
     return need;
   }
 
@@ -799,7 +872,7 @@ class Formatter {
     if (parent.op === "??") return ly < 7 || (y.kind === "Binary" && y.op === "??");
     if (parent.op === "**") return ly < 9;
     let need = ly <= p || (y.kind === "Binary" && y.op === "??");
-    if (y.kind === "Binary" && y.op === "&&" && parent.op === "||") need = true;
+    if (isComparison(parent) && isComparison(y)) need = true;
     return need;
   }
 
@@ -911,7 +984,7 @@ class Formatter {
         continue;
       }
       if (x.kind === "Binary") {
-        if (this.needLeft(x.x, x)) return false;
+        if (this.needLeft(x.x, x) || this.reader(x.x, x, this.rdepth, "left")) return false;
         x = x.x;
         continue;
       }
@@ -1261,6 +1334,11 @@ function huggable(a: A.Arg): boolean {
 }
 
 /** The level of a binary operator (01 3.3). */
+/** Whether e is a comparison: a Binary of level 5 or 6 (01 3.3). */
+function isComparison(e: A.Expr): boolean {
+  return e.kind === "Binary" && (binLevel(e.op) === 5 || binLevel(e.op) === 6);
+}
+
 function binLevel(op: A.BinaryOp): number {
   switch (op) {
     case "??":
@@ -1292,7 +1370,7 @@ function binLevel(op: A.BinaryOp): number {
 }
 
 /** The keys a tree's equality ignores: spans, and the levels that parentheses change (f12 2.2 item 1). */
-const IGNORED = new Set(["span", "outer", "parens", "nameSpan", "keySpan", "typeSpan", "typeSpans", "starSpan", "recvSpan", "level", "maxLevel", "resultSpan", "spans"]);
+const IGNORED = new Set(["span", "outer", "parens", "nameSpan", "keySpan", "typeSpan", "typeSpans", "starSpan", "recvSpan", "level", "maxLevel", "peak", "resultSpan", "spans"]);
 
 /** Two trees are equal, spans aside (f12 2.2 item 1). */
 export function treeEqual(a0: unknown, b0: unknown): boolean {

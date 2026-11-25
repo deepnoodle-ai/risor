@@ -51,8 +51,8 @@ test("an invalid file: status 2 and a message on standard error", () => {
 test('suite/README.md: a case with "check": false has no type and no sites', () => {
   const dir = mkdtempSync(join(tmpdir(), "risor-outcome-"));
   const f = join(dir, "c.json");
-  writeFileSync(f, JSON.stringify([{ name: "u", source: "1 < 2 < 3", check: false }]));
+  writeFileSync(f, JSON.stringify([{ name: "u", source: "(1 < 2) < 3", check: false }]));
   const r = outcome(f);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout.trim(), '{"name":"u","phase":"run","diagnostics":[{"code":"wrong-kind","span":[1,1,1,10],"class":"dynamic","message":"cannot apply < to bool and number","trace":[]}],"steps":1,"units":0,"analysis":{"names":[],"refs":[],"calls":[],"literal":false,"segments":null}}');
+  assert.equal(r.stdout.trim(), '{"name":"u","phase":"run","diagnostics":[{"code":"wrong-kind","span":[1,1,1,12],"class":"dynamic","message":"cannot apply < to bool and number","trace":[]}],"steps":1,"units":0,"analysis":{"names":[],"refs":[],"calls":[],"literal":false,"segments":null}}');
 });

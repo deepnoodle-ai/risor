@@ -638,6 +638,15 @@ class Parser {
 
   /** Binary = Or | Coal (01 3.2 rule 4). */
   private binary(): A.Expr {
+    // maxLevel counts from here, for the peak of each Binary node.
+    const outerMax = this.maxLevel;
+    this.maxLevel = this.level;
+    const out = this.binaryRest();
+    this.maxLevel = Math.max(outerMax, this.maxLevel);
+    return out;
+  }
+
+  private binaryRest(): A.Expr {
     const left = this.climb(this.unary(null), PREC_ADD);
     if (this.isP(this.cur, "??")) {
       let x = left;
@@ -663,7 +672,7 @@ class Parser {
   }
 
   private binaryNode(op: A.BinaryOp, x: A.Expr, y: A.Expr): A.Binary {
-    return { kind: "Binary", op, x, y, span: { start: this.outer(x).start, end: this.outer(y).end } };
+    return { kind: "Binary", op, x, y, span: { start: this.outer(x).start, end: this.outer(y).end }, peak: this.maxLevel };
   }
 
   /** The level of the binary operator at the current token, or 0. `??` is not here. */
@@ -693,14 +702,21 @@ class Parser {
     return e.kind === "Unary" && e.op === "!" && !this.parens.has(e);
   }
 
-  /** Precedence climbing over levels 3 to 8 (01 3.3). */
-  private climb(left: A.Expr, minPrec: number): A.Expr {
+  /**
+   * Precedence climbing over levels 3 to 8 (01 3.3). `inCmp` is true when the
+   * chain is the right operand of a comparison operator: a comparison operator
+   * in it is then `chained-comparison` (01 3.4 rule 13).
+   */
+  private climb(left: A.Expr, minPrec: number, inCmp = false): A.Expr {
+    // Whether `left` is a comparison written without parentheses.
+    let leftCmp = false;
     for (;;) {
       const p = this.prec();
       if (p === 0 || p < minPrec) return left;
       const t = this.cur;
       if (t.kind === "word" && (t.text === "as" || t.text === "is")) {
         left = this.test(left, t);
+        leftCmp = false;
         // f04 2.4: an operator of levels 7 to 10 cannot follow a program type.
         const n = this.cur;
         if (n.kind === "punct" && (n.text === "+" || n.text === "-" || n.text === "*" || n.text === "/" || n.text === "%")) this.unexpected(n);
@@ -723,12 +739,19 @@ class Parser {
         // 01 3.4 rule 2.
         this.fail("needs-parentheses", { start: left.span.start, end: left.span.start + 1 }, "in");
       }
+      // 01 3.4 rule 13: comparisons do not chain. Levels 5 and 6 are the comparison operators.
+      const cmp = p === 5 || p === 6;
+      if (cmp && (leftCmp || inCmp)) this.fail("chained-comparison", opSpan);
       this.advance();
       if (op === "not-in") this.advance();
       this.open(opSpan);
-      const right = this.climb(this.unary(null), p + 1);
+      const outerMax = this.maxLevel;
+      this.maxLevel = this.level;
+      const right = this.climb(this.unary(null), p + 1, cmp);
+      this.maxLevel = Math.max(outerMax, this.maxLevel);
       this.close();
       left = this.binaryNode(op, left, right);
+      leftCmp = cmp;
     }
   }
 

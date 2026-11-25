@@ -441,6 +441,17 @@ export const CATALOG: CatalogEntry[] = [
     }
   },
   {
+    "code": "chained-comparison",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "comparisons do not chain: put one comparison in parentheses before {token}, or join the two with &&"
+    }
+  },
+  {
     "code": "strict-equality",
     "phase": "parse",
     "caught": null,
