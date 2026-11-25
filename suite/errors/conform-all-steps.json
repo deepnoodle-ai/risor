@@ -3,14 +3,22 @@
   "name": "a step limit the first walk reaches after its first failure is the whole list",
   "conform": {
    "type": "{id: string, ...int}",
-   "value": {"id": "a", "p": "x", "q": 1, "r": 2},
+   "value": {
+    "id": "a",
+    "p": "x",
+    "q": 1,
+    "r": 2
+   },
    "max": 3,
    "limit": 4
   },
   "expect": {
    "phase": "run",
    "diagnostics": [
-    {"code": "steps-exceeded", "message": "the run needed more than its limit of 4 steps"}
+    {
+     "code": "steps-exceeded",
+     "message": "the run needed more than its limit of 4 steps"
+    }
    ]
   }
  },
@@ -18,18 +26,34 @@
   "name": "all the failures within the limit: All counts from 0 and charges at the same places",
   "conform": {
    "type": "int[]",
-   "value": [1, "a", "b"],
+   "value": [
+    1,
+    "a",
+    "b"
+   ],
    "max": 3,
    "limit": 4
   },
   "expect": {
    "conforms": false,
-   "path": [1],
+   "path": [
+    1
+   ],
    "message": "expected int, found \"a\"",
    "steps": 3,
    "failures": [
-    {"path": [1], "message": "expected int, found \"a\""},
-    {"path": [2], "message": "expected int, found \"b\""}
+    {
+     "path": [
+      1
+     ],
+     "message": "expected int, found \"a\""
+    },
+    {
+     "path": [
+      2
+     ],
+     "message": "expected int, found \"b\""
+    }
    ]
   }
  },
@@ -37,7 +61,13 @@
   "name": "a value that conforms at the limit gives an empty list",
   "conform": {
    "type": "{a: int, b: string[]}",
-   "value": {"a": 1, "b": ["x", "y"]},
+   "value": {
+    "a": 1,
+    "b": [
+     "x",
+     "y"
+    ]
+   },
    "max": 2,
    "limit": 5
   },
@@ -45,6 +75,34 @@
    "conforms": true,
    "steps": 5,
    "failures": []
+  }
+ },
+ {
+  "name": "a full list charges nothing more, so the limit adds no entry past the maximum",
+  "conform": {
+   "type": "{a: int, b: int}",
+   "value": {
+    "a": "x",
+    "b": 1
+   },
+   "max": 1,
+   "limit": 2
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found \"x\"",
+   "steps": 2,
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found \"x\""
+    }
+   ]
   }
  }
 ]

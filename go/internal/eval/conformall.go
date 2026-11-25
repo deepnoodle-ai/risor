@@ -33,7 +33,13 @@ func ConformAll(v any, t *types.Type, max int, limit int64) []ConformFailure {
 	// (F17 12.7 item 3, F8 6.4 step 1): the list is that failure alone. All
 	// alone could find an ordinary failure first, at a key of a rest that
 	// Conform also tests, and then the limit.
-	if _, code, msg, ok := ConformCode(v, t, limit); !ok && code != "not-conforming" {
+	_, code, msg, ok := ConformCode(v, t, limit)
+	if ok {
+		// It conforms within the limit, and All would charge the same
+		// steps (F8 6.4 item 2): the list is empty.
+		return nil
+	}
+	if code != "not-conforming" {
 		return []ConformFailure{{Message: msg, Code: code}}
 	}
 	a := &allWalker{max: max, m: &meter{limit: limit}}

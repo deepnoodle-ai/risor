@@ -430,9 +430,12 @@ pub fn all(v: &Value<'_>, t: &Ty, max: usize, limit: Option<u64>) -> Vec<Failure
             Vec::new()
         },
     };
-    // 6.4 step 1.
-    if let Err(code) = test(v, t, &mut Free::new(limit)) {
-        return vec![limit_failure(if code == DEEP { DEEP } else { STEPS })];
+    // 6.4 step 1. A value that conforms within the limit has no failure,
+    // and All would charge the same steps (6.4 item 2): the list is empty.
+    match test(v, t, &mut Free::new(limit)) {
+        Err(code) => return vec![limit_failure(if code == DEEP { DEEP } else { STEPS })],
+        Ok(None) => return Vec::new(),
+        Ok(Some(_)) => {}
     }
     let mut a = All {
         path: Vec::new(),
@@ -626,6 +629,10 @@ impl All {
     /// Step 6. `skip`: a union's tag, counted as a declared key v has.
     fn record(&mut self, v: &Value<'_>, r: &crate::check::ty::Rec, skip: Option<&str>) {
         for (k, f) in &r.fields {
+            // A full list charges nothing more (6.4 step 2).
+            if self.full() {
+                return;
+            }
             if skip == Some(k.as_str()) {
                 continue;
             }

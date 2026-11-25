@@ -288,7 +288,9 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
   if (!(max >= 1)) max = 1;
   // f08 6.4 step 1, f17 12.7 item 3: the first failure's walk, whose limit ends ConformAll.
   const first = conformWalk(v, t, freeCtx(cls, steps));
-  if (first !== null && (first.template === "depth" || first.template === "steps")) return [first];
+  // A value that conforms within the limit has no failure, and All would charge the same steps (f08 6.4 item 2).
+  if (first === null) return [];
+  if (first.template === "depth" || first.template === "steps") return [first];
   const meter = new Meter(steps);
   const out: ConformFailure[] = [];
   const path: PathStep[] = [];
