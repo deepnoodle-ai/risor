@@ -73,11 +73,27 @@ interface SpineStep {
   end: number;
 }
 
+/**
+ * What is left of a run's budget (03 3.5.2 item 3): each limit less what the
+ * run has charged. null: the limit is off. It has the form of the limits a
+ * host declares, so a nested run takes it as `env.with({ limits: h.remaining() })`.
+ */
+export interface Remaining {
+  steps: number | null;
+  allocation: number | null;
+}
+
 /** What a host function's implementation is given (03 3.5.2). */
 export interface CallHandle {
   readonly signal?: AbortSignal;
   charge(steps: number): void;
   allocate(units: number): void;
+  /**
+   * The steps and units left in the run, counting the call's own step and
+   * what the function has charged. A charge that failed charged nothing, so
+   * it does not change this. After the function returned: 0 and 0.
+   */
+  remaining(): Remaining;
 }
 
 /** Thrown by a host function to return an error (03 3.5.3): `function-error`. */
@@ -1924,7 +1940,7 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
   r.charge(1);
   // The handle is valid until the function returns (03 3.5.2 item 6).
   // After that, charge and allocate throw a host-side Error and charge
-  // nothing, and the signal reads as cancelled.
+  // nothing, remaining gives 0 and 0, and the signal reads as cancelled.
   // A charge the budget cannot cover ends the run (03 3.5.2 item 3), even
   // when the function catches the failure and goes on: `stop` holds it, a
   // later charge throws it again and charges nothing, and it is raised when
@@ -1955,6 +1971,13 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
       metered(() => {
         if (n > 0) r.alloc(n);
       });
+    },
+    remaining: () => {
+      if (!open) return { steps: 0, allocation: 0 };
+      return {
+        steps: r.stepLimit === Infinity ? null : r.stepLimit - r.steps,
+        allocation: r.unitLimit === Infinity ? null : r.unitLimit - r.units,
+      };
     },
   };
   let out: unknown;

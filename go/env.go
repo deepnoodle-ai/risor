@@ -27,9 +27,11 @@ const NoLimit = eval.NoLimit
 // zero field keeps the default.
 const ZeroLimit = -2
 
-// Call is the call handle a host function receives: Context, Charge and
-// Allocate (spec/core/03-host.md 3.5.2). When Charge or Allocate returns an
-// error, return it: the run then ends with the limit failure.
+// Call is the call handle a host function receives: Context, Charge,
+// Allocate and Remaining (spec/core/03-host.md 3.5.2). When Charge or
+// Allocate returns an error, return it: the run then ends with the limit
+// failure. Remaining gives the steps and units left, or NoLimit; Budget
+// declares them as the limits of a nested run (3.2.5).
 type Call = eval.Call
 
 // ErrCallEnded is returned by Charge and Allocate of a call handle used after
@@ -155,6 +157,30 @@ func (l Limits) apply(e *Env) {
 		}
 		e.limits.Depth = l.Depth
 	}
+}
+
+// Budget declares the step and allocation limits in the form that
+// Call.Remaining gives them: a count of 0 or more, or NoLimit to turn the
+// limit off. Unlike a field of Limits, 0 is a limit of zero, not the
+// default. The depth and the deadline are kept. A host that runs a nested
+// program from a host function compiles it in env.With(risor.Budget(
+// c.Remaining())), so the nested run cannot pass what the caller has left
+// (03-host.md 3.2.5).
+func Budget(steps, units int64) Decl {
+	return declFunc(func(e *Env) {
+		if (steps < 0 && steps != NoLimit) || (units < 0 && units != NoLimit) {
+			e.errf(diag.CodeBadLimit, "a limit must be a whole number of 0 or more")
+			return
+		}
+		l := Limits{Steps: steps, Allocation: units}
+		if steps == 0 {
+			l.Steps = ZeroLimit
+		}
+		if units == 0 {
+			l.Allocation = ZeroLimit
+		}
+		l.apply(e)
+	})
 }
 
 // Without removes library entries from the environment (03-host.md 3.3.1): a function by its name, as len, and a method by its

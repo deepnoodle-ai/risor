@@ -132,6 +132,62 @@ for the run.
    its limits end it. A host that turns the step limit off and sets no
    deadline has no bound on that.
 
+**The nested run.** A host function that runs another program, such as a
+tool that calls another tool, gives the nested run what its caller has left.
+Then the two runs together cannot pass the caller's budget, and the caller
+pays for the nested run's work.
+
+1. The function reads `remaining()` (3.5.2 item 7).
+2. It runs the nested program in a child environment (3.3.2) whose step and
+   allocation limits are those counts. A count of 0 is a limit of zero, and a
+   limit that is off stays off.
+3. It passes its cancellation signal to the nested run, so a cancellation of
+   the caller stops the nested run too.
+4. When the nested run ends, the function charges the nested run's usage
+   (3.6.3) to the caller: its steps with `charge`, then its units with
+   `allocate`.
+5. When the nested run failed with `steps-exceeded` or
+   `allocation-exceeded`, the function then charges more than is left of
+   that budget, and returns the error of that charge. The caller ends with
+   the same code, and `catch` does not catch it (3.6.1 item 2). The nested
+   run's failure of any other code is returned as an error, so the caller
+   sees `function-error` (3.5.3 items 5 to 7).
+
+In Go, with the error handling of step 5 left out:
+
+```go
+tool := func(c *risor.Call, args []any) (any, error) {
+	child, err := toolEnv.With(risor.Budget(c.Remaining()))
+	if err != nil {
+		return nil, err
+	}
+	p, err := child.Compile(toolExpr)
+	if err != nil {
+		return nil, err
+	}
+	v, used, runErr := p.Measure(c.Context(), toolVars)
+	if err := c.Charge(used.Steps); err != nil {
+		return nil, err
+	}
+	if err := c.Allocate(used.Allocated); err != nil {
+		return nil, err
+	}
+	return v, runErr
+}
+```
+
+With a step limit of 20,000, a caller that has charged 6,000 steps when it
+calls the tool gives the nested run a step limit of 14,000. A nested run that
+uses 4,505 steps leaves the caller 9,495 after the charge back.
+
+| Matter | Holds |
+| --- | --- |
+| The caller's usage | Exact when both runs succeed: the caller's own usage and the nested run's (3.6.3 item 2) |
+| Where the caller stops | It fails with `steps-exceeded` or `allocation-exceeded` at the same call as when the function charges the same work itself. The nested run fails exactly when its work needs more than the counts of step 1 |
+| Depth | Not shared. The nested run counts its depth from 0, against its own environment's limit |
+| The deadline | Not shared, unless the host puts it on the signal (3.5.2 item 9) |
+| The nested run's usage after a limit failure | Not fixed (3.6.3 item 3). The caller then fails with a limit code too, and its usage is not fixed either |
+
 ## 3.3 The environment
 
 ### 3.3.1 Declarations
@@ -426,9 +482,10 @@ with `depth-exceeded`. No walk over host data loops for ever.
 1. A call of a host function is synchronous. The function returns before the
    run continues.
 2. The function receives the argument values and a call handle.
-3. The call handle gives three things: the run's cancellation signal;
-   `charge(steps)`, which charges steps to the run; and `allocate(units)`,
-   which charges allocation units to the run. A charge that the budget cannot
+3. The call handle gives four things: the run's cancellation signal;
+   `charge(steps)`, which charges steps to the run; `allocate(units)`, which
+   charges allocation units to the run; and `remaining()`, which gives what
+   is left of the run's budget (item 7). A charge that the budget cannot
    cover ends the run with `steps-exceeded` or `allocation-exceeded`.
 4. A call costs the one step of any call, plus what the function charges
    (`02-evaluation.md`).
@@ -436,8 +493,34 @@ with `depth-exceeded`. No walk over host data loops for ever.
    cached, even when every argument is a literal.
 6. The call handle is valid until the function returns. A use of it after
    that charges nothing and changes no run: `charge` and `allocate` refuse,
-   and the cancellation signal reads as cancelled. A binding in which the
-   handle cannot outlive the call meets this rule by construction.
+   `remaining()` gives 0 for each count, and the cancellation signal reads as
+   cancelled. A binding in which the handle cannot outlive the call meets
+   this rule by construction.
+7. **What is left.** `remaining()` gives two counts: the step limit less the
+   steps the run has charged, and the allocation limit less the units it has
+   charged. What the run has charged includes the one step of this call
+   (item 4) and each charge the function has made. A limit that is off gives
+   no count, in the form the binding uses to turn a limit off (3.6.1), so a
+   host can declare the result as the limits of a nested run as it is.
+   Reading it charges nothing.
+
+| Case | `remaining()` gives |
+| --- | --- |
+| A step limit of 100 and an allocation limit of 50; the call is the run's first charge | 99 steps and 50 units |
+| The same, after the function charges 5 steps and 3 units | 94 steps and 47 units |
+| A limit is off | No count for that limit |
+| After a charge that failed | The counts before that charge: a charge that fails charges nothing |
+| After the function returned | 0 and 0 (item 6) |
+
+8. The counts are deterministic. The usage at a call of a host function is
+   the same in every implementation (`02-evaluation.md` 10.1 item 2), so
+   `remaining()` gives the same counts in every implementation.
+9. `remaining()` gives no time. The deadline and cancellation reach the
+   function through the cancellation signal (item 3), which the host passes
+   to a nested run. A deadline limit of the environment (3.6.1) is measured
+   by the run from its own start and is not on the signal: a host that needs
+   a nested run to end by the caller's deadline gives it that time itself.
+   3.2.5 shows the use: a nested run that cannot pass the caller's budget.
 
 ### 3.5.3 What a host function returns
 

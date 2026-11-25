@@ -17,7 +17,7 @@ import { Source, SOURCE_LIMIT, validSourceLimit } from "../syntax/source.ts";
 import type { Position } from "../syntax/source.ts";
 import { arity, parseSignature } from "../types/typetext.ts";
 import { compileProgram, HostError } from "../eval/compile.ts";
-import type { CallHandle, CompileEnv, HostImpl } from "../eval/compile.ts";
+import type { CallHandle, CompileEnv, HostImpl, Remaining } from "../eval/compile.ts";
 import { LIMIT_CODES, RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
 import { ABSENT_VAR, Run } from "../eval/run.ts";
 import type { VarSource } from "../eval/run.ts";
@@ -76,8 +76,9 @@ import { renderDetail as renderDetailOf, renderJSON as renderJSONOf, renderLine 
 export { HostError, RisorError };
 export type { Diagnostic, Pos, Span, Usage, TemplateMode, SchemaOption };
 
-/** The handle a host function is called with (03 3.5): it charges steps and allocation units. */
+/** The handle a host function is called with (03 3.5): it charges steps and allocation units, and gives what is left. */
 export type Call = CallHandle;
+export type { Remaining };
 
 /** A completion (package F12, f12 3.1): the span it replaces and the candidates. */
 export interface Completion {

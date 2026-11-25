@@ -337,8 +337,18 @@ per scope.
   for `coalesce` and `choose` (`workflow:typecheck.go:611-725`).
 - **The call** is synchronous: the function returns before the run continues. It
   receives the arguments and a **call handle**, which gives the cancellation
-  signal, `charge(steps)` and `allocate(units)`. Whether it may wait for I/O is
-  the binding's matter (Part C).
+  signal, `charge(steps)`, `allocate(units)` and `remaining()`. Whether it may
+  wait for I/O is the binding's matter (Part C).
+- **What is left (D67).** `remaining()` gives the steps and the allocation
+  units left in the run: each limit less what the run has charged, with the
+  call's own step. A limit that is off gives no count, in the form each
+  binding uses to turn a limit off, so the result declares a nested run's
+  limits as it is. It gives no time: the deadline and cancellation reach a
+  nested run through the signal the host passes on. A host function that runs
+  another program, a tool that calls a tool, runs it with what is left and
+  then charges back the nested run's usage, so the nested run cannot pass the
+  caller's budget (`spec/core/03-host.md` 3.2.5, 3.5.2 items 7 to 9; issue
+  #640).
 - **Result.** A value of the declared type, or an error. An error is
   `function-error`, of class `host`, at the span of the call, with the host's
   error as the cause and its text as the message. `catch` catches it. A panic
@@ -1485,6 +1495,11 @@ type Call struct{ /* unexported */ }
 func (c *Call) Context() context.Context
 func (c *Call) Charge(steps int64) error   // return the error unchanged
 func (c *Call) Allocate(units int64) error // before building the result
+func (c *Call) Remaining() (steps, units int64) // NoLimit for a limit that is off
+
+// Budget declares the step and allocation limits as Remaining gives them.
+// Unlike a field of Limits, 0 is a limit of zero (R392).
+func Budget(steps, units int64) Decl
 
 // CallCheck is what a Rule sees. An Arg has a Type and an Expr.
 type CallCheck struct{ Args []Arg; Span Span }
@@ -1996,6 +2011,8 @@ export interface CallHandle {
   readonly signal?: AbortSignal;
   charge(steps: number): void;
   allocate(units: number): void;
+  /** What is left; null for a limit that is off. Takes the place of `limits`. */
+  remaining(): { steps: number | null; allocation: number | null };
 }
 
 export interface Limits { steps?: number; allocation?: number; timeoutMs?: number; depth?: number }
@@ -2287,8 +2304,11 @@ pub struct Call<'c> { /* ... */ }
 impl Call<'_> {
     pub fn charge(&mut self, steps: u64) -> Result<(), Stop>;
     pub fn allocate(&mut self, units: u64) -> Result<(), Stop>;
+    /// What is left; `None` for a limit that is off, as in `Limits`.
+    pub fn remaining(&self) -> Remaining;
     pub fn cancelled(&self) -> bool;
 }
+pub struct Remaining { pub steps: Option<u64>, pub allocation: Option<u64> }
 
 pub struct Limits { pub steps: Option<u64>, pub allocation: Option<u64>,
                     pub timeout: Option<std::time::Duration>, pub depth: u32 }
@@ -2637,6 +2657,7 @@ expression as a program, or absent when there is no part `i`.
 | The call handle | `Call` | `*Call` | `Call` | `Call` |
 | Charge steps | `charge` | `c.Charge(n)` | `c.charge(n)` | `c.charge(n)` |
 | Charge allocation units | `allocate` | `c.Allocate(n)` | `c.allocate(n)` | `c.allocate(n)` |
+| What is left of the budget | `remaining` | `c.Remaining()` | `c.remaining()` | `c.remaining()` |
 | A host function's error | `HostError` | any `error` | `HostError` | `HostError` |
 | Truthiness | `truthy` | `Truthy(v)` | `truthy(v)` | `truthy(&v)` |
 | A value as JSON text | `jsonText` | `JSONText(v)` | `jsonText(v)` | `json_text(&v)` |
