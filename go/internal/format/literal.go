@@ -137,6 +137,7 @@ func template(source string, readers bool) (string, *syntax.Error, *syntax.File,
 	}
 	sawAny := false
 	src := f.Runes()
+	ends := new(lineEnds) // one prefix count for the parts' runs
 	var sb strings.Builder
 	for _, s := range t.Segments {
 		whole := string(src[s.Span.Start:s.Span.End])
@@ -153,10 +154,10 @@ func template(source string, readers bool) (string, *syntax.Error, *syntax.File,
 				hasLine = true
 			}
 		}
-		out, saw := runReaders(src, toks, from, func(b *builder) part {
+		out, saw := run(src, toks, from, func(b *builder) part {
 			d := b.node(e)
 			return []part{d, b.closeLead(len(b.us)-1, true)}
-		}, 1<<30, readers)
+		}, 1<<30, ends, readers)
 		sawAny = sawAny || saw
 		out = strings.TrimRight(out, " ")
 		if hasLine || strings.ContainsRune(out, '\n') {

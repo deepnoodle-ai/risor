@@ -352,7 +352,7 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 | `Block` | `"{" i(H body) H "}"`, where body is the `const` lines and the result, separated by `H` and by empty lines as 2.9 says |
 | A branch of `if` or `try` | `"{" i(L body) L "}"`. A branch whose whole content is a `Block` is written with that block's `const` lines and result as its body: the two are one tree (`01-language.md` 4.2) |
 | `Cond`, form `if` | `g("if" sp "(" g(i(S ‹test›) S) ")" sp branch, then for each `else if`: sp "else" sp "if" sp "(" g(i(S ‹test›) S) ")" sp branch, then sp "else" sp branch)`. An `else` branch whose whole content is an `if` is written `else if`: the two are one tree |
-| `Cond`, form `?:` | `g(‹test› i(L "?" sp ‹then› L ":" sp ‹else›))` |
+| `Cond`, form `?:` | A chain of links (item 5), with tests t1 to tn, branches v1 to vn and the last `else` branch e: `g(link1 L ":" sp link2 L ":" sp ... L ":" sp linkn L ":" sp ‹e›)`, where linkk is `g(‹tk› i(L "?" sp ‹vk›))`. A vk that is a `Cond` of form `?:` is written `i(‹vk›)`. With one link: `g(g(‹t1› i(L "?" sp ‹v1›)) L ":" sp ‹e›)` |
 | `Try` | `g("try" sp branch sp "catch" sp, then "(" name ")" sp when it has a name, then branch)` |
 | `Binary` | The operands x1 to xn and operators o1 to on−1 of a run of one level (item 3): `g(‹x1› sp o1 i(L ‹x2› sp o2 L ‹x3› ... L ‹xn›))`. Unindented (item 4): the same without `i( )` |
 | `As` (F4) | `‹x› sp "as" sp type`, or `"is"`; type by 2.13 |
@@ -385,6 +385,32 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
    `assigned(v)`, the test of an `if` or an `else if`, or the guard of a `match`
    arm (F17). Its lines then stand at the indentation that the `assigned` or
    the parentheses already give.
+5. **A chain of `? :`.** A `Cond` of form `?:` whose `else` branch is a `Cond`
+   of form `?:` is one chain with it, and so on down the `else` branches: the
+   parser reads it flat (`01-language.md` 13.1), and the formatter writes it
+   flat. Each `Cond` in the chain is a **link**: its test, its `?` and its
+   branch, in a group of its own. The links, the `:` between them and the
+   last `else` branch are in the chain's group, with no indent of their own.
+   A `Cond` in a test or a then branch is not part of the chain: it is a chain
+   of its own.
+   1. A chain that fits stays on one line.
+   2. A chain that does not fit starts each link on its own line, at the
+      chain's indentation. The first line is `test ? branch`, each later line
+      `: test ? branch`, and the last line `: branch`.
+   3. A link that does not fit on its line breaks alone: its test stays on the
+      line, and `?` and its branch go on the next line, one level in. The other
+      links stay on one line each.
+   4. A then branch that is a chain of its own is one more level in, so its `:`
+      lines stand inside its `?`.
+   5. So the output grows with the chain's length, however long the chain is,
+      as for an `if` with `else if` parts:
+
+```
+const grade =
+  score >= 90 ? "excellent work, well done"
+  : score >= 70 ? "good work"
+  : "needs more practice";
+```
 
 ### 2.9 Sequences, commas and empty lines
 

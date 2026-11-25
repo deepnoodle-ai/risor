@@ -436,5 +436,19 @@
   "expect": {
    "formatted": "a == (b < c)\n"
   }
+ },
+ {
+  "name": "a comparison as the left operand of as needs none: as is not a comparison",
+  "format": "a < b as bool",
+  "expect": {
+   "formatted": "a < b as bool\n"
+  }
+ },
+ {
+  "name": "a comparison as the left operand of is needs none",
+  "format": "a == b is bool",
+  "expect": {
+   "formatted": "a == b is bool\n"
+  }
  }
 ]

@@ -99,8 +99,10 @@ func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 		if r == rLeft && lx < p || r == rRight && lx <= p {
 			return true
 		}
-		// A comparison inside a comparison (01-language.md 3.4 rule 13).
-		if (p == 5 || p == 6) && isCmp(x) {
+		// A comparison inside a comparison (01-language.md 3.4 rule 13). as
+		// and is stand at level 6 but are not comparisons: a < b as bool
+		// needs no pair.
+		if op != "as" && (p == 5 || p == 6) && isCmp(x) {
 			return true
 		}
 		return false

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 
@@ -139,4 +140,42 @@ func TestFormatLawsOverSuite(t *testing.T) {
 	}
 	t.Logf("%d texts, %d formatted", len(texts), n)
 	assert.True(t, n > 5000)
+}
+
+// TestFormatManyCommentsAfterOneToken checks that attaching comments takes
+// time linear in their number (issue #675). Counting the line ends from the
+// token for each comment took 3.3 s for 40,000 comments, and four times as
+// long for twice as many.
+func TestFormatManyCommentsAfterOneToken(t *testing.T) {
+	src := "1 " + strings.Repeat("/* c */ ", 80000)
+	start := time.Now()
+	out, err := risor.Format(src)
+	took := time.Since(start)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(out, "1 /* c */ /* c */"))
+	assert.True(t, took < 3*time.Second, "took %v", took)
+}
+
+// TestFormatTemplateManyCommentedParts checks that the parts of a template
+// share one count of the template's line ends, so a template of many parts
+// with comments formats in time linear in its length.
+func TestFormatTemplateManyCommentedParts(t *testing.T) {
+	src := strings.Repeat("x ${{ a /* c */ }}\n", 20000)
+	start := time.Now()
+	out, err := risor.FormatTemplate(src)
+	took := time.Since(start)
+	assert.NoError(t, err)
+	assert.Equal(t, strings.Repeat("x ${{ a /* c */ }}\n", 20000), out)
+	assert.True(t, took < 3*time.Second, "took %v", took)
+}
+
+// TestFormatLongConditionalChain checks that a broken `? :` chain is
+// written flat, so its output grows linearly with its length (issue #665).
+func TestFormatLongConditionalChain(t *testing.T) {
+	const n = 20000
+	src := strings.Repeat("true ? 1 : ", n) + "2"
+	out, err := risor.Format(src)
+	assert.NoError(t, err)
+	// Each link is a line: "true ? 1\n", then ": true ? 1\n".
+	assert.Equal(t, "true ? 1\n"+strings.Repeat(": true ? 1\n", n-1)+": 2\n", out)
 }

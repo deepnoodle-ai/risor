@@ -49,11 +49,9 @@ export interface FlatForm {
    * What the formatter does with the form at 10,000 links. `text`: the
    * formatted text parses to the same tree. A run of `*` and `/` is `text`
    * too: the formatter's pairs for the reader stop at 100 levels (f12 2.6
-   * item 3). `quadratic`: the document of f12 2.8 indents each `else` branch
-   * two more, so the text grows with the square of the length and is not made
-   * at this length.
+   * item 3).
    */
-  format: "text" | "quadratic";
+  format: "text";
   /** The kind and the type of hover's record on the last word, where the form states them. */
   hover?: { kind: string; type: string };
 }
@@ -287,7 +285,7 @@ export const FORMS: FlatForm[] = [
     type: "int",
     steps: () => 0,
     units: () => 0,
-    format: "quadratic",
+    format: "text",
   },
   {
     name: "else if",
