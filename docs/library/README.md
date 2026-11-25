@@ -28,41 +28,44 @@ Disabled by default. A host turns a group on in its environment declaration (`sp
 
 ## Reading signatures
 
+Signatures are written in Risor type text ([`spec/core/04-library.md`](../../spec/core/04-library.md) sections 2.6 and 2.7).
+
 | Notation | Meaning |
 | --- | --- |
 | `int`, `float` | `int` is a whole number (\|x\| <= 2^53 - 1); `float` is any finite number. An `int` fits `float`. |
 | `T[]`, `map<T>` | A list of `T`, and a map whose values have type `T`. |
 | `T \| null` | Either `T` or `null`. |
-| `where T: ordered` | All values must be numbers, or all must be strings. |
-| `where T: number` | All values must be numbers (`int` or `float`). |
+| `where T: ordered` | Requires the values of `T` to be ordered (all numbers, or all strings). |
+| `where T: number` | Requires the values of `T` to be numbers (`int` or `float`). |
 | `param?: T`, `...rest: T[]` | Optional parameter and variadic rest parameter. |
-| `!` after return type | The entry can fail with a value error (`invalid-argument` or `failed`). |
-| `never` | The expression never produces a value (always fails). |
+| `!` after return type | Marks an entry that can fail with kind `value` (`invalid-argument` or `failed`). |
+| `never` | The type of an expression that does not give a value (always fails). |
 
 ## Cost formulas
 
-Every function or method call charges **1 step** for the call itself; an entry's `Steps` formula is what the entry charges in addition. `Allocation units` is the memory budget charged for newly constructed values. Reading a constant charges `0` steps and `0` units. See [`spec/core/04-library.md`](../../spec/core/04-library.md) section 4 for the full cost model.
+Every function or method call charges **1 step** for the call itself; an entry's `Steps` formula is what the entry charges in addition. `Allocation units` is the memory budget charged for newly constructed values. Reading a constant charges `0` steps and `0` units. See [`spec/core/04-library.md`](../../spec/core/04-library.md) section 4, [`spec/packages/f06-groups.md`](../../spec/packages/f06-groups.md) section 3.4, [`spec/packages/f07-queries.md`](../../spec/packages/f07-queries.md) section 6.2, and [`spec/packages/f17-recursion.md`](../../spec/packages/f17-recursion.md) section 5.2.
 
-| Symbol | Meaning |
-| --- | --- |
-| `s` | The receiver of a string method. |
-| `x`, `prefix`, `suffix`, … | The argument of that name. |
-| `n` | Number of elements of the receiver list, or entries of the receiver map. |
-| `k` | Number of elements of the resulting list (for `flatMap`/`flat`, total inner elements; for `walk`, visited nodes). |
-| `v` | Number of elements visited before short-circuiting (`some`, `every`, `find`, `findIndex`). |
-| `p` | Number of parts returned by `split`. |
-| `g` | Number of distinct keys produced by `groupBy` or `countBy`. |
-| `e` | Comparison cost of `list.indexOf` (same as `x in xs`). |
-| `L` | `0` when `n < 2`; otherwise the least integer with `2 ** L >= n`. |
-| `w(a)` | String weight: code points, with code points above U+FFFF counted twice. |
-| `sz(a)` | String size: `floor(w(a) / 64)`, or `0` if `a` is not a string. |
-| `sz(result)` | Size of the returned string. |
-| `sz(elements)` | `floor(sum(w(el)) / 64)` over string elements of the receiver. |
-| `sz(keys)` | `floor(sum(w(key)) / 64)` over callback keys or map keys. |
-| `sz(arguments)` | `floor(sum(w(arg)) / 64)` over string arguments. |
-| `len(arguments)` | Number of arguments passed to the call. |
-| `walk(x)` | Steps charged by the recursive rendering walk over `x`. |
-| `c`, `u` | For `json.parse`: total JSON values parsed (`c`) and total units allocated (`u`). |
+| Symbol | Meaning | Spec |
+| --- | --- | --- |
+| `s` | The receiver of a string method. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `x`, `prefix`, `suffix`, … | The argument of that name. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `n` | The number of elements of the receiver list, or of entries of the receiver map. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `k` | The number of elements of the resulting list. For `flatMap` and `flat`, the total number of elements of the inner lists. For `walk`, the number of nodes visited (the length of the result). | [`04-library.md` 4.2](../../spec/core/04-library.md), [`f17-recursion.md` 5.2](../../spec/packages/f17-recursion.md) |
+| `v` | The number of elements visited by `some`, `every`, `find` or `findIndex`. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `p` | The number of parts `split` gives. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `g` | The number of distinct keys `groupBy`'s or `countBy`'s callback gave. | [`04-library.md` 4.2](../../spec/core/04-library.md), [`f07-queries.md` 6.2](../../spec/packages/f07-queries.md) |
+| `e` | What the comparisons of the list method `indexOf` charge: what `x in xs` charges for the same `x` and `xs` (`02-evaluation.md` 5.3). | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `L` | 0 when `n` is less than 2. Otherwise the least whole number with `2 ** L >= n`. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `w(a)` | The weight of string `a` (`02-evaluation.md`): its code points, with each code point above U+FFFF counted twice. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `sz(a)` | The size of string `a`: `w(a)` divided by 64, rounded down. 0 when `a` is not a string. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `sz(result)` | The size of the string the entry returns. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `sz(elements)` | The weights of the elements of the receiver that are strings, added, divided by 64, rounded down. 0 when no element is a string. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `sz(keys)` | The same, over string keys: for `sortBy`, `groupBy`, `minBy`, `maxBy`, `uniqueBy`, `indexBy` and `countBy`, the keys the callback gave, one for each element; for `toMap`, the `key` of every element; for a map method (`keys`, `values`, `entries`, `mapValues`), the keys of the receiver. | [`04-library.md` 4.2](../../spec/core/04-library.md), [`f07-queries.md` 6.2](../../spec/packages/f07-queries.md) |
+| `sz(arguments)` | The same, over the arguments that are strings. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `len(arguments)` | The number of arguments of the call. | [`04-library.md` 4.2](../../spec/core/04-library.md) |
+| `walk(x)` | What the rendering walk of `x` charges (`02-evaluation.md`), as `string` (`04-library.md` 5.1.2) and `json.stringify` (`f06-groups.md` 6.1) make it. | [`04-library.md` 4.2](../../spec/core/04-library.md), [`f06-groups.md` 3.4](../../spec/packages/f06-groups.md) |
+| `c` | For `json.parse`: the number of values that the JSON text describes (each `value` of the grammar of `f06-groups.md` 6.2.1, at every depth, the top one included; keys are not values). | [`f06-groups.md` 3.4](../../spec/packages/f06-groups.md) |
+| `u` | For `json.parse`: the units of the values that the JSON text describes (`f06-groups.md` 6.2.6). | [`f06-groups.md` 3.4](../../spec/packages/f06-groups.md) |
 
 ## Source files and regeneration
 

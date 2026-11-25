@@ -59,6 +59,184 @@ const CORE_PAGE_META = [
 
 const OPTIN_GROUP_ORDER = ["json", "time", "math", "base64"];
 
+export const COST_SYMBOLS = [
+  {
+    symbol: "`s`",
+    key: "s",
+    meaning: "The receiver of a string method.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`x`, `prefix`, `suffix`, …",
+    key: "arg",
+    meaning: "The argument of that name.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`n`",
+    key: "n",
+    meaning: "The number of elements of the receiver list, or of entries of the receiver map.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`k`",
+    key: "k",
+    meaning:
+      "The number of elements of the resulting list. For `flatMap` and `flat`, the total number of elements of the inner lists. For `walk`, the number of nodes visited (the length of the result).",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+      { file: "spec/packages/f17-recursion.md", section: "5.2 The entry", label: "`f17-recursion.md` 5.2" },
+    ],
+  },
+  {
+    symbol: "`v`",
+    key: "v",
+    meaning: "The number of elements visited by `some`, `every`, `find` or `findIndex`.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`p`",
+    key: "p",
+    meaning: "The number of parts `split` gives.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`g`",
+    key: "g",
+    meaning: "The number of distinct keys `groupBy`'s or `countBy`'s callback gave.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+      { file: "spec/packages/f07-queries.md", section: "6.2 Shared rules", label: "`f07-queries.md` 6.2" },
+    ],
+  },
+  {
+    symbol: "`e`",
+    key: "e",
+    meaning:
+      "What the comparisons of the list method `indexOf` charge: what `x in xs` charges for the same `x` and `xs` (`02-evaluation.md` 5.3).",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`L`",
+    key: "L",
+    meaning: "0 when `n` is less than 2. Otherwise the least whole number with `2 ** L >= n`.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`w(a)`",
+    key: "w(a)",
+    meaning:
+      "The weight of string `a` (`02-evaluation.md`): its code points, with each code point above U+FFFF counted twice.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`sz(a)`",
+    key: "sz(a)",
+    meaning: "The size of string `a`: `w(a)` divided by 64, rounded down. 0 when `a` is not a string.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`sz(result)`",
+    key: "sz(result)",
+    meaning: "The size of the string the entry returns.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`sz(elements)`",
+    key: "sz(elements)",
+    meaning:
+      "The weights of the elements of the receiver that are strings, added, divided by 64, rounded down. 0 when no element is a string.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`sz(keys)`",
+    key: "sz(keys)",
+    meaning:
+      "The same, over string keys: for `sortBy`, `groupBy`, `minBy`, `maxBy`, `uniqueBy`, `indexBy` and `countBy`, the keys the callback gave, one for each element; for `toMap`, the `key` of every element; for a map method (`keys`, `values`, `entries`, `mapValues`), the keys of the receiver.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+      { file: "spec/packages/f07-queries.md", section: "6.2 Shared rules", label: "`f07-queries.md` 6.2" },
+    ],
+  },
+  {
+    symbol: "`sz(arguments)`",
+    key: "sz(arguments)",
+    meaning: "The same, over the arguments that are strings.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`len(arguments)`",
+    key: "len(arguments)",
+    meaning: "The number of arguments of the call.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+    ],
+  },
+  {
+    symbol: "`walk(x)`",
+    key: "walk(x)",
+    meaning:
+      "What the rendering walk of `x` charges (`02-evaluation.md`), as `string` (`04-library.md` 5.1.2) and `json.stringify` (`f06-groups.md` 6.1) make it.",
+    sources: [
+      { file: "spec/core/04-library.md", section: "4.2 Symbols", label: "`04-library.md` 4.2" },
+      {
+        file: "spec/packages/f06-groups.md",
+        section: "3.4 Symbols of formula text",
+        label: "`f06-groups.md` 3.4",
+      },
+    ],
+  },
+  {
+    symbol: "`c`",
+    key: "c",
+    meaning:
+      "For `json.parse`: the number of values that the JSON text describes (each `value` of the grammar of `f06-groups.md` 6.2.1, at every depth, the top one included; keys are not values).",
+    sources: [
+      {
+        file: "spec/packages/f06-groups.md",
+        section: "3.4 Symbols of formula text",
+        label: "`f06-groups.md` 3.4",
+      },
+    ],
+  },
+  {
+    symbol: "`u`",
+    key: "u",
+    meaning: "For `json.parse`: the units of the values that the JSON text describes (`f06-groups.md` 6.2.6).",
+    sources: [
+      {
+        file: "spec/packages/f06-groups.md",
+        section: "3.4 Symbols of formula text",
+        label: "`f06-groups.md` 3.4",
+      },
+    ],
+  },
+];
+
 const OPTIN_GROUP_META = {
   json: {
     title: "JSON Group (`json`)",
@@ -815,44 +993,36 @@ function renderIndexPage({ files, entries, corePages, optinPages }) {
 
   lines.push("## Reading signatures");
   lines.push("");
+  lines.push(
+    "Signatures are written in Risor type text ([`spec/core/04-library.md`](../../spec/core/04-library.md) sections 2.6 and 2.7).",
+  );
+  lines.push("");
   lines.push("| Notation | Meaning |");
   lines.push("| --- | --- |");
   lines.push("| `int`, `float` | `int` is a whole number (\\|x\\| <= 2^53 - 1); `float` is any finite number. An `int` fits `float`. |");
   lines.push("| `T[]`, `map<T>` | A list of `T`, and a map whose values have type `T`. |");
   lines.push("| `T \\| null` | Either `T` or `null`. |");
-  lines.push("| `where T: ordered` | All values must be numbers, or all must be strings. |");
-  lines.push("| `where T: number` | All values must be numbers (`int` or `float`). |");
+  lines.push("| `where T: ordered` | Requires the values of `T` to be ordered (all numbers, or all strings). |");
+  lines.push("| `where T: number` | Requires the values of `T` to be numbers (`int` or `float`). |");
   lines.push("| `param?: T`, `...rest: T[]` | Optional parameter and variadic rest parameter. |");
-  lines.push("| `!` after return type | The entry can fail with a value error (`invalid-argument` or `failed`). |");
-  lines.push("| `never` | The expression never produces a value (always fails). |");
+  lines.push("| `!` after return type | Marks an entry that can fail with kind `value` (`invalid-argument` or `failed`). |");
+  lines.push("| `never` | The type of an expression that does not give a value (always fails). |");
   lines.push("");
 
   lines.push("## Cost formulas");
   lines.push("");
   lines.push(
-    "Every function or method call charges **1 step** for the call itself; an entry's `Steps` formula is what the entry charges in addition. `Allocation units` is the memory budget charged for newly constructed values. Reading a constant charges `0` steps and `0` units. See [`spec/core/04-library.md`](../../spec/core/04-library.md) section 4 for the full cost model.",
+    "Every function or method call charges **1 step** for the call itself; an entry's `Steps` formula is what the entry charges in addition. `Allocation units` is the memory budget charged for newly constructed values. Reading a constant charges `0` steps and `0` units. See [`spec/core/04-library.md`](../../spec/core/04-library.md) section 4, [`spec/packages/f06-groups.md`](../../spec/packages/f06-groups.md) section 3.4, [`spec/packages/f07-queries.md`](../../spec/packages/f07-queries.md) section 6.2, and [`spec/packages/f17-recursion.md`](../../spec/packages/f17-recursion.md) section 5.2.",
   );
   lines.push("");
-  lines.push("| Symbol | Meaning |");
-  lines.push("| --- | --- |");
-  lines.push("| `s` | The receiver of a string method. |");
-  lines.push("| `x`, `prefix`, `suffix`, … | The argument of that name. |");
-  lines.push("| `n` | Number of elements of the receiver list, or entries of the receiver map. |");
-  lines.push("| `k` | Number of elements of the resulting list (for `flatMap`/`flat`, total inner elements; for `walk`, visited nodes). |");
-  lines.push("| `v` | Number of elements visited before short-circuiting (`some`, `every`, `find`, `findIndex`). |");
-  lines.push("| `p` | Number of parts returned by `split`. |");
-  lines.push("| `g` | Number of distinct keys produced by `groupBy` or `countBy`. |");
-  lines.push("| `e` | Comparison cost of `list.indexOf` (same as `x in xs`). |");
-  lines.push("| `L` | `0` when `n < 2`; otherwise the least integer with `2 ** L >= n`. |");
-  lines.push("| `w(a)` | String weight: code points, with code points above U+FFFF counted twice. |");
-  lines.push("| `sz(a)` | String size: `floor(w(a) / 64)`, or `0` if `a` is not a string. |");
-  lines.push("| `sz(result)` | Size of the returned string. |");
-  lines.push("| `sz(elements)` | `floor(sum(w(el)) / 64)` over string elements of the receiver. |");
-  lines.push("| `sz(keys)` | `floor(sum(w(key)) / 64)` over callback keys or map keys. |");
-  lines.push("| `sz(arguments)` | `floor(sum(w(arg)) / 64)` over string arguments. |");
-  lines.push("| `len(arguments)` | Number of arguments passed to the call. |");
-  lines.push("| `walk(x)` | Steps charged by the recursive rendering walk over `x`. |");
-  lines.push("| `c`, `u` | For `json.parse`: total JSON values parsed (`c`) and total units allocated (`u`). |");
+  lines.push("| Symbol | Meaning | Spec |");
+  lines.push("| --- | --- | --- |");
+  for (const row of COST_SYMBOLS) {
+    const specLinks = row.sources
+      .map((src) => `[${src.label}](../../${src.file})`)
+      .join(", ");
+    lines.push(`| ${row.symbol} | ${row.meaning} | ${specLinks} |`);
+  }
   lines.push("");
 
   lines.push("## Source files and regeneration");

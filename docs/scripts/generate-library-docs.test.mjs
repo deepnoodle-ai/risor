@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  COST_SYMBOLS,
+  REPO_ROOT,
   SUITE_DIR,
   checkLibraryDocs,
   generateLibraryDocs,
@@ -148,5 +150,194 @@ test("generation is deterministic and --check detects drift and stale files", ()
     assert.equal(checkLibraryDocs(SUITE_DIR, dir).ok, true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function extractMarkdownSection(markdown, headingTitle) {
+  const lines = markdown.split("\n");
+  let start = -1;
+  let level = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (m && m[2] === headingTitle) {
+      start = i + 1;
+      level = m[1].length;
+      break;
+    }
+  }
+  assert.notEqual(start, -1, `Section "${headingTitle}" not found`);
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+/);
+    if (m && m[1].length <= level) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+function parseSymbolTable(sectionText) {
+  const rows = new Map();
+  const lines = sectionText.split("\n");
+  let inTable = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!inTable) {
+      if (line === "| Symbol | Meaning |" && lines[i + 1]?.trim() === "| --- | --- |") {
+        inTable = true;
+        i++;
+      }
+      continue;
+    }
+    if (!line.startsWith("|")) break;
+    const cells = line
+      .slice(1, -1)
+      .split("|")
+      .map((c) => c.trim());
+    if (cells.length >= 2) {
+      rows.set(cells[0], cells[1]);
+    }
+  }
+  return rows;
+}
+
+test("cost symbol table matches normative spec chapters and covers all suite formulas", () => {
+  const specCache = new Map();
+  const readSpec = (relPath) => {
+    if (!specCache.has(relPath)) {
+      specCache.set(relPath, readFileSync(join(REPO_ROOT, relPath), "utf8"));
+    }
+    return specCache.get(relPath);
+  };
+
+  // Parse the two normative symbol tables in the spec.
+  const coreSection = extractMarkdownSection(readSpec("spec/core/04-library.md"), "4.2 Symbols");
+  const coreTable = parseSymbolTable(coreSection);
+  assert.ok(coreTable.size > 0, "Expected symbols in spec/core/04-library.md 4.2");
+
+  const groupsSection = extractMarkdownSection(
+    readSpec("spec/packages/f06-groups.md"),
+    "3.4 Symbols of formula text",
+  );
+  const groupsTable = parseSymbolTable(groupsSection);
+  assert.ok(groupsTable.size > 0, "Expected symbols in spec/packages/f06-groups.md 3.4");
+
+  const primaryTables = new Map([
+    ["spec/core/04-library.md#4.2 Symbols", coreTable],
+    ["spec/packages/f06-groups.md#3.4 Symbols of formula text", groupsTable],
+  ]);
+
+  // 1. Every symbol in COST_SYMBOLS must be defined in its primary spec table
+  //    and mentioned in every additional cited spec section.
+  for (const row of COST_SYMBOLS) {
+    assert.ok(row.sources.length > 0, `COST_SYMBOLS row ${row.symbol} has no spec source`);
+    const [primary, ...extras] = row.sources;
+    const primaryKey = `${primary.file}#${primary.section}`;
+    const table = primaryTables.get(primaryKey);
+    assert.ok(table, `Unknown primary spec table ${primaryKey} for ${row.symbol}`);
+    assert.ok(
+      table.has(row.symbol),
+      `Symbol ${row.symbol} is not defined in ${primary.file} section ${primary.section}`,
+    );
+
+    for (const extra of extras) {
+      const sectionText = extractMarkdownSection(readSpec(extra.file), extra.section);
+      assert.ok(
+        sectionText.includes(row.symbol),
+        `Symbol ${row.symbol} is not referenced in ${extra.file} section ${extra.section}`,
+      );
+    }
+  }
+
+  // 2. Conversely, every symbol defined in spec/core/04-library.md 4.2 and
+  //    spec/packages/f06-groups.md 3.4 must appear in COST_SYMBOLS.
+  const docSymbols = new Set(COST_SYMBOLS.map((r) => r.symbol));
+  for (const sym of [...coreTable.keys(), ...groupsTable.keys()]) {
+    assert.ok(docSymbols.has(sym), `Spec symbol ${sym} is missing from COST_SYMBOLS`);
+  }
+  assert.equal(docSymbols.size, coreTable.size + groupsTable.size);
+
+  // 3. Verify F7's extensions to 4.2 symbols are cited in COST_SYMBOLS.
+  const queriesSection = extractMarkdownSection(
+    readSpec("spec/packages/f07-queries.md"),
+    "6.2 Shared rules",
+  );
+  const queriesSymbolsLine = queriesSection
+    .split("\n")
+    .find((line) => line.startsWith("| 4.2, symbols |"));
+  assert.ok(queriesSymbolsLine, "Expected `4.2, symbols` row in spec/packages/f07-queries.md 6.2");
+  for (const sym of ["`g`", "`sz(keys)`"]) {
+    assert.ok(queriesSymbolsLine.includes(sym));
+    const row = COST_SYMBOLS.find((r) => r.symbol === sym);
+    assert.ok(
+      row.sources.some((s) => s.file === "spec/packages/f07-queries.md"),
+      `COST_SYMBOLS row ${sym} must cite spec/packages/f07-queries.md`,
+    );
+  }
+
+  // 4. Every symbol and call appearing in suite/library*.json steps/units formulas
+  //    must be covered by COST_SYMBOLS.
+  const keys = new Set(COST_SYMBOLS.map((r) => r.key));
+  const { entries } = loadLibraryEntries(SUITE_DIR);
+
+  const checkFormula = (formula, entry, paramNames) => {
+    let expr = formula.trim();
+    const condMatch = expr.match(/^([A-Za-z_]\w*)\s+is\s+string\s*\?\s*(.+?)\s*:\s*(.+)$/);
+    const branches = condMatch ? [condMatch[2], condMatch[3]] : [expr];
+    if (condMatch) {
+      assert.ok(
+        paramNames.has(condMatch[1]),
+        `${entry.id}: conditional variable "${condMatch[1]}" in "${formula}" is not a parameter`,
+      );
+    }
+
+    for (const branch of branches) {
+      const stripped = branch.replace(/([A-Za-z_]\w*)\(([A-Za-z_]\w*)\)/g, (_, fn, arg) => {
+        const exact = `${fn}(${arg})`;
+        if (keys.has(exact)) return " 0 ";
+        assert.ok(
+          keys.has(`${fn}(a)`),
+          `${entry.id}: call "${exact}" in "${formula}" is not covered by COST_SYMBOLS`,
+        );
+        const validArg =
+          paramNames.has(arg) || (arg === "s" && entry.receiverKind === "string");
+        assert.ok(
+          validArg,
+          `${entry.id}: call argument "${arg}" in "${formula}" is neither a parameter nor string receiver`,
+        );
+        return " 0 ";
+      });
+
+      for (const m of stripped.matchAll(/\b([A-Za-z_]\w*)\b/g)) {
+        const sym = m[1];
+        assert.ok(
+          keys.has(sym),
+          `${entry.id}: symbol "${sym}" in "${formula}" is not covered by COST_SYMBOLS`,
+        );
+      }
+    }
+  };
+
+  for (const entry of entries) {
+    const paramNames = new Set(
+      entry.isConstant ? [] : parseSignature(entry.signature).params.map((p) => p.name),
+    );
+    checkFormula(entry.steps, entry, paramNames);
+    checkFormula(entry.units, entry, paramNames);
+  }
+
+  // 5. Verify README.md renders every COST_SYMBOLS row and cites spec/core/04-library.md 2.7.
+  const sigSection = extractMarkdownSection(readSpec("spec/core/04-library.md"), "2.7 Signatures").replace(
+    /\s+/g,
+    " ",
+  );
+  for (const token of ["`int`", "`float`", "`T[]`", "`map<T>`", "`T | null`", "`where T: ordered`", "`where T: number`", "`!`", "`never`"]) {
+    assert.ok(sigSection.includes(token), `Expected ${token} in spec/core/04-library.md 2.7`);
+  }
+
+  const index = generateLibraryDocs(SUITE_DIR).outputs.get("README.md");
+  for (const row of COST_SYMBOLS) {
+    assert.ok(index.includes(`| ${row.symbol} |`), `README.md missing cost symbol ${row.symbol}`);
   }
 });
