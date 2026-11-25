@@ -1180,8 +1180,8 @@ fn read_expect(v: &Json) -> V<Expect> {
                             (None, Some(c)) => {
                                 let c = c
                                     .as_str()
-                                    .filter(|c| !c.is_empty())
-                                    .ok_or("a failure's code is not a string")?;
+                                    .filter(|c| crate::diag::code::LIMIT.contains(c))
+                                    .ok_or("a failure's code is not a limit code")?;
                                 if i != a.len() - 1 {
                                     return Err("a failure with a code is not the last".into());
                                 }

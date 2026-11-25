@@ -894,7 +894,7 @@ function buildExpect(v: Json, where: string, render = false): Expect {
         if (!isObject(x) || !Object.keys(x).every((k) => k === "path" || k === "code" || k === "message")) fail(`${where}: a failure is not of its form`);
         if ("path" in x === "code" in x) fail(`${where}: a failure has neither or both of path and code`);
         if ("path" in x && !Array.isArray(x.path)) fail(`${where}: a failure's path is not a list`);
-        if ("code" in x && (typeof x.code !== "string" || x.code === "")) fail(`${where}: a failure's code is not a string`);
+        if ("code" in x && (typeof x.code !== "string" || !LIMIT_CODES.has(x.code))) fail(`${where}: a failure's code is not a limit code`);
         if ("code" in x && i !== fs.length - 1) fail(`${where}: a failure with a code is not the last`);
         if ("message" in x && typeof x.message !== "string") fail(`${where}: a failure's message`);
         return {

@@ -265,8 +265,8 @@ func (v *validator) failures(x any, where string) ([]Failure, error) {
 			return nil, v.invalid("%s: a failure has neither or both of path and code", where)
 		case hasCode:
 			s, ok := c.(string)
-			if !ok || s == "" {
-				return nil, v.invalid("%s: a failure's code is not a string", where)
+			if !ok || !diag.LimitCodes[s] {
+				return nil, v.invalid("%s: a failure's code is not a limit code", where)
 			}
 			if i != len(a)-1 {
 				return nil, v.invalid("%s: a failure with a code is not the last", where)

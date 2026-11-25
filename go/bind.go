@@ -806,12 +806,20 @@ func (a *adapter) conv(args []any, i int, dst reflect.Value) error {
 		return nil
 	}
 	f := d.fails[0]
-	where := fmt.Sprintf("argument %d of %s", i-a.first+1, a.what)
+	n, path := i-a.first+1, f.Path
+	if a.variadic && i == len(a.in)-1 && len(path) > 0 {
+		// The rest arguments were gathered into one list: name the
+		// argument by its place in the call, not in that list.
+		if k, ok := path[0].(float64); ok {
+			n, path = n+int(k), path[1:]
+		}
+	}
+	where := fmt.Sprintf("argument %d of %s", n, a.what)
 	if i < a.first {
 		where = "the receiver of " + a.what
 	}
-	if len(f.Path) > 0 {
-		where += ", at " + strings.TrimPrefix(render.Path(f.Path), ".")
+	if len(path) > 0 {
+		where += ", at " + strings.TrimPrefix(render.Path(path), ".")
 	}
 	return &argError{msg: where + ": " + f.Message}
 }

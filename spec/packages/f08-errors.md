@@ -1217,7 +1217,8 @@ These join the list of `03-host.md` 3.10.10.
 4. A case with `render` that breaks 7.4.
 5. `max` that is not a whole number of 1 or more; `failures` without `max`;
    `failures` that is not a list of objects of 7.5; an entry with both `path`
-   and `code`, or neither; an entry with `code` that is not the last.
+   and `code`, or neither; an entry with `code` that is not the last, or
+   whose code is not of class `limit` (`03-host.md` 3.7.4).
 
 ### 7.7 The JSON Schema of the additions
 

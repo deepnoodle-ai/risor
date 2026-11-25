@@ -330,9 +330,11 @@ func TestFuncVariadic(t *testing.T) {
 		`count()`:                  `0 {1 0}`,
 	}, func(src string) string { return bindOutcome(t, env, src, vars, false) })
 	// A program not checked reaches the adapter with any argument: a rest
-	// argument that does not convert is named by its place in the rest.
+	// argument that does not convert is named by its place in the call.
 	assert.Equal(t, bindOutcome(t, env, `join("-", "a", 5)`, vars, true),
-		`function-error host: argument 2 of join, at [1]: expected string, found 5 {1 0}`)
+		`function-error host: argument 3 of join: expected string, found 5 {1 0}`)
+	assert.Equal(t, bindOutcome(t, env, `concat([1], [2], "x")`, vars, true),
+		`function-error host: argument 3 of concat: expected any[], found "x" {1 4}`)
 
 	// Derived, the signature is refused; written, its last parameter must be
 	// rest.
