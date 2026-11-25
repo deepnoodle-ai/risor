@@ -98,3 +98,39 @@ func TestOutcomeDescriptionWithEmptyFacts(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, strings.HasPrefix(Outcome(f.Cases[0]), `{"name":"from the header","description":`), Outcome(f.Cases[0]))
 }
+
+func TestOutcomeEntryConformanceIncludesTraceAndLoadOmitsTrace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "entry-and-load.json")
+	assert.NoError(t, os.WriteFile(path, []byte(`[
+		{"name": "entry conformance", "source": "export const f = (x: int) => x;", "entry": "f", "args": ["bad"]},
+		{"name": "load conformance", "env": "{s: string}", "vars": {"s": "{\"port\": \"80\"}"}, "groups": ["json"], "returns": "{port: int}", "load": true, "source": "json.parse(s)"}
+	]`), 0o644))
+	f, err := casefile.LoadNoExpect(path)
+	assert.NoError(t, err)
+
+	entryLine := Outcome(f.Cases[0])
+	assert.True(t, strings.Contains(entryLine, `"path":[0],"trace":[]`), entryLine)
+
+	loadLine := Outcome(f.Cases[1])
+	assert.True(t, strings.Contains(loadLine, `"path":["port"]}`), loadLine)
+	assert.False(t, strings.Contains(loadLine, `"trace"`), loadLine)
+}
+
+func TestEntrySpanNullOnlyAllowedForRunPhase(t *testing.T) {
+	dir := t.TempDir()
+	badPath := filepath.Join(dir, "bad.json")
+	assert.NoError(t, os.WriteFile(badPath, []byte(`[
+		{"name": "declare null span", "source": "export const f = (x: int) => x;", "entry": "missing",
+		 "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name", "span": null}]}}
+	]`), 0o644))
+	_, err := casefile.Load(badPath)
+	assert.Error(t, err)
+
+	goodPath := filepath.Join(dir, "good.json")
+	assert.NoError(t, os.WriteFile(goodPath, []byte(`[
+		{"name": "run null span", "source": "export const f = (x: int) => x;", "entry": "f", "args": ["bad"],
+		 "expect": {"phase": "run", "diagnostics": [{"code": "not-conforming", "span": null, "path": [0]}]}}
+	]`), 0o644))
+	_, err = casefile.Load(goodPath)
+	assert.NoError(t, err)
+}

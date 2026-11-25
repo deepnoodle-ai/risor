@@ -526,3 +526,20 @@ fn export_const_conformance_caps_at_100_diagnostics() {
     assert_eq!(usage.steps, 0);
     assert_eq!(usage.allocated, 0);
 }
+
+#[test]
+fn annotated_entry_result_fitted_by_annotation() {
+    for (src, want) in [
+        (
+            "export const f = (): {a: int, b?: int} => ({a: 1});",
+            "{a: int}",
+        ),
+        ("export const f = (x: int): int | null => { x };", "int"),
+    ] {
+        let parsed = parse(src).unwrap();
+        let opts = CompileOptions::default().expect_entry("f", want);
+        let err = Env::default().check_with(&parsed, &opts).unwrap_err();
+        assert_eq!(err.phase, Phase::Check);
+        assert_eq!(err.first().code, "result-mismatch");
+    }
+}

@@ -268,4 +268,52 @@ export const whoRec = (req: { tok: Token }): string => req.tok.user();
     const cancelled = thrown(() => prog.call("who", [new Token("alice")], undefined, { signal: ac.signal }));
     assert.deepEqual([cancelled.phase, cancelled.diagnostics[0].code], ["run", "cancelled"]);
   });
+
+  test("throwing getters on host call inputs are translated into RisorError instead of escaping raw", () => {
+    const env = createEnv({});
+    const prog = env.compile(parse(`
+export const pair = (a: int, b: int) => a + b;
+export const rec = (r: { a: int }) => r.a;
+`));
+
+    // Getter throws during record conformance (conformAllWalk).
+    const throwsInConform = {
+      get a(): number {
+        throw new Error("conform getter boom");
+      },
+      b: 1,
+    };
+    const e1 = thrown(() => prog.callRecord("pair", throwsInConform));
+    assert.deepEqual([e1.phase, e1.diagnostics[0].code, e1.usage], ["run", "internal-error", { steps: 0, allocated: 0 }]);
+
+    // Getter passes conformance on first read, then throws during fields-mode argument extraction.
+    let reads = 0;
+    const throwsInExtract = {
+      get a(): number {
+        reads++;
+        if (reads > 1) throw new Error("extract getter boom");
+        return 1;
+      },
+      b: 2,
+    };
+    const e2 = thrown(() => prog.callRecordMeasure("pair", throwsInExtract));
+    assert.deepEqual([e2.phase, e2.diagnostics[0].code, e2.usage], ["run", "internal-error", { steps: 0, allocated: 0 }]);
+
+    // Positional call with a throwing getter on a record argument is also translated.
+    const throwsPositional = {
+      get a(): number {
+        throw new Error("positional getter boom");
+      },
+    };
+    const e3 = thrown(() => prog.call("rec", [throwsPositional]));
+    assert.deepEqual([e3.phase, e3.diagnostics[0].code, e3.usage], ["run", "internal-error", { steps: 0, allocated: 0 }]);
+  });
+
+  test("annotated entry point result is checked by its annotation, not body form", () => {
+    const env = createEnv({});
+    const e1 = thrown(() => env.check(parse("export const f = (): {a: int, b?: int} => ({a: 1});"), undefined, { f: "{a: int}" }));
+    assert.deepEqual([e1.phase, e1.diagnostics[0].code], ["check", "result-mismatch"]);
+    const e2 = thrown(() => env.check(parse("export const f = (x: int): int | null => { x };"), undefined, { f: "int" }));
+    assert.deepEqual([e2.phase, e2.diagnostics[0].code], ["check", "result-mismatch"]);
+  });
 });

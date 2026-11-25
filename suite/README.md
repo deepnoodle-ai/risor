@@ -78,7 +78,7 @@ A line is one JSON object with these fields, in this order.
 | `type`, `sites` | The inferred type as printed text, and the sites of the check, when the check passed. Absent for a case with `"check": false` |
 | `phase` | `null` when the run gave a value. Otherwise the phase that failed: `"parse"`, `"declare"`, `"check"` or `"run"` |
 | `value` | The result as JSON, when `phase` is null. An opaque value is written as in a case file: `{"$opaque": {"type": T, "id": N}}` |
-| `diagnostics` | When `phase` is not null, a list of objects with `code`, `span`, `class` and `message`. For `parse`: the first diagnostic, with `code` and `span`. For `declare`: each with `code` only, sorted by code. For `check`: every diagnostic in the order the types chapter gives, with `code` and `span`. For `run`: the one failure, with all four fields |
+| `diagnostics` | When `phase` is not null, a list of objects with `code`, `span`, `class` and `message`. For `parse`: the first diagnostic, with `code` and `span`. For `declare`: each with `code` only, sorted by code. For `check`: every diagnostic in the order the types chapter gives, with `code` and `span`. For `run`: the one failure of an ordinary run, with all four fields; for Call-stage argument or input conformance failures (package F16, slice D2), every failure reported by `ConformAll` in argument order (up to the 100-diagnostic cap), not truncated to one |
 | `steps`, `units` | The usage of the run, when the case got as far as a run |
 | `analysis` | Package F2 only, when the text parses: the analysis report |
 

@@ -128,6 +128,7 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             description,
             schema,
             schema_lawless,
+            entries,
             ran,
         } => {
             if ran.as_ref().is_some_and(|r| r.opaque_key) {
@@ -141,8 +142,9 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             if *schema_lawless && keys(old?).iter().any(|k| k == "schema") {
                 return None;
             }
+            let old = old?;
             let mut m = Vec::new();
-            for k in keys(old?) {
+            for k in keys(old) {
                 let v = match k.as_str() {
                     "type" => ty.clone().map(Json::Str),
                     "sites" => sites.clone(),
@@ -152,6 +154,10 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
                     "allocated" => ran.as_ref().map(|r| Json::Num(r.units as f64)),
                     "description" => description.clone(),
                     "schema" => schema.clone(),
+                    "entries" => {
+                        let es = entries_expect(old.get("entries")?, entries.as_deref()?)?;
+                        Some(es)
+                    }
                     "json" => ran.as_ref().and_then(|r| r.json.clone()).map(Json::Str),
                     "analysis" => {
                         super::run::analysis_text(case).and_then(|t| crate::json::parse(&t).ok())
@@ -204,6 +210,102 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             Some(obj(m))
         }
     }
+}
+
+/// Rewrite `expect.entries` preserving the fields each entry selected (`f09-testing.md` 4.4, `f16-entry-points.md` 12.10).
+fn entries_expect(old: &Json, got: &[crate::compile::CompiledEntry]) -> Option<Json> {
+    let old_arr = old.as_arr()?;
+    let mut fallback_keys: Vec<String> = vec!["name".into()];
+    let mut fallback_param_doc = false;
+    for oe in old_arr {
+        for k in keys(oe) {
+            if !fallback_keys.contains(&k) {
+                fallback_keys.push(k);
+            }
+        }
+        if oe
+            .get("params")
+            .and_then(Json::as_arr)
+            .is_some_and(|ps| ps.iter().any(|p| p.get("doc").is_some()))
+        {
+            fallback_param_doc = true;
+        }
+    }
+    let mut out = Vec::with_capacity(got.len());
+    for (i, g) in got.iter().enumerate() {
+        let matched = old_arr
+            .iter()
+            .find(|oe| oe.get("name").and_then(Json::as_str) == Some(g.name.as_str()))
+            .or_else(|| (old_arr.len() == got.len()).then(|| &old_arr[i]));
+        let selected: Vec<String> = match matched {
+            Some(oe) => {
+                let mut ks = keys(oe);
+                if !ks.iter().any(|k| k == "name") {
+                    ks.insert(0, "name".into());
+                }
+                ks
+            }
+            None => fallback_keys.clone(),
+        };
+        let param_doc = match matched {
+            Some(oe) => oe
+                .get("params")
+                .and_then(Json::as_arr)
+                .is_some_and(|ps| ps.iter().any(|p| p.get("doc").is_some())),
+            None => fallback_param_doc,
+        };
+        let mut m = Vec::new();
+        for k in selected {
+            let v = match k.as_str() {
+                "name" => Some(Json::Str(g.name.clone())),
+                "doc" => Some(g.doc.clone().map_or(Json::Null, Json::Str)),
+                "params" => Some(Json::Arr(
+                    g.params
+                        .iter()
+                        .map(|p| {
+                            let mut pm = vec![
+                                ("name".into(), p.name.clone().map_or(Json::Null, Json::Str)),
+                                ("type".into(), Json::Str(crate::check::ty::print(&p.ty))),
+                            ];
+                            if param_doc {
+                                pm.push((
+                                    "doc".into(),
+                                    p.doc.clone().map_or(Json::Null, Json::Str),
+                                ));
+                            }
+                            pm.push(("optional".into(), Json::Bool(p.optional)));
+                            Json::Obj(pm)
+                        })
+                        .collect(),
+                )),
+                "input" => Some(
+                    g.input_type
+                        .as_ref()
+                        .map_or(Json::Null, |t| Json::Str(crate::check::ty::print(t))),
+                ),
+                "inputSchema" => match &g.input_type {
+                    None => Some(Json::Null),
+                    Some(t) => {
+                        let s = crate::schema::schema_of(t).unwrap_or(Json::Null);
+                        if super::run::schema_difference(&s, t).is_some() {
+                            return None;
+                        }
+                        Some(s)
+                    }
+                },
+                "result" => g
+                    .result_type
+                    .as_ref()
+                    .map(|t| Json::Str(crate::check::ty::print(t))),
+                _ => None,
+            };
+            if let Some(v) = v {
+                m.push((k, v));
+            }
+        }
+        out.push(Json::Obj(m));
+    }
+    Some(Json::Arr(out))
 }
 
 /// The outcome written whole, for the difference `outcome` of a case with

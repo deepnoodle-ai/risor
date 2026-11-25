@@ -246,3 +246,61 @@ func TestEntryCallHostValueEdgeCases(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, "a\ufffdb")
 }
+
+func TestExpectEntryPreservedAcrossProgramExpectOptions(t *testing.T) {
+	env, err := risor.NewEnv()
+	assert.NoError(t, err)
+
+	expr, err := risor.Parse(`export const f = (): int => 1; 0`)
+	assert.NoError(t, err)
+
+	cases := []struct {
+		name string
+		opts []risor.CheckOption
+	}{
+		{"Expect after ExpectEntry", []risor.CheckOption{risor.ExpectEntry("f", "string"), risor.Expect("int")}},
+		{"Condition after ExpectEntry", []risor.CheckOption{risor.ExpectEntry("f", "string"), risor.Condition}},
+		{"ExpectSchema after ExpectEntry", []risor.CheckOption{risor.ExpectEntry("f", "string"), risor.ExpectSchema(map[string]any{"type": "integer"})}},
+		{"ExpectType after ExpectEntry", []risor.CheckOption{risor.ExpectEntry("f", "string"), risor.ExpectType(risor.TypeInt)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := env.Check(expr, tc.opts...)
+			var re *risor.Error
+			assert.True(t, errors.As(err, &re))
+			assert.Equal(t, re.Phase(), risor.PhaseCheck)
+			assert.Equal(t, re.Diagnostics[0].Code, "result-mismatch")
+		})
+	}
+
+	// Last program expectation still wins while keeping entry expectations.
+	_, err = env.Check(expr, risor.ExpectEntry("f", "int"), risor.Expect("string"), risor.Expect("int"))
+	assert.NoError(t, err)
+	_, err = env.Check(expr, risor.ExpectEntry("f", "int"), risor.Expect("int"), risor.Expect("string"))
+	var re *risor.Error
+	assert.True(t, errors.As(err, &re))
+	assert.Equal(t, re.Diagnostics[0].Code, "result-mismatch")
+}
+
+func TestAnnotatedEntryResultFittedByAnnotation(t *testing.T) {
+	env, err := risor.NewEnv()
+	assert.NoError(t, err)
+
+	// F16 12.3 items 1 & 5: an annotated entry point's result type T is its
+	// result annotation, not its narrower literal body form.
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{`export const f = (): {a: int, b?: int} => ({a: 1});`, `{a: int}`},
+		{`export const f = (x: int): int | null => { x };`, `int`},
+	} {
+		expr, err := risor.Parse(tc.src)
+		assert.NoError(t, err)
+		_, err = env.Check(expr, risor.ExpectEntry("f", tc.want))
+		var re *risor.Error
+		assert.True(t, errors.As(err, &re))
+		assert.Equal(t, re.Phase(), risor.PhaseCheck)
+		assert.Equal(t, re.Diagnostics[0].Code, "result-mismatch")
+	}
+}
