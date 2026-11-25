@@ -416,6 +416,8 @@ struct Cmt {
     /// Line ends in the blank space before and after it.
     before: u32,
     after: u32,
+    /// Attached as a leading comment (2.12 items 2 and 3).
+    leading: bool,
 }
 
 /// For each offset of a text, and its end, the line ends before it,
@@ -616,6 +618,7 @@ impl<'a> B<'a> {
                 line: ch.get(c.start as usize + 1) == Some(&'/'),
                 before: 0,
                 after: 0,
+                leading: false,
             })
             .collect();
         let mut prev_end = 0usize;
@@ -678,6 +681,7 @@ impl<'a> B<'a> {
                     continue;
                 }
             }
+            self.cm[ci].leading = true;
             let q = self.kidx.partition_point(|&k| self.t[k].span.start < c.end);
             let at = self.kidx.get(q).copied().unwrap_or(self.t.len());
             self.lead[at].push(ci);
@@ -812,9 +816,9 @@ impl<'a> B<'a> {
 
     /// The trailing comments of token `i` (2.12 item 4). `brace` marks the
     /// opening brace of a block, a branch or a `match`, which is followed by
-    /// a space or a break. After any other opening bracket, a first block
-    /// comment has no space before it, and the comments are followed by a
-    /// space when the closing bracket does not follow them.
+    /// a space or a break. After any other opening bracket, the first
+    /// trailing comment has no space before it, and a trailing block comment
+    /// is followed by a space when the closing bracket does not follow it.
     fn trail_doc(&mut self, i: usize, brace: bool) -> DocId {
         if !self.pass2 || self.trail[i].is_empty() {
             return self.empty();
@@ -831,7 +835,7 @@ impl<'a> B<'a> {
         for (j, &ci) in cs.iter().enumerate() {
             let line = self.cm[ci].line;
             let s = self.comment_text(ci);
-            if opening && !line && j == 0 {
+            if opening && j == 0 {
                 v.push(self.text(&s));
             } else {
                 v.push(self.sp());
@@ -846,6 +850,10 @@ impl<'a> B<'a> {
             v.push(self.sp());
         }
         self.list(v)
+    }
+
+    fn has_trailing_line_comment(&self, i: usize) -> bool {
+        self.pass2 && i < self.trail.len() && self.trail[i].iter().any(|&ci| self.cm[ci].line)
     }
 
     fn tok_doc(&mut self, i: usize, text: Option<DocId>, lead: bool, brace: bool) -> DocId {
@@ -1221,16 +1229,45 @@ impl<'a> B<'a> {
         }
     }
 
-    fn parens(&mut self, d: DocId) -> DocId {
-        let a = self.text("(");
-        let b = self.text(")");
-        self.list(vec![a, d, b])
+    /// F12 2.12 item 1: the outermost matching pair of parentheses directly
+    /// around `id`'s span, if the source has one.
+    fn kept_parens(&self, id: NodeId) -> Option<(usize, usize)> {
+        let span = self.ast.span(id);
+        let mut l = self.ti(span.start);
+        let mut r = self.ti(span.end);
+        let mut found = None;
+        while l > 0 && r < self.t.len() {
+            let nl = l - 1;
+            if matches!(self.t[nl].tok, Tok::Punct(P::LParen)) && self.partner[nl] == Some(r) {
+                found = Some((nl, r));
+                l = nl;
+                r += 1;
+            } else {
+                break;
+            }
+        }
+        found
+    }
+
+    fn parens_of(&mut self, id: NodeId, d: DocId) -> DocId {
+        match self.kept_parens(id) {
+            Some((open, close)) => {
+                let a = self.tk(open);
+                let b = self.tk(close);
+                self.list(vec![a, d, b])
+            }
+            None => {
+                let a = self.text("(");
+                let b = self.text(")");
+                self.list(vec![a, d, b])
+            }
+        }
     }
 
     fn sub(&mut self, id: NodeId, paren: bool) -> DocId {
         let d = self.node(id, true);
         if paren {
-            self.parens(d)
+            self.parens_of(id, d)
         } else {
             d
         }
@@ -1281,21 +1318,25 @@ impl<'a> B<'a> {
     fn pfn(&mut self, f: &PFn) -> DocId {
         let open = self.ti(f.span.start);
         let mut v = vec![self.tk(open)];
+        let n = f.params.len();
         for (i, (_, ws, t)) in f.params.iter().enumerate() {
             if i > 0 {
-                v.push(self.text(","));
-                // F12 2.12 item 5: the trailing comments of the last token
-                // of a parameter's type are written after its comma.
-                let last = self.tb(f.params[i - 1].2.span.end);
-                if self.pass2 && self.defer[last] {
-                    self.defer[last] = false;
-                    v.push(self.trail_doc(last, false));
-                }
                 v.push(self.sp());
             }
+            // F12 2.12 item 5: the trailing comments of the last token of a
+            // parameter's type are written after its comma.
+            let last = if i + 1 < n {
+                self.elem_begin(t.span)
+            } else {
+                None
+            };
             let w = self.ti(ws.start);
             v.push(self.tk(w));
             v.push(self.annotation(t));
+            if i + 1 < n {
+                v.push(self.text(","));
+                v.push(self.elem_end(last, t.span, false));
+            }
         }
         let close = self.partner[open].unwrap_or(open);
         v.push(self.tk(close));
@@ -1700,7 +1741,8 @@ impl<'a> B<'a> {
             let ti = self.indent(tl);
             let s2 = self.soft();
             let gl = self.list(vec![ti, s2]);
-            parts.push(self.group(gl));
+            let broken = self.has_trailing_line_comment(lp);
+            parts.push(self.push(D::Group(gl, broken)));
             parts.push(self.tk(rp));
             parts.push(self.sp());
             let bopen = rp + 1;
@@ -1840,6 +1882,10 @@ impl<'a> B<'a> {
         let mut d = self.sub(n, paren);
         while let Some((f, paren, fr, ok)) = frames.pop() {
             self.rdepth = fr;
+            let node_id = match &f {
+                SpineFrame::As(a) => *a,
+                SpineFrame::Run { ops, .. } => *ops.last().expect("an operator"),
+            };
             d = match f {
                 SpineFrame::As(a) => {
                     let NodeKind::As { x, ty, .. } = self.kind(a) else {
@@ -1855,7 +1901,7 @@ impl<'a> B<'a> {
                 SpineFrame::Run { ops, xs, indent } => self.run_doc(&ops, &xs, indent, d, ok),
             };
             if paren {
-                d = self.parens(d);
+                d = self.parens_of(node_id, d);
             }
         }
         self.rdepth = outer;
@@ -2037,7 +2083,8 @@ impl<'a> B<'a> {
             let gi = self.indent(gl);
             let s2 = self.soft();
             let gg = self.list(vec![gi, s2]);
-            v.push(self.group(gg));
+            let broken = self.has_trailing_line_comment(lp);
+            v.push(self.push(D::Group(gg, broken)));
             v.push(self.tk(rp));
         }
         v.push(self.sp());
@@ -2410,61 +2457,152 @@ impl<'a> B<'a> {
     // ---- program types (2.13) ----
 
     fn ptype(&mut self, span: Range) -> DocId {
+        let start = self.ti(span.start);
+        let mut end = start;
+        while end < self.t.len() && self.t[end].span.end <= span.end {
+            end += 1;
+        }
+        self.ptype_range(start, end)
+    }
+
+    fn ptype_range(&mut self, start: usize, end: usize) -> DocId {
         let mut v = Vec::new();
-        let mut k = self.ti(span.start);
-        let mut prev: Option<usize> = None;
-        while k < self.t.len() && self.t[k].span.end <= span.end {
-            let tok = self.t[k].tok.clone();
-            match tok {
-                Tok::Punct(P::Comma) => {
-                    let next_close = matches!(
-                        self.t.get(k + 1).map(|x| &x.tok),
-                        Some(Tok::Punct(P::RBrace))
-                    );
-                    if !next_close {
-                        v.push(self.text(","));
-                    }
-                    if let Some(p) = prev {
-                        if self.pass2 {
-                            self.defer[p] = false;
-                            v.push(self.trail_doc(p, false));
-                        }
-                    }
-                    if !next_close {
-                        v.push(self.sp());
-                    }
-                    prev = None;
+        let mut k = start;
+        while k < end {
+            match self.t[k].tok {
+                Tok::Punct(P::LBrace) => {
+                    let close = self.partner[k].unwrap_or(k);
+                    v.push(self.precord(k, close));
+                    k = close + 1;
                 }
                 Tok::Punct(P::Pipe) => {
                     v.push(self.sp());
                     v.push(self.tk(k));
                     v.push(self.sp());
-                    prev = Some(k);
+                    k += 1;
                 }
                 Tok::Punct(P::Colon) => {
                     v.push(self.tk(k));
                     v.push(self.sp());
-                    prev = Some(k);
+                    k += 1;
                 }
                 Tok::Punct(P::Lt) => {
                     self.angle[k] = true;
                     v.push(self.tk(k));
-                    prev = Some(k);
+                    k += 1;
                 }
                 _ => {
-                    let next_comma = matches!(
-                        self.t.get(k + 1).map(|x| &x.tok),
-                        Some(Tok::Punct(P::Comma))
-                    );
-                    if next_comma && self.pass2 {
-                        self.defer[k] = true;
-                    }
                     v.push(self.tk(k));
-                    prev = Some(k);
+                    k += 1;
                 }
             }
-            k += 1;
         }
+        self.list(v)
+    }
+
+    /// F12 2.13 item 2.2: a non-empty record type breaks when any comment
+    /// between its `{` and its `}` (nested record types included) is a leading
+    /// comment, a line comment, or a block comment that holds a line end.
+    fn record_breaks(&self, open: usize, close: usize) -> bool {
+        if !self.pass2 {
+            return false;
+        }
+        let start = self.t[open].span.end;
+        let end = self.t[close].span.start;
+        let i = self.cm.partition_point(|c| c.span.start < start);
+        for c in &self.cm[i..] {
+            if c.span.end > end {
+                break;
+            }
+            if c.leading
+                || c.line
+                || line_ends_at(
+                    self.ch,
+                    self.before,
+                    c.span.start as usize,
+                    c.span.end as usize,
+                ) > 0
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// F12 2.13 item 2: a record type from `{` at `open` to `}` at `close`.
+    fn precord(&mut self, open: usize, close: usize) -> DocId {
+        let mut elems: Vec<(usize, usize)> = Vec::new();
+        let mut i = open + 1;
+        let mut es = i;
+        while i < close {
+            match self.t[i].tok {
+                Tok::Punct(P::Comma) => {
+                    if es < i {
+                        elems.push((es, i));
+                    }
+                    i += 1;
+                    es = i;
+                }
+                Tok::Punct(P::LBrace | P::LParen | P::LBracket) => {
+                    i = self.partner[i].unwrap_or(i) + 1;
+                }
+                _ => i += 1,
+            }
+        }
+        if es < close {
+            elems.push((es, close));
+        }
+        if elems.is_empty() {
+            let o = self.tk(open);
+            let c = self.tk(close);
+            return self.list(vec![o, c]);
+        }
+        if !self.pass2 && close < self.close_mark.len() {
+            self.close_mark[close] = true;
+        }
+        let o = self.tk(open);
+        let n = elems.len();
+        if self.record_breaks(open, close) {
+            let mut inner = Vec::new();
+            for (k, &(a, b)) in elems.iter().enumerate() {
+                let outer = Range {
+                    start: self.t[a].span.start,
+                    end: self.t[b - 1].span.end,
+                };
+                inner.push(if k == 0 { self.soft() } else { self.line() });
+                if k > 0 && self.blank_before(outer) {
+                    inner.push(self.push(D::Blank));
+                }
+                let last = self.elem_begin(outer);
+                inner.push(self.ptype_range(a, b));
+                inner.push(self.text(","));
+                inner.push(self.elem_end(last, outer, k > 0));
+            }
+            inner.push(self.lead_doc(close));
+            let il = self.list(inner);
+            let ind = self.indent(il);
+            let s = self.soft();
+            let c = self.tok_doc(close, None, false, false);
+            let l = self.list(vec![o, ind, s, c]);
+            return self.push(D::Group(l, true));
+        }
+        let mut v = vec![o];
+        for (k, &(a, b)) in elems.iter().enumerate() {
+            let outer = Range {
+                start: self.t[a].span.start,
+                end: self.t[b - 1].span.end,
+            };
+            if k > 0 {
+                v.push(self.sp());
+            }
+            let last = self.elem_begin(outer);
+            v.push(self.ptype_range(a, b));
+            if k + 1 < n {
+                v.push(self.text(","));
+            }
+            v.push(self.elem_end(last, outer, k > 0));
+        }
+        v.push(self.tk(close));
         self.list(v)
     }
 

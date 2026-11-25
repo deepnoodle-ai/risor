@@ -410,7 +410,10 @@ These rows add to F12 2.8.
    every token of an annotation, are kept tokens (F12 2.12 item 1). So a
    comment after the `:` stays there: `(x: /* t */ int)` is written as it
    stands.
-2. A type line's type is written on one line, however long (F12 2.13).
+2. A type line's type is written by F12 2.13: on one line however long, except
+   that a record type breaks over lines when a comment between its `{` and `}`
+   is a leading comment, a line comment or a block comment that holds a line
+   end (such as a field's doc comment on its own line or spanning lines).
 3. An annotation is part of its parameter, which is an element of its
    sequence (F12 2.12 item 5): the trailing comments of the annotation's last
    token are written after the parameter's comma. So `(x: int /* c */, y)`

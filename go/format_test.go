@@ -179,3 +179,33 @@ func TestFormatLongConditionalChain(t *testing.T) {
 	// Each link is a line: "true ? 1\n", then ": true ? 1\n".
 	assert.Equal(t, "true ? 1\n"+strings.Repeat(": true ? 1\n", n-1)+": 2\n", out)
 }
+
+// TestFormatCommentsAndDocRecordTypes checks issues #701 and #702 directly,
+// including idempotency on each formatted output.
+func TestFormatCommentsAndDocRecordTypes(t *testing.T) {
+	cases := []struct {
+		src  string
+		want string
+	}{
+		{
+			src:  "(/* why */ a + b) * c",
+			want: "(/* why */ a + b) * c\n",
+		},
+		{
+			src:  "if ( // why\n  c) { 1 } else { 2 }",
+			want: "if (// why\n  c\n) {\n  1\n} else {\n  2\n}\n",
+		},
+		{
+			src:  "type Rec = {\n  /**\n   * Multi-line.\n   */\n  n: int\n};\n1",
+			want: "type Rec = {\n  /**\n   * Multi-line.\n   */\n  n: int,\n};\n1\n",
+		},
+	}
+	for _, tc := range cases {
+		got, err := risor.Format(tc.src)
+		assert.NoError(t, err)
+		assert.Equal(t, tc.want, got)
+		again, err := risor.Format(got)
+		assert.NoError(t, err)
+		assert.Equal(t, got, again)
+	}
+}

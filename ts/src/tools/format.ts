@@ -408,16 +408,22 @@ class Formatter {
   private trailDoc(cs: Comment[], i: number): Doc {
     const out: Doc[] = [];
     const t = this.toks[i];
-    // After an opening bracket, a first block comment has no space before it, and the
-    // comments are followed by a space when the closing bracket does not follow them.
+    // After an opening bracket, the first trailing comment (block or line) has no space before it,
+    // and when the last trailing comment is a block comment, one space follows unless the closing bracket is next.
     const opening = this.angles.has(i) || (t.kind === "punct" && OPEN.has(t.text) && !this.braces.has(i));
     cs.forEach((c, n) => {
-      if (opening && !c.line && n === 0) out.push(this.commentText(c));
+      if (opening && n === 0) out.push(this.commentText(c));
       else out.push(SP, this.commentText(c));
       if (c.line) out.push(AFTER);
     });
     if (opening && !cs[cs.length - 1].line && this.match.get(i) !== i + 1) out.push(SP);
     return out;
+  }
+
+  /** Whether token `i` has a trailing line comment attached to it (f12 2.8, f17 7.1). */
+  private hasTrailingLineComment(i: number): boolean {
+    const cs = this.trail.get(i);
+    return cs !== undefined && cs.some((c) => c.line);
   }
 
   /** Replace the markers by the comments' documents. */
@@ -571,7 +577,7 @@ class Formatter {
     return [this.lines(items), H, this.endMark(), H];
   }
 
-  /** f16 7.1: `"type" sp name sp "=" sp type ";"`, the type on one line. */
+  /** f16 7.1: `"type" sp name sp "=" sp type ";"`, the type by f12 2.13. */
   private typeItem(l: A.TypeLine): { d: Doc; first: number; semi: Doc } {
     const kw = this.at(l.span.start);
     const name = this.at(l.nameSpan.start);
@@ -637,10 +643,38 @@ class Formatter {
     }
   }
 
+  /** The outermost matching `(` and `)` directly around `e`, or null (f12 2.12 item 1). */
+  private keptParens(e: A.Expr): { lp: number; rp: number } | null {
+    const first = this.at(e.span.start);
+    const after = this.firstFrom(e.span.end);
+    let lp = first - 1;
+    let rp = after;
+    let found: { lp: number; rp: number } | null = null;
+    while (
+      lp >= 0 &&
+      rp < this.toks.length &&
+      this.toks[lp].kind === "punct" &&
+      this.toks[lp].text === "(" &&
+      this.match.get(lp) === rp
+    ) {
+      found = { lp, rp };
+      lp--;
+      rp++;
+    }
+    return found;
+  }
+
+  /** Wrap `d` in the kept parentheses directly around `e`, or new `(` and `)` (f12 2.12 item 1). */
+  private wrapParens(e: A.Expr, d: Doc): Doc {
+    const p = this.keptParens(e);
+    if (p !== null) return [this.tok(p.lp), d, this.tok(p.rp)];
+    return ["(", d, ")"];
+  }
+
   /** ‹x› with parentheses where 2.6 says. */
   private paren(e: A.Expr, need: boolean): Doc {
     const d = this.expr(e);
-    return need ? ["(", d, ")"] : d;
+    return need ? this.wrapParens(e, d) : d;
   }
 
   expr(e: A.Expr | A.Lambda, opts: { unindented?: boolean } = {}): Doc {
@@ -792,13 +826,13 @@ class Formatter {
         const left = n.x;
         const need = this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!");
         const kw = this.find(n.form, this.outer(left).end);
-        d = [need ? ["(", d, ")"] : d, SP, this.tok(kw), SP, this.typeDoc(n.typeSpan)];
+        d = [need ? this.wrapParens(left, d) : d, SP, this.tok(kw), SP, this.typeDoc(n.typeSpan)];
         i--;
         continue;
       }
       // A run of one level: from *n* outward, while the next operator is of the level and takes this one bare.
       const p = binLevel(n.op);
-      const head: Doc = [leftParen[i] ? ["(", d, ")"] : d, SP, this.opTok(n)];
+      const head: Doc = [leftParen[i] ? this.wrapParens(n.x, d) : d, SP, this.opTok(n)];
       const tail: Doc[] = [L, this.right(n.y, n, pairsOK[i])];
       let j = i - 1;
       for (; j >= 0; j--) {
@@ -825,7 +859,7 @@ class Formatter {
     this.rdepth++;
     const d = this.expr(y);
     this.rdepth--;
-    return ["(", d, ")"];
+    return this.wrapParens(y, d);
   }
 
   private opTok(n: A.Binary): Doc {
@@ -918,7 +952,9 @@ class Formatter {
       if (!first) {
         out.push(SP);
       }
-      out.push(this.tok(ifI), SP, this.tok(lp), group([indent([S, this.expr(c.test, { unindented: true })]), S]), this.tok(rp), SP);
+      const testInner: Doc = [indent([S, this.expr(c.test, { unindented: true })]), S];
+      const testGroup = this.hasTrailingLineComment(lp) ? brokenGroup(testInner) : group(testInner);
+      out.push(this.tok(ifI), SP, this.tok(lp), testGroup, this.tok(rp), SP);
       const lb = rp + 1;
       out.push(this.branch(lb, c.then));
       const thenEnd = this.match.get(lb)!;
@@ -979,7 +1015,7 @@ class Formatter {
     });
     this.closers.add(rb);
     inner.push(this.leadMark(rb));
-    return group([this.tok(kw), SP, subjText ? ["(", this.expr(s), ")"] : this.expr(s), SP, this.tok(lb), indent(inner), L, this.tok(rb, { noLead: true })]);
+    return group([this.tok(kw), SP, subjText ? this.wrapParens(s, this.expr(s)) : this.expr(s), SP, this.tok(lb), indent(inner), L, this.tok(rb, { noLead: true })]);
   }
 
   /** Whether the text of a match subject would begin with `{`, `if` or `try` (f12 2.6). */
@@ -1043,7 +1079,9 @@ class Formatter {
       const ifI = this.find("if", lastLitEnd);
       const lp = ifI + 1;
       const rp = this.match.get(lp)!;
-      guard = [SP, this.tok(ifI), SP, this.tok(lp), group([indent([S, this.expr(arm.guard, { unindented: true })]), S]), this.tok(rp)];
+      const guardInner: Doc = [indent([S, this.expr(arm.guard, { unindented: true })]), S];
+      const guardGroup = this.hasTrailingLineComment(lp) ? brokenGroup(guardInner) : group(guardInner);
+      guard = [SP, this.tok(ifI), SP, this.tok(lp), guardGroup, this.tok(rp)];
       guardEnd = this.toks[rp].end;
     }
     const arrow = this.find("=>", guardEnd);
@@ -1091,15 +1129,13 @@ class Formatter {
     const rp = this.match.get(lp)!;
     const out: Doc[] = [this.tok(lp)];
     // f16 7.1 item 4: a parameter is as a field of a program type: its trailing comments go after its comma.
-    let trail: Doc = "";
     fn.params.forEach((fp, n) => {
       const w = this.at(fp.span.start);
-      if (n > 0) out.push(this.tok(w - 1, { noTrail: true }), trail, this.trailMark(w - 1), SP);
+      if (n > 0) out.push(SP);
       const el = this.element([this.tok(w), this.tok(w + 1), SP, this.typeDoc(fp.type.span)]);
-      if (n < fn.params.length - 1) {
-        out.push(el.d);
-        trail = el.trail;
-      } else out.push(el.d, el.trail);
+      out.push(el.d);
+      if (n < fn.params.length - 1) out.push(",");
+      out.push(el.trail);
     });
     out.push(this.tok(rp), SP, this.tok(rp + 1), SP, this.typeDoc(fn.resultSpan));
     return out;
@@ -1146,32 +1182,26 @@ class Formatter {
     }
   }
 
-  /** A program type, on one line from its tokens (f12 2.13). */
+  /** A program type, from its tokens (f12 2.13). */
   private typeDoc(span: Span): Doc {
-    let i = this.at(span.start);
+    const from = this.at(span.start);
+    const to = this.firstFrom(span.end);
+    return this.typeRange(from, to);
+  }
+
+  /** Format a slice of tokens of a program type, `[from, to)` (f12 2.13). */
+  private typeRange(from: number, to: number): Doc {
     const out: Doc[] = [];
-    // A comma that is written: one before `}` is dropped.
-    const keptComma = (j: number): boolean => {
-      const c = this.toks[j];
-      if (c === undefined || c.start >= span.end || c.kind !== "punct" || c.text !== ",") return false;
-      const n = this.toks[j + 1];
-      return !(n !== undefined && n.text === "}" && n.start < span.end + 1);
-    };
-    // F12 2.12 item 5: the trailing comments of a field's last token are written after its comma.
-    let moved = -1;
-    while (i < this.toks.length && this.toks[i].start < span.end) {
+    let i = from;
+    while (i < to) {
       const t = this.toks[i];
-      if (t.kind === "punct" && t.text === ",") {
-        if (!keptComma(i)) {
-          i++;
-          continue;
-        }
-        out.push(this.tok(i, { noTrail: true }), moved >= 0 ? this.trailMark(moved) : "", this.trailMark(i), SP);
-        moved = -1;
-      } else if (keptComma(i + 1)) {
-        out.push(this.tok(i, { noTrail: true }));
-        moved = i;
-      } else if (t.kind === "punct" && t.text === "|") out.push(SP, this.tok(i), SP);
+      if (t.kind === "punct" && t.text === "{") {
+        const rb = this.match.get(i)!;
+        out.push(this.recordType(i, rb));
+        i = rb + 1;
+        continue;
+      }
+      if (t.kind === "punct" && t.text === "|") out.push(SP, this.tok(i), SP);
       else if (t.kind === "punct" && t.text === ":") out.push(this.tok(i), SP);
       else {
         if (t.kind === "punct" && t.text === "<") this.angles.add(i);
@@ -1180,6 +1210,71 @@ class Formatter {
       i++;
     }
     return out;
+  }
+
+  /** Whether a non-empty record type breaks over lines (f12 2.13 item 2.2). */
+  private recordBreaks(lb: number, rb: number): boolean {
+    const from = this.toks[lb].end;
+    const to = this.toks[rb].start;
+    let lo = 0;
+    let hi = this.comments.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (this.comments[m].start < from) lo = m + 1;
+      else hi = m;
+    }
+    for (let k = lo; k < this.comments.length && this.comments[k].start < to; k++) {
+      const c = this.comments[k];
+      if (!c.trailing || c.line || lineEnds(c.text) > 0) return true;
+    }
+    return false;
+  }
+
+  /** A record type `{ ... }` (f12 2.13 item 2). */
+  private recordType(lb: number, rb: number): Doc {
+    const elems: { start: number; end: number }[] = [];
+    let cur = lb + 1;
+    let j = cur;
+    while (j < rb) {
+      const t = this.toks[j];
+      if (t.kind === "punct" && OPEN.has(t.text)) {
+        j = this.match.get(j)! + 1;
+        continue;
+      }
+      if (t.kind === "punct" && t.text === ",") {
+        if (j > cur) elems.push({ start: cur, end: j });
+        cur = j + 1;
+      }
+      j++;
+    }
+    if (j > cur) elems.push({ start: cur, end: j });
+    if (elems.length === 0) return [this.tok(lb), this.tok(rb, { noLead: false })];
+    if (!this.recordBreaks(lb, rb)) {
+      const out: Doc[] = [this.tok(lb)];
+      elems.forEach((elSpan, n) => {
+        if (n > 0) out.push(SP);
+        const el = this.element(this.typeRange(elSpan.start, elSpan.end));
+        out.push(el.d);
+        if (n < elems.length - 1) out.push(",");
+        out.push(el.trail);
+      });
+      out.push(this.tok(rb));
+      return out;
+    }
+    this.closers.add(rb);
+    const inner: Doc[] = [S];
+    elems.forEach((elSpan, n) => {
+      const first = elSpan.start;
+      if (n > 0) {
+        this.elementStarts.add(first);
+        inner.push(L);
+        if (this.nlBefore[first] >= 2 && !this.lead.has(first)) inner.push(BLANK);
+      }
+      const el = this.element(this.typeRange(elSpan.start, elSpan.end));
+      inner.push(el.d, ",", el.trail);
+    });
+    inner.push(this.leadMark(rb));
+    return brokenGroup([this.tok(lb), indent(inner), S, this.tok(rb, { noLead: true })]);
   }
 
   // ---- chains (f12 2.11) -------------------------------------------------------
