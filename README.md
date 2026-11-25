@@ -231,6 +231,7 @@ the specification or an implementation.
 | How a host embeds it | [`spec/core/03-host.md`](spec/core/03-host.md) |
 | The design and its decisions | [`experiments/v3/design/00-overview.md`](experiments/v3/design/00-overview.md) |
 | The conformance suite | [`suite/README.md`](suite/README.md) |
+| Migrating from `expr` and Risor v2 | [`docs/migrating.md`](docs/migrating.md) |
 | Benchmarks against expr | [`docs/benchmarks.md`](docs/benchmarks.md) |
 
 ## License
