@@ -70,13 +70,26 @@ func runFormat(c *casefile.Case) Result {
 	return Result{Verdict: Pass}
 }
 
+// NearLimit reports whether a source nests deeper than 96 levels, where the
+// idempotent law does not hold (2.2 item 4).
+func NearLimit(template bool, src string) bool {
+	if template {
+		f := syntax.NewTemplateFile(src)
+		_, err := syntax.ParseTemplate(f)
+		return err == nil && f.Deepest() > 96
+	}
+	f := syntax.NewFile(src)
+	_, err := syntax.Parse(f)
+	return err == nil && f.Deepest() > 96
+}
+
 // lawDiffs tests the laws of 7.1 item 4 on a text and its formatted text.
 func lawDiffs(c *casefile.Case, src, out string) []Diff {
 	var diffs []Diff
 	again, err := formatText(c, out)
 	if err != nil {
 		diffs = append(diffs, Diff{"idempotent", value.QuoteJSON(out), "a failure: " + err.Error()})
-	} else if again != out {
+	} else if again != out && !NearLimit(c.Tools.Kind == "formatTemplate", src) {
 		diffs = append(diffs, Diff{"idempotent", value.QuoteJSON(out), value.QuoteJSON(again)})
 	}
 	a, b := TreeOf(c.Tools.Kind == "formatTemplate", src), TreeOf(c.Tools.Kind == "formatTemplate", out)

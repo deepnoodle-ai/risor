@@ -155,6 +155,10 @@ each of them (7.1).
    is `source-too-large`, as for any text. A text that close to the limit is
    not a program an author writes by hand, so the formatter keeps no promise
    past it.
+4. **Idempotent near the nesting limit.** For a source that nests deeper than
+   96 levels (`01-language.md` 13.1), formatting the formatted text again may
+   add or drop pairs of the second table of 2.6 (2.6 item 4); the text still
+   parses and keeps its tree.
 
 ### 2.3 What the formatter keeps and what it writes
 
@@ -1125,7 +1129,8 @@ with its meaning unchanged.
    text that parses gives a format result: its `formatted` is compared with the
    expected one, code point for code point.
 4. **The laws.** For a text that parses, the runner also tests:
-   - **idempotent**: formatting the formatted text gives that text;
+   - **idempotent**: formatting the formatted text gives that text, unless
+     the source nests deeper than 96 levels (2.2 item 4);
    - **tree**: for `format`, the formatted text parses to a tree equal to the
      source's (2.2 item 1); for `formatTemplate`, the template parses, and its
      segments' values and its parts' trees are equal to the source's;

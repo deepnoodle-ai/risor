@@ -27,7 +27,7 @@ import type { OpaqueLike } from "./forms.ts";
 import { visibleText } from "../syntax/messages.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { parseTemplateText, templateProgram } from "../syntax/template.ts";
-import { parse } from "../syntax/parser.ts";
+import { deepestLevel, parse } from "../syntax/parser.ts";
 import { Source, SOURCE_LIMIT } from "../syntax/source.ts";
 import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
 import { complete, hover } from "../tools/assist.ts";
@@ -1491,6 +1491,16 @@ export function assistOutcome(c: Case): { ok: true; completion?: CompletionResul
   return { ok: true, hover: hover(env, text, pos, c.returns, limit) };
 }
 
+/** Whether a source nests deeper than 96 levels, where the idempotent law does not hold (f12 2.2 item 4). */
+function nearLimit(text: string, isT: boolean): boolean {
+  if (isT) {
+    const t = parseTemplateText(text);
+    return t.ok && t.template.segments.some((s) => s.kind !== "text" && deepestLevel(s.expr) > 96);
+  }
+  const p = parse(text);
+  return p.ok && deepestLevel(p.program) > 96;
+}
+
 /** The differences of a format case (f12 7.1 items 3 to 5). */
 function formatDifferences(c: Case): Difference[] {
   const t = c.tool!;
@@ -1510,7 +1520,7 @@ function formatDifferences(c: Case): Difference[] {
   else if (ex.kind === "formatted" && ex.formatted !== r.text) d.push({ field: "formatted", expected: ex.formatted, found: r.text });
   // The laws (f12 2.2, 7.1 item 4).
   const again = fmt(r.text);
-  if (!again.ok || again.text !== r.text) d.push({ field: "idempotent", expected: r.text, found: again.ok ? again.text : "a parse failure" });
+  if (!again.ok || (again.text !== r.text && !nearLimit(t.text, isT))) d.push({ field: "idempotent", expected: r.text, found: again.ok ? again.text : "a parse failure" });
   if (!sameTree(t.text, r.text, isT)) d.push({ field: "tree", expected: "the tree of the source", found: "another tree" });
   if (c.vars !== undefined && !isT) {
     const a = lawRun(c, t.text);

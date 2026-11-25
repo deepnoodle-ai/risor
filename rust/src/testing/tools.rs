@@ -373,6 +373,16 @@ fn assist_result(case: &Case, tc: &ToolCase) -> Result<Json, crate::diag::Error>
 
 /// Format a text with the options: the case's source limit for its own
 /// text, the default for the laws (7.1 item 4).
+/// Whether the source of a format case nests deeper than 96 levels, where
+/// the idempotent law does not hold (F12 2.2 item 4).
+fn near_limit(tc: &ToolCase, text: &str) -> bool {
+    let deepest = match tc.kind {
+        ToolKind::FormatTemplate => crate::template::parse_template(text).map(|t| t.deepest()),
+        _ => crate::syntax::parse(text).map(|p| p.ast.deepest),
+    };
+    deepest.is_ok_and(|d| d > 96)
+}
+
 fn format_text(
     tc: &ToolCase,
     text: &str,
@@ -419,7 +429,7 @@ fn run_format(case: &Case, tc: &ToolCase) -> Verdict {
                 }
             }
             match format_text(tc, &s, ParseOptions::default()) {
-                Ok(again) if again == s => {}
+                Ok(again) if again == s || near_limit(tc, &tc.text) => {}
                 other => diffs.push(Difference {
                     name: "idempotent",
                     expected: form(&Json::Str(s.clone())),

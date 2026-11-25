@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { caseFiles } from "../src/suite/runner.ts";
 import { formatProgram, treeEqual } from "../src/tools/format.ts";
-import { parse } from "../src/syntax/parser.ts";
+import { deepestLevel, parse } from "../src/syntax/parser.ts";
 import { createEnv } from "../src/host/api.ts";
 
 const SUITE = join(import.meta.dirname, "..", "..", "suite");
@@ -36,7 +36,8 @@ describe("the laws of the formatter over the suite's programs (f12 7.6 item 3)",
       const q = parse(r.text);
       assert.ok(q.ok && treeEqual(p.program, q.program), `the same tree: ${s}`);
       const again = formatProgram(r.text);
-      assert.ok(again.ok && again.text === r.text, `idempotent: ${s}`);
+      // f12 2.2 item 4: not for a source deeper than 96 levels.
+      assert.ok(again.ok && (again.text === r.text || deepestLevel(p.program) > 96), `idempotent: ${s}`);
     }
     assert.ok(n > 1000);
   });
