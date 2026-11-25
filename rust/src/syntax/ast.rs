@@ -456,6 +456,10 @@ pub struct Node {
     /// The levels open at the node's first token (`01-language.md` 13.2
     /// rule 5): its nesting depth.
     pub level: u16,
+    /// For a `Binary` node, the highest level that a token of the node opens
+    /// (13.1), for the formatter's pairs for the reader (F12 2.6 item 3).
+    /// Zero for other nodes.
+    pub peak: u16,
 }
 
 impl Node {
@@ -495,6 +499,7 @@ impl Ast {
             span,
             outer: span,
             level,
+            peak: 0,
         });
         id
     }

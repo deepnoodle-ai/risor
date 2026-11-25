@@ -528,6 +528,12 @@ struct B<'a> {
     trail: Vec<Vec<usize>>,
     defer: Vec<bool>,
     docs: Docs,
+    /// Whether the pairs for the reader are written (2.6 item 3).
+    readers: bool,
+    /// The pairs for the reader written around the node being built.
+    rdepth: u32,
+    /// Whether a place for a pair for the reader was met.
+    saw_reader: std::cell::Cell<bool>,
 }
 
 impl<'a> B<'a> {
@@ -655,6 +661,9 @@ impl<'a> B<'a> {
             trail: vec![Vec::new(); n + 1],
             defer: vec![false; n + 1],
             docs: Docs::default(),
+            readers: false,
+            rdepth: 0,
+            saw_reader: std::cell::Cell::new(false),
         }
     }
 
@@ -1066,16 +1075,10 @@ impl<'a> B<'a> {
             },
             _ => {
                 let p = op_level(op);
-                let muls = |o: BinaryOp| matches!(o, BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem);
-                let eqs = |o: BinaryOp| matches!(o, BinaryOp::Eq | BinaryOp::Ne);
-                let extra = match cop {
-                    Some(BinaryOp::And) => op == BinaryOp::Or,
-                    Some(o) if role == Role::Left && muls(o) && muls(op) => {
-                        o != op || o == BinaryOp::Rem
-                    }
-                    Some(o) if role == Role::Left && eqs(o) && eqs(op) => true,
-                    _ => false,
-                };
+                // A comparison inside a comparison (`01-language.md` 3.4
+                // rule 13).
+                let cmp = |o: BinaryOp| matches!(op_level(o), 5 | 6);
+                let extra = cmp(op) && cop.is_some_and(cmp);
                 match role {
                     Role::Left => {
                         lc < p
@@ -1087,6 +1090,34 @@ impl<'a> B<'a> {
                 }
             }
         }
+    }
+
+    /// Whether `c` stands in a pair for the reader (2.6, the second table),
+    /// inside `depth` such pairs: only when the highest level that a token
+    /// of `c` opens in the plain text, plus the pairs around it, plus one, is
+    /// 100 or less (2.6 item 3). The formatter decides these pairs on its own
+    /// plain text, parsed again, so the peak is the level of the plain text.
+    fn reader(&self, op: BinaryOp, c: NodeId, role: Role, depth: u32) -> bool {
+        let Some(cop) = self.bin_op(c) else {
+            return false;
+        };
+        if self.paren_bin(op, c, role) {
+            return false;
+        }
+        let muls = |o: BinaryOp| matches!(o, BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem);
+        let row = (cop == BinaryOp::And && op == BinaryOp::Or)
+            || (role == Role::Left && muls(cop) && muls(op) && (cop != op || cop == BinaryOp::Rem));
+        if !row {
+            return false;
+        }
+        self.saw_reader.set(true);
+        self.readers && u32::from(self.ast.node(c).peak) + depth < 100
+    }
+
+    /// Parentheses around an operand of a binary operator: by the first
+    /// table of 2.6, or for the reader.
+    fn paren_bin_at(&self, op: BinaryOp, c: NodeId, role: Role, depth: u32) -> bool {
+        self.paren_bin(op, c, role) || self.reader(op, c, role, depth)
     }
 
     fn paren_receiver(&self, c: NodeId) -> bool {
@@ -1115,7 +1146,7 @@ impl<'a> B<'a> {
                     n = *test;
                 }
                 NodeKind::Binary { op, x, .. } => {
-                    if self.paren_bin(*op, *x, Role::Left) {
+                    if self.paren_bin_at(*op, *x, Role::Left, self.rdepth) {
                         return false;
                     }
                     n = *x;
@@ -1699,32 +1730,43 @@ impl<'a> B<'a> {
     /// builds the documents on the way back up. The documents are made in
     /// the order a recursion would make them: the innermost first.
     fn spine(&mut self, id: NodeId, indent: bool) -> DocId {
-        let mut frames: Vec<(SpineFrame, bool)> = Vec::new();
+        // Each frame keeps the pairs for the reader around it, which are
+        // decided from the outermost in (2.6 item 3).
+        let mut frames: Vec<(SpineFrame, bool, u32)> = Vec::new();
         let mut n = id;
         let mut indent = indent;
         // Whether the document of `n` stands in parentheses.
         let mut paren = false;
+        let outer = self.rdepth;
+        let mut r = outer;
         loop {
             match self.kind(n) {
                 NodeKind::As { x, .. } => {
-                    frames.push((SpineFrame::As(n), paren));
+                    frames.push((SpineFrame::As(n), paren, r));
                     paren = self.paren_as(*x);
                     n = *x;
                 }
                 NodeKind::Binary { .. } => {
-                    let (ops, xs) = self.run(n);
+                    let (ops, xs) = self.run(n, r);
                     let first = xs[0];
                     let op0 = self.bin_op(ops[0]).expect("a binary");
-                    frames.push((SpineFrame::Run { ops, xs, indent }, paren));
-                    paren = self.paren_bin(op0, first, Role::Left);
+                    frames.push((SpineFrame::Run { ops, xs, indent }, paren, r));
+                    let need = self.paren_bin(op0, first, Role::Left);
+                    let rd = !need && self.reader(op0, first, Role::Left, r);
+                    paren = need || rd;
+                    if rd {
+                        r += 1;
+                    }
                     n = first;
                 }
                 _ => break,
             }
             indent = true;
         }
+        self.rdepth = r;
         let mut d = self.sub(n, paren);
-        while let Some((f, paren)) = frames.pop() {
+        while let Some((f, paren, fr)) = frames.pop() {
+            self.rdepth = fr;
             d = match f {
                 SpineFrame::As(a) => {
                     let NodeKind::As { x, ty, .. } = self.kind(a) else {
@@ -1743,13 +1785,15 @@ impl<'a> B<'a> {
                 d = self.parens(d);
             }
         }
+        self.rdepth = outer;
         d
     }
 
     /// A run of operators of one level along the left operands of the
     /// operator `id` (2.8 item 4): its operators, and its operands, both in
-    /// the order of the text.
-    fn run(&self, id: NodeId) -> (Vec<NodeId>, Vec<NodeId>) {
+    /// the order of the text. `depth` counts the pairs for the reader around
+    /// it.
+    fn run(&self, id: NodeId, depth: u32) -> (Vec<NodeId>, Vec<NodeId>) {
         let p = self.bin_op(id).map(op_level);
         let mut ops: Vec<NodeId> = Vec::new();
         let mut xs: Vec<NodeId> = Vec::new();
@@ -1760,7 +1804,7 @@ impl<'a> B<'a> {
             if let Some(xo) = self.bin_op(*x) {
                 if Some(op_level(xo)) == p
                     && xo != BinaryOp::Pow
-                    && !self.paren_bin(*o, *x, Role::Left)
+                    && !self.paren_bin_at(*o, *x, Role::Left, depth)
                 {
                     n = *x;
                     continue;
@@ -1791,8 +1835,16 @@ impl<'a> B<'a> {
                 self.tk(k)
             };
             opdocs.push(od);
-            let pr = self.paren_bin(oop, y, Role::Right);
-            rest.push(self.sub(y, pr));
+            if self.paren_bin(oop, y, Role::Right) {
+                rest.push(self.sub(y, true));
+            } else if self.reader(oop, y, Role::Right, self.rdepth) {
+                self.rdepth += 1;
+                let d = self.sub(y, true);
+                self.rdepth -= 1;
+                rest.push(d);
+            } else {
+                rest.push(self.sub(y, false));
+            }
         }
         // g(x1 sp o1 i(L x2 sp o2 L x3 ... L xn))
         let s = self.sp();
@@ -2435,6 +2487,9 @@ fn op_level(op: BinaryOp) -> u8 {
 }
 
 /// Build the document twice (the module's comment says why) and lay it out.
+/// The formatted text, and whether a place for a pair for the reader was
+/// met. `readers` turns those pairs on.
+#[allow(clippy::too_many_arguments)]
 fn run(
     ch: &[char],
     before: &[u32],
@@ -2443,8 +2498,10 @@ fn run(
     raw: &[Token],
     comments: &[Range],
     width: Option<i64>,
-) -> String {
+    readers: bool,
+) -> (String, bool) {
     let mut b = B::new(ch, before, ast, raw, comments);
+    b.readers = readers;
     b.node(root, true);
     b.attach();
     let d = b.node(root, true);
@@ -2452,15 +2509,30 @@ fn run(
     while s.ends_with([' ', '\n']) {
         s.pop();
     }
-    s
+    (s, b.saw_reader.get())
 }
 
 /// The formatted text of a program (2.1), or its `parse` diagnostics.
+///
+/// The pairs for the reader (2.6) are written only where the text inside
+/// them stays within 100 levels, decided on the levels of the plain text:
+/// the formatted text without them (2.6 item 3). So a program with a place
+/// for one is formatted twice: to the plain text, and then the plain text,
+/// parsed again, with the pairs.
 pub fn format(text: &str) -> Result<String, Error> {
+    let (s, saw) = format_with(text, false)?;
+    if !saw {
+        return Ok(s);
+    }
+    let (s, _) = format_with(&s, true).expect("the plain text parses");
+    Ok(s)
+}
+
+fn format_with(text: &str, readers: bool) -> Result<(String, bool), Error> {
     let parsed = crate::syntax::parse(text)?;
     let src = &parsed.source;
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
-    let mut s = run(
+    let (mut s, saw) = run(
         src.chars(),
         &line_ends_before(src.chars()),
         &parsed.ast,
@@ -2468,13 +2540,26 @@ pub fn format(text: &str) -> Result<String, Error> {
         &toks,
         &comments,
         Some(WIDTH),
+        readers,
     );
     s.push('\n');
+    Ok((s, saw))
+}
+
+/// The formatted text of a template (2.14), or its `parse` diagnostics. It
+/// is formatted twice when a part has a place for a pair for the reader, as
+/// a program is.
+pub fn format_template(text: &str) -> Result<String, Error> {
+    let (s, saw) = format_template_with(text, false)?;
+    if !saw {
+        return Ok(s);
+    }
+    let (s, _) = format_template_with(&s, true).expect("the plain text parses");
     Ok(s)
 }
 
-/// The formatted text of a template (2.14), or its `parse` diagnostics.
-pub fn format_template(text: &str) -> Result<String, Error> {
+fn format_template_with(text: &str, readers: bool) -> Result<(String, bool), Error> {
+    let mut saw_any = false;
     let t = parse_template(text)?;
     let src: &Source = t.source();
     let ch = src.chars();
@@ -2502,7 +2587,8 @@ pub fn format_template(text: &str) -> Result<String, Error> {
                     out.push_str(&as_is);
                     continue;
                 }
-                let s = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None);
+                let (s, saw) = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None, readers);
+                saw_any |= saw;
                 if s.contains('\n') {
                     out.push_str(&as_is);
                 } else {
@@ -2513,7 +2599,7 @@ pub fn format_template(text: &str) -> Result<String, Error> {
             }
         }
     }
-    Ok(out)
+    Ok((out, saw_any))
 }
 
 // ---- equal trees (2.2 item 1) --------------------------------------------------

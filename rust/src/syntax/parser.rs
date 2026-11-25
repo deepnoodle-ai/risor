@@ -92,7 +92,7 @@ fn parse_with(text: &str, core: bool) -> Result<Expr, Error> {
 }
 
 /// The `parse` codes of Core and of F3 and F4 (`01-language.md` 14.2).
-const CORE_CODES: [&str; 14] = [
+const CORE_CODES: [&str; 15] = [
     code::UNEXPECTED_TOKEN,
     code::UNEXPECTED_CHARACTER,
     code::UNTERMINATED_STRING,
@@ -107,6 +107,7 @@ const CORE_CODES: [&str; 14] = [
     code::TEXT_BLOCK_OPEN,
     code::TEXT_BLOCK_CLOSE,
     code::TEXT_BLOCK_INDENT,
+    code::CHAINED_COMPARISON,
 ];
 
 /// Parse the parts of a template (F2 2.2, 2.3). `toks` holds each part's
@@ -482,7 +483,11 @@ impl<'a> Parser<'a> {
 
     fn binary_node(&mut self, op: BinaryOp, x: NodeId, y: NodeId) -> NodeId {
         let span = self.outer(x).to(self.outer(y));
-        self.node(NodeKind::Binary { op, x, y }, span)
+        let id = self.node(NodeKind::Binary { op, x, y }, span);
+        // `max_level` counts from the start of the innermost `binary` or
+        // right operand, which is where this node starts.
+        self.ast.nodes[id.index()].peak = self.max_level as u16;
+        id
     }
 
     // ---- programs, blocks and branches ----------------------------------
@@ -820,15 +825,23 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// `Binary = Or | Coal` (3.2 rule 4).
+    /// `Binary = Or | Coal` (3.2 rule 4). `max_level` counts from here, for
+    /// the peak of each `Binary` node (F12 2.6 item 3).
     fn binary(&mut self) -> R<NodeId> {
-        let left = self.bin(PREC_ADD)?;
+        let outer_max = std::mem::replace(&mut self.max_level, self.level);
+        let e = self.binary_inner();
+        self.max_level = outer_max.max(self.max_level);
+        e
+    }
+
+    fn binary_inner(&mut self) -> R<NodeId> {
+        let left = self.bin(PREC_ADD, false)?;
         if self.at_punct(P::QQ) {
             let mut acc = left;
             while self.at_punct(P::QQ) {
                 let op = self.bump();
                 self.open(op.span)?;
-                let right = self.bin(PREC_ADD)?;
+                let right = self.bin(PREC_ADD, false)?;
                 self.close();
                 acc = self.binary_node(BinaryOp::Coalesce, acc, right);
             }
@@ -839,7 +852,7 @@ impl<'a> Parser<'a> {
             }
             return Ok(acc);
         }
-        let e = self.bin_rest(left, PREC_OR)?;
+        let e = self.bin_rest(left, PREC_OR, false)?;
         if self.at_punct(P::QQ) {
             let e = self.unexpected(self.peek());
             return Err(self.tag(e, Rule::Coalesce));
@@ -881,16 +894,21 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn bin(&mut self, min: u8) -> R<NodeId> {
+    /// A chain of binary operators of level `min` or tighter. `in_cmp` is
+    /// true when it is the right operand of a comparison operator.
+    fn bin(&mut self, min: u8, in_cmp: bool) -> R<NodeId> {
         let lhs = self.unary()?;
-        self.bin_rest(lhs, min)
+        self.bin_rest(lhs, min, in_cmp)
     }
 
-    fn bin_rest(&mut self, mut lhs: NodeId, min: u8) -> R<NodeId> {
+    fn bin_rest(&mut self, mut lhs: NodeId, min: u8, in_cmp: bool) -> R<NodeId> {
+        // Whether `lhs` is a comparison written without parentheses.
+        let mut lhs_cmp = false;
         loop {
             // F4 2.4: `as` and `is` stand at level 6, left-associative.
             if min <= PREC_REL && (self.at_word("as") || self.at_word("is")) {
                 lhs = self.as_test(lhs)?;
+                lhs_cmp = false;
                 continue;
             }
             let Some((op, prec)) = self.binop() else {
@@ -915,10 +933,20 @@ impl<'a> Parser<'a> {
             } else {
                 self.bump().span
             };
+            // 3.4 rule 13: comparisons (levels 5 and 6) do not chain. Found
+            // at the second operator, before it opens a level (14.1 item 4).
+            let cmp = prec == 5 || prec == PREC_REL;
+            if cmp && (lhs_cmp || in_cmp) {
+                return Err(self.perr(code::CHAINED_COMPARISON, op_span, Rule::Final));
+            }
             self.open(op_span)?;
-            let rhs = self.bin(prec + 1)?;
+            let outer_max = std::mem::replace(&mut self.max_level, self.level);
+            let rhs = self.bin(prec + 1, cmp);
+            self.max_level = outer_max.max(self.max_level);
+            let rhs = rhs?;
             self.close();
             lhs = self.binary_node(op, lhs, rhs);
+            lhs_cmp = cmp;
         }
         Ok(lhs)
     }
