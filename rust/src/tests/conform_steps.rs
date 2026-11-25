@@ -108,6 +108,39 @@ fn the_options_give_the_limit() {
     );
 }
 
+/// F8 6.4 step 1: when the first walk ends at the depth limit, the list is
+/// that diagnostic alone, also after an earlier failure and with no step
+/// limit (the decode, R324). Here the rest loop fails at `a`, then goes on
+/// into `b`, which nests past 200.
+#[test]
+fn a_depth_limit_after_an_early_failure_is_the_whole_list() {
+    let env = Env::builder()
+        .named_type("Rest", "{...Rest | int}")
+        .build()
+        .unwrap();
+    let t = env.parse_type("Rest").unwrap();
+    let mut deep = crate::Data::Int(1);
+    for _ in 0..201 {
+        deep = crate::Data::Map([("b".to_string(), deep)].into_iter().collect());
+    }
+    let top = crate::Data::Map(
+        [
+            ("a".to_string(), crate::Data::Str("x".into())),
+            ("b".to_string(), deep),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    let v = crate::Value::from_data(&top);
+    let d = crate::conform(&v, &t).unwrap_err();
+    assert_eq!(d.code, "depth-exceeded");
+    for steps in [Some(crate::conform::FREE_STEPS), None] {
+        let all = crate::conform_all_with(&v, &t, 1, &ConformOptions { steps });
+        let codes: Vec<_> = all.iter().map(|d| d.code).collect();
+        assert_eq!(codes, ["depth-exceeded"], "steps {steps:?}");
+    }
+}
+
 /// The environment's step limit plays no part (R322).
 #[test]
 fn the_environment_limit_plays_no_part() {
