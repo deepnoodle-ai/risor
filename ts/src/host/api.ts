@@ -84,22 +84,31 @@ export type { Remaining };
 
 /** A completion (package F12, f12 3.1): the span it replaces and the candidates. */
 export interface Completion {
+  /** The source span of the prefix to replace with a candidate's `insert` text. */
   span: Span;
+  /** The completion candidates, in display order. */
   items: Candidate[];
 }
 
 /** A hover record (package F12, f12 3.13). */
 export interface Hover {
+  /** The symbol kind: name, lambda, variable, function, namespace, field, method, constant or type. */
   kind: string;
+  /** The source span of the hovered word or token. */
   span: Span;
+  /** The printed type text, or null when not applicable. */
   type: string | null;
+  /** The printed signature for a function or method, or null. */
   signature: string | null;
+  /** The documentation text, or null when none. */
   doc: string | null;
+  /** The span of the local binding or type line, or null. */
   declaration: Span | null;
 }
 import type { Candidate } from "../tools/assist.ts";
 export type { Candidate };
 
+/** A host function declaration (03 3.5). */
 export interface HostFunction {
   /** The signature in type text: "(s: string, n?: int) => string !". */
   type: string;
@@ -118,6 +127,7 @@ export interface HostFunction {
   doc?: string;
 }
 
+/** An opaque host type declaration (03 3.4.6). */
 export interface OpaqueType {
   /** Whether a host value carries this type. */
   test(value: unknown): boolean;
@@ -127,12 +137,15 @@ export interface OpaqueType {
   doc?: string;
 }
 
+/** Run limits (03 3.6.1). Omit a field to keep the default or parent value. */
 export interface Limits {
-  /** null turns the limit off. */
+  /** Maximum evaluation steps (default 1,000,000). `null` turns the limit off. */
   steps?: number | null;
+  /** Maximum allocation units (default 1,000,000). `null` turns the limit off. */
   allocation?: number | null;
-  /** The deadline of one run, in milliseconds, or null for none. */
+  /** The deadline of one run, in milliseconds, or `null` for none (default). */
   deadlineMs?: number | null;
+  /** Maximum call and value-walk depth, from 1 to 400 (default 200). */
   depth?: number;
 }
 
@@ -144,6 +157,7 @@ export type NamedType =
 
 /** The declarations of an environment (03 3.3.1; 05 Part E, E.3). */
 export interface EnvOptions {
+  /** Specification version, such as `"3.0"`; defaults to the newest offered. */
   version?: string;
   /** Variables, each by its own type text: `{age: "int"}`. */
   vars?: Record<string, string>;
@@ -163,16 +177,19 @@ export interface EnvOptions {
   groups?: string[];
   /** Library entries the environment does not have (03 3.3.1). */
   without?: string[];
-  /** The check classes rejected (05 17). */
+  /** The whole set of rejected check classes (05 17). Defaults to `["constant-condition"]`. */
   reject?: string[];
   /** Package F14: host facts; each lists variables of which at least one is not null in every run (f14 2). */
   someNotNull?: string[][];
+  /** Execution limits for runs compiled in this environment (03 3.6.1). */
   limits?: Limits;
 }
 
 /** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2). */
 export interface ChildOpaqueType {
+  /** Replaces the parent's predicate when given; omit to inherit the parent's opaque type. */
   test?(value: unknown): boolean;
+  /** Methods added to or replacing those of the opaque type. */
   methods?: Record<string, HostFunction>;
   /** Its documentation (f16 11.6). A type the child replaces brings its own; one it keeps keeps the parent's unless given. */
   doc?: string;
@@ -180,6 +197,7 @@ export interface ChildOpaqueType {
 
 /** The declarations of a child environment (03 3.3.2). */
 export interface WithOptions extends Omit<EnvOptions, "opaque"> {
+  /** Opaque types declared or extended in the child environment. */
   opaque?: Record<string, ChildOpaqueType>;
 }
 
@@ -373,12 +391,19 @@ export function typeFromSchema(schema: unknown, options: SchemaOption[] = []): T
 
 /** The description of an environment (f01 5.3). */
 export interface Description {
+  /** Specification version, such as `"3.0"`. */
   version: string;
+  /** Declared variables, each mapped to its printed type text. */
   variables: Record<string, string>;
+  /** Declared host functions, each mapped to its printed signature. */
   functions: Record<string, string>;
+  /** Declared opaque types, each mapped to its method signatures. */
   opaque: Record<string, Record<string, string>>;
+  /** Library entries removed from this environment, sorted. */
   removed: string[];
+  /** Check classes rejected by this environment, sorted. */
   reject: string[];
+  /** Execution limits (without wall-clock deadline). */
   limits: { steps: number | null; allocation: number | null; depth: number };
   /** Package F4 (f04 8): each named type, printed by structure; only when there is one. */
   types?: Record<string, string>;
@@ -431,18 +456,27 @@ export type EntryExpected = string | { schema: unknown; options?: SchemaOption[]
 
 /** One parameter of an entry point (package F16 slice D2, f16 12.6). */
 export interface EntryParam {
+  /** Parameter name, or `null` for a destructuring pattern or `_`. */
   readonly name: string | null;
+  /** The parameter's annotated type. */
   readonly type: Type;
+  /** The parameter's doc comment description, or `null` when none. */
   readonly doc: string | null;
+  /** Whether the parameter has a default value. */
   readonly optional: boolean;
 }
 
 /** One `export const` entry point of a program (package F16 slice D2, f16 12.6). */
 export interface Entry {
+  /** The `const` name of the entry point. */
   readonly name: string;
+  /** The doc comment description attached to `export`, or `null` when none. */
   readonly doc: string | null;
+  /** The entry point's parameters, in written order. */
   readonly params: readonly EntryParam[];
+  /** The input record type for `callRecord` and `schemaOf`, or `null` when the entry point has no input record. */
   readonly inputType: Type | null;
+  /** The entry point's checked result type, or `null` for an unchecked compile. */
   readonly resultType: Type | null;
 }
 
@@ -528,6 +562,7 @@ export function sourceLimitOf(options: SourceOptions | undefined): number {
   return v;
 }
 
+/** Options for `env.compile` (03 3.2.1; f16 12.3). */
 export interface CompileOptions {
   /** Apply the type rules (05-types.md). Default true. The static rules always apply. */
   check?: boolean;
@@ -543,6 +578,7 @@ export interface LoadOptions extends SourceOptions {
   expected: string | { schema: unknown } | { type: Type };
   /** The variables of the run (03 3.4.1). */
   vars?: Vars;
+  /** Optional cancellation signal for step 3 (run). */
   signal?: AbortSignal;
   /** The most failures step 4 reports (f10 5.2 item 1). Default 1; below 1 is read as 1. */
   max?: number;
@@ -557,6 +593,7 @@ export type LoadOutcome<T = unknown> =
 
 /** A load that failed (f10 5.2): the step, the diagnostics and the usage. */
 export class LoadError extends RisorError {
+  /** The load step that failed: 0 (declare), 1 (parse), 2 (check), 3 (run), 4 (conform) or 5 (decode). */
   readonly step: number;
   constructor(step: number, diagnostics: Diagnostic[], usage?: Usage) {
     super(diagnostics, usage);
@@ -618,7 +655,9 @@ export function decode(value: unknown): unknown {
 
 /** A place where a checked program can still fail on a value (05 18): its class and span. */
 export interface Site {
+  /** The residual check class: dynamic, index, divide, value or host. */
   class: string;
+  /** The source span of the operation that may fail. */
   span: Span;
 }
 
@@ -626,6 +665,7 @@ export interface Site {
 export interface CheckResult {
   /** The type of the result (`never` when the program has no result expression). */
   type: Type;
+  /** The residual failure sites for check classes the environment does not reject. */
   sites: Site[];
   /** The program's `export const` entry points, in text order (f16 12.6). */
   entries: readonly Entry[];
@@ -668,6 +708,10 @@ export interface LibraryNames {
   methods: { string: string[]; list: string[]; map: string[] };
 }
 
+/**
+ * An immutable environment of declarations against which programs are checked,
+ * compiled and run (03 3.3). Build one with `createEnv` or `Env.fromDescription`.
+ */
 export class Env<V = any, N = any> {
   /** Internal: the declarations, as declared. */
   readonly environment: Environment;
@@ -1194,6 +1238,10 @@ export function tryCompile(env: Env, input: string | Expr, options: CompileOptio
   return { ok: true, program: prog };
 }
 
+/**
+ * A compiled program, immutable and safe to run many times with different
+ * variable values (03 3.2.2). Built by `env.compile`.
+ */
 export class Program<V = any> {
   /** Internal. */
   readonly env: Env;
@@ -1684,8 +1732,11 @@ export function parseTemplate(text: string, options?: SourceOptions): Template {
 
 /** A call the analysis reports (f02 3.6; 05 E.2 item 7). */
 export interface CallSite {
+  /** The function name as called: `lookup`, or `geo.distance` in a namespace. */
   name: string;
+  /** The namespace prefix for `n.m(...)`, or `null` for a call by name. */
   namespace: string | null;
+  /** The source span of the call expression. */
   span: Span;
   /** Each argument as a program of its own, or undefined for a lambda. */
   args: (Expr | undefined)[];
@@ -1697,14 +1748,19 @@ export interface CallSite {
 
 /** A name the program reads, and the path it reads through it (f02 3.4). A path step is a key, or a star of package F7 (f07 9.3). */
 export interface Ref {
+  /** The free identifier read. */
   name: string;
+  /** The static property keys and projection stars (`{ star: true }`) read after `name`. */
   path: (string | { star: true })[];
+  /** The source span from the read to the end of the last static step. */
   span: Span;
 }
 
 /** The report of an analysis (f02 3.3). */
 export class Analysis {
+  /** The free names read, each once, in code point order. */
   readonly names: string[];
+  /** One reference for each read of a free name, in source order. */
   readonly refs: Ref[];
   /**
    * Every call of a host function that is not a method of an opaque type (f02
@@ -1714,7 +1770,9 @@ export class Analysis {
    * value may give another result with the same report and variables.
    */
   readonly calls: CallSite[];
+  /** The program's constant value when it is a literal (`{ value }`), or `false`. */
   readonly literal: { value: unknown } | false;
+  /** The template's segments when analyzing a template, or `null` for a program. */
   readonly segments: ({ text: string; span: Span } | { part: Span; span: Span })[] | null;
 
   /** Internal. */

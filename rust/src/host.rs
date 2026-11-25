@@ -17,11 +17,14 @@ use std::sync::Arc;
 /// allocation.
 #[derive(Clone)]
 pub struct OpaqueRef {
+    /// The declared opaque type name.
     pub type_name: Arc<str>,
+    /// The underlying shared host value.
     pub value: Arc<dyn Any + Send + Sync>,
 }
 
 impl OpaqueRef {
+    /// Wrap `value` as an opaque host value carrying `type_name`.
     pub fn new(type_name: &str, value: impl Any + Send + Sync) -> OpaqueRef {
         OpaqueRef {
             type_name: Arc::from(type_name),
@@ -54,37 +57,53 @@ impl PartialEq for OpaqueRef {
 
 /// What the evaluator may ask of a host value.
 pub enum View<'a> {
+    /// The language's `null`.
     Null,
+    /// A boolean value.
     Bool(bool),
     /// A value of a host integer type. Outside ±(2^53 − 1) it cannot enter.
     Int(i64),
+    /// An unsigned host integer. Above 2^53 − 1 it cannot enter.
     UInt(u64),
     /// A value of a host floating type. It enters whenever it is finite.
     Float(f64),
+    /// A borrowed UTF-8 string.
     Str(&'a str),
+    /// A borrowed sequence read in place.
     List(&'a dyn HostList),
+    /// A borrowed string-keyed map or record read in place.
     Map(&'a dyn HostMap),
+    /// An opaque host value carrying its declared type name.
     Opaque(OpaqueRef),
 }
 
+/// A host value that the evaluator can read in place (`03-host.md` 3.4.2).
 pub trait Host {
+    /// Present this value to the evaluator.
     fn view(&self) -> View<'_>;
 }
 
+/// A host sequence read in place by index (`03-host.md` 3.4.3).
 pub trait HostList {
+    /// Number of elements in the list.
     fn len(&self) -> usize;
+    /// Element at `index`, or `None` if out of bounds.
     fn get(&self, index: usize) -> Option<View<'_>>;
+    /// Whether the list has no elements.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
+/// A host string-keyed mapping or struct read in place by key (`03-host.md` 3.4.3).
 pub trait HostMap {
+    /// Number of present entries in the map.
     fn len(&self) -> usize;
     /// `None` is absent. A field present and null is `Some(View::Null)`.
     fn get(&self, key: &str) -> Option<View<'_>>;
     /// The keys, in any order. The evaluator sorts them when order shows.
     fn keys(&self) -> Vec<&str>;
+    /// Whether the map has no present entries.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -93,6 +112,7 @@ pub trait HostMap {
 /// The variables of a run, by name. A run asks for each name at most once,
 /// and only for the names it reads (`03-host.md` 3.4.1).
 pub trait Vars {
+    /// Return the value for variable `name`, or `None` if not supplied.
     fn get(&self, name: &str) -> Option<View<'_>>;
 }
 
@@ -108,13 +128,21 @@ impl Vars for NoVars {
 /// A tree of host values.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Data {
+    /// The language's `null`.
     Null,
+    /// A boolean value.
     Bool(bool),
+    /// A signed integer value.
     Int(i64),
+    /// A floating-point value.
     Float(f64),
+    /// An owned string value.
     Str(String),
+    /// An owned list of values.
     List(Vec<Data>),
+    /// An owned map from string keys to values.
     Map(BTreeMap<String, Data>),
+    /// An opaque host value.
     Opaque(OpaqueRef),
 }
 

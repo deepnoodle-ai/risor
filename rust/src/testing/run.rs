@@ -351,16 +351,24 @@ pub(super) fn failure_json(phase: Phase, diags: &[Diagnostic], cols: Option<&[St
 /// after the name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Difference {
+    /// Differing field name (for example `"value"` or `"diagnostics"`).
     pub name: &'static str,
+    /// Expected value in canonical JSON form.
     pub expected: String,
+    /// Actual value in canonical JSON form.
     pub found: String,
 }
 
+/// The verdict of running a single case (`f09-testing.md` 7.1).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Verdict {
+    /// The case matched its expectations.
     Pass,
+    /// The case differed on one or more fields.
     Fail(Vec<Difference>),
+    /// The case was skipped with the given reason.
     Skip(String),
+    /// The case itself was invalid.
     Invalid(String),
     /// F9 2.4: a fixture that fails its test, with its place and path and
     /// the message.
@@ -370,6 +378,7 @@ pub enum Verdict {
 }
 
 impl Verdict {
+    /// Lowercase status label (`"pass"`, `"fail"`, `"skip"`, `"invalid"`, or `"updated"`).
     pub fn label(&self) -> &'static str {
         match self {
             Verdict::Pass => "pass",
@@ -384,21 +393,29 @@ impl Verdict {
 /// The verdict of each case of one file.
 #[derive(Clone, Debug)]
 pub struct FileReport {
+    /// Path to the case file that was run.
     pub path: PathBuf,
+    /// Per-case `(name, verdict)` pairs in file order.
     pub results: Vec<(String, Verdict)>,
 }
 
 /// The number of cases of each verdict.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Counts {
+    /// Number of passing cases.
     pub pass: usize,
+    /// Number of failing cases.
     pub fail: usize,
+    /// Number of skipped cases.
     pub skip: usize,
+    /// Number of invalid cases.
     pub invalid: usize,
+    /// Number of cases rewritten in update mode.
     pub updated: usize,
 }
 
 impl Counts {
+    /// Increment the counter corresponding to `v`.
     pub fn add(&mut self, v: &Verdict) {
         match v {
             Verdict::Pass => self.pass += 1,

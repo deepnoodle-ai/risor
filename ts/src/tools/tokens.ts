@@ -30,8 +30,11 @@ export type TokenClass =
 
 /** One coloured range. Offsets count code points of the text as given, from 0. */
 export interface ColourToken {
+  /** Token colour class. */
   class: TokenClass;
+  /** Inclusive start offset in Unicode code points from 0. */
   start: number;
+  /** Exclusive end offset in Unicode code points from 0. */
   end: number;
 }
 

@@ -193,13 +193,21 @@ impl<'h> MapVal<'h> {
 /// A value of a run.
 #[derive(Clone)]
 pub enum Value<'h> {
+    /// The language's `null`.
     Null,
+    /// A boolean value.
     Bool(bool),
+    /// A finite IEEE 754 binary64 number.
     Num(f64),
+    /// A string value (owned or borrowed from host data).
     Str(Str<'h>),
+    /// A list constructed during the run.
     List(Rc<ListVal<'h>>),
+    /// A map constructed during the run.
     Map(Rc<MapVal<'h>>),
+    /// A host list borrowed for the lifetime of the run.
     HList(&'h dyn HostList),
+    /// A host map or record borrowed for the lifetime of the run.
     HMap(&'h dyn HostMap),
     /// Behind `Rc`, so that a value is small.
     Opaque(Rc<OpaqueRef>),
@@ -210,12 +218,19 @@ pub enum Value<'h> {
 /// The seven kinds (`01-language.md` 6.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
+    /// `null`.
     Null,
+    /// `bool`.
     Bool,
+    /// `number`.
     Number,
+    /// `string`.
     String,
+    /// `list`.
     List,
+    /// `map`.
     Map,
+    /// `opaque`.
     Opaque,
 }
 
@@ -276,14 +291,17 @@ impl<'h> Value<'h> {
         }
     }
 
+    /// Wrap an owned string as a [`Value`].
     pub fn str(s: String) -> Value<'h> {
         Value::Str(Str::new(s))
     }
 
+    /// Wrap a vector of values as a list [`Value`].
     pub fn list(v: Vec<Value<'h>>) -> Value<'h> {
         Value::List(Rc::new(ListVal(v)))
     }
 
+    /// The language kind of this value (`01-language.md` 6.1).
     pub fn kind(&self) -> Kind {
         match self {
             Value::Null => Kind::Null,
@@ -296,6 +314,7 @@ impl<'h> Value<'h> {
         }
     }
 
+    /// Whether this value is `null`.
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
     }
@@ -316,6 +335,7 @@ impl<'h> Value<'h> {
         }
     }
 
+    /// Borrow the string contents when this value is a string; `None` otherwise.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) => Some(s.as_str()),

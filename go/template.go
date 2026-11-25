@@ -124,16 +124,20 @@ func (t *Template) Program(mode TemplateMode) *Expr {
 // Expr.Analyze, with the template's segments.
 func (t *Template) Analyze(mode TemplateMode) *Analysis { return t.Program(mode).Analyze() }
 
-// Step is one step of a static path (F2 3.5): a key. Star is for the star
-// step of package F7, and is never set by this package.
+// Step is one step of a static path (F2 3.5; F7 9.1): a field key, or a star
+// step for a projection (`[*]` or `?.[*]`).
 type Step struct {
-	Key  string
+	// Key is the field key for a property step; empty when Star is true.
+	Key string
+	// Star is true for a projection step (`[*]` or `?.[*]`).
 	Star bool
 }
 
 // Ref is one read of a free name, with its static path (F2 3.5).
 type Ref struct {
+	// Name is the free identifier read.
 	Name string
+	// Path holds the static property and projection steps after Name.
 	Path []Step
 	// Span runs from the read to the end of the last step of its path.
 	Span Span
@@ -146,7 +150,8 @@ type CallSite struct {
 	Name string
 	// Namespace is n for a call n.m(...); empty for a call by name.
 	Namespace string
-	Span      Span
+	// Span is the span of the call expression.
+	Span Span
 	// Args holds each argument as a program of its own, with spans in the
 	// whole text; nil for a lambda argument, which is not a program.
 	Args []*Expr

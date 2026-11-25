@@ -42,8 +42,14 @@ type options struct {
 // A reader of case file sources returns one beside the text (package F9
 // 7.2); spans stay positions in the text itself.
 type Origin struct {
-	Name                 string
-	Line, Column, Indent int
+	// Name is the host document name.
+	Name string
+	// Line is the 1-based line of the first code point in the host document.
+	Line int
+	// Column is the 1-based code-point column of the first code point.
+	Column int
+	// Indent is the number of columns stripped from subsequent lines.
+	Indent int
 }
 
 // Vars gives variables for the names a case does not supply. They are not
@@ -98,7 +104,12 @@ type Case struct {
 // Diff is one difference of a case that failed: its name, and E and F of
 // the report, each in its JSON form.
 type Diff struct {
-	Name, Expected, Found string
+	// Name is the differing field name (for example "value", "diagnostics").
+	Name string
+	// Expected is the expected value in canonical JSON form.
+	Expected string
+	// Found is the actual value in canonical JSON form.
+	Found string
 }
 
 // Verdict is what running a case gave.

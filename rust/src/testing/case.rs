@@ -357,7 +357,9 @@ pub struct Case {
 /// A case file that was read and found valid.
 #[derive(Clone, Debug)]
 pub struct CaseFile {
+    /// Source path the file was loaded from, or empty when loaded from text.
     pub path: PathBuf,
+    /// Cases in file order.
     pub cases: Vec<Case>,
     /// The file's text, which update mode rewrites (`f09-testing.md` 4.5).
     pub text: Option<String>,

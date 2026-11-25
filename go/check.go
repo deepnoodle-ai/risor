@@ -114,8 +114,10 @@ var NoCheck CheckOption = noCheck{}
 // Site is a place where a checked program can still fail on a value
 // (05-types.md 18.3).
 type Site struct {
+	// Class is the check class of the site: dynamic, index, divide, value or host.
 	Class string
-	Span  Span
+	// Span is the source span of the operation that may fail.
+	Span Span
 }
 
 // CheckResult is what a check gives for a program that checks.
@@ -489,7 +491,8 @@ func sortDiags(ds []Diagnostic) []Diagnostic {
 }
 
 // Check checks a program against the environment (03-host.md 3.2): its
-// result type and its sites, or an *Error of phase check.
+// result type, its residual sites and its exported entry points, or an
+// *Error of phase check (or phase declare for invalid options).
 func (e *Env) Check(x *Expr, opts ...CheckOption) (*CheckResult, error) {
 	names, varNames := e.staticNames()
 	res, cr, err := e.analyze(x, names, varNames, opts)

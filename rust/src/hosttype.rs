@@ -66,6 +66,7 @@ pub struct TypeCx {
 }
 
 impl TypeCx {
+    /// Create an empty derivation context.
     pub fn new() -> TypeCx {
         TypeCx::default()
     }
@@ -244,6 +245,7 @@ pub(crate) fn opaque_names(t: &Ty, out: &mut BTreeSet<String>, seen: &mut BTreeS
 /// values of the type `NAME`, which the environment must declare. The name
 /// is never guessed (6.1, row Opaque).
 pub trait OpaqueType: Any + Send + Sync {
+    /// The declared opaque type name in Risor.
     const NAME: &'static str;
 }
 
@@ -256,6 +258,7 @@ pub struct Opaque<T: OpaqueType> {
 }
 
 impl<T: OpaqueType> Opaque<T> {
+    /// Wrap `v` in a reference-counted opaque handle under `T::NAME`.
     pub fn new(v: T) -> Opaque<T> {
         Opaque {
             value: OpaqueRef::new(T::NAME, v),
@@ -263,6 +266,7 @@ impl<T: OpaqueType> Opaque<T> {
         }
     }
 
+    /// Borrow the underlying host value.
     pub fn get(&self) -> &T {
         self.value
             .value
@@ -270,6 +274,7 @@ impl<T: OpaqueType> Opaque<T> {
             .expect("an Opaque<T> holds a T")
     }
 
+    /// Borrow the untyped [`OpaqueRef`] backing this handle.
     pub fn opaque_ref(&self) -> &OpaqueRef {
         &self.value
     }
@@ -307,7 +312,9 @@ impl<T: OpaqueType> Host for Opaque<T> {
 /// The types a field marked `#[risor(absent_if_none)]` may have: `Option<T>`
 /// alone. The derive names it, so the mark on another type fails the build.
 pub trait OptionLike {
+    /// The wrapped value type when present.
     type Inner: HostType + Host + ?Sized;
+    /// Borrow the inner value if present, or `None` when the field is absent.
     fn present(&self) -> Option<&Self::Inner>;
 }
 

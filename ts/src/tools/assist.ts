@@ -25,10 +25,15 @@ import { compareText } from "../value/value.ts";
 import { GROUP_LIBRARY } from "../generated/library-groups.ts";
 import { MATH_LIBRARY } from "../generated/library-math.ts";
 
+/** One candidate of a completion (package F12, f12 3.12). */
 export interface Candidate {
+  /** Display label of the candidate. */
   label: string;
+  /** Candidate kind: name, lambda, variable, function, namespace, field, method, constant, key, literal or type. */
   kind: string;
+  /** Printed type or signature, or `null` when the kind has none. */
   detail: string | null;
+  /** Text inserted in place of `Completion.span`. */
   insert: string;
 }
 

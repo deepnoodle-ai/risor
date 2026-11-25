@@ -66,8 +66,12 @@ pub(crate) struct Loaded<T> {
 /// and the usage when the run was reached (5.2 item 4).
 #[derive(Clone, Debug)]
 pub struct LoadError {
+    /// The load step that failed: 0 (declare), 1 (parse), 2 (check), 3 (run),
+    /// 4 (conform) or 5 (decode).
     pub step: u8,
+    /// The diagnostics reported at `step`.
     pub diagnostics: Vec<Diagnostic>,
+    /// The usage of step 3 when the run was reached; `None` if stopped earlier.
     pub usage: Option<Usage>,
 }
 

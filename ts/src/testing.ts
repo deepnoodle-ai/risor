@@ -32,8 +32,11 @@ export interface CaseOptions {
 
 /** A difference of a failed case: its name, and E and F (f09 6.2). */
 export interface Difference {
+  /** The differing field name (for example `"value"` or `"diagnostics"`). */
   readonly name: string;
+  /** The expected value in canonical JSON form. */
   readonly expected: string;
+  /** The actual value in canonical JSON form. */
   readonly found: string;
 }
 
@@ -41,9 +44,13 @@ export interface Difference {
 export interface Verdict {
   /** The verdict, or in update mode the update status (f09 4.3). */
   readonly status: "pass" | "fail" | "skip" | "invalid" | "updated";
+  /** Differences for a failed case, in specification order. */
   readonly differences: readonly Difference[];
+  /** Path to the invalid fixture when `status === "invalid"`. */
   readonly fixture?: readonly (string | number)[];
+  /** Reason the case is invalid when `status === "invalid"`. */
   readonly message?: string;
+  /** Skip reason when `status === "skip"`. */
   readonly reason?: string;
   /** The `expect` update mode would write, or null. */
   readonly expect: unknown;
@@ -51,13 +58,17 @@ export interface Verdict {
   readonly report: string;
 }
 
+/** One test case in a loaded case file (f09 7.1). */
 export interface Case {
+  /** Unique name of the case within its file. */
   readonly name: string;
   /** Run the case in a child of the base of its load (f09 7.3 item 5). */
   run(): Verdict;
 }
 
+/** A validated case file ready to run (f09 7.1). */
 export interface CaseFile {
+  /** The cases selected from the file, in file order. */
   readonly cases: readonly Case[];
   /** The new text of the file after update mode, or null when nothing is written (f09 4.5). */
   updatedText(): string | null;

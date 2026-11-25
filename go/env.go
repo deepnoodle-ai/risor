@@ -97,8 +97,14 @@ func VarRecord(recordType string) Decl {
 // namespace. Type is its signature in type text. Func makes one from a Go
 // function (bind.go).
 type Function struct {
+	// Name is the function's name, optionally with one namespace prefix
+	// ("geo.distance"). For a method of an OpaqueType or Method, Name is
+	// ignored.
 	Name string
+	// Type is the function's signature in type text, such as
+	// "(s: string, n?: int) => string !".
 	Type string
+	// Impl is the synchronous Go implementation called during a run.
 	Impl Native
 	// Doc documents the function (package F16, slice D3): hover gives it.
 	// It is not in the environment's description.
@@ -113,7 +119,10 @@ func (f Function) apply(e *Env) { e.addFunc(f) }
 // its signature in type text, without the receiver. Methods makes one from
 // a Go type (bind.go).
 type OpaqueType struct {
-	Name    string
+	// Name is the opaque type name: an upper-case letter followed by one or
+	// more ASCII letters, digits or underscores.
+	Name string
+	// Methods maps each method name to its signature and implementation.
 	Methods map[string]Function
 	// Doc documents the type (package F16, slice D3): hover on its name
 	// gives it.
@@ -126,13 +135,20 @@ func (o OpaqueType) apply(e *Env) { e.addOpaque(o) }
 
 // Limits declares the limits of a run (03-host.md 3.6). A zero field keeps
 // the default: 1,000,000 steps, 1,000,000 units, no deadline, depth 200.
-// NoLimit turns the step or allocation limit off.
+// NoLimit turns the step or allocation limit off; ZeroLimit sets a limit of 0.
 type Limits struct {
-	Steps      int64
+	// Steps is the step limit (0 keeps the default 1,000,000; NoLimit turns
+	// it off; ZeroLimit sets 0).
+	Steps int64
+	// Allocation is the allocation-unit limit (0 keeps the default
+	// 1,000,000; NoLimit turns it off; ZeroLimit sets 0).
 	Allocation int64
-	// Deadline is the time a run may take, from its start.
+	// Deadline is the wall-clock time a run may take, from its start (0 for
+	// no deadline).
 	Deadline time.Duration
-	Depth    int
+	// Depth is the maximum call and value-walk depth, from 1 to 400 (0 keeps
+	// the default 200).
+	Depth int
 }
 
 func (l Limits) apply(e *Env) {
@@ -206,7 +222,10 @@ func Without(names ...string) Decl {
 	})
 }
 
-// Reject gives the whole set of rejected check classes.
+// Reject sets the whole set of rejected check classes, replacing the default
+// ("constant-condition") or the parent's set. Pass no arguments to reject
+// none. Valid classes are constant-condition, dynamic, index, divide, value
+// and host; any other name is the declare error bad-class.
 func Reject(classes ...string) Decl {
 	return declFunc(func(e *Env) {
 		for _, c := range classes {
@@ -669,8 +688,8 @@ type Program struct {
 }
 
 // CheckResult gives the result of the check the compile made, as Check
-// gives it: the result type and the sites. It is nil for a program compiled
-// with NoCheck.
+// gives it: the result type, the residual sites and the exported entry
+// points. It is nil for a program compiled with NoCheck.
 func (p *Program) CheckResult() *CheckResult {
 	if p.result == nil {
 		return nil

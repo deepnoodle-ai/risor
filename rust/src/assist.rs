@@ -23,27 +23,41 @@ use std::collections::HashSet;
 /// A candidate of a completion (3.12).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidate {
+    /// Display label of the candidate.
     pub label: String,
+    /// Candidate kind: `name`, `lambda`, `variable`, `function`, `namespace`,
+    /// `field`, `method`, `constant`, `key`, `literal` or `type`.
     pub kind: &'static str,
+    /// Printed type or signature, or `None` when the kind has none.
     pub detail: Option<String>,
+    /// Text to insert in place of [`Completion::span`].
     pub insert: String,
 }
 
 /// A completion: the prefix span and the candidates (3.5 item 3).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Completion {
+    /// Source span of the prefix to replace.
     pub span: Span,
+    /// Candidates in display order.
     pub items: Vec<Candidate>,
 }
 
 /// A hover record (3.13).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Hover {
+    /// Symbol kind: `name`, `lambda`, `variable`, `function`, `namespace`,
+    /// `field`, `method`, `constant` or `type`.
     pub kind: &'static str,
+    /// Source span of the hovered word or token.
     pub span: Span,
+    /// Printed type text, or `None` when not applicable.
     pub ty: Option<String>,
+    /// Printed signature for a function or method, or `None`.
     pub signature: Option<String>,
+    /// Documentation text, or `None` when none.
     pub doc: Option<String>,
+    /// Span of the local binding or type line, or `None`.
     pub declaration: Option<Span>,
 }
 

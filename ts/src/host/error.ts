@@ -13,13 +13,17 @@ export type { Phase };
 
 /** A position (03 3.7.7): a line and a column, both from 1. A column counts code points. */
 export interface Pos {
+  /** 1-based line number (lines end at U+000A only). */
   line: number;
+  /** 1-based column counted in Unicode code points. */
   column: number;
 }
 
 /** A span (03 3.7.7; 05 E.8): a start position and an end position. The end is exclusive. */
 export interface Span {
+  /** Inclusive start position. */
   start: Pos;
+  /** Exclusive end position. */
   end: Pos;
 }
 
@@ -40,19 +44,27 @@ export function lineSpanOf(s: Span): LineSpan {
 
 /** A call in progress when a run failed (package F8, f08 4). */
 export interface TraceEntry {
+  /** Source span of the call or projection star. */
   span: Span;
+  /** Name of the `const`-bound lambda, library entry, or `[*]` for a projection. */
   name: string;
+  /** Element index for a library callback or projection, or `null` for a named lambda call. */
   index: number | null;
 }
 
 /** The one shape of a diagnostic (03 3.7.1). */
 export interface Diagnostic {
+  /** The stage that reported the diagnostic. */
   phase: Phase;
+  /** Stable diagnostic code, such as `"no-field"` or `"steps-exceeded"`. */
   code: string;
+  /** One-sentence message from the specification catalog. */
   message: string;
   /** Absent for `declare`, and where 03 3.2.4 says so. */
   span?: Span;
+  /** Failure class for `run` diagnostics or rejected-class `check` diagnostics. */
   class?: string;
+  /** Path of keys and indices to the failure in a `not-conforming` diagnostic. */
   path?: (string | number)[];
   /** For `failed`: the second argument of `fail`. */
   data?: unknown;
@@ -67,9 +79,11 @@ export interface Diagnostic {
   cause?: unknown;
 }
 
-/** What a run used (03 3.5). */
+/** What a run used (03 3.6.3). */
 export interface Usage {
+  /** Total evaluation steps charged. */
   steps: number;
+  /** Total allocation units charged. */
   allocated: number;
 }
 
@@ -89,8 +103,11 @@ export function publicDiagnostic(d: InnerDiagnostic, source: Source | null | und
 
 /** A failure with its diagnostics (05 Part E, E.8). `Error` is a global of JavaScript, so this is `RisorError`. */
 export class RisorError extends Error {
+  /** The phase shared by all diagnostics in this failure. */
   readonly phase: Phase;
+  /** One or more diagnostics reported by the failing stage. */
   readonly diagnostics: readonly Diagnostic[];
+  /** Usage charged by the run before it failed; present for `run` failures. */
   readonly usage?: Usage;
   constructor(diagnostics: Diagnostic[], usage?: Usage) {
     super(diagnostics.map((d) => `${d.code}: ${d.message}`).join("; "));

@@ -23,7 +23,9 @@ import (
 // prefix, which an editor replaces with a candidate's insert text, and the
 // candidates in order.
 type Completion struct {
-	Span  Span
+	// Span is the source span of the prefix to replace.
+	Span Span
+	// Items are the completion candidates, in display order.
 	Items []Candidate
 }
 
@@ -31,19 +33,34 @@ type Completion struct {
 // lambda, variable, function, namespace, field, method, constant, key,
 // literal or type. Detail is nil when the kind has none.
 type Candidate struct {
-	Label, Kind string
-	Detail      *string
-	Insert      string
+	// Label is the display text of the candidate.
+	Label string
+	// Kind is the candidate kind: name, lambda, variable, function,
+	// namespace, field, method, constant, key, literal or type.
+	Kind string
+	// Detail is the printed type or signature, or nil when the kind has none.
+	Detail *string
+	// Insert is the text to insert in place of Completion.Span.
+	Insert string
 }
 
 // Hover is a hover record (F12 3.13). Kind is name, lambda, variable,
 // function, namespace, field, method or constant; a field is nil when the
 // record has none.
 type Hover struct {
-	Kind                 string
-	Span                 Span
-	Type, Signature, Doc *string
-	Declaration          *Span
+	// Kind is the symbol kind: name, lambda, variable, function, namespace,
+	// field, method, constant or type.
+	Kind string
+	// Span is the source span of the hovered word or token.
+	Span Span
+	// Type is the printed type text, or nil when not applicable.
+	Type *string
+	// Signature is the printed signature for a function or method, or nil.
+	Signature *string
+	// Doc is the documentation text, or nil when none.
+	Doc *string
+	// Declaration is the span of the local binding or type line, or nil.
+	Declaration *Span
 }
 
 // assistPanics counts the faults assist turned into an empty result, for
