@@ -541,5 +541,19 @@
   "expect": {
    "formatted": "(a * b) / c\n"
   }
+ },
+ {
+  "name": "a match subject that is a run of 4 operators beginning with { keeps the pair around the whole subject",
+  "format": "match ({} * a / b * c * d) { _ => 0 }",
+  "expect": {
+   "formatted": "match ({} * a / b * c * d) { _ => 0 }\n"
+  }
+ },
+ {
+  "name": "a match subject that is a run of 3 operators beginning with { begins with a pair for the reader",
+  "format": "match ({} * a / b * c) { _ => 0 }",
+  "expect": {
+   "formatted": "match (({} * a) / b) * c { _ => 0 }\n"
+  }
  }
 ]
