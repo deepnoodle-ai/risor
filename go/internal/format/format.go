@@ -11,6 +11,10 @@ import (
 // Width is the line width of the formatter (2.1 item 4).
 const Width = 80
 
+// readerLevels is the most levels that the pairs for the reader add around
+// a token (2.6 item 3).
+const readerLevels = 2
+
 // Program formats a program text (2.1). It returns the formatted text, or
 // the first parse diagnostic.
 func Program(source string) (string, *syntax.Error, *syntax.File) {
@@ -19,21 +23,45 @@ func Program(source string) (string, *syntax.Error, *syntax.File) {
 	if err != nil {
 		return "", err, f
 	}
+	return withReaders(f, prog), nil, f
+}
+
+// withReaders formats a parsed text by format, and decides the pairs for
+// the reader for the whole text (2.6 item 4). A text that nests deeper than
+// 100 levels less readerLevels is formatted without them first. That text,
+// its plain text, may nest less, since the source's own parentheses that no
+// rule asks for are gone; it is parsed again to decide. The pairs are
+// decided on the plain text's levels so that the formatter is idempotent.
+func withReaders(f *syntax.File, prog *syntax.Program) string {
+	if f.Deepest()+readerLevels <= syntax.MaxLevels {
+		return formatProgram(f, prog, false)
+	}
+	out := formatProgram(f, prog, true)
+	pf := syntax.NewFile(out)
+	prog, err := syntax.Parse(pf)
+	if err != nil || pf.Deepest()+readerLevels > syntax.MaxLevels {
+		return out
+	}
+	return formatProgram(pf, prog, false)
+}
+
+func formatProgram(f *syntax.File, prog *syntax.Program, plain bool) string {
 	toks, lerr := syntax.Lex(f)
 	if lerr != nil { // cannot happen: the text parsed
-		return "", lerr, f
+		panic("format: " + lerr.Error())
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds))
-	out = strings.TrimRight(out, " \n") + "\n"
-	return out, nil, f
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds), plain)
+	return strings.TrimRight(out, " \n") + "\n"
 }
 
 // run builds the document twice: first to learn the kept tokens, then with
 // the comments attached (2.12), and lays it out. ends is the prefix count of
-// line ends of src, shared by every run over the same text.
-func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds) string {
+// line ends of src, shared by every run over the same text. plain turns off
+// the pairs for the reader (2.6 item 4).
+func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds, plain bool) string {
 	b := newBuilder(src, toks, from)
 	b.lineEnds = ends
+	b.plain = plain
 	build(b)
 	b.attach()
 	b.reset()
@@ -66,6 +94,7 @@ type builder struct {
 	// being built around its left operand. runs caches runLen.
 	rdepth, own int
 	runs        map[*syntax.Binary]int
+	plain       bool // no pairs for the reader in the whole text
 	// first and last are the first and last kept units emitted since the
 	// start of the element being built; elemStart marks the next unit as the
 	// first of an element other than the first.

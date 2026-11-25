@@ -122,6 +122,24 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 	if err != nil {
 		return "", err, f
 	}
+	return withTemplateReaders(f, t), nil, f
+}
+
+// withTemplateReaders is withReaders for a template.
+func withTemplateReaders(f *syntax.File, t *syntax.HostTemplate) string {
+	if f.Deepest()+readerLevels <= syntax.MaxLevels {
+		return formatTemplate(f, t, false)
+	}
+	out := formatTemplate(f, t, true)
+	pf := syntax.NewTemplateFile(out)
+	pt, err := syntax.ParseTemplate(pf)
+	if err != nil || pf.Deepest()+readerLevels > syntax.MaxLevels {
+		return out
+	}
+	return formatTemplate(pf, pt, false)
+}
+
+func formatTemplate(f *syntax.File, t *syntax.HostTemplate, plain bool) string {
 	src := f.Runes()
 	ends := new(lineEnds) // one prefix count for the parts' runs
 	var sb strings.Builder
@@ -143,7 +161,7 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 		out := run(src, toks, from, func(b *builder) part {
 			d := b.node(e)
 			return []part{d, b.closeLead(len(b.us)-1, true)}
-		}, 1<<30, ends)
+		}, 1<<30, ends, plain)
 		out = strings.TrimRight(out, " ")
 		if hasLine || strings.ContainsRune(out, '\n') {
 			sb.WriteString(whole)
@@ -151,5 +169,5 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 		}
 		sb.WriteString("${{ " + strings.TrimLeft(out, " ") + " }}")
 	}
-	return sb.String(), nil, f
+	return sb.String()
 }

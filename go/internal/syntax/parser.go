@@ -27,7 +27,9 @@ func Parse(f *File) (prog *Program, err *Error) {
 		}
 	}()
 	p.reach()
-	return p.program(), nil
+	prog = p.program()
+	f.deepest = p.deepest
+	return prog, nil
 }
 
 // parser is a hand-written recursive descent parser. Binary operators are
@@ -40,6 +42,7 @@ type parser struct {
 	tok     Token
 	prevEnd int
 	level   int
+	deepest int // the highest level reached
 
 	// What package F8's mapping of a diagnostic reads (f08-errors.md 2.1
 	// item 5): the source, the rule a raise names, the frames of the
@@ -204,6 +207,7 @@ func (p *parser) expect(k TokenKind) Token {
 // enter opens a level of nesting at the token that spans start to end.
 func (p *parser) enter(start, end int) {
 	p.level++
+	p.deepest = max(p.deepest, p.level)
 	if p.level > MaxLevels {
 		p.fail(diag.CodeNestingExceeded, start, end, "the text is nested more than 100 levels deep")
 	}

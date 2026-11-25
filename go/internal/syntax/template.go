@@ -105,8 +105,9 @@ func ParseTemplate(f *File) (*HostTemplate, *Error) {
 		}
 	}
 	flush(len(src))
+	f.deepest = 0
 	for _, pt := range parts {
-		e, err := parsePart(pt, src)
+		e, err := parsePart(pt, src, f)
 		if err != nil {
 			return nil, err
 		}
@@ -195,8 +196,8 @@ func (l *lexer) part(dollar int) (closeAt int, delim bool, err *Error) {
 }
 
 // parsePart parses a part's tokens as one Expr, with one level open for the
-// ${{ (F2 2.2 items 8, 9 and 11).
-func parsePart(pt part, src []rune) (e Node, err *Error) {
+// ${{ (F2 2.2 items 8, 9 and 11). It keeps in f the highest level reached.
+func parsePart(pt part, src []rune, f *File) (e Node, err *Error) {
 	p := &parser{toks: pt.toks, tok: pt.toks[0], src: src}
 	defer func() {
 		if r := recover(); r != nil {
@@ -213,6 +214,7 @@ func parsePart(pt part, src []rune) (e Node, err *Error) {
 	if p.tok.Kind != EOF {
 		p.unexpected()
 	}
+	f.deepest = max(f.deepest, p.deepest)
 	if !pt.delim {
 		p.unexpectedAt(p.tok) // F2 2.2 item 5: a lone closing brace
 	}

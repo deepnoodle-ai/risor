@@ -514,8 +514,10 @@ struct B<'a> {
     defer: Vec<bool>,
     docs: Docs,
     /// The pairs for the reader written around the node being built (2.6
-    /// items 3 and 4).
+    /// item 3).
     rdepth: u32,
+    /// No pairs for the reader in the whole text (2.6 item 4).
+    plain: bool,
 }
 
 impl<'a> B<'a> {
@@ -645,6 +647,7 @@ impl<'a> B<'a> {
             defer: vec![false; n + 1],
             docs: Docs::default(),
             rdepth: 0,
+            plain: false,
         }
     }
 
@@ -1128,7 +1131,7 @@ impl<'a> B<'a> {
 
     /// Whether the run whose top is `id` may have pairs for the reader.
     fn pairs_ok(&self, id: NodeId) -> bool {
-        self.rdepth == 0 && self.run_len(id) <= 3
+        !self.plain && self.rdepth == 0 && self.run_len(id) <= 3
     }
 
     /// Whether `c` is a comparison, or an `as` or `is` whose value, written
@@ -2560,6 +2563,7 @@ fn is_mul(op: BinaryOp) -> bool {
 }
 
 /// Build the document twice (the module's comment says why) and lay it out.
+#[allow(clippy::too_many_arguments)]
 fn run(
     ch: &[char],
     before: &[u32],
@@ -2568,8 +2572,10 @@ fn run(
     raw: &[Token],
     comments: &[Range],
     width: Option<i64>,
+    plain: bool,
 ) -> String {
     let mut b = B::new(ch, before, ast, raw, comments);
+    b.plain = plain;
     b.node(root, true);
     b.attach();
     let d = b.node(root, true);
@@ -2589,6 +2595,31 @@ pub fn format(text: &str) -> Result<String, Error> {
 /// `declare` error `bad-limit`.
 pub fn format_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
     let parsed = crate::syntax::parse_with(text, opts)?;
+    if fits_readers(parsed.ast.deepest) {
+        return program_text(&parsed, false);
+    }
+    // Too deep for the pairs for the reader (2.6 item 4): the plain text,
+    // then the pairs if the plain text, without the source's own
+    // parentheses that no rule asks for, leaves room for them. Deciding on
+    // the plain text keeps the formatter idempotent.
+    let plain = program_text(&parsed, true)?;
+    match crate::syntax::parse(&plain) {
+        Ok(again) if fits_readers(again.ast.deepest) => program_text(&again, false),
+        _ => Ok(plain),
+    }
+}
+
+/// The most levels that the pairs for the reader add around a token (2.6
+/// item 3).
+const READER_LEVELS: u16 = 2;
+
+/// Whether a text that reaches level `deepest` has room for the pairs for
+/// the reader.
+fn fits_readers(deepest: u16) -> bool {
+    deepest + READER_LEVELS <= 100
+}
+
+fn program_text(parsed: &crate::syntax::Expr, plain: bool) -> Result<String, Error> {
     let src = &parsed.source;
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
     let mut s = run(
@@ -2599,6 +2630,7 @@ pub fn format_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
         &toks,
         &comments,
         Some(WIDTH),
+        plain,
     );
     s.push('\n');
     Ok(s)
@@ -2613,6 +2645,18 @@ pub fn format_template(text: &str) -> Result<String, Error> {
 /// range is the `declare` error `bad-limit`.
 pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
     let t = parse_template_with(text, opts)?;
+    if fits_readers(t.deepest()) {
+        return template_text(&t, false);
+    }
+    // As for a program (`format_with`).
+    let plain = template_text(&t, true)?;
+    match parse_template_with(&plain, ParseOptions::default()) {
+        Ok(again) if fits_readers(again.deepest()) => template_text(&again, false),
+        _ => Ok(plain),
+    }
+}
+
+fn template_text(t: &crate::template::Template, plain: bool) -> Result<String, Error> {
     let src: &Source = t.source();
     let ch = src.chars();
     let before = line_ends_before(ch);
@@ -2639,7 +2683,7 @@ pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Er
                     out.push_str(&as_is);
                     continue;
                 }
-                let s = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None);
+                let s = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None, plain);
                 if s.contains('\n') {
                     out.push_str(&as_is);
                 } else {

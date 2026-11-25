@@ -513,5 +513,33 @@
   "expect": {
    "formatted": "(a * (b * c / d)) / e\n"
   }
+ },
+ {
+  "name": "a run nested 99 levels deep is written without pairs for the reader, so the text parses (2.6 item 4)",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a *\n  b /\n  c)\n"
+  }
+ },
+ {
+  "name": "the same run, shallow, has its pairs for the reader",
+  "format": "!(a * b / c)",
+  "expect": {
+   "formatted": "!((a * b) / c)\n"
+  }
+ },
+ {
+  "name": "a run nested 98 levels deep has its pairs, which take the text to 100 levels",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
+  }
+ },
+ {
+  "name": "the source's own parentheses do not decide: the run has its pairs once they are gone",
+  "format": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a * b / c))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+  "expect": {
+   "formatted": "(a * b) / c\n"
+  }
  }
 ]

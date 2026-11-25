@@ -206,6 +206,11 @@ impl Template {
     /// Part `i` as a program of its own: its expression alone, with spans
     /// in the whole text. Each part is an expression of its own (2.5 item
     /// 6). `None` past the last part; [`Template::segments`] counts them.
+    /// The highest level of nesting that the parse of the parts reached.
+    pub(crate) fn deepest(&self) -> u16 {
+        self.ast.deepest
+    }
+
     pub fn part(&self, i: usize) -> Option<Expr> {
         let e = *self.parts.get(i)?;
         // Only the part's nodes: a program for each part of a long template

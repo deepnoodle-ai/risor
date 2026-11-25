@@ -47,7 +47,21 @@ export function parse(text: string | Source, limit: number = SOURCE_LIMIT): Pars
  * the closing brace or delimiter (f02 2.2). Throws ParseError.
  */
 export function parsePartTokens(tokens: Token[], source?: Source): A.Expr {
-  return new Parser(tokens, 1, source).part();
+  const p = new Parser(tokens, 1, source);
+  const e = p.part();
+  deepestLevels.set(e, p.deepest);
+  return e;
+}
+
+/**
+ * The highest level of nesting (01 13.1) that the parse of a program or a
+ * template part reached, kept for the formatter (f12 2.6 item 4).
+ */
+const deepestLevels = new WeakMap<object, number>();
+
+/** The highest level that the parse of a program or a template part reached. */
+export function deepestLevel(node: A.Program | A.Expr): number {
+  return deepestLevels.get(node) ?? 0;
 }
 
 /** Package F12: parse a program from tokens, as the repair makes them (f12 3.3). Throws ParseError. */
@@ -57,7 +71,10 @@ export function parseTokens(tokens: Token[], source: Source): A.Program {
 
 export function parseProgram(source: Source): A.Program {
   const tokens = lex(source);
-  return new Parser(tokens, 0, source).program();
+  const p = new Parser(tokens, 0, source);
+  const prog = p.program();
+  deepestLevels.set(prog, p.deepest);
+  return prog;
 }
 
 const OPENERS = new Set(["(", "[", "?.[", "{"]);
@@ -76,6 +93,8 @@ class Parser {
   private level = 0;
   /** The most levels open so far, for a lambda's maxLevel. */
   private maxLevel = 0;
+  /** The most levels open at once in the whole parse. */
+  deepest = 0;
   private prevEnd = 0;
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
@@ -365,6 +384,7 @@ class Parser {
     }
     this.level++;
     if (this.level > this.maxLevel) this.maxLevel = this.level;
+    if (this.level > this.deepest) this.deepest = this.level;
     this.labels.push({ kind, at: span as Token });
   }
 

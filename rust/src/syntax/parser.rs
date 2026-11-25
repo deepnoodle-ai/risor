@@ -553,6 +553,7 @@ impl<'a> Parser<'a> {
         }
         self.level += 1;
         self.max_level = self.max_level.max(self.level);
+        self.ast.deepest = self.ast.deepest.max(self.level as u16);
         Ok(())
     }
 

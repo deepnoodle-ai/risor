@@ -7,7 +7,7 @@
 import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { lex } from "../syntax/lexer.ts";
-import { parse } from "../syntax/parser.ts";
+import { deepestLevel, parse } from "../syntax/parser.ts";
 import { Source, SOURCE_LIMIT, withinSourceLimit } from "../syntax/source.ts";
 import { sourceTooLarge } from "../syntax/messages.ts";
 import type { Span } from "../syntax/source.ts";
@@ -26,19 +26,49 @@ export function formatProgram(text: string, limit: number = SOURCE_LIMIT): Forma
   const source = new Source(text);
   const p = parse(source);
   if (!p.ok) return { ok: false, diagnostics: p.diagnostics };
-  const tokens = lex(source).filter((t) => t.kind !== "eof");
-  const f = new Formatter(source, tokens, 0, source.length);
-  const doc = f.build((b) => b.program(p.program));
-  return { ok: true, text: finish(layout(doc)) };
+  if (deepestLevel(p.program) + READER_LEVELS <= 100) return { ok: true, text: programText(source, p.program, false) };
+  // Too deep for the pairs for the reader (f12 2.6 item 4): the plain text,
+  // then the pairs if the plain text, without the source's own parentheses
+  // that no rule asks for, leaves room for them. Deciding on the plain text
+  // keeps the formatter idempotent.
+  const plain = programText(source, p.program, true);
+  const again = parse(new Source(plain));
+  if (!again.ok || deepestLevel(again.program) + READER_LEVELS > 100) return { ok: true, text: plain };
+  return { ok: true, text: programText(again.source, again.program, false) };
 }
 
-/** Format a template (f12 2.14). */
+/** The most levels that the pairs for the reader add around a token (f12 2.6 item 3). */
+const READER_LEVELS = 2;
+
+function programText(source: Source, program: A.Program, plain: boolean): string {
+  const tokens = lex(source).filter((t) => t.kind !== "eof");
+  const f = new Formatter(source, tokens, 0, source.length, plain);
+  return finish(layout(f.build((b) => b.program(program))));
+}
+
+/** Format a template (f12 2.14). The pairs for the reader are decided as for a program. */
 export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): FormatResult {
   const t = parseTemplateText(text, limit);
   if (!t.ok) return { ok: false, diagnostics: t.diagnostics };
-  const src = t.template.source;
+  if (templateDeepest(t.template) + READER_LEVELS <= 100) return { ok: true, text: templateText(t.template, false) };
+  const plain = templateText(t.template, true);
+  const again = parseTemplateText(plain, SOURCE_LIMIT);
+  if (!again.ok || templateDeepest(again.template) + READER_LEVELS > 100) return { ok: true, text: plain };
+  return { ok: true, text: templateText(again.template, false) };
+}
+
+type ParsedTemplate = Extract<ReturnType<typeof parseTemplateText>, { ok: true }>["template"];
+
+function templateDeepest(t: ParsedTemplate): number {
+  let d = 0;
+  for (const seg of t.segments) if (seg.kind !== "text") d = Math.max(d, deepestLevel(seg.expr));
+  return d;
+}
+
+function templateText(template: ParsedTemplate, plain: boolean): string {
+  const src = template.source;
   let out = "";
-  for (const seg of t.template.segments) {
+  for (const seg of template.segments) {
     const raw = src.slice(seg.span.start, seg.span.end);
     if (seg.kind === "text") {
       out += raw;
@@ -47,14 +77,14 @@ export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): Form
     // The part's tokens, without the closing delimiter.
     const toks = lexPart(src, seg.span.start + 3, seg.span.start).filter((x) => x.kind !== "interpEnd" && x.kind !== "eof");
     const closeStart = raw.endsWith("}}") ? seg.span.end - 2 : seg.span.end - 1;
-    const f = new Formatter(src, toks, seg.span.start + 3, closeStart);
+    const f = new Formatter(src, toks, seg.span.start + 3, closeStart, plain);
     const body = layout(f.build((b) => b.expr(seg.expr)), Infinity);
     // `trim` takes off what `\s` matches: white space and line ends.
     const trimmed = body.trim();
     if (!trimmed.includes("\n") && !f.hasLineComment) out += "${{ " + trimmed + " }}";
     else out += raw;
   }
-  return { ok: true, text: out };
+  return out;
 }
 
 /** The text ends with exactly one U+000A (f12 2.1 item 5). */
@@ -130,7 +160,11 @@ class Formatter {
   /** Opening brackets of a sequence with elements. */
   private openWithElements = new Set<number>();
 
-  constructor(src: Source, toks: Token[], from: number, to: number) {
+  /** No pairs for the reader in the whole text (f12 2.6 item 4). */
+  private readonly plain: boolean;
+
+  constructor(src: Source, toks: Token[], from: number, to: number, plain = false) {
+    this.plain = plain;
     this.src = src;
     this.toks = toks;
     toks.forEach((t, i) => this.byStart.set(t.start, i));
@@ -757,7 +791,7 @@ class Formatter {
       if (n.kind === "As") continue;
       const prev = k > 0 ? spine[k - 1] : null;
       const top = prev === null || prev.kind === "As" || !sameRun(prev, n);
-      pairsOK[k] = top ? r === 0 && runLen(n) <= 3 : pairsOK[k - 1];
+      pairsOK[k] = top ? !this.plain && r === 0 && runLen(n) <= 3 : pairsOK[k - 1];
       const need = this.needLeft(n.x, n);
       const rd = !need && pairsOK[k] && readerRow(n.x, n, "left");
       leftParen[k] = need || rd;
@@ -977,7 +1011,7 @@ class Formatter {
         continue;
       }
       if (x.kind === "Binary") {
-        if (prev === null || prev.kind !== "Binary" || !sameRun(prev, x)) pairsOK = this.rdepth === 0 && runLen(x) <= 3;
+        if (prev === null || prev.kind !== "Binary" || !sameRun(prev, x)) pairsOK = !this.plain && this.rdepth === 0 && runLen(x) <= 3;
         if (this.needLeft(x.x, x) || (pairsOK && readerRow(x.x, x, "left"))) return false;
         prev = x;
         x = x.x;

@@ -167,7 +167,7 @@ func isMul(n syntax.Node) bool { return isBin(n, "*", "/", "%") }
 // pair of another run encloses the run. parent is a Binary of the run: of
 // *, / and % for the second row, of || for the first.
 func (b *builder) reader(parent syntax.Node, r role, x syntax.Node) bool {
-	return readerParens(parent, r, x) && b.rdepth == 0 && b.runLen(parent.(*syntax.Binary)) <= 3
+	return !b.plain && readerParens(parent, r, x) && b.rdepth == 0 && b.runLen(parent.(*syntax.Binary)) <= 3
 }
 
 // runLen is the number of operators of the run that n is in: the Binary
