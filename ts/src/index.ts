@@ -109,7 +109,7 @@ export type { TypeKind, FieldType } from "./host/type.ts";
 // E.1 row 5: the TypeScript type of a Risor type (R202).
 export type { Infer } from "./host/infer.ts";
 export { typeFromSchema, conform, conformAll, loadValue, decode, LoadError } from "./host/api.ts";
-export type { LoadOptions, SchemaOption } from "./host/api.ts";
+export type { ConformOptions, LoadOptions, SchemaOption } from "./host/api.ts";
 
 // E.8 Diagnostics and tools.
 export { RisorError, renderLine, renderDetail, renderJSON, format } from "./host/api.ts";

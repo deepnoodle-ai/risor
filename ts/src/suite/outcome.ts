@@ -147,6 +147,12 @@ export function outcomeLine(c: Case): string {
 function conformLine(c: Case): string {
   const r = runConform(c);
   const parts: string[] = [`"name":${jsonString(c.name)}`];
+  if (r.ok === "limit") {
+    // f04 9.5: the function's steps-exceeded.
+    parts.push(`"phase":"run"`);
+    parts.push(`"diagnostics":[{"code":"steps-exceeded","span":null,"class":"limit","message":${jsonString(r.diagnostic.message)}}]`);
+    return `{${parts.join(",")}}`;
+  }
   if (!r.ok) {
     parts.push(`"phase":"declare"`);
     parts.push(`"diagnostics":[${r.diagnostics.map((d) => d.code).sort().map((code) => `{"code":${jsonString(code)}}`).join(",")}]`);

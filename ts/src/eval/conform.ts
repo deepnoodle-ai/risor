@@ -1,7 +1,8 @@
 // The conformance walk (package F4, f04 4): the order in which a value is
 // tested against a resolved type, what each step charges, and the path and
 // template of the first failure. Used by `as` and `is` in a run (charged, with
-// the depth count) and by the conformance function (f04 7: nothing charged).
+// the depth count) and by the conformance function (f04 7.3: the same steps,
+// counted against a step limit of its own).
 
 import { isAny, isNever, printType, tagSetOf, unfold } from "../types/type.ts";
 import type { Alts, Rec, Type, Union } from "../types/type.ts";
@@ -14,8 +15,11 @@ export type PathStep = string | number;
 
 export interface ConformFailure {
   path: PathStep[];
-  /** `depth`: the conformance function went past the default depth limit (f17 12.7 item 3); no path. */
-  template: "wrong" | "missing" | "extra" | "depth";
+  /**
+   * `depth`: the conformance function went past the default depth limit (f17 12.7 item 3).
+   * `steps`: it went past its step limit (f04 7.3). Neither has a path.
+   */
+  template: "wrong" | "missing" | "extra" | "depth" | "steps";
   params: Record<string, unknown>;
 }
 
@@ -25,12 +29,39 @@ export const CONFORM_DEPTH = 200;
 /** The failure of the conformance function past the default depth limit. */
 export const DEPTH_FAILURE: ConformFailure = { path: [], template: "depth", params: { limit: CONFORM_DEPTH } };
 
+/** The default step limit of the conformance function (f04 7.3, 03 3.6.1). */
+export const CONFORM_STEPS = 1_000_000;
+
+/** The failure of the conformance function past its step limit (f04 7.3). */
+export function stepsFailure(limit: number): ConformFailure {
+  return { path: [], template: "steps", params: { limit } };
+}
+
 /** The conformance function went past its depth limit. */
 class DepthStop extends Error {}
+
+/** The conformance function went past its step limit. */
+class StepStop extends Error {}
+
+/** A step count against a limit (null: none), outside a run (f04 7.3, f08 6.4). */
+class Meter {
+  count = 0;
+  readonly limit: number | null;
+  constructor(limit: number | null) {
+    this.limit = limit;
+  }
+  charge(n: number): void {
+    if (n <= 0) return;
+    if (this.limit !== null && n > this.limit - this.count) throw new StepStop();
+    this.count += n;
+  }
+}
 
 /** What a walk charges and counts. */
 export interface WalkCtx {
   readonly cls: Classifier;
+  /** The step limit of the conformance function's context (f04 7.3); absent in a run. */
+  readonly stepLimit?: number | null;
   charge(n: number): void;
   /** Enter a list or map (f04 5.4): the depth test, then one more level. */
   enter(): void;
@@ -206,26 +237,36 @@ class Walker {
   }
 }
 
-/** Test a value against a resolved type (f04 4.2). With the conformance function's context, DEPTH_FAILURE past its depth limit. */
+/**
+ * Test a value against a resolved type (f04 4.2). With the conformance
+ * function's context, DEPTH_FAILURE past its depth limit, and the failure
+ * `steps` past its step limit.
+ */
 export function conformWalk(v: unknown, t: Type, ctx: WalkCtx): ConformFailure | null {
   try {
     return new Walker(ctx).test(v, t);
   } catch (e) {
     if (e instanceof DepthStop) return DEPTH_FAILURE;
+    if (e instanceof StepStop) return stepsFailure(ctx.stepLimit!);
     throw e;
   }
 }
 
 /**
- * The conformance function's context (f04 7.1 item 1): nothing charged. It
- * counts the levels it enters, and stops past the default depth limit, 200
- * (f17 12.7 item 3): a recursive type does not bound its depth.
+ * The conformance function's context (f04 7.1 item 1, 7.3). It charges the
+ * steps a run's walk charges, against `steps` (null: no limit), the default
+ * 1,000,000. It counts the levels it enters, and stops past the default depth
+ * limit, 200 (f17 12.7 item 3): a recursive type does not bound its depth.
  */
-export function freeCtx(cls: Classifier): WalkCtx {
+export function freeCtx(cls: Classifier, steps: number | null = CONFORM_STEPS): WalkCtx {
   let level = 0;
+  const meter = new Meter(steps);
   return {
     cls,
-    charge() {},
+    stepLimit: steps,
+    charge(n: number) {
+      meter.charge(n);
+    },
     enter() {
       if (++level > CONFORM_DEPTH) throw new DepthStop();
     },
@@ -235,10 +276,20 @@ export function freeCtx(cls: Classifier): WalkCtx {
   };
 }
 
-/** The walk of every failure (package F8, f08 6.2): failures in order, up to `max`. Charges nothing. */
-export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number): ConformFailure[] {
+/**
+ * The walk of every failure (package F8, f08 6.2): failures in order, up to
+ * `max`, under the step limit `steps` (null: none) by f08 6.4. First the walk
+ * of f04 4.2: a limit there is the whole list. Then All, from a new count,
+ * charging at the places that walk charges; past the limit the list ends with
+ * the failure `steps`.
+ */
+export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number, steps: number | null = CONFORM_STEPS): ConformFailure[] {
   // F8 6.1: a maximum below 1 is read as 1.
   if (!(max >= 1)) max = 1;
+  // f08 6.4 step 1, f17 12.7 item 3: the first failure's walk, whose limit ends ConformAll.
+  const first = conformWalk(v, t, freeCtx(cls, steps));
+  if (first !== null && (first.template === "depth" || first.template === "steps")) return [first];
+  const meter = new Meter(steps);
   const out: ConformFailure[] = [];
   const path: PathStep[] = [];
   const full = () => out.length >= max;
@@ -253,23 +304,29 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
   };
   // f17 12.7 item 3: the levels entered; past the default depth limit the walk ends with DEPTH_FAILURE.
   let level = 0;
-  const all = (raw: unknown, shown: Type): void => {
+  // `looked`: the value of a declared field, whose step is its lookup, already charged (f08 6.4 step 2).
+  const all = (raw: unknown, shown: Type, looked = false): void => {
     const ty = unfold(shown);
     if (full() || isAny(ty)) return;
     const wrong = (_t: Type, found: unknown) => wrong0(shown, found);
     const x = readHost(raw);
-    if (x === BAD_NUMBER) return wrong(ty, CANNOT_ENTER);
+    if (x === BAD_NUMBER) {
+      if (!looked) meter.charge(1);
+      return wrong(ty, CANNOT_ENTER);
+    }
     const k = cls.kind(x);
     if ((k === "list" && ty.list !== undefined) || (k === "map" && ty.map !== undefined)) {
       if (level + 1 > CONFORM_DEPTH) throw new DepthStop();
       level++;
       try {
+        if (!looked) meter.charge(1);
         all0(x, k, ty, wrong);
       } finally {
         level--;
       }
       return;
     }
+    if (!looked) meter.charge(1);
     all0(x, k, ty, wrong);
   };
   const all0 = (x: unknown, k: string, ty: Exclude<Type, { any: true }>, wrong: (t: Type, found: unknown) => void): void => {
@@ -284,7 +341,10 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
         if (!(ty.num === "float" || (ty.num === "int" && whole(x as number)))) wrong(ty, x);
         return;
       case "string":
-        if (ty.str === undefined || (ty.str !== "string" && !ty.str.has(x as string))) wrong(ty, x);
+        if (ty.str === undefined) return wrong(ty, x);
+        if (ty.str === "string") return;
+        meter.charge(size(x as string));
+        if (!ty.str.has(x as string)) wrong(ty, x);
         return;
       case "list": {
         if (ty.list === undefined) return wrong(ty, x);
@@ -298,10 +358,12 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
           // f08 6.2 step 7: the tag first; a missing or unknown tag stops this value.
           const u = ty.union;
           const tag = u.tag;
+          meter.charge(1 + size(tag));
           const tv = mapGet(x as object, tag);
           if (tv === ABSENT) return at(tag, () => add("missing", { key: tag }));
           const tagType: Alts = { str: new Set(u.variants.flatMap((r) => [...tagSetOf(r, tag)])) };
           const s = readHost(tv);
+          if (typeof s === "string") meter.charge(size(s));
           const variant = typeof s === "string" ? u.variants.find((r) => tagSetOf(r, tag).has(s)) : undefined;
           if (variant === undefined) return at(tag, () => wrong0(tagType, s === BAD_NUMBER ? CANNOT_ENTER : s));
           return record(x as object, variant, tag);
@@ -319,16 +381,21 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
       if (full()) return;
       if (key === skip) continue;
       const fl = r.fields.get(key)!;
+      meter.charge(1 + size(key));
       const val = mapGet(m, key);
       if (val === ABSENT) {
         if (!fl.optional) at(key, () => add("missing", { key }));
         continue;
       }
-      at(key, () => all(val, fl.type));
+      at(key, () => all(val, fl.type, true));
     }
-    if (isAny(r.rest)) return;
+    if (isAny(r.rest) || full()) return;
     const others = mapKeys(m).filter((x) => !r.fields.has(x)).sort(compareText);
     const exact = isNever(r.rest);
+    // f08 6.4 step 2: the other keys, charged as f04 4.3 steps 4 and 5 charge them.
+    let together = 0;
+    for (const x of others) together += x.length;
+    meter.charge((exact ? others.length : 0) + div64(together));
     for (const key of others) {
       if (full()) return;
       if (exact) at(key, () => add("extra", { key }));
@@ -338,6 +405,11 @@ export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number
   try {
     all(v, t);
   } catch (e) {
+    if (e instanceof StepStop) {
+      // f08 6.4 step 3: the failures found, then the limit's.
+      out.push(stepsFailure(steps!));
+      return out;
+    }
     if (!(e instanceof DepthStop)) throw e;
     // F8 6.1 with f17 12.7 item 3: ConformAll ends with the depth failure.
     out.push(DEPTH_FAILURE);
