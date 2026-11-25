@@ -267,6 +267,7 @@ has level 6; a prefix operator 9; a chain and a primary 11.
 | The left operand of `**` | x has a level below 11 |
 | The right operand of `**` | x has a level below 9 |
 | The left operand of `in`, `not in`, `as` and `is` | By the rows above; and when x is a prefix `!` (`01-language.md` 3.4 rule 2, F4 2.5) |
+| An operand of a comparison operator: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` | By the rows above; and when x is a comparison (`01-language.md` 3.3, 3.4 rule 13). So `(a < b) == c` and `a == (b < c)` keep their pairs |
 | The operand of a prefix `!` or `-` | x has a level below 9, or x is `**` (`01-language.md` 3.4 rule 1) |
 | The receiver of a step of a chain | x has a level below 11; or x is a chain that holds a `?.`, `?.[` or `?.[*]` step, or a star (F7), since `(a?.b).c` and `a?.b.c` are different trees |
 | The test of `? :` | x has level 1 |
@@ -279,13 +280,26 @@ These parentheses are added for the reader. Each changes no tree.
 | --- | --- | --- |
 | `&&` | An operand of `\|\|` | `(a && b) \|\| c` |
 | `*`, `/` or `%` | The left operand of `*`, `/` or `%` with another operator, or of `%` with `%` | `(a % b) * c`, `(a * b) / c`, `(a % b) % c` |
-| `==` or `!=` | The left operand of `==` or `!=` | `(a == b) != c` |
 
 1. A chain written in parentheses as the receiver of a further step, which
    holds no optional step and no star, is the same tree as the chain without
    them: `(xs.map(f)).sum()` is written `xs.map(f).sum()`.
 2. So the formatted text has the parentheses of its tree, wherever the source
    put its own.
+3. **The nesting limit.** Each pair of the second table opens a level
+   (`01-language.md` 13.1), and a run of `*`, `/` and `%` written with them
+   nests one pair inside the next. So the formatter writes a pair of the second
+   table only where the text inside it stays within the limit of 100 levels
+   (`01-language.md` 13.2). The plain text is the formatted text with none of
+   the pairs of the second table. A pair around x is written only when the
+   highest level that a token of x opens in the plain text, plus the pairs of
+   the second table that are written around x, plus one, is 100 or less. The
+   pairs are decided from the outermost in.
+4. So the formatted text always parses. The plain text has the levels of the
+   source's tree, which parsed, and a pair adds one level to each token inside
+   it. A run of 150 operators that alternate `*` and `/`, at the top of a
+   program, is written with the 99 outermost pairs. The 51 operators inside the
+   innermost pair are written flat, which is the same tree.
 
 ### 2.7 Literals and line ends
 

@@ -176,17 +176,39 @@
    }
   },
   {
-   "name": "< binds tighter than ==",
+   "name": "< and == do not mix without parentheses",
    "source": "1 < 2 == 3 < 4",
    "expect": {
-    "value": true
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
    }
   },
   {
-   "name": "== and != are one level, left to right",
+   "name": "== and != do not chain",
    "source": "1 == 1 != false",
    "expect": {
-    "value": true
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
    }
   },
   {
@@ -323,24 +345,57 @@
    }
   },
   {
-   "name": "in binds tighter than ==",
+   "name": "in and == do not mix without parentheses",
    "source": "1 in [1] == true",
    "expect": {
-    "value": true
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       10,
+       1,
+       12
+      ]
+     }
+    ]
    }
   },
   {
-   "name": "< and in are one level, left to right",
+   "name": "< and in do not chain",
    "source": "1 < 2 in [true]",
    "expect": {
-    "value": true
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
    }
   },
   {
-   "name": "in and not in are one level, left to right",
+   "name": "in and not in do not chain",
    "source": "1 in [1] not in [false]",
    "expect": {
-    "value": true
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       10,
+       1,
+       16
+      ]
+     }
+    ]
    }
   },
   {

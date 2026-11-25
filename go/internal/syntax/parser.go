@@ -40,6 +40,7 @@ type parser struct {
 	tok     Token
 	prevEnd int
 	level   int
+	peak    int // the highest level opened since the innermost binary() or climb() began
 
 	// What package F8's mapping of a diagnostic reads (f08-errors.md 2.1
 	// item 5): the source, the rule a raise names, the frames of the
@@ -204,6 +205,9 @@ func (p *parser) expect(k TokenKind) Token {
 // enter opens a level of nesting at the token that spans start to end.
 func (p *parser) enter(start, end int) {
 	p.level++
+	if p.level > p.peak {
+		p.peak = p.level
+	}
 	if p.level > MaxLevels {
 		p.fail(diag.CodeNestingExceeded, start, end, "the text is nested more than 100 levels deep")
 	}
@@ -816,13 +820,16 @@ func (p *parser) tryExpr() Node {
 // rest of an Or.
 func (p *parser) binary() Node {
 	m := p.mark()
-	left, bang := p.climb(7)
+	saved := p.peak
+	p.peak = p.level
+	defer func() { p.peak = max(saved, p.peak) }()
+	left, bang := p.climb(7, false)
 	if p.tok.Kind == Coalesce {
 		for p.tok.Kind == Coalesce {
 			op := p.tok
 			p.next()
 			p.enter(op.Start, op.End)
-			right, _ := p.climb(7)
+			right, _ := p.climb(7, false)
 			p.exit()
 			left = &Binary{base: p.base(m), Op: "??", OpPos: Span{op.Start, op.End}, X: left, Y: right}
 		}
@@ -831,17 +838,23 @@ func (p *parser) binary() Node {
 		}
 		return left
 	}
-	left, _ = p.climbFrom(m, left, bang, 3)
+	left, _ = p.climbFrom(m, left, bang, 3, false)
 	if p.tok.Kind == Coalesce {
 		p.raise("3.4.3")
 	}
 	return left
 }
 
-func (p *parser) climb(min int) (Node, *Token) {
+// climb parses a chain of binary operators of level min or tighter. inCmp
+// is true when the chain is the right operand of a comparison operator.
+func (p *parser) climb(min int, inCmp bool) (Node, *Token) {
 	m := p.mark()
+	saved := p.peak
+	p.peak = p.level
 	x, bang := p.unary(nil)
-	return p.climbFrom(m, x, bang, min)
+	n, b := p.climbFrom(m, x, bang, min, inCmp)
+	p.peak = max(saved, p.peak)
+	return n, b
 }
 
 // binop gives the binary operator at the current place, its level (3.3), its
@@ -877,8 +890,11 @@ func (p *parser) binop() (op string, prec, start, end, n int) {
 
 // climbFrom continues a left-associative chain of binary operators of level
 // min or tighter, whose first operand is left. bang is the "!" token when
-// left is a "!" expression written without parentheses.
-func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Token) {
+// left is a "!" expression written without parentheses. inCmp is true when
+// the chain is the right operand of a comparison operator: a comparison
+// operator in it is then chained-comparison (3.4 rule 13).
+func (p *parser) climbFrom(m mark, left Node, bang *Token, min int, inCmp bool) (Node, *Token) {
+	leftCmp := false // left is a comparison written without parentheses
 	for {
 		if p.tok.isWord("as") || p.tok.isWord("is") { // F4 2.1: at the level of Rel
 			if min > 6 {
@@ -901,6 +917,7 @@ func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Toke
 			p.mark1(p.i-1, mTypeEnd)
 			left = &As{base: p.base(m), Form: kw.Text, X: left, Type: t}
 			bang = nil
+			leftCmp = false
 			// Only a Rel operator or a looser one may follow a type (2.4).
 			if _, prec, _, _, _ := p.binop(); prec > 6 {
 				p.unexpected()
@@ -918,14 +935,20 @@ func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Toke
 		if (op == "in" || op == "not-in") && bang != nil { // 3.4 rule 2
 			p.raiseAt(*bang, "3.4.2")
 		}
+		isCmp := prec == 5 || prec == 6
+		if isCmp && (leftCmp || inCmp) { // 3.4 rule 13
+			p.rule = "3.4.13"
+			p.fail(diag.CodeChainedComparison, s, e, "comparisons do not chain")
+		}
 		for k := 0; k < n; k++ {
 			p.next()
 		}
 		p.enter(s, e)
-		right, _ := p.climb(prec + 1)
+		right, _ := p.climb(prec+1, isCmp)
 		p.exit()
-		left = &Binary{base: p.base(m), Op: op, OpPos: Span{s, e}, X: left, Y: right}
+		left = &Binary{base: p.base(m), Op: op, OpPos: Span{s, e}, X: left, Y: right, Peak: p.peak}
 		bang = nil
+		leftCmp = isCmp
 	}
 }
 

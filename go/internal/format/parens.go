@@ -53,12 +53,19 @@ func isBin(n syntax.Node, ops ...string) bool {
 	return false
 }
 
+// isCmp reports whether n is a comparison (01-language.md 3.3).
+func isCmp(n syntax.Node) bool {
+	b, ok := n.(*syntax.Binary)
+	return ok && (binLevel[b.Op] == 5 || binLevel[b.Op] == 6)
+}
+
 func isNot(n syntax.Node) bool {
 	u, ok := n.(*syntax.Unary)
 	return ok && u.Op == "!"
 }
 
-// needParens reports whether x is written in parentheses in its place.
+// needParens reports whether x is written in parentheses in its place by
+// the first table of 2.6. The pairs for the reader are readerParens.
 func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 	lx := level(x)
 	switch r {
@@ -92,21 +99,9 @@ func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 		if r == rLeft && lx < p || r == rRight && lx <= p {
 			return true
 		}
-		// The parentheses added for the reader.
-		if op == "||" && isBin(x, "&&") {
+		// A comparison inside a comparison (01-language.md 3.4 rule 13).
+		if (p == 5 || p == 6) && isCmp(x) {
 			return true
-		}
-		if r == rLeft {
-			xb, _ := x.(*syntax.Binary)
-			if xb != nil {
-				mul := func(o string) bool { return o == "*" || o == "/" || o == "%" }
-				if mul(op) && mul(xb.Op) && (xb.Op != op || op == "%") {
-					return true
-				}
-				if (op == "==" || op == "!=") && (xb.Op == "==" || xb.Op == "!=") {
-					return true
-				}
-			}
 		}
 		return false
 	case rOperand:
@@ -131,9 +126,57 @@ func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 	return false
 }
 
+// readerParens reports whether x is written in parentheses for the reader
+// (2.6, the second table), before the nesting limit of item 3. Each such x is
+// a Binary.
+func readerParens(parent syntax.Node, r role, x syntax.Node) bool {
+	pb, ok := parent.(*syntax.Binary)
+	if !ok || (r != rLeft && r != rRight) || needParens(parent, r, x) {
+		return false
+	}
+	xb, ok := x.(*syntax.Binary)
+	if !ok {
+		return false
+	}
+	if pb.Op == "||" && xb.Op == "&&" {
+		return true
+	}
+	mul := func(o string) bool { return o == "*" || o == "/" || o == "%" }
+	return r == rLeft && mul(pb.Op) && mul(xb.Op) && (xb.Op != pb.Op || pb.Op == "%")
+}
+
+// reader reports whether a pair for the reader is written around x, at a
+// place inside d such pairs: only when the text inside it stays within 100
+// levels (2.6 item 3). The plain text is the formatted text without these
+// pairs, and x.Peak is the highest level that a token of x opens there. So
+// the formatter decides them on the tree of its own plain text (Program).
+func (b *builder) reader(parent syntax.Node, r role, x syntax.Node, d int) bool {
+	if !readerParens(parent, r, x) {
+		return false
+	}
+	b.sawReader = true
+	return b.readers && x.(*syntax.Binary).Peak+d+1 <= syntax.MaxLevels
+}
+
+// paren reports whether x is written in parentheses in its place: by the
+// first table of 2.6, or for the reader.
+func (b *builder) paren(parent syntax.Node, r role, x syntax.Node) bool {
+	if r == rSubject {
+		return b.startsBrace(x)
+	}
+	return needParens(parent, r, x) || b.reader(parent, r, x, b.rdepth)
+}
+
 // startsBrace reports whether the text of x begins with {, if or try
 // (01-language.md 3.4 rule 6).
 func startsBrace(x syntax.Node) bool {
+	return (&builder{}).startsBrace(x)
+}
+
+// startsBrace reports whether the text of x, written at this place, begins
+// with {, if or try. A pair for the reader on its left edge is a (.
+func (b *builder) startsBrace(x syntax.Node) bool {
+	d := b.rdepth
 	for {
 		switch n := x.(type) {
 		case *syntax.Map, *syntax.Block:
@@ -149,7 +192,7 @@ func startsBrace(x syntax.Node) bool {
 		case *syntax.Try:
 			return true
 		case *syntax.Binary:
-			if needParens(n, rLeft, n.X) {
+			if needParens(n, rLeft, n.X) || b.reader(n, rLeft, n.X, d) {
 				return false
 			}
 			x = n.X

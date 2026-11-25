@@ -92,16 +92,16 @@
  },
  {
   "name": "equality inside equality",
-  "format": "a == b != c",
+  "format": "(a == b) != c",
   "expect": {
    "formatted": "(a == b) != c\n"
   }
  },
  {
-  "name": "a comparison inside equality needs none",
-  "format": "a < b == c > d",
+  "name": "a comparison inside equality keeps its parentheses",
+  "format": "(a < b) == (c > d)",
   "expect": {
-   "formatted": "a < b == c > d\n"
+   "formatted": "(a < b) == (c > d)\n"
   }
  },
  {
@@ -389,6 +389,52 @@
   "format": "[...(xs)]",
   "expect": {
    "formatted": "[...xs]\n"
+  }
+ },
+ {
+  "name": "150 operators that alternate * and /: the 99 outermost pairs for the reader, the rest flat (2.6 item 3)",
+  "format": "a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a",
+  "expect": {
+   "formatted": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a\n"
+  }
+ },
+ {
+  "name": "a pair for the reader is written when the text inside it stays within 100 levels",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
+  }
+ },
+ {
+  "name": "a pair for the reader is not written when a token inside it would open level 101",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a *\n  b /\n  c)\n"
+  }
+ },
+ {
+  "name": "a chained comparison does not parse",
+  "format": "a == b == c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "chained-comparison",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a comparison on the right of a comparison keeps its parentheses",
+  "format": "a == (b < c)",
+  "expect": {
+   "formatted": "a == (b < c)\n"
   }
  }
 ]

@@ -149,6 +149,7 @@ const (
 	CodeNestingExceeded     = "nesting-exceeded"
 	CodeBadTypeText         = "bad-type-text"
 	CodeReservedWord        = "reserved-word"
+	CodeChainedComparison   = "chained-comparison"
 )
 
 // The declare codes of Core (03-host.md 3.7.3).

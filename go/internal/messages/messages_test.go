@@ -28,9 +28,9 @@ func TestBuild(t *testing.T) {
 	assert.Equal(t, Build("no-match", "", Val("found", long)), `the match has no arm for "`+strings.Repeat("a", 60)+`...`)
 	assert.True(t, Caught("divide-by-zero"))
 	assert.False(t, Caught("steps-exceeded"))
-	// 19 run codes, with package F8 the 58 parse and 30 check codes, with
+	// 19 run codes, with package F8 the 59 parse and 30 check codes, with
 	// package F16 name-clash, and with F17 circular-type.
-	assert.Equal(t, len(Codes()), 109)
+	assert.Equal(t, len(Codes()), 110)
 	assert.Equal(t, Build("check-limit", "pairs"), "comparing the types here takes more than 4096 pairs of types")
 }
 

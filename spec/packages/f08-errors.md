@@ -35,7 +35,7 @@ chapter.
 | --- | --- |
 | **Core diagnostic** | The first `parse` diagnostic of a text, with its code and span, as Core and the packages before F8 give it (`01-language.md` 14.1, F3 6.2, F4 2.6) |
 | **Failing token** | The token at which the Core diagnostic is reported, or the end of input |
-| **Targeted code** | A `parse` code of 2.11 that is not one of Core's 14 |
+| **Targeted code** | A `parse` code of 2.11 that is not one of Core's 15 |
 | **Operand word** | A word read as a `Name` where a `Primary` stands, not followed by `(`: not after `.` or `?.`, not a key, not a shorthand entry of a map literal, not a pattern |
 | **Directly**, of code points | With no code point between |
 | **The token before, the token after** | The previous or the next token. White space and comments may stand between |
@@ -62,11 +62,11 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
 | Core rule | With this package |
 | --- | --- |
 | `01-language.md` 14.1 item 1 | The first `parse` diagnostic has a specified message (3) |
-| `01-language.md` 14.2, the 14 codes | 44 more codes (2.11). Each is reported only where 2 says |
+| `01-language.md` 14.2, the 15 codes | 44 more codes (2.11). Each is reported only where 2 says |
 | `01-language.md` 14.3 | Each row is reported with the targeted code of 2, at the span the row gives, or at the span of 2.8 where no earlier case pins it (rulings BA5) |
 | `03-host.md` 3.7.1, `span` and `message` | The message of a `parse` and of a `check` diagnostic is specified. A `run` diagnostic has the field `trace` (4) |
 | `03-host.md` 3.7.2, the sentence on messages of `parse` and `check` | Those messages are built from the catalog (3) |
-| `03-host.md` 3.7.3 | The `parse` phase has 58 codes (2.11) |
+| `03-host.md` 3.7.3 | The `parse` phase has 59 codes (2.11) |
 | `03-host.md` 3.8.1 item 2 | The catalog also has the entries of 3.1 |
 | `03-host.md` 3.8.3 | Two more kinds of parameter, and the kind `token` made exact (3.2) |
 | `03-host.md` 3.10 | The additions of 7 |
@@ -85,7 +85,8 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
 3. When no row holds, the Core diagnostic stands, with its template of 3.4.
 4. So a targeted code takes the place of the Core diagnostic and never of
    another: the order of lexical diagnostics, of syntax errors, of
-   `reserved-word`, of the three codes of F3 and of `nesting-exceeded` is Core's
+   `reserved-word`, of the three codes of F3, of `nesting-exceeded` and of
+   `chained-comparison` is Core's
    (2.9).
 5. The rows are conditions on the Core diagnostic: its code, the rule of Core
    that gives it, the failing token, the tokens next to it, and the production
@@ -342,9 +343,10 @@ item 2 keeps. They are tried in this order.
 2. Among the rest, the first rule the text breaks as the parser reads it comes
    first (`01-language.md` 14.1), and only then is it mapped. So `) x === 1` is
    `unexpected-token` at the `)`, and `x === 1 )` is `strict-equality`.
-3. A text block's own code (F3 6.2) and `nesting-exceeded` are never mapped:
-   `nesting-exceeded` at a token comes before any row of this section at that
-   token.
+3. A text block's own code (F3 6.2), `nesting-exceeded` and
+   `chained-comparison` are never mapped: `nesting-exceeded` at a token comes
+   before any row of this section at that token. No row has the code
+   `chained-comparison` as its condition.
 4. A diagnostic after the first is not specified (`03-host.md` 3.7.2). An
    implementation may map the diagnostics it reports after the first by the same
    rows, and need not.
@@ -366,7 +368,7 @@ section applies to type text, but those of F4's `bad-type-text` (3.4).
 
 ### 2.11 The parse codes
 
-With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
+With this package the `parse` phase has 59 codes: the 15 of `01-language.md`
 14.2 and these 44.
 
 | Code | Rows |
@@ -428,7 +430,7 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
 1. The entries of the `parse` phase are in `suite/messages-parse.json`, and
    those of the `check` phase in `suite/messages-check.json`. Each file has the
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
-2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 97
+2. `messages-parse.json` has one entry for each of the 59 codes of 2.11, with 98
    templates. `messages-check.json` has one entry for each of the 30 check codes
    (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
    and a template in a file of its own (`spec/packages/f16-entry-points.md`
@@ -534,6 +536,7 @@ one template, its name is `default`.
 |  | `space` | `the line has a space where the indentation has a tab` | The first code point that differs is a space, and the indentation has a tab there |
 |  | `default` | `the line does not start with the indentation of the closing delimiter` | Every other difference |
 | `nesting-exceeded` | `default` | `{token} opens a level past the limit of 100 levels of nesting` |  |
+| `chained-comparison` | `default` | `comparisons do not chain: put one comparison in parentheses before {token}, or join the two with &&` | token is the second comparison operator (01-language.md 3.4 rule 13) |
 | `bad-type-text` | `value` | `{token} is a value, not a type; compare with == to test a value` | Where a type is expected: a number, true, false or - |
 |  | `number-word` | `number is not a type; write int or float` | Where a type is expected: the word number |
 |  | `boolean-word` | `boolean is not a type; write bool` | Where a type is expected: the word boolean |
@@ -620,6 +623,7 @@ The parameters of each code, with their kinds:
 | `bad-number` | `token` (token) |
 | `literal-range` | `token` (token) |
 | `nesting-exceeded` | `token` (token) |
+| `chained-comparison` | `token` (token) |
 | `bad-type-text` | `token` (token), `key` (string) |
 | `reserved-word` | `token` (token) |
 | `missing-else` | `token` (token) |

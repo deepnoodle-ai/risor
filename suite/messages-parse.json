@@ -1745,6 +1745,79 @@
     ]
   },
   {
+    "code": "chained-comparison",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "comparisons do not chain: put one comparison in parentheses before {token}, or join the two with &&"
+    },
+    "when": {
+      "default": "01-language.md 3.4 rule 13. token is the second comparison operator"
+    },
+    "cases": [
+      {
+        "name": "chained-comparison: ==",
+        "source": "1 == 1 == true",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "chained-comparison",
+              "span": [
+                1,
+                8,
+                1,
+                10
+              ],
+              "message": "comparisons do not chain: put one comparison in parentheses before ==, or join the two with &&"
+            }
+          ]
+        }
+      },
+      {
+        "name": "chained-comparison: <",
+        "source": "a < b < c",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "chained-comparison",
+              "span": [
+                1,
+                7,
+                1,
+                8
+              ],
+              "message": "comparisons do not chain: put one comparison in parentheses before <, or join the two with &&"
+            }
+          ]
+        }
+      },
+      {
+        "name": "chained-comparison: not in",
+        "source": "a == b not in c",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "chained-comparison",
+              "span": [
+                1,
+                8,
+                1,
+                14
+              ],
+              "message": "comparisons do not chain: put one comparison in parentheses before not in, or join the two with &&"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
     "code": "strict-equality",
     "phase": "parse",
     "since": "3.0",

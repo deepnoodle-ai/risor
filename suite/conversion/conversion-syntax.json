@@ -1274,6 +1274,39 @@
    "env": "{x: any, y: any, c: any}"
   },
   {
+   "name": "as is not a comparison, but > after it is one: x as int > 3 == true",
+   "source": "x as int > 3 == true",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       14,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a comparison after as needs no parentheses: x as int == 5",
+   "source": "x as int == 5",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": true
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
    "name": "as groups with < from the left: (3 < x) as bool",
    "source": "3 < x as bool",
    "vars": {

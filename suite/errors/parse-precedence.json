@@ -1290,5 +1290,62 @@
     }
    ]
   }
+ },
+ {
+  "name": "3.4 rule 2 before rule 13 at one in: 1 == !true in [false]",
+  "source": "1 == !true in [false]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "chained-comparison: 1 < 2 == true",
+  "source": "1 < 2 == true",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "chained-comparison",
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "message": "comparisons do not chain: put one comparison in parentheses before ==, or join the two with &&"
+    }
+   ]
+  }
+ },
+ {
+  "name": "chained-comparison: true == 1 < 2",
+  "source": "true == 1 < 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "chained-comparison",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "comparisons do not chain: put one comparison in parentheses before <, or join the two with &&"
+    }
+   ]
+  }
  }
 ]

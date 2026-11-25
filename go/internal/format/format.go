@@ -13,25 +13,50 @@ const Width = 80
 
 // Program formats a program text (2.1). It returns the formatted text, or
 // the first parse diagnostic.
+//
+// The text is formatted twice when it has a place for a pair for the
+// reader: first without those pairs, which gives the plain text of 2.6 item
+// 3, and then the plain text with them, decided on the levels of its own
+// tree.
 func Program(source string) (string, *syntax.Error, *syntax.File) {
+	out, err, f, saw := program(source, false)
+	if err != nil || !saw {
+		return out, err, f
+	}
+	out, err, _, _ = program(out, true)
+	if err != nil { // cannot happen: the plain text parses
+		panic("format: the plain text does not parse: " + err.Error())
+	}
+	return out, nil, f
+}
+
+func program(source string, readers bool) (string, *syntax.Error, *syntax.File, bool) {
 	f := syntax.NewFile(source)
 	prog, err := syntax.Parse(f)
 	if err != nil {
-		return "", err, f
+		return "", err, f, false
 	}
 	toks, lerr := syntax.Lex(f)
 	if lerr != nil { // cannot happen: the text parsed
-		return "", lerr, f
+		return "", lerr, f, false
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width)
+	out, saw := runReaders(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, readers)
 	out = strings.TrimRight(out, " \n") + "\n"
-	return out, nil, f
+	return out, nil, f, saw
 }
 
 // run builds the document twice: first to learn the kept tokens, then with
 // the comments attached (2.12), and lays it out.
 func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int) string {
+	out, _ := runReaders(src, toks, from, build, width, false)
+	return out
+}
+
+// runReaders is run, with the pairs for the reader on or off. It reports
+// whether a place for such a pair was met.
+func runReaders(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, readers bool) (string, bool) {
 	b := newBuilder(src, toks, from)
+	b.readers = readers
 	build(b)
 	b.attach()
 	b.reset()
@@ -41,7 +66,7 @@ func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, w
 			panic(fmt.Sprintf("format: a comment was not written: %q", c.text))
 		}
 	}
-	return render(d, width)
+	return render(d, width), b.sawReader
 }
 
 type builder struct {
@@ -59,6 +84,12 @@ type builder struct {
 	kept     map[int]bool
 	slots    map[int]*slot
 	pass2    bool
+	// readers turns on the pairs for the reader (2.6), and rdepth counts
+	// those written around the node being built. sawReader is set when a
+	// place for one is met.
+	readers   bool
+	rdepth    int
+	sawReader bool
 	// first and last are the first and last kept units emitted since the
 	// start of the element being built; elemStart marks the next unit as the
 	// first of an element other than the first.
@@ -493,8 +524,14 @@ func (b *builder) program(p *syntax.Program) part {
 
 // sub is the document of x in its place: in parentheses when 2.6 says.
 func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
-	if needParens(parent, r, x) {
+	if r == rSubject && b.startsBrace(x) || r != rSubject && needParens(parent, r, x) {
 		return []part{txt("("), b.node(x), txt(")")}
+	}
+	if b.reader(parent, r, x, b.rdepth) {
+		b.rdepth++
+		d := b.node(x)
+		b.rdepth--
+		return []part{txt("("), d, txt(")")}
 	}
 	return b.node(x)
 }
@@ -643,7 +680,7 @@ func (b *builder) binary(n *syntax.Binary, unindented bool) part {
 			break
 		}
 		l, ok := cur.X.(*syntax.Binary)
-		if !ok || l.Op == "**" || binLevel[l.Op] != binLevel[cur.Op] || needParens(cur, rLeft, l) {
+		if !ok || l.Op == "**" || binLevel[l.Op] != binLevel[cur.Op] || b.paren(cur, rLeft, l) {
 			break
 		}
 		cur = l

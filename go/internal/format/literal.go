@@ -115,13 +115,27 @@ func (b *builder) textBlock(u unit) part {
 }
 
 // Template formats a template text (2.14). It returns the formatted text,
-// or the first parse diagnostic.
+// or the first parse diagnostic. Like Program, it formats the plain text
+// first when a part has a place for a pair for the reader (2.6 item 3).
 func Template(source string) (string, *syntax.Error, *syntax.File) {
+	out, err, f, saw := template(source, false)
+	if err != nil || !saw {
+		return out, err, f
+	}
+	out, err, _, _ = template(out, true)
+	if err != nil { // cannot happen: the plain text parses
+		panic("format: the plain text does not parse: " + err.Error())
+	}
+	return out, nil, f
+}
+
+func template(source string, readers bool) (string, *syntax.Error, *syntax.File, bool) {
 	f := syntax.NewTemplateFile(source)
 	t, err := syntax.ParseTemplate(f)
 	if err != nil {
-		return "", err, f
+		return "", err, f, false
 	}
+	sawAny := false
 	src := f.Runes()
 	var sb strings.Builder
 	for _, s := range t.Segments {
@@ -139,10 +153,11 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 				hasLine = true
 			}
 		}
-		out := run(src, toks, from, func(b *builder) part {
+		out, saw := runReaders(src, toks, from, func(b *builder) part {
 			d := b.node(e)
 			return []part{d, b.closeLead(len(b.us)-1, true)}
-		}, 1<<30)
+		}, 1<<30, readers)
+		sawAny = sawAny || saw
 		out = strings.TrimRight(out, " ")
 		if hasLine || strings.ContainsRune(out, '\n') {
 			sb.WriteString(whole)
@@ -150,5 +165,5 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 		}
 		sb.WriteString("${{ " + strings.TrimLeft(out, " ") + " }}")
 	}
-	return sb.String(), nil, f
+	return sb.String(), nil, f, sawAny
 }
