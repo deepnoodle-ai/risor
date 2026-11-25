@@ -40,6 +40,28 @@ pub enum Strs {
 pub struct Field {
     pub ty: Ty,
     pub optional: bool,
+    /// F16 11.4: its description, which travels with a field passed on
+    /// unchanged and with nothing else.
+    pub doc: Doc,
+}
+
+/// A field's description (F16 11.4). It is metadata: no rule reads it, so
+/// two fields that differ only in descriptions are equal.
+#[derive(Clone, Default)]
+pub struct Doc(pub Option<Arc<str>>);
+
+impl PartialEq for Doc {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Doc {}
+
+impl std::fmt::Debug for Doc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("_")
+    }
 }
 
 /// A record: fields and a rest (2.2). A rest of `never` makes it exact.
@@ -579,6 +601,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                         Field {
                             ty: Ty::any(),
                             optional: f.optional,
+                            doc: Default::default(),
                         },
                     )
                 })
@@ -598,9 +621,18 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                 Some(fr) => (&fr.ty, !fr.optional),
                 None => (&r.rest, false),
             };
+            // F16 11.4: a field the left does not list, beside a left rest
+            // of `never`, comes from the right alone and keeps its
+            // description; one joined with the left's has none.
+            let alone = !r.fields.contains_key(k) && r.rest.is_never();
             Field {
                 ty: join(&fm.ty, rt),
                 optional: !req,
+                doc: if alone {
+                    fm.doc.clone()
+                } else {
+                    Default::default()
+                },
             }
         };
         fields.insert(k.clone(), f);
@@ -613,6 +645,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                 Field {
                     ty: join(&fr.ty, &m.rest),
                     optional: fr.optional,
+                    doc: Default::default(),
                 }
             };
             fields.insert(k.clone(), f);
@@ -1287,6 +1320,7 @@ pub fn convert_with(
                         Field {
                             ty,
                             optional: f.optional,
+                            doc: Doc(f.doc.clone()),
                         },
                     )
                     .is_some()

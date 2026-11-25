@@ -126,6 +126,8 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             ty,
             sites,
             description,
+            schema,
+            schema_lawless,
             ran,
         } => {
             if ran.as_ref().is_some_and(|r| r.opaque_key) {
@@ -134,6 +136,10 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             if !same(Shape::Result) {
                 let r = ran.as_ref().map(|r| (r.value.clone(), r.steps, r.units));
                 return Some(result_json(ty.as_deref(), r));
+            }
+            // F16 11.8 item 2: a schema that fails the law is not written.
+            if *schema_lawless && keys(old?).iter().any(|k| k == "schema") {
+                return None;
             }
             let mut m = Vec::new();
             for k in keys(old?) {
@@ -145,6 +151,7 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
                     "steps" => ran.as_ref().map(|r| Json::Num(r.steps as f64)),
                     "allocated" => ran.as_ref().map(|r| Json::Num(r.units as f64)),
                     "description" => description.clone(),
+                    "schema" => schema.clone(),
                     "json" => ran.as_ref().and_then(|r| r.json.clone()).map(Json::Str),
                     "analysis" => {
                         super::run::analysis_text(case).and_then(|t| crate::json::parse(&t).ok())

@@ -1,0 +1,32 @@
+{
+ "cases": [
+  {"name": "a host function's Doc", "functions": {"rate": "(code: string) => float"}, "docs": {"rate": "The rate for a currency code."}, "hover": "‸rate(\"EUR\")", "expect": {"hover": {"kind": "function", "span": [1, 1, 1, 5], "doc": "The rate for a currency code."}}},
+  {"name": "a host function with no Doc", "functions": {"rate": "(code: string) => float"}, "hover": "‸rate(\"EUR\")", "expect": {"hover": {"kind": "function", "span": [1, 1, 1, 5], "doc": null}}},
+  {"name": "a method's Doc", "env": "{tok: Token}", "opaque": ["Token"], "methods": {"Token.owner": "() => string"}, "docs": {"Token.owner": "Who holds the token."}, "hover": "tok.‸owner()", "expect": {"hover": {"kind": "method", "span": [1, 5, 1, 10], "doc": "Who holds the token."}}},
+  {"name": "an opaque type's Doc", "opaque": ["Token"], "docs": {"Token": "A session token."}, "hover": "const f = (t: ‸Token) => 1; 1", "expect": {"hover": {"kind": "type", "span": [1, 15, 1, 20], "doc": "A session token."}}},
+  {"name": "a library function keeps its record's doc", "hover": "‸len([1])", "expect": {"hover": {"kind": "function", "span": [1, 1, 1, 4], "doc": "The number of code points of a string, elements of a list or entries of a map."}}},
+  {"name": "a const line's description, where it is bound", "hover": "/** The tax rate. */ const ‸rate = 0.2; rate", "expect": {"hover": {"kind": "name", "span": [1, 28, 1, 32], "doc": "The tax rate."}}},
+  {"name": "a const line's description, where it is read", "hover": "/** The tax rate. */ const rate = 0.2; ‸rate", "expect": {"hover": {"kind": "name", "span": [1, 40, 1, 44], "doc": "The tax rate."}}},
+  {"name": "a const-bound lambda's description, at a call", "hover": "/** Doubles n. */ const dbl = (n: int) => n * 2; ‸dbl(2)", "expect": {"hover": {"kind": "lambda", "span": [1, 50, 1, 53], "doc": "Doubles n."}}},
+  {"name": "a const-bound lambda's description, as a lambda argument", "hover": "/** Is it even? */ const even = (n: int) => n % 2 == 0; [1, 2].filter(‸even)", "expect": {"hover": {"kind": "lambda", "span": [1, 71, 1, 75], "doc": "Is it even?"}}},
+  {"name": "a const line with no description", "hover": "const rate = 0.2; ‸rate", "expect": {"hover": {"kind": "name", "span": [1, 19, 1, 23], "doc": null}}},
+  {"name": "a name in a pattern has none", "hover": "/** Parts. */ const {a, b} = {a: 1, b: 2}; ‸a + b", "expect": {"hover": {"kind": "name", "span": [1, 44, 1, 45], "doc": null}}},
+  {"name": "a parameter's description, where it is bound", "hover": "const f = (/** The count. */ ‸n: int) => n; f(1)", "expect": {"hover": {"kind": "name", "span": [1, 30, 1, 31], "doc": "The count."}}},
+  {"name": "a parameter's description, where it is read", "hover": "const f = (/** The count. */ n: int) => ‸n; f(1)", "expect": {"hover": {"kind": "name", "span": [1, 41, 1, 42], "doc": "The count."}}},
+  {"name": "a parameter with no annotation", "hover": "const f = (/** The count. */ n) => ‸n; f(1)", "expect": {"hover": {"kind": "name", "span": [1, 36, 1, 37], "doc": "The count."}}},
+  {"name": "a field's description, at a read", "hover": "type Place = {/** The city. */ city: string}; const w: Place = {city: \"a\"}; w.‸city", "expect": {"hover": {"kind": "field", "span": [1, 79, 1, 83], "doc": "The city."}}},
+  {"name": "a field of a variable's declared type", "env": "{w: {/** The city. */ city: string}}", "hover": "w.‸city", "expect": {"hover": {"kind": "field", "span": [1, 3, 1, 7], "doc": "The city."}}},
+  {"name": "a field read with ?.", "env": "{w: {/** The city. */ city: string} | null}", "hover": "w?.‸city", "expect": {"hover": {"kind": "field", "span": [1, 4, 1, 8], "doc": "The city."}}},
+  {"name": "a field of a recursive type", "hover": "type Node = {/** The value. */ v: int, next: Node | null}; const n: Node = {v: 1, next: null}; n.‸v", "expect": {"hover": {"kind": "field", "span": [1, 98, 1, 99], "doc": "The value."}}},
+  {"name": "a field at depth", "hover": "type Item = {inner: {/** Degrees. */ temp: float}}; const t: Item = {inner: {temp: 1.5}}; t.inner.‸temp", "expect": {"hover": {"kind": "field", "span": [1, 99, 1, 103], "doc": "Degrees."}}},
+  {"name": "a field of a Join has none", "env": "{c: bool}", "hover": "type Place = {/** The city. */ city: string}; const w: Place = {city: \"a\"}; const v: Place = {city: \"b\"}; (c ? w : v).‸city", "expect": {"hover": {"kind": "field", "span": [1, 119, 1, 123], "doc": null}}},
+  {"name": "a field of a library method's result keeps it", "hover": "type Place = {/** The city. */ city: string}; const w: Place = {city: \"a\"}; [w].filter(x => x.city != \"\")[0]?.‸city", "expect": {"hover": {"kind": "field", "span": [1, 111, 1, 115], "doc": "The city."}}},
+  {"name": "a type line's description, at its name", "hover": "/** A weather report. */ type ‸Place = {city: string}; 1", "expect": {"hover": {"kind": "type", "span": [1, 31, 1, 36], "doc": "A weather report."}}},
+  {"name": "a type line's description, where the name is used", "hover": "/** A weather report. */ type Place = {city: string}; const w: ‸Place = {city: \"a\"}; w", "expect": {"hover": {"kind": "type", "span": [1, 64, 1, 69], "doc": "A weather report."}}},
+  {"name": "a named type of the environment has none", "types": [{"name": "Order", "type": "{id: string}"}], "hover": "const o: ‸Order = {id: \"a\"}; o", "expect": {"hover": {"kind": "type", "span": [1, 10, 1, 15], "doc": null}}},
+  {"name": "the last of two doc comments attaches", "hover": "/** A. */ /** B. */ const ‸x = 1; x", "expect": {"hover": {"kind": "name", "span": [1, 27, 1, 28], "doc": "B."}}},
+  {"name": "a line comment between", "hover": "/** A. */\n// note\nconst ‸x = 1; x", "expect": {"hover": {"kind": "name", "span": [3, 7, 3, 8], "doc": null}}},
+  {"name": "a multi-line description", "hover": "/**\n * The tax rate.\n * A fraction.\n */\nconst rate = 0.2; ‸rate", "expect": {"hover": {"kind": "name", "span": [5, 19, 5, 23], "doc": "The tax rate.\nA fraction."}}},
+  {"name": "a const line in a branch", "env": "{c: bool}", "hover": "if (c) { /** Inner. */ const y = 1; ‸y } else { 0 }", "expect": {"hover": {"kind": "name", "span": [1, 37, 1, 38], "doc": "Inner."}}}
+ ]
+}

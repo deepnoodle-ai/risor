@@ -602,7 +602,15 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 				m.fail("the property %q is not a schema", k)
 			}
 			t := add(m.schema(ps, m.child("properties", k)))
-			f := types.Field{Key: k, Type: t, Optional: !required[k]}
+			// F16 11.5 item 5: the description of the property's own
+			// schema object, also beside a $ref.
+			doc := ""
+			if po, ok := ps.(map[string]any); ok {
+				if d, ok := po["description"].(string); ok {
+					doc = d
+				}
+			}
+			f := types.Field{Key: k, Type: t, Optional: !required[k], Doc: doc}
 			if f.Optional {
 				def, hasDef := any(nil), false
 				if po, ok := ps.(map[string]any); ok {
@@ -618,7 +626,7 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 					fill = types.Null
 				}
 				if fill != nil {
-					f = types.Field{Key: k, Type: types.Join(t, fill), Base: t, Fill: fill}
+					f = types.Field{Key: k, Type: types.Join(t, fill), Base: t, Fill: fill, Doc: doc}
 				}
 			}
 			fields = append(fields, f)

@@ -1280,6 +1280,34 @@ func (a *assist) hover(word syntax.Span) *Hover {
 		d := a.span(s.Start, s.End)
 		return &d
 	}
+	// docs are the descriptions of the names a const line or a parameter
+	// binds where its pattern is that name (F16 11.7).
+	docs := map[*syntax.NamePat]string{}
+	lambdaDocs := map[*syntax.Lambda]string{}
+	syntax.Walk(a.prog, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.Const:
+			if np, ok := n.Pattern.(*syntax.NamePat); ok && n.Doc != "" {
+				docs[np] = n.Doc
+				if l, ok := n.Value.(*syntax.Lambda); ok {
+					lambdaDocs[l] = n.Doc
+				}
+			}
+		case *syntax.Lambda:
+			for _, p := range n.Params {
+				if np, ok := p.Pattern.(*syntax.NamePat); ok && p.Doc != "" {
+					docs[np] = p.Doc
+				}
+			}
+		}
+		return true
+	})
+	docOf := func(key any) *string {
+		if np, ok := key.(*syntax.NamePat); ok {
+			return printed0(docs[np])
+		}
+		return nil
+	}
 	bindingKey := func(b *static.Binding) any {
 		for k, s := range a.res.Slots {
 			if s == b.Slot {
@@ -1308,12 +1336,14 @@ func (a *assist) hover(word syntax.Span) *Hover {
 		h := rec("lambda")
 		h.Signature = a.fnSig(p)
 		h.Declaration = declOf(p.Pattern)
+		h.Doc = printed0(p.Doc)
 		return h
 	}
 	site := func(key any) *Hover {
 		h := rec("name")
 		h.Type = printed(a.slotType(key))
 		h.Declaration = declOf(key)
+		h.Doc = docOf(key)
 		return h
 	}
 	callee := func(n syntax.Node) *Hover {
@@ -1332,11 +1362,15 @@ func (a *assist) hover(word syntax.Span) *Hover {
 			h := rec("function")
 			h.Type = printed(a.typeOf(n))
 			h.Signature = printed0(sigText(a.e.hostSigs[c.Host.FullName()]))
+			if fd := a.e.funcs[c.Host.FullName()]; fd != nil {
+				h.Doc = printed0(fd.doc)
+			}
 			return h
 		case static.Lambda:
 			h := rec("lambda")
 			h.Type = printed(a.typeOf(n))
 			h.Declaration = lambdaName(c.Lambda)
+			h.Doc = printed0(lambdaDocs[c.Lambda])
 			return h
 		case static.Param:
 			h := fnParam(c.Binding.Param)
@@ -1443,12 +1477,15 @@ func (a *assist) hover(word syntax.Span) *Hover {
 				// a value, so it has no type (F12 3.13).
 				out = rec("lambda")
 				out.Declaration = lambdaName(b.Lambda)
+				out.Doc = printed0(lambdaDocs[b.Lambda])
 			case b.Kind == static.FnParam:
 				out = fnParam(b.Param)
 			default:
 				out = rec("name")
 				out.Type = printed(a.typeOf(n))
-				out.Declaration = declOf(bindingKey(b))
+				key := bindingKey(b)
+				out.Declaration = declOf(key)
+				out.Doc = docOf(key)
 			}
 		case *syntax.Call:
 			if n.NameSpan == word {
@@ -1483,6 +1520,14 @@ func (a *assist) hover(word syntax.Span) *Hover {
 			}
 			out = rec("field")
 			out.Type = printed(a.typeOf(n))
+			// The description of the field the check read (F16 11.7).
+			if r := a.typeOf(n.X); r != nil {
+				if rr := types.Nonnull(r).Record(); rr != nil {
+					if f, ok := rr.Field(n.Name); ok {
+						out.Doc = printed0(f.Doc)
+					}
+				}
+			}
 		}
 		return out == nil
 	}
@@ -1580,10 +1625,14 @@ func (a *assist) typeHover(name string, own, in *syntax.TypeLine, at int, sp Spa
 		h.Type = printed(declared(name, t))
 		d := a.span(line.NameSpan.Start, line.NameSpan.End)
 		h.Declaration = &d
+		h.Doc = printed0(line.Doc)
 	case env != nil && env.Named[name] != nil:
 		h.Type = printed(declared(name, env.Named[name]))
 	case env != nil && env.Opaque[name]:
 		h.Type = printed(types.Opaque(name))
+		if od := a.e.opaque[name]; od != nil {
+			h.Doc = printed0(od.doc)
+		}
 	default:
 		return nil
 	}
@@ -1623,7 +1672,11 @@ func (a *assist) methodSig(r *types.Type, name string) (*string, *string) {
 	sort.Strings(ops)
 	for _, tn := range ops {
 		if s := a.e.methodSigs[tn][name]; s != nil {
-			return printed0(sigText(s)), nil
+			var doc *string
+			if od := a.e.opaque[tn]; od != nil && od.methods[name] != nil {
+				doc = printed0(od.methods[name].doc)
+			}
+			return printed0(sigText(s)), doc
 		}
 	}
 	return nil, nil

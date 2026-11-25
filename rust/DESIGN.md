@@ -38,7 +38,7 @@ grouped by the sections E.3 to E.8.
 | Where | Holds |
 | --- | --- |
 | `src/api.rs` | `Expected`, `CheckResult`, `CompileOptions`; `Env::check`, `compile`, `complete`, `complete_with`, `hover`, `hover_with`; `Program::run`, `run_with`, `measure`, `measure_with`, `check_result`; `truthy`, `json_text` |
-| `src/typ.rs` | The structural type API of R179: `Type`, `TypeKind`, `FieldType`, the constructors, `join`, `type_from_schema`, `conform`, `conform_all` |
+| `src/typ.rs` | The structural type API of R179: `Type`, `TypeKind`, `FieldType`, the constructors, `join`, `type_from_schema`, `schema_of` (F16 11.5), `conform`, `conform_all` |
 | `src/syntax/parser.rs` | `parse`, `parse_with`, `ParseOptions`, `SOURCE_LIMIT` |
 | `src/config.rs` | `load_value`, `load::<T>`, `load_with::<T>`, `LoadOptions`, `LoadError` |
 | `lib.rs` `__private` | Hidden: what `risor-derive` and the examples reach that is not part of the surface |
@@ -80,7 +80,7 @@ grouped by the sections E.3 to E.8.
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
 | `src/bin/outcome.rs` | S2 | The outcome command of `suite/README.md` |
-| `src/schema.rs` | F1 | The type of a JSON Schema (`f01-host-types.md` 3, 4): Pick, Meet, the mark *closable*, Close |
+| `src/schema.rs` | F1 | The type of a JSON Schema (`f01-host-types.md` 3, 4): Pick, Meet, the mark *closable*, Close; and SchemaOf, a type as a JSON Schema (F16 11.5) |
 | `src/describe.rs` | F1 | Descriptions of types, signatures and environments; an environment from a description (5) |
 | `src/hosttype.rs` | F1 | `HostType`, `TypeCx`, `Opaque<T>`: types from host types, and `Host` for the standard types (6.3) |
 | `derive/` | F1 | The crate `risor-derive`: `#[derive(Host)]` for a struct, no dependency |

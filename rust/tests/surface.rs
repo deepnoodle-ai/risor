@@ -266,3 +266,48 @@ fn unchecked_programs_and_invalid_types() {
     assert_eq!(conform(&v, &bad).unwrap_err().code, "bad-type");
     assert_eq!(conform_all(&v, &bad, 0)[0].code, "bad-type");
 }
+
+#[test]
+fn schema_of_and_documentation() {
+    let env = Env::builder()
+        .var_record("{w: {/** The city. */ city: string, n?: int}}")
+        .opaque("Token")
+        .opaque_doc("Token", "A session token.")
+        .function("rate", "(code: string) => float", |_, _| {
+            Ok(Data::Float(1.0))
+        })
+        .function_doc("rate", "The rate.")
+        .build()
+        .unwrap();
+    let p = env
+        .compile(&parse("w").unwrap(), CompileOptions::default())
+        .unwrap();
+    let t = p.check_result().unwrap().ty.clone();
+    assert_eq!(
+        risor::schema_of(&t).unwrap(),
+        r#"{"additionalProperties":false,"properties":{"city":{"description":"The city.","type":"string"},"n":{"type":"integer"}},"required":["city"],"type":"object"}"#
+    );
+    let e = risor::schema_of(&opaque_type_named("Token")).unwrap_err();
+    assert_eq!(e.first().code, "bad-type");
+    let h = env
+        .hover("rate(\"x\")", Pos { line: 1, column: 1 }, &Expected::None)
+        .unwrap();
+    assert_eq!(h.doc.as_deref(), Some("The rate."));
+    let h = env
+        .hover("w.city", Pos { line: 1, column: 3 }, &Expected::None)
+        .unwrap();
+    assert_eq!(h.doc.as_deref(), Some("The city."));
+    // A child keeps the documentation it inherits.
+    let child = env.with().build().unwrap();
+    let h = child
+        .hover(
+            "const f = (t: Token) => 1; 1",
+            Pos {
+                line: 1,
+                column: 15,
+            },
+            &Expected::None,
+        )
+        .unwrap();
+    assert_eq!(h.doc.as_deref(), Some("A session token."));
+}

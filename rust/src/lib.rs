@@ -125,7 +125,7 @@ pub use decode::{decode, Decode, DecodeCx};
 pub use schema::SchemaOptions;
 pub use typ::{
     conform, conform_all, conform_all_with, conform_with, exact_record_type, join, list_type,
-    literal_type, map_type, nullable, opaque_type_named, record_type, tagged_union_type,
+    literal_type, map_type, nullable, opaque_type_named, record_type, schema_of, tagged_union_type,
     type_from_schema, union_type, ConformOptions, FieldType, Type, TypeKind,
 };
 

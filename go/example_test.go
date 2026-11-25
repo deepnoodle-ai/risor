@@ -97,3 +97,31 @@ const a = account(id);
 	// map[balance:1250 canPay:true owner:ADA] <nil>
 	// run function-error at [2, 11, 2, 22]: no account "bob"
 }
+
+// Example_schemaOf gives a tool's input type to a model as a JSON Schema:
+// each doc comment is the description of its field, at any depth.
+func Example_schemaOf() {
+	env, err := risor.NewEnv()
+	if err != nil {
+		panic(err)
+	}
+	t, err := env.ParseType(`{
+  /** The city name, such as "Paris". */
+  city: string,
+  /** Temperature units. */
+  units?: "metric" | "imperial",
+}`)
+	if err != nil {
+		panic(err)
+	}
+	schema, err := risor.SchemaOf(t)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(schema))
+	back, _ := risor.TypeFromSchema(schema)
+	fmt.Println(back.Equal(t))
+	// Output:
+	// {"additionalProperties":false,"properties":{"city":{"description":"The city name, such as \"Paris\".","type":"string"},"units":{"description":"Temperature units.","enum":["imperial","metric"],"type":"string"}},"required":["city"],"type":"object"}
+	// true
+}

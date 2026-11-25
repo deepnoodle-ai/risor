@@ -9,6 +9,7 @@
 
 use super::token::StrForm;
 use crate::source::Range;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub u32);
@@ -155,6 +156,8 @@ pub enum NodeKind {
         pattern: NodeId,
         value: NodeId,
         ty: Option<Box<PType>>,
+        /// F16 11.3: its description, or none.
+        doc: Option<Arc<str>>,
     },
     /// 3
     Block { consts: Vec<NodeId>, result: NodeId },
@@ -237,6 +240,8 @@ pub enum NodeKind {
         default: Option<NodeId>,
         ty: Option<Box<PType>>,
         fn_: Option<Box<PFn>>,
+        /// F16 11.3: its description, or none.
+        doc: Option<Arc<str>>,
     },
     /// 24
     Match { subject: NodeId, arms: Vec<NodeId> },
@@ -342,6 +347,8 @@ pub struct TypeLine {
     pub name_span: Range,
     pub ty: PType,
     pub span: Range,
+    /// F16 11.3: its description, or none.
+    pub doc: Option<Arc<str>>,
 }
 
 /// A function type on a parameter, package F16 (2.1, `PFn`): its parameters,
@@ -360,6 +367,8 @@ pub struct PField {
     pub key: String,
     pub optional: bool,
     pub ty: PType,
+    /// F16 11.3: the field's description, or none.
+    pub doc: Option<Arc<str>>,
 }
 
 impl NodeKind {
@@ -660,6 +669,7 @@ fn node_ids(kind: &mut NodeKind, f: &mut dyn FnMut(&mut NodeId)) {
             pattern,
             value,
             ty: _,
+            doc: _,
         } => {
             f(pattern);
             f(value);
@@ -751,6 +761,7 @@ fn node_ids(kind: &mut NodeKind, f: &mut dyn FnMut(&mut NodeId)) {
             default,
             ty: _,
             fn_: _,
+            doc: _,
         } => {
             f(pattern);
             default.iter_mut().for_each(f);

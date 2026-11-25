@@ -1,4 +1,4 @@
-# F16. Entry points, slice D1: annotations and type lines
+# F16. Entry points, slices D1 and D3: annotations, type lines and descriptions
 
 This chapter is normative. It specifies follow-on package F16 as far as slice
 D1 of its plan (`experiments/v3/design/17-entry-points.md`, and
@@ -11,9 +11,10 @@ kind `type` of F12, and the
 directory `suite/entry-points/`. It adds no node kind, no value, no type, no
 run code, no `parse` code, no reserved word and no case field.
 
-Slices D2 and D3 of the plan are not in this chapter yet: `export`, entry
-points, the stage that calls one, programs with no result; doc comments, and
-the description of a type. Each adds to this chapter when it lands.
+Slice D3 is section 11: doc comments as descriptions, `SchemaOf`, and the
+`Doc` of host declarations. Slice D2 of the plan is not in this chapter yet:
+`export`, entry points, the stage that calls one, programs with no result. It
+adds to this chapter when it lands.
 
 The package only adds. In Core an annotation and a type line are `parse`
 errors. A Core amendment lands with this slice (section 5): the name of a
@@ -74,15 +75,17 @@ version number and no version marker.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F16 slice D1, F17, F12. Slice D1 stands before F17, and each
-   later slice takes a place of its own after F17, in the order the slices
-   are built: F16 slice D1, F17, F16 slice D2, F16 slice D3
-   (`15-build-rulings.md` R211, R261).
+   F13, F14, F16 slice D1, F17, F16 slice D3, F12. Slice D1 stands before
+   F17, and each later slice takes a place of its own after F17, in the order
+   the slices are built: F16 slice D1, F17, F16 slice D3 (`15-build-rulings.md` R211,
+   R261, R371). Slice D2 takes its place after slice D3 when it is built.
 2. An implementation that offers this package offers F4: an annotation is a
    program type of F4, resolved by F4's rules. It offers F8, so a case of this
    package may state messages.
 3. The cases of each slice stand in their own files. Those of slice D1 are the
-   files of `suite/entry-points/` whose names begin `d1-` or `tools-d1-` (8).
+   files of `suite/entry-points/` whose names begin `d1-` or `tools-d1-` (8),
+   and those of slice D3 the files whose names begin `d3-` or `tools-d3-`
+   (11.8).
 4. **An implementation that offers F17 or F12 and not yet this slice** does
    not run `suite/entry-points/` or load `suite/messages-entry-points.json`,
    and it does not pass the new Core cases of section 5: the Core amendment
@@ -594,3 +597,286 @@ message format.
 4. No other earlier case changes. Every other text of the suite with `type`
    uses it as a name, a key or a call, and no other text writes `:` after a
    parameter or a `const` pattern.
+
+## 11. Slice D3: descriptions, `SchemaOf` and host documentation
+
+Slice D3 of the plan (`17` 3.6 to 3.8). A doc comment, `/** ... */`, before a
+record field, a parameter, a `const` line or a type line is a description. A
+description is metadata: no rule of the checker or of a run reads it. Two
+things read it in this slice: `SchemaOf`, which F1 gains here (11.5), and
+hover (11.7). The Entries call of slice D2 will read it when it lands. A host
+function, a method and an opaque type gain a `Doc` (11.6).
+
+The slice adds no syntax, node kind, value, type, code, message template,
+reserved word or cost row. It adds a field `doc` to the nodes `Const` and
+`Param` and to a type line, a description to a field of a record type, the
+function `SchemaOf` and a field `Doc` in every binding, the result field
+`schema` and the case field `docs` (11.8), and the files of
+`suite/entry-points/` whose names begin `d3-` or `tools-d3-`.
+
+It is offered after F17, as F16 slice D3 (1.4 item 1). Slice D2 is not built
+yet; it takes its place after slice D3 when it is (`15-build-rulings.md`
+R371).
+
+### 11.1 Terms
+
+| Term | Meaning |
+| --- | --- |
+| Doc comment | A block comment (`01-language.md` 2.2) whose text begins `/**` and that is not `/**/` |
+| Description | The text of a doc comment that attaches (11.2), when that text is not empty. A holder has at most one |
+| Holder | What a description belongs to: a field of a record type, a `const` line, a parameter, a type line |
+| Doc | The documentation a host gives a host function, a method or an opaque type (11.6) |
+
+### 11.2 The doc comment
+
+| Rule | Text |
+| --- | --- |
+| Attaches to | The next token, when only white space stands between them, and that token begins one of: the key of a field in type text; a parameter; a `const` line; a type line. Otherwise the doc comment is an ordinary comment |
+| Type text | A program type (F4 2.1): of an annotation, of a type line, after `as` and `is`. Declared type text (`05-types.md` 3): a variable's type, a named type's type (F4 3), a signature, a method's text, an expected result. At any depth |
+| A parameter | Of a lambda, at the first token of its pattern. Of a signature, at its name or its `...`; nothing reads such a description in this slice |
+| A `const` line | At the word `const` |
+| A type line | At the word `type` |
+| Two in a row | The last one attaches. The earlier one is an ordinary comment |
+| A line comment, or another block comment, between | The doc comment does not attach |
+| Its text | Remove `/**` and `*/`. Split the rest into lines at each line end (`01-language.md` 2.1). From each line remove the leading spaces and tabs, then one `*` if one begins it, then one space if one follows. Remove the trailing spaces and tabs of each line. Drop the empty lines at the start and at the end. Join the lines with U+000A |
+| Empty text | No description: `/** */` and `/***/` attach nothing |
+
+1. A doc comment is white space for the grammar, as every comment is. It
+   changes no parse, no diagnostic and no span. A text that parses without
+   this slice parses the same with it.
+2. The formatter keeps a doc comment as it keeps any block comment (F12 2.12).
+3. A doc comment in a block or a branch attaches by the same rule: a `const`
+   line in a block has a description.
+
+```js
+/** A city's weather. */
+type Weather = {
+  /** The city name, such as "Paris". */
+  city: string,
+  /**
+   * Temperature in degrees.
+   * Celsius unless asked otherwise.
+   */
+  temp: float,
+};
+```
+
+The field `temp` has the description `Temperature in degrees.⏎Celsius unless
+asked otherwise.`, and the type line the description `A city's weather.`
+
+### 11.3 The nodes
+
+| Node | Field added | Holds |
+| --- | --- | --- |
+| 2 `Const` | `doc` | Its description, or none |
+| 23 `Param` | `doc` | Its description, or none |
+| A type line (2.3) | `doc` | Its description, or none |
+
+A field of a program type holds its description beside its key. No walker
+reads `doc` (`01-language.md` 4).
+
+### 11.4 Descriptions are metadata
+
+A description travels with a field that is passed on unchanged, and with
+nothing else. No rule compares two descriptions or combines them, so the three
+checkers cannot keep different ones (`17` 3.6, 17-11).
+
+| Rule | Descriptions |
+| --- | --- |
+| Fits, Equal, size, depth, the walk of F4, conformance, every site and every diagnostic | Not read. Two types that differ only in descriptions are one type |
+| Printing (`05-types.md` 3.9), a message, the description of an environment (F1 5.3) | Not written |
+| A field passed on unchanged from one source: a read (`05-types.md` 9), narrowing by a fact (10), `filter` and `find` (13.8), Close (F1 4.1), a named type or a type line replaced by its type, a reference replaced by its definition (F17 12.1) | Kept |
+| A field of a record that a Join of two records builds (`05-types.md` 4.1; F5 4.1 for the flat record of a union), and a field of a Meet (F1 3.6) | None, even when both sources had the same description and even when the two are one type: in `c ? a : a` no field of the result has one |
+| A Join that gives one of its operands as it is: `never` and the other, an alternative that one side has alone, two unions the same by structure (A's union, F5 4.1), and the steps of F17 12.5 item 4 that give A or B (steps 2, 4 and 6) | That operand's |
+| Pick (F1 3.6 item 2): a type that steps 1 and 3 give as it is | Kept. A Meet in step 2: none |
+| A spread, Merge (`05-types.md` 4.3) | A field that one source gives alone is kept: a required field of the right operand; an optional field of the right operand that the left does not list, beside a left rest of `never`; a field of the left operand that the right does not list, beside a right rest of `never`. A field whose type joins the two sources has none |
+| `x as T`, `x is T` narrowing to T, an annotation | The type is T, with T's descriptions |
+| A literal's type (`05-types.md` 7): a map literal, a shorthand | None for its own fields. A field's type keeps the descriptions inside it: in `{w: x.w}` the field `w` has none, and the fields of `w`'s type keep theirs |
+| A type from a JSON Schema (F1 3) | 11.5 item 5 |
+| A type a binding derives from a host type (F1 6) | None in this slice |
+
+1. A description is not part of a type for any rule that compares types. A
+   type of the environment and a type of the program that differ only in
+   descriptions are Equal (F17 12.4 item 1 among them).
+2. A description of a `const` line or a parameter is not part of the type of
+   the name it binds.
+
+### 11.5 `SchemaOf`: a type as a JSON Schema
+
+This section replaces F1 5.1 item 3 ("No schema is given back"). Every binding
+that offers this slice offers `SchemaOf(T)`, in its own case of names: it
+gives a JSON value, a schema, or refuses T. Its text is its JSON form by
+`01-language.md` 12: no white space, the keys of every object in code point
+order. So two implementations give the same text for one type.
+
+| T | Schema |
+| --- | --- |
+| `any` | `{}` |
+| `never` | `false` |
+| `null` | `{"type":"null"}` |
+| `bool` | `{"type":"boolean"}` |
+| `int` | `{"type":"integer"}` |
+| `float` | `{"type":"number"}` |
+| `string` | `{"type":"string"}` |
+| A literal set of one string s | `{"const":s,"type":"string"}` |
+| A literal set of several strings | `{"enum":[...],"type":"string"}`, the strings in code point order |
+| `E[]` | `{"items":SchemaOf(E),"type":"array"}` |
+| A record | `{"type":"object"}`, with `properties` when it has a field: an object of each field's schema, by key; `required` when a field is required: the required keys, in code point order; and `additionalProperties` by its rest: `false` for `never`, absent for `any`, SchemaOf(R) for any other rest R. So `map<int>` is `{"additionalProperties":{"type":"integer"},"type":"object"}` and `{}` is `{"additionalProperties":false,"type":"object"}` |
+| A tagged union (F5) | Each variant is a record, and an alternative of its own for the next row, in the order F5 prints the variants |
+| Two or more alternatives | `{"anyOf":[...]}`: the schema of each alternative, in the order of printing (`05-types.md` 3.9; F17 12.6 item 3): bool, number, string, list, the record or the variants of a union, the references in code point order of their names, `null` |
+| A reference to a recursive type (F17 12) | `{"$ref":"#/$defs/N"}`, N its name (item 2) |
+| An opaque type, anywhere in T | Refused: `bad-type`, "an opaque type has no JSON Schema" |
+| A type variable, anywhere in T | Refused: `bad-type`, "a type variable has no JSON Schema" |
+
+1. **A field's description** is the key `"description"` in that field's
+   schema, beside its other keys: `{"description":"The city.","type":"string"}`,
+   and beside a `$ref`: `{"$ref":"#/$defs/Node","description":"The parent."}`.
+   When the field's schema is `false`, a field of type `never`, the description
+   is dropped: `false` has no keys. A description of a type line, of a `const`
+   line or of a parameter is not written.
+2. **Recursive types.** Each recursive type that T reaches, at any depth and
+   through the definitions of the references it reaches, is written once,
+   under the key N of a top-level `"$defs"`: SchemaOf of its definition. The
+   root holds `$defs` beside its own keys when T reaches one. So `Tree`, with
+   `type Tree = {kids: Tree[]}`, gives
+   `{"$defs":{"Tree":{"additionalProperties":false,"properties":{"kids":{"items":{"$ref":"#/$defs/Tree"},"type":"array"}},"required":["kids"],"type":"object"}},"$ref":"#/$defs/Tree"}`.
+3. Two recursive types that T reaches with one name and that are not one
+   reference are refused: `bad-type`. A type a checked program gives cannot
+   reach two, since its type lines and its environment name their recursive
+   types apart (F16 3.1, F17 12.4).
+4. **No bounds.** `int` gives no `minimum` or `maximum`. A value outside the
+   safe range fails conformance (`not-conforming`), so the host learns of it.
+5. **F1 reads `description`.** F1 3.8 gains a row: the `description` of a
+   property's own schema object, when it is a string that is not empty, is the
+   field's description; also when that object has a `$ref`, as F1 4.3 item 1
+   reads `default`. A `description` anywhere else, the target of a `$ref`
+   among those places, is not read. So F1 3.12's row for `description` reads:
+   read on a property's own schema object, ignored elsewhere.
+6. **The law.** For every type T that SchemaOf does not refuse and that holds
+   no fill and no mark of F1 4, M(SchemaOf(T)) of F1 3 with no option is a type
+   Equal to T (F17 12.5 item 5) with the same descriptions, but for the
+   description of a field of type `never`. The checker gives no type with a
+   fill or a mark: those come only from a schema mapped with options. A
+   recursive type of T that the mapping does not meet again (F17 12.4 item 3)
+   comes back written out, not as a reference: in `type Dir = {files: File[]};
+   type File = {parent: Dir | null}` both are recursive, and the mapping of
+   SchemaOf(Dir) gives Dir with File written out. The two are Equal.
+7. **Bounded.** The text of SchemaOf(T) grows with the size of T (`05-types.md`
+   20.7), which is at most 100,000, and with the text of its keys, strings and
+   descriptions. A recursive type is written once.
+8. **Depth.** The law needs F1 to read the schema, and F1 reads a schema of
+   depth 64 at most (F1 3.10). A type of depth 64 can give a deeper schema: an
+   `anyOf` adds a level the type does not count. Such a type is outside the
+   law. SchemaOf does not refuse it, and no case holds one (R383).
+9. SchemaOf reads a type and nothing else. It charges no step and no unit, and
+   needs no environment.
+
+```js
+type Weather = {
+  /** The city name, such as "Paris". */
+  city: string,
+  /** Temperature units. */
+  units?: "metric" | "imperial",
+};
+```
+
+`SchemaOf(Weather)` is
+`{"additionalProperties":false,"properties":{"city":{"description":"The city name, such as \"Paris\".","type":"string"},"units":{"description":"Temperature units.","enum":["imperial","metric"],"type":"string"}},"required":["city"],"type":"object"}`.
+
+### 11.6 Host documentation
+
+| Declaration | Gains | Text |
+| --- | --- | --- |
+| Function (`03-host.md` 3.3.1) | `Doc` | Its documentation, a string. A method is a function, so it has one |
+| Opaque type | `Doc` | Its documentation, a string |
+
+1. An empty `Doc` is no documentation.
+2. What a `Doc` says is not normative. Where it goes is: hover shows it as
+   given (11.7), and so will the Entries call of slice D2.
+3. A `Doc` is not in the description of an environment (F1 5.3 item 3 stands):
+   a description is for check, and check reads no documentation. An
+   environment built from a description has no `Doc`.
+4. A child environment keeps the `Doc` of what it inherits, and a replacement
+   brings its own.
+
+### 11.7 Hover
+
+These rows change the column `doc` of F12 3.13 item 3, and replace its item 5.
+Every other column stays.
+
+| The word is | `doc` |
+| --- | --- |
+| The name of a `Call` of a host function | The function's `Doc`, or null |
+| The word of a `MethodCall` that the check resolved to a method of an opaque type | The method's `Doc`, or null |
+| A name a `const` line binds, where its pattern is that name; an `Ident` of it; the name of a `Call` of it; any other `Ident` that names it as a const-bound lambda | The `const` line's description, or null |
+| A name a parameter binds, where its pattern is that name; an `Ident` of it; with F17, the name of a `Call` of it | The parameter's description, or null |
+| The word of a `Member` | The description of the field the check read: the field of that key in the receiver's record alternative (`05-types.md` 9.2), null taken out and a reference unfolded. Null when there is none |
+| A type name, or the name of a type line | The type line's description, when the name stands for a type line (7.3 item 1); the `Doc` of an opaque type of the environment; else null |
+
+1. A name bound inside a pattern that is not a name, `const {a, b} = x;`, has
+   no description: its `doc` is null.
+2. The description of a field is that of the receiver's type as the check
+   gives it, facts in force: a receiver of type `c ? a : b` reads a field of a
+   Join, and gives null (11.4).
+3. A library record's `doc` is given as before.
+
+### 11.8 The cases
+
+**The result field `schema`.** This row is added to the result table of
+`03-host.md` 3.10.6.
+
+| Field of a result | Compared with | How |
+| --- | --- | --- |
+| `schema` | SchemaOf of the type the check gives (11.5) | null: SchemaOf refuses the type. Otherwise as JSON data, as F1 7.2 compares a description. Then the law (11.5 item 6) |
+
+1. A case with `schema` is run checked, once, as one with `type` is
+   (`03-host.md` 3.10.8 item 5). `schema` in an expected failure, or in a case
+   with `"check": false`, makes the file invalid.
+2. **The law.** When the schema found is not refused, the runner maps it by F1
+   3 with no option. The type it gives must be Equal to the type the check
+   gave. And SchemaOf of it must be the schema found, once each `$ref` to an
+   entry of `$defs` that SchemaOf of it does not hold is replaced by that
+   entry (with the `description` beside the `$ref` kept), and those entries
+   are dropped (11.5 item 6). The alternatives of each `anyOf` are compared in
+   any order there, since a `$ref` written out can change their order of
+   printing. Otherwise the case fails.
+3. The difference is named `schema`. It stands after `type` in the order of
+   3.10.8 item 2.
+
+**The case field `docs`.** This row is added to the table of `03-host.md`
+3.10.3.
+
+| Field | Holds | When absent |
+| --- | --- | --- |
+| `docs` | An object. Each key is the name of a host function the case declares in `functions`, a `Type.method` it declares in `methods`, or an opaque type it declares in `opaque`. Each value is a string, that declaration's `Doc` (11.6) | No declaration has a `Doc` |
+
+1. `docs` may stand where `functions` may: in the header, in a program case,
+   and in a completion and a hover case (F12 7.2 item 1). A format case and a
+   render case take none. Only hover reads it.
+2. A key that names no declaration of the case, and a value that is not a
+   string, make the file invalid.
+
+| Path | Holds |
+| --- | --- |
+| `suite/entry-points/d3-schema.json` | SchemaOf (11.5) of the types of programs and of declared type text, with the law, and its refusals |
+| `suite/entry-points/d3-descriptions.json` | Doc comments (11.2) and the travel of descriptions (11.4), seen through SchemaOf |
+| `suite/entry-points/tools-d3-hover.json` | Hover (11.7), with `docs` (F12) |
+
+The runner of 8 runs them. A runner that offers F17 and not this slice does
+not run the files named `d3-` or `tools-d3-`, and accepts neither `schema`
+nor `docs` (`03-host.md` 3.11 item 3).
+
+### 11.9 What this slice changes in earlier rules
+
+| Earlier rule | With this slice |
+| --- | --- |
+| `01-language.md` 4.1, nodes 2 and 23; F16 2.3 | The field `doc` (11.3) |
+| `03-host.md` 3.3.1 | `Doc` on a function and an opaque type (11.6) |
+| `03-host.md` 3.10.3, 3.10.6 | The case field `docs`, the result field `schema` (11.8) |
+| F1 3.8, 3.12 | `description` is read (11.5 item 5) |
+| F1 5.1 item 3 | `SchemaOf` (11.5) |
+| F12 3.13 item 3, the column `doc`, and item 5 | 11.7 |
+| `15-build-rulings.md` R114, R188 | Reversed, as D53 planned |
+
+No other rule changes. A program with no doc comment has the type, sites,
+diagnostics, value and usage it has without this slice.

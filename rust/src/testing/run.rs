@@ -698,6 +698,154 @@ fn static_code(code: &str) -> &'static str {
     c
 }
 
+/// F16 11.8: SchemaOf of the checked type against the schema expected,
+/// as JSON data, `null` for a refusal; then the law of 11.5 item 6.
+fn schema_difference(want: &Json, got: &crate::check::ty::Ty) -> Option<Difference> {
+    let found = crate::schema::schema_of(got).ok();
+    let shown = found.clone().unwrap_or(Json::Null);
+    let differ = |why: Option<String>| {
+        Some(Difference {
+            name: "schema",
+            expected: form(want),
+            found: match why {
+                None => form(&shown),
+                Some(w) => json_text(&format!("{} ({w})", crate::json::to_text(&shown))),
+            },
+        })
+    };
+    if !crate::json::same_data(want, &shown) {
+        return differ(None);
+    }
+    let found = found?;
+    // 11.8 item 2: map the schema back, with no option.
+    let back = match crate::schema::ty_schema(&found, crate::schema::SchemaOptions::default()) {
+        Ok(t) => t,
+        Err(e) => return differ(Some(format!("the law: the schema does not map back: {e}"))),
+    };
+    if !crate::check::ty::equal(&back, got) {
+        return differ(Some(format!(
+            "the law: the schema maps back to {}",
+            crate::check::ty::print(&back)
+        )));
+    }
+    let again = match crate::schema::schema_of(&back) {
+        Ok(j) => j,
+        Err(e) => {
+            return differ(Some(format!(
+                "the law: SchemaOf of the type mapped back: {e}"
+            )))
+        }
+    };
+    if !same_schema(&inline_missing_defs(&found, &again), &again) {
+        return differ(Some(format!(
+            "the law: SchemaOf of the type mapped back is {}",
+            crate::json::to_text(&again)
+        )));
+    }
+    None
+}
+
+/// 11.8 item 2: equality as JSON data, but the alternatives of each
+/// `anyOf` in any order, since inlining an entry can change their order.
+fn same_schema(a: &Json, b: &Json) -> bool {
+    match (a, b) {
+        (Json::Obj(x), Json::Obj(y)) => {
+            x.len() == y.len()
+                && x.iter().all(|(k, v)| {
+                    let Some(w) = b.get(k) else {
+                        return false;
+                    };
+                    match (k.as_str(), v, w) {
+                        ("anyOf", Json::Arr(p), Json::Arr(q)) => {
+                            let mut used = vec![false; q.len()];
+                            p.len() == q.len()
+                                && p.iter().all(|e| {
+                                    let hit = q
+                                        .iter()
+                                        .enumerate()
+                                        .position(|(i, f)| !used[i] && same_schema(e, f));
+                                    hit.map(|i| used[i] = true).is_some()
+                                })
+                        }
+                        _ => same_schema(v, w),
+                    }
+                })
+        }
+        (Json::Arr(x), Json::Arr(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(v, w)| same_schema(v, w))
+        }
+        _ => a == b,
+    }
+}
+
+/// 11.8 item 2: `found` with each `$ref` to an entry of its `$defs` that
+/// `again` does not hold replaced by that entry, a `description` beside the
+/// `$ref` kept, and those entries dropped.
+fn inline_missing_defs(found: &Json, again: &Json) -> Json {
+    let defs_key = "$defs";
+    let held: Vec<String> = again
+        .get(defs_key)
+        .and_then(|d| d.as_obj())
+        .map(|o| o.iter().map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default();
+    let defs: Vec<(String, Json)> = found
+        .get(defs_key)
+        .and_then(|d| d.as_obj())
+        .map(|o| o.to_vec())
+        .unwrap_or_default();
+    let gone: Vec<(String, Json)> = defs
+        .iter()
+        .filter(|(k, _)| !held.contains(k))
+        .cloned()
+        .collect();
+    if gone.is_empty() {
+        return found.clone();
+    }
+    // Each inlined entry is inlined in turn; entries refer to one another
+    // a bounded number of times, as their count bounds the nesting.
+    fn walk(j: &Json, gone: &[(String, Json)], depth: usize) -> Json {
+        match j {
+            Json::Obj(o) => {
+                let target = o
+                    .iter()
+                    .find(|(k, _)| k == "$ref")
+                    .and_then(|(_, v)| v.as_str())
+                    .and_then(|r| r.strip_prefix("#/$defs/"))
+                    .and_then(|n| gone.iter().find(|(k, _)| k == n));
+                if let (Some((_, def)), true) = (target, depth <= gone.len()) {
+                    let mut out = walk(def, gone, depth + 1);
+                    if let (Json::Obj(m), Some(d)) =
+                        (&mut out, o.iter().find(|(k, _)| k == "description"))
+                    {
+                        m.retain(|(k, _)| k != "description");
+                        m.push(d.clone());
+                    }
+                    return out;
+                }
+                Json::Obj(
+                    o.iter()
+                        .map(|(k, v)| (k.clone(), walk(v, gone, depth)))
+                        .collect(),
+                )
+            }
+            Json::Arr(a) => Json::Arr(a.iter().map(|v| walk(v, gone, depth)).collect()),
+            other => other.clone(),
+        }
+    }
+    let mut out = walk(found, &gone, 0);
+    if let Json::Obj(o) = &mut out {
+        for (k, v) in o.iter_mut() {
+            if k == defs_key {
+                if let Json::Obj(d) = v {
+                    d.retain(|(n, _)| held.contains(n));
+                }
+            }
+        }
+        o.retain(|(k, v)| k != defs_key || v.as_obj().is_some_and(|d| !d.is_empty()));
+    }
+    out
+}
+
 /// The case's environment, as a child of the suite's base environment.
 fn build_env(
     case: &Case,
@@ -756,6 +904,16 @@ fn build_env_in(
     for (name, stub) in &case.functions {
         let imp = stub_impl(name, stub, interner, unmatched.clone());
         b = b.function_decl(name, stub.ty.as_deref().unwrap_or_default(), Some(imp));
+    }
+    // F16 11.8: the `Doc` of each declaration that has one.
+    for (key, doc) in &case.docs {
+        b = if case.functions.iter().any(|(f, _)| f == key) {
+            b.function_doc(key, doc)
+        } else if let Some((t, m)) = key.split_once('.') {
+            b.method_doc(t, m, doc)
+        } else {
+            b.opaque_doc(key, doc)
+        };
     }
     if let Some(r) = &case.reject {
         let r: Vec<&str> = r.iter().map(String::as_str).collect();
@@ -931,7 +1089,8 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
         return run_case_with(case, false, true, ctx);
     }
     let needs_checker = match &case.expect {
-        Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
+        // F16 11.8 item 1: a case with `schema` runs checked, once.
+        Expect::Result(r) => r.ty.is_some() || r.sites.is_some() || r.schema.is_some(),
         Expect::Failure(f) => {
             f.phase == Phase::Check
                 && f.diagnostics
@@ -970,6 +1129,7 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
                 "analysis",
                 "description",
                 "type",
+                "schema",
                 "sites",
                 "value",
                 "json",
@@ -1022,8 +1182,8 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
     }
     match &case.expect {
         _ if checked || !case.check => {}
-        Expect::Result(r) if r.ty.is_some() || r.sites.is_some() => {
-            return Verdict::Skip("states type or sites: needs the type checker".into())
+        Expect::Result(r) if r.ty.is_some() || r.sites.is_some() || r.schema.is_some() => {
+            return Verdict::Skip("states type, schema or sites: needs the type checker".into())
         }
         Expect::Failure(f)
             if f.phase == Phase::Check
@@ -1108,6 +1268,11 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                         expected: json_text(t),
                         found: json_text(&crate::check::ty::print(&got)),
                     });
+                }
+            }
+            if let Some(ws) = &want.schema {
+                if let Some(d) = schema_difference(ws, &got) {
+                    diffs.push(d);
                 }
             }
             if let Some(ws) = &want.sites {
@@ -2630,6 +2795,11 @@ pub(super) enum Captured {
         ty: Option<String>,
         sites: Option<Json>,
         description: Option<Json>,
+        /// F16 11.8: SchemaOf of the checked type, `null` when refused.
+        schema: Option<Json>,
+        /// F16 11.8 item 2: the schema found fails the law, so update mode
+        /// does not write it.
+        schema_lawless: bool,
         ran: Option<Ran>,
     },
     Conform(Conformed),
@@ -2687,7 +2857,8 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         Ok(p) => p,
         Err(e) => return fail(Phase::Parse, e.diagnostics),
     };
-    let (mut ty, mut sites, mut site_list) = (None, None, None);
+    let (mut ty, mut sites, mut site_list, mut schema) = (None, None, None, None);
+    let mut schema_lawless = false;
     if case.check {
         let exp = match case_expected(case, &env) {
             Ok(x) => x,
@@ -2698,6 +2869,12 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             return fail(Phase::Check, r.diagnostics);
         }
         ty = r.ty.as_ref().map(crate::check::ty::print);
+        schema =
+            r.ty.as_ref()
+                .map(|t| crate::schema::schema_of(t).unwrap_or(Json::Null));
+        if let (Some(s), Some(t)) = (&schema, &r.ty) {
+            schema_lawless = schema_difference(s, t).is_some();
+        }
         sites = Some(Json::Arr(
             r.sites
                 .iter()
@@ -2731,6 +2908,8 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             ty,
             sites,
             description,
+            schema,
+            schema_lawless,
             ran: None,
         };
     }
@@ -2761,6 +2940,8 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             ty,
             sites,
             description,
+            schema,
+            schema_lawless,
             ran: Some(Ran {
                 value: value_to_json(&v),
                 opaque_key: has_opaque_key(&v),
