@@ -40,7 +40,13 @@ func TestConformSharedDataIsBounded(t *testing.T) {
 		f()
 		took := time.Since(start)
 		t.Logf("%d shared levels, %s: %v", levels, what, took)
-		assert.True(t, took < time.Second, "%s took %v", what, took)
+		// The race detector slows the walk about tenfold; the bound is for a
+		// normal build.
+		bound := time.Second
+		if raceBuild {
+			bound = 10 * time.Second
+		}
+		assert.True(t, took < bound, "%s took %v", what, took)
 	}
 	// A passing leaf: the walk would visit 2^31 - 1 places; the default
 	// limit ends it.
