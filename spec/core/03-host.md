@@ -140,7 +140,8 @@ pays for the nested run's work.
 1. The function reads `remaining()` (3.5.2 item 7).
 2. It runs the nested program in a child environment (3.3.2) whose step and
    allocation limits are those counts. A count of 0 is a limit of zero, and a
-   limit that is off stays off.
+   limit that is off stays off. The other limits stay those of the nested
+   program's own environment.
 3. It passes its cancellation signal to the nested run, so a cancellation of
    the caller stops the nested run too.
 4. When the nested run ends, the function charges the nested run's usage
@@ -153,7 +154,7 @@ pays for the nested run's work.
    run's failure of any other code is returned as an error, so the caller
    sees `function-error` (3.5.3 items 5 to 7).
 
-In Go, with the error handling of step 5 left out:
+In Go:
 
 ```go
 tool := func(c *risor.Call, args []any) (any, error) {
@@ -171,6 +172,15 @@ tool := func(c *risor.Call, args []any) (any, error) {
 	}
 	if err := c.Allocate(used.Allocated); err != nil {
 		return nil, err
+	}
+	var e *risor.Error
+	if errors.As(runErr, &e) {
+		switch e.Diagnostics[0].Code {
+		case "steps-exceeded":
+			return nil, c.Charge(math.MaxInt64) // step 5
+		case "allocation-exceeded":
+			return nil, c.Allocate(math.MaxInt64)
+		}
 	}
 	return v, runErr
 }

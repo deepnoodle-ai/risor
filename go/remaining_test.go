@@ -113,7 +113,13 @@ func nestedTool(t *testing.T, calls *int) risor.Function {
 	t.Helper()
 	toolEnv, err := risor.NewEnv(risor.Var("xs", "int[]"))
 	assert.NoError(t, err)
-	inner, err := risor.Parse(innerSrc)
+	return nestedToolIn(t, calls, toolEnv, innerSrc)
+}
+
+// nestedToolIn is nestedTool with the tool's environment and program.
+func nestedToolIn(t *testing.T, calls *int, toolEnv *risor.Env, src string) risor.Function {
+	t.Helper()
+	inner, err := risor.Parse(src)
 	assert.NoError(t, err)
 	return risor.Function{Name: "tool", Type: "() => int !", Impl: func(c *risor.Call, args []any) (any, error) {
 		*calls++
@@ -244,5 +250,28 @@ func TestNestedRunWithRemainingBudget(t *testing.T) {
 				assert.Equal(t, u1, u2, "units %d", limit)
 			}
 		}
+	}
+}
+
+// The nested run keeps its own environment's depth limit: Budget changes
+// only the step and allocation limits.
+func TestNestedRunKeepsItsDepthLimit(t *testing.T) {
+	const deep = "xs.map(x => [x].map(y => [y].map(z => z)))"
+	for _, c := range []struct {
+		depth int
+		code  string
+	}{{2, "function-error"}, {3, ""}} {
+		toolEnv, err := risor.NewEnv(risor.Var("xs", "int[]"), risor.Limits{Depth: c.depth})
+		assert.NoError(t, err)
+		calls := 0
+		env, err := risor.NewEnv(nestedToolIn(t, &calls, toolEnv, deep))
+		assert.NoError(t, err)
+		d, _ := measure(t, env, "tool()")
+		if c.code == "" {
+			assert.Nil(t, d, "depth %d", c.depth)
+			continue
+		}
+		assert.Equal(t, d.Code, c.code, "depth %d", c.depth)
+		assert.Equal(t, d.Message, "calls and nested values went deeper than the depth limit of 2")
 	}
 }

@@ -180,3 +180,25 @@ describe("03 3.2.5: a nested run with the remaining budget", () => {
     }
   });
 });
+
+describe("03 3.2.5: the nested run keeps its own depth limit", () => {
+  test("with() keeps each limit it is not given", () => {
+    const deep = "xs.map(x => [x].map(y => [y].map(z => z)))";
+    for (const [depth, code] of [[2, "function-error"], [3, ""]] as const) {
+      const env = createEnv({ vars: { xs: "int[]" }, limits: { depth } });
+      const tool: HostFunction = {
+        type: "() => int !",
+        call: (h) => {
+          const o = execute(env.with({ limits: h.remaining() }).compile(parse(deep)), innerVars);
+          h.charge(o.usage.steps);
+          h.allocate(o.usage.allocated);
+          if (!o.ok) throw new Error(o.diagnostic.message);
+          return 1;
+        },
+      };
+      const o = execute(createEnv({ functions: { tool } }).compile(parse("tool()"), { check: false }));
+      assert.equal(limitCode(o), code, `depth ${depth}`);
+      if (!o.ok) assert.equal(o.diagnostic.message, "calls and nested values went deeper than the depth limit of 2");
+    }
+  });
+});

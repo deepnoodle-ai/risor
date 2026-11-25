@@ -154,7 +154,7 @@ fn nested_tool(
             .limits(Limits {
                 steps: left.steps,
                 allocation: left.allocation,
-                ..Limits::default()
+                ..env.limits()
             })
             .build()?;
         let p = child.compile(&inner, CompileOptions::default())?;
@@ -281,6 +281,57 @@ fn a_nested_run_with_the_remaining_budget() {
             assert_eq!((&c1, n1), (&c2, n2), "units {limit}");
             if c1.is_empty() {
                 assert_eq!(u1, u2, "units {limit}");
+            }
+        }
+    }
+}
+
+/// The nested run keeps its own environment's depth limit: the host keeps
+/// every limit but the two counts.
+#[test]
+fn a_nested_run_keeps_its_depth_limit() {
+    let deep = "xs.map(x => [x].map(y => [y].map(z => z)))";
+    for (depth, code) in [(2, "function-error"), (3, "")] {
+        let tool_env = Env::builder()
+            .var("xs", "int[]")
+            .limits(Limits {
+                depth,
+                ..Limits::default()
+            })
+            .build()
+            .unwrap();
+        assert_eq!(tool_env.limits().depth, depth);
+        let inner = parse(deep).unwrap();
+        let env = Env::builder()
+            .function("tool", "() => int !", move |c, _| {
+                let left = c.remaining();
+                let child = tool_env
+                    .with()
+                    .limits(Limits {
+                        steps: left.steps,
+                        allocation: left.allocation,
+                        ..tool_env.limits()
+                    })
+                    .build()?;
+                let p = child.compile(&inner, CompileOptions::default())?;
+                let vars = inner_vars();
+                let (result, used) = p.measure(&vars);
+                c.charge(used.steps).map_err(stop)?;
+                c.allocate(used.allocated).map_err(stop)?;
+                result.map(|_| Data::Int(1)).map_err(HostError::from)
+            })
+            .build()
+            .unwrap();
+        let p = env.compile(&parse("tool()").unwrap(), unchecked()).unwrap();
+        let (r, _) = p.measure(&NoVars);
+        match r {
+            Ok(_) => assert_eq!(code, "", "depth {depth}"),
+            Err(e) => {
+                assert_eq!(e.first().code, code, "depth {depth}");
+                assert_eq!(
+                    e.first().message,
+                    "calls and nested values went deeper than the depth limit of 2"
+                );
             }
         }
     }

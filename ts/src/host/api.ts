@@ -861,8 +861,8 @@ export class Env<V = any, N = any> {
    * functions are one space, opaque types another (03 3.3.4 item 1). An opaque
    * type the child declares (with `test`) replaces the parent's whole; one given
    * with methods only adds or replaces those methods. The clash rules apply to
-   * the child as it stands. Rejected classes and limits are the parent's unless
-   * given; entries removed add up. Throws RisorError of phase `declare`.
+   * the child as it stands. Rejected classes are the parent's unless given, and
+   * each limit is the parent's unless given; entries removed add up. Throws RisorError of phase `declare`.
    */
   with<
     const M extends Record<string, string> = {},
@@ -951,7 +951,8 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
     opaque,
     opaqueNames,
     reject: options.reject ?? (p.reject !== undefined ? p.reject : [...pe.reject]),
-    limits: options.limits ?? p.limits,
+    // Field by field: a limit the child does not give is the parent's (03 3.3.2).
+    limits: options.limits === undefined ? p.limits : { ...p.limits, ...options.limits },
     without: [...pe.removed, ...(options.without ?? [])],
     // f06 2.6 item 1: the parent's groups and the child's own.
     groups: [...pe.groups, ...(options.groups ?? [])],

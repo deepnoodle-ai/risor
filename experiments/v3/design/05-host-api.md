@@ -2309,6 +2309,8 @@ impl Call<'_> {
     pub fn cancelled(&self) -> bool;
 }
 pub struct Remaining { pub steps: Option<u64>, pub allocation: Option<u64> }
+// Env::limits() gives an environment's limits, so a nested run keeps the rest:
+// Limits { steps: r.steps, allocation: r.allocation, ..env.limits() }
 
 pub struct Limits { pub steps: Option<u64>, pub allocation: Option<u64>,
                     pub timeout: Option<std::time::Duration>, pub depth: u32 }
