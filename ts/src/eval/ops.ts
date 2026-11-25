@@ -199,8 +199,18 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
 
 /** A search for x in s whose work is bounded by 1 + w(s) (02 8.5). */
 export function textContains(s: string, x: string): boolean {
-  if (x.length > s.length) return false;
-  if (x.length < 64) return s.includes(x);
+  return textIndex(s, x) >= 0;
+}
+
+/**
+ * The UTF-16 offset of the first occurrence of `x` in `s`, or -1, in work
+ * linear in the length of `s` (02 5.3 item 4): a text longer than `s` is
+ * answered from the lengths, and an `x` of 64 units or more is found by
+ * Knuth-Morris-Pratt.
+ */
+export function textIndex(s: string, x: string): number {
+  if (x.length > s.length) return -1;
+  if (x.length < 64) return s.indexOf(x);
   // Knuth-Morris-Pratt over UTF-16 units: a match of well-formed text is a match of code points.
   const fail = new Int32Array(x.length);
   for (let i = 1, k = 0; i < x.length; i++) {
@@ -211,9 +221,38 @@ export function textContains(s: string, x: string): boolean {
   for (let i = 0, k = 0; i < s.length; i++) {
     while (k > 0 && s.charCodeAt(i) !== x.charCodeAt(k)) k = fail[k - 1];
     if (s.charCodeAt(i) === x.charCodeAt(k)) k++;
-    if (k === x.length) return true;
+    if (k === x.length) return i - x.length + 1;
   }
-  return false;
+  return -1;
+}
+
+/**
+ * The index of the first element of `ys` equal to `x`, or -1, charged as
+ * `x in ys` is (02 5.3). The list method `indexOf` charges the same (04 5.4.24).
+ */
+export function indexIn(r: Run, x: unknown, ys: unknown[], span: Span): number {
+  const kx = r.kind(x);
+  for (let i = 0; i < ys.length; i++) {
+    const e = r.read(ys[i], span);
+    const ke = r.kind(e);
+    r.charge(1);
+    if (kx !== ke) continue;
+    if (kx === "string") {
+      r.charge(div64(lcpWeight(x as string, e as string)));
+      if (x === e) return i;
+    } else if (kx === "list") {
+      if ((x as unknown[]).length === (e as unknown[]).length) {
+        if (equal(r, x, e, span)) return i;
+      }
+    } else if (kx === "map") {
+      if (mapSize(x as object) === mapSize(e as object)) {
+        if (equal(r, x, e, span)) return i;
+      }
+    } else if (kx === "null" || x === e) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 /** `x in y` with its charges (01 6.8, 02 5.3). `op` is `in` or `not in`. */
@@ -221,30 +260,7 @@ export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span)
   const ky = r.kind(y);
   if (ky === "null") throw new RunFailure("null-operand", span, "operand", { op });
   const kx = r.kind(x);
-  if (ky === "list") {
-    const ys = y as unknown[];
-    for (let i = 0; i < ys.length; i++) {
-      const e = r.read(ys[i], span);
-      const ke = r.kind(e);
-      r.charge(1);
-      if (kx !== ke) continue;
-      if (kx === "string") {
-        r.charge(div64(lcpWeight(x as string, e as string)));
-        if (x === e) return true;
-      } else if (kx === "list") {
-        if ((x as unknown[]).length === (e as unknown[]).length) {
-          if (equal(r, x, e, span)) return true;
-        }
-      } else if (kx === "map") {
-        if (mapSize(x as object) === mapSize(e as object)) {
-          if (equal(r, x, e, span)) return true;
-        }
-      } else if (kx === "null" || x === e) {
-        return true;
-      }
-    }
-    return false;
-  }
+  if (ky === "list") return indexIn(r, x, y as unknown[], span) >= 0;
   if (ky === "string" || ky === "map") {
     if (kx === "null") throw new RunFailure("null-operand", span, "operand", { op });
     if (kx !== "string") throw new RunFailure("wrong-kind", span, "operands", { op, left: kx, right: ky });

@@ -229,7 +229,6 @@ fix. The first rows:
 | `unshift` | method of a list | `values never change: build a new list with [x, ...xs]` |
 | `pop`, `shift` | method of a list | `values never change: use xs.last() and xs.slice(...)` |
 | `concat` | method of a list | `use spread: [...xs, ...ys]` |
-| `indexOf` | method of a list or a string | `use in, or find(...)` |
 
 A row of place "name" applies to an `undefined-name`; "name and field" to an
 `undefined-name` followed by a `.f` step, matched as `N.f`; "function" to an

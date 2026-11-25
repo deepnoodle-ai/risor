@@ -15,7 +15,7 @@ type Formula struct {
 
 // Env gives a formula the values of its symbols and names.
 type Env interface {
-	// Sym is the value of n, k, v, p, g or L.
+	// Sym is the value of n, k, v, p, g, L or e.
 	Sym(s byte) int64
 	// Weight is w(name): the weight of a string, or of the strings among the
 	// values a name stands for (elements, keys, arguments), added. 0 for a
@@ -195,7 +195,7 @@ func (p *fparser) factor() fnode {
 			panic(err)
 		}
 		return fnum(n)
-	case len(t) == 1 && strings.Contains("nkvpgLcu", t): // c and u: package F6 3.4
+	case len(t) == 1 && strings.Contains("nkvpgLecu", t): // c and u: package F6 3.4
 		return fsym(t[0])
 	case t == "sz" || t == "w" || t == "len" || t == "walk":
 		p.expect("(")

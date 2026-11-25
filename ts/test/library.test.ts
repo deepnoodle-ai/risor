@@ -24,20 +24,20 @@ describe("the registry is suite/library.json, suite/library-queries.json and sui
   const replaced = new Set(queries.filter((q) => q.extends !== undefined).map((q) => q.extends));
   const records = [...core.filter((r) => !replaced.has(`${r.receiver === undefined ? "" : "list."}${r.name}`)), ...queries, ...recursion];
   const registered: Entry[] = [...FUNCTIONS.values(), ...[...METHODS.values()].flatMap((m) => [...m.values()])];
-  test("60 entries in the group core (53 of Core, 6 of F7, walk of F17), each implemented, none added in code alone", () => {
-    assert.equal(core.length, 53);
+  test("63 entries in the group core (56 of Core, 6 of F7, walk of F17), each implemented, none added in code alone", () => {
+    assert.equal(core.length, 56);
     assert.equal(recursion.length, 1);
-    assert.equal(records.length, 60);
-    assert.equal(registered.length, 60);
+    assert.equal(records.length, 63);
+    assert.equal(registered.length, 63);
     for (const e of registered) assert.ok(e.impl !== null, `${e.name} has no implementation`);
   });
   test("16 functions in the group core (15 of Core and walk)", () => {
     assert.equal(FUNCTIONS.size, 16);
     assert.ok(FUNCTIONS.has("walk"));
   });
-  test("79 entries with the groups (f17 1.3 item 2): 60 of the group core, 8 of F6, 11 of F13", () => {
+  test("82 entries with the groups (f17 1.3 item 2): 63 of the group core, 8 of F6, 11 of F13", () => {
     assert.equal(GROUP_FUNCTIONS.size, 19);
-    assert.equal(registered.length + GROUP_FUNCTIONS.size, 79);
+    assert.equal(registered.length + GROUP_FUNCTIONS.size, 82);
     for (const e of GROUP_FUNCTIONS.values()) assert.ok(e.impl !== null, `${e.name} has no implementation`);
   });
   for (const r of records) {

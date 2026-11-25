@@ -27,7 +27,7 @@ func TestTableIsCurrent(t *testing.T) {
 }
 
 func TestTable(t *testing.T) {
-	assert.Equal(t, len(Entries), 60) // 53 of Core, 6 of F7 and 1 of F17
+	assert.Equal(t, len(Entries), 63) // 56 of Core, 6 of F7 and 1 of F17
 	assert.Equal(t, len(Functions), 16)
 	w := Functions["walk"]
 	assert.NotNil(t, w)

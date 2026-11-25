@@ -290,7 +290,7 @@ pub fn entry_of(name: &str) -> Option<usize> {
     (0..records().len() + constants().len()).find(|&i| entry_name(i) == name)
 }
 
-/// The entries this build runs: all 79 (F17 1.3). A runner names any other
+/// The entries this build runs: all 82 (F17 1.3). A runner names any other
 /// in a skip.
 pub fn implemented(idx: usize) -> bool {
     crate::eval::lib::FORMULAS
