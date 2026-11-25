@@ -68,6 +68,18 @@ export function lex(src: Source): Token[] {
 }
 
 /**
+ * Lex up to the first lexical error, returning the valid top-level tokens
+ * completed before it, the error offset (at the outermost unclosed template or
+ * text block when the error is inside one), and how many code points were
+ * scanned. Used by syntax colouring (`src/tools/tokens.ts`) so hostile
+ * unclosed multiline constructs never trigger quadratic or cubic retries.
+ */
+export function lexPrefix(src: Source): { tokens: Token[]; error: number | null; scanned: number } {
+  const l = new Lexer(src);
+  return l.runPrefix();
+}
+
+/**
  * Package F12 (f12 3.2 item 4): read the text before a cut. An interpolation
  * left open by the end of the text ends there: it gets an `interpEnd` token
  * marked `cut`, and the literal around it ends too.
@@ -174,6 +186,23 @@ class Lexer {
     this.stack.push(part);
     this.run(false);
     return part.tokens;
+  }
+
+  runPrefix(): { tokens: Token[]; error: number | null; scanned: number } {
+    try {
+      const tokens = this.run();
+      return { tokens, error: null, scanned: this.pos };
+    } catch (e) {
+      if (!(e instanceof ParseError)) throw e;
+      const top = this.stack[0];
+      const tokens = top !== undefined && top.t === "top" ? top.tokens : [];
+      let at = e.diagnostic.span?.start ?? 0;
+      if (this.stack.length > 1) {
+        const outer = this.stack[1];
+        if (outer.t === "tmpl" || outer.t === "block") at = outer.token.start;
+      }
+      return { tokens, error: at, scanned: Math.max(this.pos, at) };
+    }
   }
 
   run(top = true): Token[] {

@@ -36,20 +36,20 @@ impl<'h> Run<'h> {
                 Ok(Value::str(s))
             }
             "json.parse" => {
-                let s = x.as_str().unwrap_or_default().to_string();
-                self.charge(8 * size(&s))?;
-                self.json_parse(&s, span)
+                let s = x.as_str().unwrap_or_default();
+                self.charge(8 * size(s))?;
+                self.json_parse(s, span)
             }
             "time.parse" => {
-                let s = x.as_str().unwrap_or_default().to_string();
-                self.charge(size(&s))?;
-                match parse_time(&s) {
+                let s = x.as_str().unwrap_or_default();
+                self.charge(size(s))?;
+                match parse_time(s) {
                     Some(t) => Ok(Value::Num(t)),
                     None => Err(fail(
                         "invalid-argument",
                         "not-a-time",
                         span,
-                        vec![("text", json_string(&s))],
+                        vec![("text", json_string(s))],
                     )),
                 }
             }
@@ -72,14 +72,14 @@ impl<'h> Run<'h> {
                 Ok(Value::str(text))
             }
             "time.duration" => {
-                let s = x.as_str().unwrap_or_default().to_string();
-                self.charge(size(&s))?;
-                match parse_duration(&s) {
+                let s = x.as_str().unwrap_or_default();
+                self.charge(size(s))?;
+                match parse_duration(s) {
                     None => Err(fail(
                         "invalid-argument",
                         "not-a-duration",
                         span,
-                        vec![("text", json_string(&s))],
+                        vec![("text", json_string(s))],
                     )),
                     Some(None) => Err(self.entry_range(name, span)),
                     Some(Some(v)) => Ok(Value::Num(v)),
@@ -111,9 +111,9 @@ impl<'h> Run<'h> {
                 Ok(Value::str(b64_encode(s.as_bytes())))
             }
             "base64.decode" => {
-                let s = x.as_str().unwrap_or_default().to_string();
-                self.charge(size(&s))?;
-                let Some(bytes) = b64_decode(&s) else {
+                let s = x.as_str().unwrap_or_default();
+                self.charge(size(s))?;
+                let Some(bytes) = b64_decode(s) else {
                     return Err(fail("invalid-argument", "not-base64", span, vec![]));
                 };
                 let Ok(text) = String::from_utf8(bytes) else {
@@ -126,17 +126,17 @@ impl<'h> Run<'h> {
         }
     }
 
-    /// `json.parse` (6.2): one pass that checks the grammar over the whole
-    /// text, finds the first bad number, the depth, `c` and `u`; then the
-    /// charges; then the value.
+    /// `json.parse` (6.2): pass 1 validates the grammar over the whole text
+    /// and finds the first bad number, the depth, `c` and `u` without
+    /// allocating values; then the charges; then pass 2 builds the value.
     fn json_parse(&mut self, s: &str, span: Range) -> R<'h, Value<'h>> {
         let mut p = JsonScan {
-            s: s.chars().collect(),
+            s,
+            b: s.as_bytes(),
             i: 0,
         };
-        let scanned = p.scan();
         let not_json = || fail("invalid-argument", "not-json", span, vec![]);
-        let Some(sc) = scanned else {
+        let Some(sc) = p.scan(false) else {
             return Err(not_json());
         };
         match sc.bad_number {
@@ -151,7 +151,9 @@ impl<'h> Run<'h> {
         }
         self.charge(sc.c)?;
         self.alloc(sc.u)?;
-        Ok(sc.value)
+        p.i = 0;
+        let built = p.scan(true).ok_or_else(not_json)?;
+        Ok(built.value)
     }
 }
 
@@ -168,13 +170,17 @@ struct Scanned<'h> {
     u: u64,
 }
 
-struct JsonScan {
-    s: Vec<char>,
+struct JsonScan<'a> {
+    s: &'a str,
+    b: &'a [u8],
     i: usize,
 }
 
 enum Frame<'h> {
-    Array(Vec<Value<'h>>),
+    Array {
+        items: Vec<Value<'h>>,
+        len: usize,
+    },
     Object {
         entries: Vec<(Str<'h>, Value<'h>)>,
         keys: HashSet<String>,
@@ -182,18 +188,18 @@ enum Frame<'h> {
     },
 }
 
-impl JsonScan {
+impl<'a> JsonScan<'a> {
     fn ws(&mut self) {
-        while matches!(self.s.get(self.i), Some(' ' | '\t' | '\n' | '\r')) {
+        while matches!(self.b.get(self.i), Some(b' ' | b'\t' | b'\n' | b'\r')) {
             self.i += 1;
         }
     }
 
-    fn peek(&self) -> Option<char> {
-        self.s.get(self.i).copied()
+    fn peek(&self) -> Option<u8> {
+        self.b.get(self.i).copied()
     }
 
-    fn eat(&mut self, c: char) -> bool {
+    fn eat(&mut self, c: u8) -> bool {
         if self.peek() == Some(c) {
             self.i += 1;
             true
@@ -202,10 +208,9 @@ impl JsonScan {
         }
     }
 
-    fn word(&mut self, w: &str) -> bool {
-        let n = w.chars().count();
-        if self.s.len() >= self.i + n && self.s[self.i..self.i + n].iter().copied().eq(w.chars()) {
-            self.i += n;
+    fn word(&mut self, w: &[u8]) -> bool {
+        if self.b.get(self.i..self.i + w.len()) == Some(w) {
+            self.i += w.len();
             true
         } else {
             false
@@ -215,60 +220,120 @@ impl JsonScan {
     fn hex4(&mut self) -> Option<u32> {
         let mut v = 0u32;
         for _ in 0..4 {
-            let d = self.peek()?.to_digit(16)?;
+            let b = self.peek()?;
+            let d = match b {
+                b'0'..=b'9' => (b - b'0') as u32,
+                b'a'..=b'f' => (b - b'a' + 10) as u32,
+                b'A'..=b'F' => (b - b'A' + 10) as u32,
+                _ => return None,
+            };
             v = v * 16 + d;
             self.i += 1;
         }
         Some(v)
     }
 
+    /// Measure a JSON string after its opening quote without allocating it;
+    /// returns its UTF-16 weight (`02-evaluation.md` 4).
+    fn string_weight(&mut self) -> Option<u64> {
+        let mut w = 0u64;
+        loop {
+            let b = self.peek()?;
+            if b < 0x80 {
+                self.i += 1;
+                match b {
+                    b'"' => return Some(w),
+                    b'\\' => {
+                        let e = self.peek()?;
+                        self.i += 1;
+                        match e {
+                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => w += 1,
+                            b'u' => {
+                                let v = self.hex4()?;
+                                if (0xD800..0xDC00).contains(&v) {
+                                    let save = self.i;
+                                    if self.word(b"\\u") {
+                                        if let Some(lo) = self.hex4() {
+                                            if (0xDC00..0xE000).contains(&lo) {
+                                                w += 2;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    self.i = save;
+                                    w += 1;
+                                } else {
+                                    w += 1;
+                                }
+                            }
+                            _ => return None,
+                        }
+                    }
+                    0..=0x1F => return None,
+                    _ => w += 1,
+                }
+            } else {
+                let ch = self.s[self.i..].chars().next()?;
+                self.i += ch.len_utf8();
+                w += if ch as u32 > 0xFFFF { 2 } else { 1 };
+            }
+        }
+    }
+
     /// A string, after its opening quote (6.2.3 for escapes).
     fn string(&mut self) -> Option<String> {
         let mut out = String::new();
         loop {
-            let c = self.peek()?;
-            self.i += 1;
-            match c {
-                '"' => return Some(out),
-                '\\' => {
-                    let e = self.peek()?;
-                    self.i += 1;
-                    match e {
-                        '"' => out.push('"'),
-                        '\\' => out.push('\\'),
-                        '/' => out.push('/'),
-                        'b' => out.push('\u{8}'),
-                        'f' => out.push('\u{c}'),
-                        'n' => out.push('\n'),
-                        'r' => out.push('\r'),
-                        't' => out.push('\t'),
-                        'u' => {
-                            let v = self.hex4()?;
-                            if (0xD800..0xDC00).contains(&v) {
-                                // A high surrogate directly followed by a low one.
-                                let save = self.i;
-                                if self.word("\\u") {
-                                    if let Some(lo) = self.hex4() {
-                                        if (0xDC00..0xE000).contains(&lo) {
-                                            let cp = 0x10000 + ((v - 0xD800) << 10) + (lo - 0xDC00);
-                                            out.push(char::from_u32(cp)?);
-                                            continue;
+            let b = self.peek()?;
+            if b < 0x80 {
+                self.i += 1;
+                match b {
+                    b'"' => return Some(out),
+                    b'\\' => {
+                        let e = self.peek()?;
+                        self.i += 1;
+                        match e {
+                            b'"' => out.push('"'),
+                            b'\\' => out.push('\\'),
+                            b'/' => out.push('/'),
+                            b'b' => out.push('\u{8}'),
+                            b'f' => out.push('\u{c}'),
+                            b'n' => out.push('\n'),
+                            b'r' => out.push('\r'),
+                            b't' => out.push('\t'),
+                            b'u' => {
+                                let v = self.hex4()?;
+                                if (0xD800..0xDC00).contains(&v) {
+                                    // A high surrogate directly followed by a low one.
+                                    let save = self.i;
+                                    if self.word(b"\\u") {
+                                        if let Some(lo) = self.hex4() {
+                                            if (0xDC00..0xE000).contains(&lo) {
+                                                let cp =
+                                                    0x10000 + ((v - 0xD800) << 10) + (lo - 0xDC00);
+                                                out.push(char::from_u32(cp)?);
+                                                continue;
+                                            }
                                         }
                                     }
+                                    self.i = save;
+                                    out.push('\u{FFFD}');
+                                } else if (0xDC00..0xE000).contains(&v) {
+                                    out.push('\u{FFFD}');
+                                } else {
+                                    out.push(char::from_u32(v)?);
                                 }
-                                self.i = save;
-                                out.push('\u{FFFD}');
-                            } else if (0xDC00..0xE000).contains(&v) {
-                                out.push('\u{FFFD}');
-                            } else {
-                                out.push(char::from_u32(v)?);
                             }
+                            _ => return None,
                         }
-                        _ => return None,
                     }
+                    0..=0x1F => return None,
+                    _ => out.push(b as char),
                 }
-                c if (c as u32) < 0x20 => return None,
-                c => out.push(c),
+            } else {
+                let ch = self.s[self.i..].chars().next()?;
+                self.i += ch.len_utf8();
+                out.push(ch);
             }
         }
     }
@@ -276,12 +341,12 @@ impl JsonScan {
     /// A number (6.2.1, 6.2.3): its value, or which rule it breaks.
     fn number(&mut self) -> Option<Result<f64, BadNumber>> {
         let start = self.i;
-        self.eat('-');
+        self.eat(b'-');
         let int_start = self.i;
         match self.peek() {
-            Some('0') => self.i += 1,
-            Some('1'..='9') => {
-                while matches!(self.peek(), Some('0'..='9')) {
+            Some(b'0') => self.i += 1,
+            Some(b'1'..=b'9') => {
+                while matches!(self.peek(), Some(b'0'..=b'9')) {
                     self.i += 1;
                 }
             }
@@ -289,33 +354,33 @@ impl JsonScan {
         }
         let int_end = self.i;
         let mut integer = true;
-        if self.eat('.') {
+        if self.eat(b'.') {
             integer = false;
-            if !matches!(self.peek(), Some('0'..='9')) {
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
                 return None;
             }
-            while matches!(self.peek(), Some('0'..='9')) {
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
                 self.i += 1;
             }
         }
-        if matches!(self.peek(), Some('e' | 'E')) {
+        if matches!(self.peek(), Some(b'e' | b'E')) {
             integer = false;
             self.i += 1;
-            if matches!(self.peek(), Some('+' | '-')) {
+            if matches!(self.peek(), Some(b'+' | b'-')) {
                 self.i += 1;
             }
-            if !matches!(self.peek(), Some('0'..='9')) {
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
                 return None;
             }
-            while matches!(self.peek(), Some('0'..='9')) {
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
                 self.i += 1;
             }
         }
-        let text: String = self.s[start..self.i].iter().collect();
+        let text = &self.s[start..self.i];
         if integer {
-            let digits: String = self.s[int_start..int_end].iter().collect();
+            let digits = &self.s[int_start..int_end];
             let over = digits.len() > MAX_SAFE.len()
-                || (digits.len() == MAX_SAFE.len() && digits.as_str() > MAX_SAFE);
+                || (digits.len() == MAX_SAFE.len() && digits > MAX_SAFE);
             if over {
                 return Some(Err(BadNumber::Integer));
             }
@@ -327,7 +392,7 @@ impl JsonScan {
         Some(Ok(if v == 0.0 { 0.0 } else { v }))
     }
 
-    fn scan<'h>(&mut self) -> Option<Scanned<'h>> {
+    fn scan<'h>(&mut self, build: bool) -> Option<Scanned<'h>> {
         let mut stack: Vec<Frame<'h>> = Vec::new();
         let mut bad_number: Option<BadNumber> = None;
         let mut depth: u32 = 0;
@@ -340,7 +405,7 @@ impl JsonScan {
             self.ws();
             c += 1;
             let v: Value<'h> = match self.peek()? {
-                '{' => {
+                b'{' => {
                     self.i += 1;
                     stack.push(Frame::Object {
                         entries: Vec::new(),
@@ -349,17 +414,21 @@ impl JsonScan {
                     });
                     depth = depth.max(stack.len() as u32);
                     self.ws();
-                    if self.eat('}') {
+                    if self.eat(b'}') {
                         stack.pop();
                         u += 1;
-                        Value::Map(Rc::new(MapVal(Vec::new())))
+                        if build {
+                            Value::Map(Rc::new(MapVal(Vec::new())))
+                        } else {
+                            Value::Null
+                        }
                     } else {
-                        if !self.eat('"') {
+                        if !self.eat(b'"') {
                             return None;
                         }
                         let k = self.string()?;
                         self.ws();
-                        if !self.eat(':') {
+                        if !self.eat(b':') {
                             return None;
                         }
                         if let Some(Frame::Object { key, .. }) = stack.last_mut() {
@@ -368,29 +437,42 @@ impl JsonScan {
                         continue 'value;
                     }
                 }
-                '[' => {
+                b'[' => {
                     self.i += 1;
-                    stack.push(Frame::Array(Vec::new()));
+                    stack.push(Frame::Array {
+                        items: Vec::new(),
+                        len: 0,
+                    });
                     depth = depth.max(stack.len() as u32);
                     self.ws();
-                    if self.eat(']') {
+                    if self.eat(b']') {
                         stack.pop();
                         u += 1;
-                        Value::list(Vec::new())
+                        if build {
+                            Value::list(Vec::new())
+                        } else {
+                            Value::Null
+                        }
                     } else {
                         continue 'value;
                     }
                 }
-                '"' => {
+                b'"' => {
                     self.i += 1;
-                    let s = self.string()?;
-                    u += 1 + size(&s);
-                    Value::str(s)
+                    if build {
+                        let s = self.string()?;
+                        u += 1 + size(&s);
+                        Value::str(s)
+                    } else {
+                        let w = self.string_weight()?;
+                        u += 1 + w / 64;
+                        Value::Null
+                    }
                 }
-                't' if self.word("true") => Value::Bool(true),
-                'f' if self.word("false") => Value::Bool(false),
-                'n' if self.word("null") => Value::Null,
-                '-' | '0'..='9' => match self.number()? {
+                b't' if self.word(b"true") => Value::Bool(true),
+                b'f' if self.word(b"false") => Value::Bool(false),
+                b'n' if self.word(b"null") => Value::Null,
+                b'-' | b'0'..=b'9' => match self.number()? {
                     Ok(n) => Value::Num(n),
                     Err(b) => {
                         if bad_number.is_none() {
@@ -409,53 +491,68 @@ impl JsonScan {
                         result = Some(v);
                         break 'value;
                     }
-                    Some(Frame::Array(items)) => {
-                        items.push(v);
+                    Some(Frame::Array { items, len }) => {
+                        if build {
+                            items.push(v);
+                        }
+                        *len += 1;
                         self.ws();
-                        if self.eat(',') {
+                        if self.eat(b',') {
                             continue 'value;
                         }
-                        if !self.eat(']') {
+                        if !self.eat(b']') {
                             return None;
                         }
-                        let Some(Frame::Array(items)) = stack.pop() else {
+                        let Some(Frame::Array { items, len }) = stack.pop() else {
                             return None;
                         };
-                        u += 1 + items.len() as u64;
-                        v = Value::list(items);
+                        u += 1 + len as u64;
+                        v = if build {
+                            Value::list(items)
+                        } else {
+                            Value::Null
+                        };
                     }
                     Some(Frame::Object { entries, keys, key }) => {
                         let k = key.take()?;
-                        keys.insert(k.clone());
-                        entries.push((Str::new(k), v));
+                        if build {
+                            keys.insert(k.clone());
+                            entries.push((Str::new(k), v));
+                        } else {
+                            keys.insert(k);
+                        }
                         self.ws();
-                        if self.eat(',') {
+                        if self.eat(b',') {
                             self.ws();
-                            if !self.eat('"') {
+                            if !self.eat(b'"') {
                                 return None;
                             }
                             let k = self.string()?;
                             self.ws();
-                            if !self.eat(':') {
+                            if !self.eat(b':') {
                                 return None;
                             }
                             *key = Some(k);
                             continue 'value;
                         }
-                        if !self.eat('}') {
+                        if !self.eat(b'}') {
                             return None;
                         }
                         let Some(Frame::Object { entries, keys, .. }) = stack.pop() else {
                             return None;
                         };
                         u += 1 + 2 * keys.len() as u64;
-                        v = Value::Map(Rc::new(MapVal::from_written(entries)));
+                        v = if build {
+                            Value::Map(Rc::new(MapVal::from_written(entries)))
+                        } else {
+                            Value::Null
+                        };
                     }
                 }
             }
         }
         self.ws();
-        if self.i != self.s.len() {
+        if self.i != self.b.len() {
             return None;
         }
         Some(Scanned {
@@ -714,144 +811,330 @@ fn format_time(t: f64) -> Option<String> {
     Some(out)
 }
 
+// Fixed-width decimal accumulator for `time.duration`: every binary64 value
+// and midpoint between adjacent binary64 values terminates by 10^-1075 (half of
+// the smallest subnormal 2^-1074) and overflows below 10^309. Keeping 1,120
+// fractional columns (45 guard digits below 10^-1075) and 320 integer columns
+// bounds scratch memory to O(1) while rounding every valid duration to the
+// exact nearest binary64, ties to even.
+const DUR_FRAC_COLS: usize = 1120;
+const DUR_INT_COLS: usize = 320;
+const DUR_TOTAL_COLS: usize = DUR_FRAC_COLS + DUR_INT_COLS;
+const DUR_GUARD_COLS: usize = DUR_FRAC_COLS - 1075;
+const DUR_TAIL_WIN: usize = 1024;
+
+/// Convert a non-negative base-10 column array (column `c` = 10^(c - DUR_FRAC_COLS))
+/// to the nearest `f64`, ties to even.
+fn cols_to_f64(cols: &[u128]) -> f64 {
+    let mut top = cols.len() - 1;
+    while top > DUR_FRAC_COLS && cols[top] == 0 {
+        top -= 1;
+    }
+    let mut lo = 0usize;
+    while lo < DUR_FRAC_COLS && cols[lo] == 0 {
+        lo += 1;
+    }
+    if top == DUR_FRAC_COLS && cols[DUR_FRAC_COLS] == 0 && lo == DUR_FRAC_COLS {
+        return 0.0;
+    }
+    let mut text = String::with_capacity(top - lo + 2);
+    for i in (DUR_FRAC_COLS..=top).rev() {
+        text.push((b'0' + cols[i] as u8) as char);
+    }
+    if lo < DUR_FRAC_COLS {
+        text.push('.');
+        for i in (lo..DUR_FRAC_COLS).rev() {
+            text.push((b'0' + cols[i] as u8) as char);
+        }
+    }
+    let v: f64 = text.parse().unwrap_or(f64::INFINITY);
+    if v == 0.0 {
+        0.0
+    } else {
+        v
+    }
+}
+
+/// Compare the sum of all fractional digits strictly below `10^-DUR_FRAC_COLS`
+/// against `deficit * 10^-DUR_FRAC_COLS`, in fixed-width streaming windows.
+fn compare_duration_tail(b: &[u8], deficit: u128, eps: u128) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut i = usize::from(b.first() == Some(&b'-'));
+    let mut long_terms: Vec<(usize, usize, u128, usize)> = Vec::new();
+    while i < b.len() {
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        let (fp_start, fp_end) = if b.get(i) == Some(&b'.') {
+            i += 1;
+            let start = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            (start, i)
+        } else {
+            (i, i)
+        };
+        let (mul, shift): (u128, usize) = match (b.get(i), b.get(i + 1)) {
+            (Some(b'm'), Some(b's')) => {
+                i += 2;
+                (1, 3)
+            }
+            (Some(b's'), _) => {
+                i += 1;
+                (1, 0)
+            }
+            (Some(b'm'), _) => {
+                i += 1;
+                (60, 0)
+            }
+            (Some(b'h'), _) => {
+                i += 1;
+                (3600, 0)
+            }
+            (Some(b'd'), _) => {
+                i += 1;
+                (86_400, 0)
+            }
+            _ => break,
+        };
+        let cutoff = DUR_FRAC_COLS - shift;
+        if fp_end - fp_start > cutoff {
+            let mut trim = fp_end;
+            while trim > fp_start + cutoff && b[trim - 1] == b'0' {
+                trim -= 1;
+            }
+            if trim > fp_start + cutoff {
+                long_terms.push((fp_start, trim, mul, shift));
+            }
+        }
+    }
+
+    let mut lo = DUR_FRAC_COLS;
+    let mut rem = deficit;
+    let mut win = vec![0u128; DUR_TAIL_WIN];
+    loop {
+        win.fill(0);
+        let hi = lo + DUR_TAIL_WIN;
+        for &(fp_start, fp_trim, mul, shift) in &long_terms {
+            let fp_len = fp_trim - fp_start;
+            let k_start = lo - shift;
+            let k_end = (hi - shift).min(fp_len);
+            for k in k_start..k_end {
+                let d = (b[fp_start + k] - b'0') as u128;
+                if d != 0 {
+                    win[DUR_TAIL_WIN - 1 - (k - k_start)] += d * mul;
+                }
+            }
+        }
+        long_terms.retain(|&(fp_start, fp_trim, _, shift)| fp_trim - fp_start > hi - shift);
+        let any_below_hi = !long_terms.is_empty();
+
+        let mut carry = 0u128;
+        for cell in &mut win {
+            let sum = *cell + carry;
+            *cell = sum % 10;
+            carry = sum / 10;
+        }
+        if carry > rem {
+            return Ordering::Greater;
+        }
+        rem -= carry;
+        for j in (0..DUR_TAIL_WIN).rev() {
+            if rem > eps {
+                return Ordering::Less;
+            }
+            let r10 = rem * 10;
+            if win[j] > r10 {
+                return Ordering::Greater;
+            }
+            rem = r10 - win[j];
+        }
+        if rem == 0 {
+            return if any_below_hi {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            };
+        }
+        if !any_below_hi {
+            return Ordering::Less;
+        }
+        lo = hi;
+    }
+}
+
 /// `time.duration` (7.4): `None` for a text that is no duration, `Some(None)`
 /// when the sum is too large for a number.
 fn parse_duration(s: &str) -> Option<Option<f64>> {
-    let b: Vec<char> = s.chars().collect();
-    let mut i = 0;
-    let neg = b.first() == Some(&'-');
-    if neg {
-        i = 1;
+    let b = s.as_bytes();
+    let neg = b.first() == Some(&b'-');
+    let mut i = usize::from(neg);
+    if i == b.len() {
+        return None;
     }
-    // Terms as (integer digits, fraction digits, scale of the unit in
-    // thousandths of a second).
-    let mut terms: Vec<(String, String, u64)> = Vec::new();
+    let mut cols: Vec<u128> = vec![0; DUR_TOTAL_COLS];
+    let mut overflow = false;
+    let mut tail_terms: u128 = 0;
+
     while i < b.len() {
-        let mut ip = String::new();
+        let ip_start = i;
         while i < b.len() && b[i].is_ascii_digit() {
-            ip.push(b[i]);
             i += 1;
         }
-        if ip.is_empty() {
+        let ip_end = i;
+        if ip_end == ip_start {
             return None;
         }
-        let mut fp = String::new();
-        if b.get(i) == Some(&'.') {
+        let (fp_start, fp_end) = if b.get(i) == Some(&b'.') {
             i += 1;
+            let start = i;
             while i < b.len() && b[i].is_ascii_digit() {
-                fp.push(b[i]);
                 i += 1;
             }
-            if fp.is_empty() {
+            if i == start {
                 return None;
             }
-        }
-        let unit = match (b.get(i), b.get(i + 1)) {
-            (Some('m'), Some('s')) => {
+            (start, i)
+        } else {
+            (i, i)
+        };
+        let (mul, shift): (u128, usize) = match (b.get(i), b.get(i + 1)) {
+            (Some(b'm'), Some(b's')) => {
                 i += 2;
-                1
+                (1, 3)
             }
-            (Some('s'), _) => {
+            (Some(b's'), _) => {
                 i += 1;
-                1000
+                (1, 0)
             }
-            (Some('m'), _) => {
+            (Some(b'm'), _) => {
                 i += 1;
-                60_000
+                (60, 0)
             }
-            (Some('h'), _) => {
+            (Some(b'h'), _) => {
                 i += 1;
-                3_600_000
+                (3600, 0)
             }
-            (Some('d'), _) => {
+            (Some(b'd'), _) => {
                 i += 1;
-                86_400_000
+                (86_400, 0)
             }
             _ => return None,
         };
-        terms.push((ip, fp, unit));
+        if !overflow {
+            let mut ip_nz = ip_start;
+            while ip_nz < ip_end && b[ip_nz] == b'0' {
+                ip_nz += 1;
+            }
+            if ip_end - ip_nz > DUR_INT_COLS + shift {
+                overflow = true;
+            } else {
+                for (p, &ch) in b[ip_nz..ip_end].iter().rev().enumerate() {
+                    let d = (ch - b'0') as u128;
+                    if d != 0 {
+                        let col = DUR_FRAC_COLS + p - shift;
+                        if col >= DUR_TOTAL_COLS {
+                            overflow = true;
+                            break;
+                        }
+                        cols[col] += d * mul;
+                    }
+                }
+            }
+            if !overflow {
+                let cutoff = DUR_FRAC_COLS - shift;
+                let fp_len = fp_end - fp_start;
+                let keep = fp_len.min(cutoff);
+                for k in 0..keep {
+                    let d = (b[fp_start + k] - b'0') as u128;
+                    if d != 0 {
+                        cols[DUR_FRAC_COLS - 1 - shift - k] += d * mul;
+                    }
+                }
+                if fp_len > cutoff && b[fp_start + cutoff..fp_end].iter().any(|&c| c != b'0') {
+                    tail_terms += 1;
+                }
+            }
+        }
     }
-    if terms.is_empty() {
-        return None;
-    }
-    // The exact sum in thousandths of a second, over 10^f, where f is the
-    // longest fraction.
-    let f = terms.iter().map(|t| t.1.len()).max().unwrap_or(0);
-    let mut acc: Vec<u64> = Vec::new(); // little-endian base 10^9
-    for (ip, fp, unit) in &terms {
-        let digits = format!("{ip}{fp}{}", "0".repeat(f - fp.len()));
-        let mut term = from_decimal(&digits);
-        mul_small(&mut term, *unit);
-        add_big(&mut acc, &term);
-    }
-    let digits = to_decimal(&acc);
-    let v = nearest(neg, &digits, f + 3);
-    if !v.is_finite() {
+
+    if overflow {
         return Some(None);
     }
-    Some(Some(v))
-}
-
-const BASE: u64 = 1_000_000_000;
-
-fn from_decimal(s: &str) -> Vec<u64> {
-    let b = s.as_bytes();
-    let mut out = Vec::new();
-    let mut end = b.len();
-    while end > 0 {
-        let start = end.saturating_sub(9);
-        let chunk = std::str::from_utf8(&b[start..end]).unwrap_or("0");
-        out.push(chunk.parse::<u64>().unwrap_or(0));
-        end = start;
+    let mut carry = 0u128;
+    for col in &mut cols {
+        let sum = *col + carry;
+        *col = sum % 10;
+        carry = sum / 10;
     }
-    out
-}
-
-fn mul_small(a: &mut Vec<u64>, m: u64) {
-    let mut carry = 0u64;
-    for x in a.iter_mut() {
-        let v = *x * m + carry;
-        *x = v % BASE;
-        carry = v / BASE;
+    if carry > 0 {
+        return Some(None);
     }
-    while carry > 0 {
-        a.push(carry % BASE);
-        carry /= BASE;
-    }
-}
-
-/// `acc += t`, in work linear in `t` and in the carry it moves, not in
-/// the length of `acc` (`f06-groups.md` 5.1 item 3).
-fn add_big(acc: &mut Vec<u64>, t: &[u64]) {
-    if acc.len() < t.len() {
-        acc.resize(t.len(), 0);
-    }
-    let mut carry = 0u64;
-    let mut i = 0;
-    while i < t.len() || carry > 0 {
-        if i == acc.len() {
-            acc.push(0);
-        }
-        let v = acc[i] + t.get(i).copied().unwrap_or(0) + carry;
-        acc[i] = v % BASE;
-        carry = v / BASE;
-        i += 1;
-    }
-}
-
-fn to_decimal(a: &[u64]) -> String {
-    let mut out = String::new();
-    for (k, x) in a.iter().rev().enumerate() {
-        if k == 0 {
-            out.push_str(&x.to_string());
+    let finish = |v: f64| -> Option<Option<f64>> {
+        if !v.is_finite() {
+            Some(None)
+        } else if neg && v != 0.0 {
+            Some(Some(-v))
         } else {
-            out.push_str(&format!("{x:09}"));
+            Some(Some(if v == 0.0 { 0.0 } else { v }))
+        }
+    };
+    let f_a = cols_to_f64(&cols);
+    if !f_a.is_finite() {
+        return Some(None);
+    }
+    if tail_terms == 0 {
+        return finish(f_a);
+    }
+
+    // Exact sum lies strictly in (A, B), where B = A + eps * 10^-DUR_FRAC_COLS.
+    let eps = tail_terms * 86_400;
+    let mut cols_b = cols.clone();
+    let mut c = eps;
+    for col in &mut cols_b {
+        if c == 0 {
+            break;
+        }
+        let sum = *col + c;
+        *col = sum % 10;
+        c = sum / 10;
+    }
+    let f_b = cols_to_f64(&cols_b);
+    if cols[..DUR_GUARD_COLS].iter().all(|&d| d == 0) {
+        return finish(f_b);
+    }
+    if f_b.is_finite() && f_a.to_bits() == f_b.to_bits() {
+        return finish(f_a);
+    }
+    let mut cols_m = cols_b;
+    for col in &mut cols_m[..DUR_GUARD_COLS] {
+        *col = 0;
+    }
+    let f_m = cols_to_f64(&cols_m);
+    let mut deficit: u128 = 0;
+    let mut place: u128 = 1;
+    let mut borrow: u128 = 0;
+    for &digit in &cols[..DUR_GUARD_COLS] {
+        let d = digit + borrow;
+        let out = if d == 0 {
+            borrow = 0;
+            0
+        } else {
+            borrow = 1;
+            10 - d
+        };
+        if out != 0 {
+            deficit += out * place;
+        }
+        if place <= eps {
+            place *= 10;
         }
     }
-    if out.is_empty() {
-        "0".into()
-    } else {
-        out
+    match compare_duration_tail(b, deficit, eps) {
+        std::cmp::Ordering::Less => finish(f_a),
+        std::cmp::Ordering::Equal => finish(f_m),
+        std::cmp::Ordering::Greater => finish(f_b),
     }
 }
 

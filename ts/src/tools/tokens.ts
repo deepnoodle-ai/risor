@@ -7,8 +7,7 @@
 // place of the lexical error; the rest of that line is `invalid`, and lexing
 // starts again on the next line.
 
-import { ParseError } from "../syntax/diagnostic.ts";
-import { lex } from "../syntax/lexer.ts";
+import { lexPrefix } from "../syntax/lexer.ts";
 import { Source } from "../syntax/source.ts";
 import { isReserved } from "../syntax/token.ts";
 import type { Token } from "../syntax/token.ts";
@@ -49,11 +48,24 @@ export function tokens(text: string): ColourToken[] {
   // A leading byte order mark is not part of the program (01 2.1): it is in
   // no range, as white space is. Offsets still count it.
   let lineStart = cps[0] === 0xfeff ? 1 : 0;
+  // Bound total recovery scanning to O(N): if repeated unclosed multiline
+  // constructs (e.g. `/*\n` or `` `${\n `` repeated thousands of times) burn
+  // through the recovery scan budget, fall back to lexing one line at a time.
+  let scannedTotal = 0;
+  const scanBudget = Math.max(4096, 4 * cps.length);
   while (lineStart <= cps.length) {
-    const { tokens: toks, error } = lexFrom(cps, lineStart);
-    const end = error ?? cps.length;
+    const lineOnly = scannedTotal > scanBudget;
+    let sliceEnd = cps.length;
+    if (lineOnly) {
+      sliceEnd = lineStart;
+      while (sliceEnd < cps.length && cps[sliceEnd] !== 0x0a && cps[sliceEnd] !== 0x0d) sliceEnd++;
+    }
+    const res = lexPrefix(Source.ofCodePoints(cps.subarray(lineStart, sliceEnd)));
+    scannedTotal += res.scanned;
+    const error = res.error === null ? null : lineStart + res.error;
+    const end = error ?? sliceEnd;
     const flat: ColourToken[] = [];
-    flatten(toks, lineStart, flat);
+    flatten(res.tokens, lineStart, flat);
     // Keep only the ranges before the error, and fill the gaps with comments.
     let at = lineStart;
     for (const t of flat) {
@@ -63,7 +75,11 @@ export function tokens(text: string): ColourToken[] {
       at = Math.min(t.end, end);
     }
     comments(cps, at, end, out);
-    if (error === null) break;
+    if (error === null) {
+      if (sliceEnd >= cps.length) break;
+      lineStart = sliceEnd + (cps[sliceEnd] === 0x0d && cps[sliceEnd + 1] === 0x0a ? 2 : 1);
+      continue;
+    }
     // The rest of the line is invalid. A line ends at LF, CR, or CR LF, as a
     // string literal does.
     let eol = error;
@@ -72,32 +88,6 @@ export function tokens(text: string): ColourToken[] {
     lineStart = eol + (cps[eol] === 0x0d && cps[eol + 1] === 0x0a ? 2 : 1);
   }
   return out;
-}
-
-/**
- * Lex the text from `start`; on a lexical error, the offset of the error.
- * The lexer reads a view of the code points, so a recovery copies nothing.
- */
-function lexFrom(cps: Uint32Array, start: number): { tokens: Token[]; error: number | null } {
-  let view = cps.subarray(start);
-  for (;;) {
-    try {
-      return { tokens: lex(Source.ofCodePoints(view)), error: null };
-    } catch (e) {
-      if (!(e instanceof ParseError)) throw e;
-      const at = e.diagnostic.span?.start ?? 0;
-      // Lex the part before the error, so the colours reach it. The part is
-      // shorter each time, so this ends.
-      if (at >= view.length) return { tokens: [], error: start };
-      const prefix = view.subarray(0, at);
-      try {
-        return { tokens: lex(Source.ofCodePoints(prefix)), error: start + at };
-      } catch (e2) {
-        if (!(e2 instanceof ParseError)) throw e2;
-        view = prefix;
-      }
-    }
-  }
 }
 
 /**

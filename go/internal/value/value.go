@@ -52,8 +52,16 @@ type Opaque interface {
 // MaxWhole is 2^53 - 1, the largest whole number.
 const MaxWhole = 9007199254740991
 
+// maxPtrDepth bounds pointer dereferencing in KindOf and Read so a cyclic
+// Go pointer (e.g., var x any; x = &x) cannot overflow the stack.
+const maxPtrDepth = 64
+
 // KindOf returns the kind of a value.
 func KindOf(v any) Kind {
+	return kindOf(v, 0)
+}
+
+func kindOf(v any, ptrDepth int) Kind {
 	switch v := v.(type) {
 	case nil:
 		return Null
@@ -70,11 +78,11 @@ func KindOf(v any) Kind {
 	case Opaque:
 		return OpaqueKind
 	default:
-		return reflectKind(v)
+		return reflectKind(v, ptrDepth)
 	}
 }
 
-func reflectKind(v any) Kind {
+func reflectKind(v any, ptrDepth int) Kind {
 	if m, ok := v.(encoding.TextMarshaler); ok {
 		// F1 6.2: a text type, and null when MarshalText fails.
 		if _, ok := marshalText(m); ok {
@@ -106,7 +114,10 @@ func reflectKind(v any) Kind {
 			return Null
 		}
 		if rv.Kind() == reflect.Pointer {
-			return KindOf(rv.Elem().Interface()) // F1 6.2: *T is T or null
+			if ptrDepth >= maxPtrDepth {
+				return OpaqueKind
+			}
+			return kindOf(rv.Elem().Interface(), ptrDepth+1) // F1 6.2: *T is T or null
 		}
 	}
 	return OpaqueKind
@@ -127,6 +138,10 @@ const (
 // operation yields them. A host integer whose magnitude is over 2^53 - 1, a
 // NaN and an infinity give ReadRange (03-host.md 3.4.4).
 func Read(v any) (any, ReadError) {
+	return readAt(v, 0)
+}
+
+func readAt(v any, ptrDepth int) (any, ReadError) {
 	switch x := v.(type) {
 	case nil, bool, []any, map[string]any:
 		return v, ReadOK
@@ -178,7 +193,10 @@ func Read(v any) (any, ReadError) {
 		if rv.IsNil() {
 			return nil, ReadOK
 		}
-		return Read(rv.Elem().Interface())
+		if ptrDepth >= maxPtrDepth {
+			return v, ReadOK
+		}
+		return readAt(rv.Elem().Interface(), ptrDepth+1)
 	// F1 6.2: a value of a named bool, string or number type, such as
 	// time.Duration, is read as one of its kind.
 	case reflect.Bool:
@@ -436,11 +454,20 @@ func ForEachKey(v any, fn func(k string)) {
 }
 
 // SameOpaque is the identity test of 03-host.md 3.4.6.
-func SameOpaque(a, b any) bool {
+// A struct type may report Comparable() == true while holding an uncomparable
+// dynamic value in an interface field (e.g. a slice or map); 3.4.6 item 4
+// requires the identity test never to fail, so a runtime comparison panic
+// returns false.
+func SameOpaque(a, b any) (same bool) {
 	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
 	if ta != tb || !ta.Comparable() {
 		return false
 	}
+	defer func() {
+		if recover() != nil {
+			same = false
+		}
+	}()
 	return a == b
 }
 
