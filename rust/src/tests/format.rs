@@ -172,3 +172,39 @@ fn many_comments_after_one_token() {
     assert!(f.starts_with("1 /* c */ /* c */"));
     assert!(took < std::time::Duration::from_secs(3), "took {took:?}");
 }
+
+/// Edge cases of F12 2.8, 2.12 and 2.13 (#701, #702): kept parens, opening
+/// bracket line comments, and breaking record types.
+#[test]
+fn comments_in_records_and_kept_parens() {
+    for (src, want) in [
+        // Kept closing paren as the last token of a sequence element defers its trailing comment.
+        ("[a * (b + c) // end\n]", "[\n  a * (b + c), // end\n]\n"),
+        // Function type with record type parameter and trailing comment before comma.
+        (
+            "const g = (f: (a: {x: int} /* a */, b: string) => bool, n) => n;\n0",
+            "const g = (f: (a: {x: int}, /* a */ b: string) => bool, n) => n;\n0\n",
+        ),
+        // Bare rest in a breaking record type keeps its trailing comma.
+        (
+            "type Open = {\n  // any field\n  ...\n};\n1",
+            "type Open = {\n  // any field\n  ...,\n};\n1\n",
+        ),
+        // Blank line without a leading comment in a breaking record type is kept.
+        (
+            "type Rec = {\n  /** doc */\n  a: int,\n\n  b: string,\n};\n1",
+            "type Rec = {\n  /** doc */\n  a: int,\n\n  b: string,\n};\n1\n",
+        ),
+        // Kept parens on a ternary test and an optional-chain receiver.
+        (
+            "(/* why */ a ? b : c) ? 1 : 2",
+            "(/* why */ a ? b : c) ? 1 : 2\n",
+        ),
+        ("(/* why */ a?.b).c", "(/* why */ a?.b).c\n"),
+    ] {
+        let got = format(src).unwrap();
+        assert_eq!(got, want, "{src:?}");
+        // Idempotence check.
+        assert_eq!(format(&got).unwrap(), got, "idempotence for {src:?}");
+    }
+}
