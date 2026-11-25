@@ -1601,11 +1601,23 @@ fn compare_failure(
                     .zip(diags)
                     .all(|(e, a)| diag_matches(e, a, checked))
         }
-        // Without regard to order; further reported ones are not
-        // compared (item 6).
+        // Without regard to order (item 6). A name error may come with
+        // errors in type text that are not specified, so further reported
+        // ones are not compared for it.
         Phase::Declare => {
             let mut used = vec![false; diags.len()];
-            f.diagnostics.len() <= diags.len()
+            let name_error = f.diagnostics.first().is_some_and(|e| {
+                matches!(
+                    e.code.as_str(),
+                    "reserved-namespace" | "bad-name" | "name-clash"
+                )
+            });
+            let count_ok = if name_error {
+                f.diagnostics.len() <= diags.len()
+            } else {
+                f.diagnostics.len() == diags.len()
+            };
+            count_ok
                 && f.diagnostics.iter().all(|e| {
                     match (0..diags.len())
                         .find(|&i| !used[i] && diag_matches(e, &diags[i], checked))

@@ -789,8 +789,10 @@ func compareDiagnostics(c *casefile.Case, got []risor.Diagnostic, checked bool) 
 				return d
 			}
 		}
-	case "declare": // without regard to order; further reported ones are not compared (03-host 3.10.7 item 6)
-		if len(got) < len(e.Diagnostics) {
+	case "declare": // without regard to order (03-host 3.10.7 item 6)
+		// A name error may come with errors in type text that are not
+		// specified, so further reported ones are not compared for it.
+		if len(got) < len(e.Diagnostics) || (len(got) != len(e.Diagnostics) && !declareNameCodes[e.Diagnostics[0].Code]) {
 			return d
 		}
 		used := make([]bool, len(got))
@@ -1073,3 +1075,7 @@ func runConform(cr *caseRun) Result {
 	}
 	return Result{Verdict: Pass}
 }
+
+// declareNameCodes are the declare codes of a refused name (03-host 3.3.4
+// item 4). A case that expects one does not compare further diagnostics.
+var declareNameCodes = map[string]bool{"reserved-namespace": true, "bad-name": true, "name-clash": true}

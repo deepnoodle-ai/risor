@@ -151,14 +151,13 @@ An environment is a set of declarations. Core has these kinds.
    implementation offers.
 2. Every implementation parses the type text of every declaration whose name
    it accepts, by the grammar of `05-types.md`, whether or not it has a type
-   checker. For a declaration whose name is refused, 3.3.4 item 4 applies. It
-   needs the
-   names of the variables and the count of parameters of each function. Text
-   that the grammar does not accept is `bad-type`, or `bad-signature` for a
-   signature, in every implementation. The rules of `05-types.md` beyond the
-   grammar (two record alternatives, an undeclared type name, type depth
-   (`05-types.md` 2.5), a key
-   written twice) need the type checker.
+   checker. An implementation needs the names of the variables and the count
+   of parameters of each function. Text that the grammar does not accept is
+   `bad-type`, or `bad-signature` for a signature, in every implementation.
+   The rules of `05-types.md` beyond the grammar (two record alternatives, an
+   undeclared type name, type depth (`05-types.md` 2.5), a key written twice)
+   need the type checker. For a declaration whose name is refused, 3.3.4 item
+   4 applies.
 3. Check uses the types of variables. A run uses only their names.
 4. An environment with no rejected-classes declaration rejects the default
    set, which is `constant-condition` alone. A name that is not one of the six
@@ -797,7 +796,7 @@ else.
 | No mutation | The run never writes to a value it did not create | That a host function does not change its arguments. A result may share memory with host data |
 | Determinism | The same program, version, values, host function results and charges, and limits give the same reads and calls of the host, in the same order (3.6.2), and the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
 | Steps | The work of the language and its library is proportional to the steps charged. The run stops at the same point in every implementation and version | The time one step takes. Work in a host function beyond what it charges |
-| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken, except for a library result no larger than its input (`02-evaluation.md` 6.2 item 3) | Live memory. Host data. What a host function builds without charging |
+| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken, except where `02-evaluation.md` 6.2 item 3 allows a library entry to build first | Live memory. Host data. What a host function builds without charging |
 | Deadline | A run that passes its deadline, or that is cancelled, stops within one test interval of steps | That a blocked host function returns |
 | Depth | The implementation's own stack does not overflow on any program or any data | — |
 | No crash | A run does not crash or hang on any program or any values. A crash in host code is `function-panic`. A failure inside the implementation is `internal-error` | — |
@@ -1072,10 +1071,12 @@ Each element of `diagnostics` is an object with these fields.
    16). It is compared with the first diagnostic the parser reported. Further
    reported diagnostics are not compared.
 6. `diagnostics` for phase `declare` has exactly one element (3.10.10, item
-   16). It is compared with each diagnostic reported, in any order, and one
-   of them must match it. Further reported diagnostics are not compared. So a
-   case can pin the error that every implementation reports for an
-   environment that has more than one (3.3.4, item 4).
+   16). When its code is `reserved-namespace`, `bad-name` or `name-clash`, it
+   is compared with each diagnostic reported, in any order, and one of them
+   must match it. Further reported diagnostics are not compared, because a
+   refused name may come with errors in type text that are not specified
+   (3.3.4, item 4). For any other code, the environment has exactly one
+   error, and the expected diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
 8. `class` is compared for every code, with one exception. A case states the
    class of the checked program. In a run with the static rules alone
