@@ -125,7 +125,7 @@ fn the_environment_limit_plays_no_part() {
         .build()
         .unwrap();
     let t = env.parse_type("int[]").unwrap();
-    let data = crate::Data::List((0..12).map(|i| crate::Data::Int(i)).collect());
+    let data = crate::Data::List((0..12).map(crate::Data::Int).collect());
     assert!(crate::conform(&crate::Value::from_data(&data), &t).is_ok());
 }
 

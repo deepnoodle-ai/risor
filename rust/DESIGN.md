@@ -604,7 +604,8 @@ A plain text error has no cause: its text is already the message.
   two records in one `PType`, then depth and size.
 - **The walk** (`src/conform.rs`) is one function over a `WalkMeter`: the run
   charges steps and counts depth through it, and the conformance function
-  (`Env::ty(text)?.conform(&data)`) uses one that counts nothing.
+  (`risor::conform`) uses `Free`, which counts the same steps against a
+  step limit of its own, the default 1,000,000 (F4 7.3).
 - **No level** (2.8): `as` and `is` open a level only for their type. The
   resolver, the checker, the evaluator and the formatter go down the value
   of an `as` or `is` in the loop that goes down the left operands of
