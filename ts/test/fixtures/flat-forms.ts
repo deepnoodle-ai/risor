@@ -4,9 +4,9 @@
 // in, the variables it runs on, and what the run gives: the value, the steps
 // and the allocation units, each exact at every length.
 //
-// test/flat.test.ts runs each form at 100,000 links through every entry point.
+// test/flat.test.ts runs each form at 10,000 links through every entry point.
 // A form that writes more than one link for each repeat says how many (`per`),
-// and is repeated until it has 100,000 of them.
+// and is repeated until it has 10,000 of them.
 
 /** A map whose field `a` is the map itself, and whose field `l` is a list of it. */
 function cyclicMap(): Record<string, unknown> {
@@ -46,7 +46,7 @@ export interface FlatForm {
   steps: (n: number) => number;
   units: (n: number) => number;
   /**
-   * What the formatter does with the form at 100,000 links. `text`: the
+   * What the formatter does with the form at 10,000 links. `text`: the
    * formatted text parses to the same tree. `nested`: the formatter writes a
    * pair of parentheses for the reader around each left operand (f12 2.6), so
    * its text nests deeper than 100 levels and does not parse again. `quadratic`:

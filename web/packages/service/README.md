@@ -49,6 +49,12 @@ instead, and return the same `RunResult` shape.
 - **A run that does not end** within its deadline (`timeoutMs`, default
   2,000 ms) plus 1,500 ms is stopped: the worker is ended and a new one
   starts. The result has the stage `stopped`.
+- **A text is at most 1,048,576 code points** (1 MiB), as for every Risor
+  program. A longer text is refused before it is read: `check`, `validate`,
+  `run` and `format` give one problem with the code `source-too-large` and no
+  offsets, `complete` gives no items, and `hover` gives `null`. So these
+  calls are bounded by the size of the text and need no deadline of their
+  own.
 - **`check`, `complete` and `hover` drop stale calls**: a call made while an
   earlier one of the same kind waits replaces it, and the earlier one
   resolves `null`. `validate` is never replaced; await it on a form's submit.

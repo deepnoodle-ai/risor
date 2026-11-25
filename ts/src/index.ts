@@ -67,7 +67,7 @@
 // document and its layout, completion and hover each walk such a form in a
 // loop with a stack of its own, and call themselves only where the text opens
 // a level. test/flat.test.ts runs each form of test/fixtures/flat-forms.ts
-// with 100,000 links through each of them.
+// with 10,000 links through each of them.
 //
 // MEMORY (02 8.5 item 2). On 64-bit V8 (pointer-compressed JS values), the heap
 // memory a run creates as values of the language is bounded by 256 bytes per
@@ -93,7 +93,7 @@ export type { EnvOptions, WithOptions, LibraryNames, ChildOpaqueType, NamedType,
 
 // E.4 Programs.
 export { parse, Expr, Analysis, Program } from "./host/api.ts";
-export type { CallSite, Ref, Expected, CheckResult, Site, CompileOptions, Usage, Vars } from "./host/api.ts";
+export type { CallSite, Ref, Expected, CheckResult, Site, CompileOptions, SourceOptions, Usage, Vars } from "./host/api.ts";
 
 // E.5 Templates.
 export { parseTemplate, Template, formatTemplate } from "./host/api.ts";

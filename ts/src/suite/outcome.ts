@@ -6,7 +6,7 @@ import { jsonString, mapGet, mapKeys, plainEqual, readHost, sortKeys, BAD_NUMBER
 import type { Case } from "./casefile.ts";
 import { CLASSIFIER, OpaqueRef, analysisOf, assistOutcome, executeCase, renderCaseDiagnostics, runConform, runnerResult } from "./runner.ts";
 import { formatProgram, formatTemplate } from "../tools/format.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT } from "../syntax/source.ts";
 import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import { descriptionText } from "../host/api.ts";
 
@@ -52,11 +52,13 @@ export function outcomeLine(c: Case): string {
     const name = `"name":${jsonString(c.name)}`;
     const t = c.tool;
     if (t.kind === "format" || t.kind === "formatTemplate") {
-      const r = t.kind === "format" ? formatProgram(t.text) : formatTemplate(t.text);
+      const limit = c.limits?.source ?? SOURCE_LIMIT;
+      const r = t.kind === "format" ? formatProgram(t.text, limit) : formatTemplate(t.text, limit);
       if (r.ok) return `{${name},"formatted":${jsonString(r.text)}}`;
-      const src = t.kind === "format" ? new Source(t.text) : new Source(t.text, { keepBom: true });
       const d = r.diagnostics[0];
-      return `{${name},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${JSON.stringify(src.lineSpan(d.span!))},"message":${jsonString(d.message)}}]}`;
+      // `source-too-large` has no span (01 2.1 item 5).
+      const span = d.span === undefined ? "null" : JSON.stringify((t.kind === "format" ? new Source(t.text) : new Source(t.text, { keepBom: true })).lineSpan(d.span));
+      return `{${name},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${span},"message":${jsonString(d.message)}}]}`;
     }
     const r = assistOutcome(c);
     if (!r.ok) return `{${name},"phase":"declare","diagnostics":[${r.diagnostics.map((d) => d.code).sort().map((code) => `{"code":${jsonString(code)}}`).join(",")}]}`;
