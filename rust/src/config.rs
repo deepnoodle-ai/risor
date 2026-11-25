@@ -25,13 +25,26 @@ use crate::check::{compile_checked, Want};
 use crate::decode::Decode;
 use crate::diag::Diagnostic;
 use crate::env::Env;
-use crate::eval::Usage;
+use crate::eval::{RunOptions, Usage};
 use crate::host::{Data, Vars};
 use crate::hosttype::HostType;
 use crate::syntax::{ParseOptions, SOURCE_LIMIT};
 
+/// Load step 0: declare (resolving the expected type and options).
+pub const STEP_DECLARE: u8 = 0;
+/// Load step 1: parse.
+pub const STEP_PARSE: u8 = 1;
+/// Load step 2: check and compile.
+pub const STEP_CHECK: u8 = 2;
+/// Load step 3: run.
+pub const STEP_RUN: u8 = 3;
+/// Load step 4: conform.
+pub const STEP_CONFORM: u8 = 4;
+/// Load step 5: decode.
+pub const STEP_DECODE: u8 = 5;
+
 /// The options of a load (`f10-config.md` 5.1).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct LoadOptions {
     /// The type T of the value: type text, which may name the
     /// environment's named types; a JSON Schema, which a host maps with the
@@ -43,6 +56,8 @@ pub struct LoadOptions {
     /// The source limit (5.1), which step 1 applies; by default
     /// [`SOURCE_LIMIT`]. A limit out of range is `bad-limit`, at step 0.
     pub source_limit: usize,
+    /// Run options for step 3 (for example cancellation).
+    pub run: RunOptions,
 }
 
 impl Default for LoadOptions {
@@ -51,6 +66,7 @@ impl Default for LoadOptions {
             expected: Expected::None,
             max: 1,
             source_limit: SOURCE_LIMIT,
+            run: RunOptions::default(),
         }
     }
 }
@@ -66,8 +82,7 @@ pub(crate) struct Loaded<T> {
 /// and the usage when the run was reached (5.2 item 4).
 #[derive(Clone, Debug)]
 pub struct LoadError {
-    /// The load step that failed: 0 (declare), 1 (parse), 2 (check), 3 (run),
-    /// 4 (conform) or 5 (decode).
+    /// The load step that failed: [`STEP_DECLARE`] (0) through [`STEP_DECODE`] (5).
     pub step: u8,
     /// The diagnostics reported at `step`.
     pub diagnostics: Vec<Diagnostic>,
@@ -108,17 +123,19 @@ pub fn load_value(
     let parse = ParseOptions {
         source_limit: opts.source_limit,
     };
-    parse.limit().map_err(|e| fail(0, e.diagnostics, None))?;
+    parse
+        .limit()
+        .map_err(|e| fail(STEP_DECLARE, e.diagnostics, None))?;
     let ty = match opts
         .expected
         .want(env)
-        .map_err(|e| fail(0, e.diagnostics, None))?
+        .map_err(|e| fail(STEP_DECLARE, e.diagnostics, None))?
     {
         Want::Type(t) => t,
         Want::Nothing => crate::check::ty::Ty::any(),
         Want::Condition => {
             return Err(fail(
-                0,
+                STEP_DECLARE,
                 vec![Diagnostic::bare(
                     crate::diag::Phase::Declare,
                     crate::diag::code::BAD_TYPE,
@@ -128,7 +145,7 @@ pub fn load_value(
             ))
         }
     };
-    run_steps(env, text, parse, ty, vars, opts.max).map(|l| l.value)
+    run_steps(env, text, parse, ty, vars, opts.max, opts.run).map(|l| l.value)
 }
 
 fn run_steps(
@@ -138,26 +155,27 @@ fn run_steps(
     ty: crate::check::ty::Ty,
     vars: &dyn Vars,
     max: usize,
+    run: RunOptions,
 ) -> Result<Loaded<Data>, LoadError> {
     // Step 1.
-    let parsed =
-        crate::syntax::parse_with(text, parse).map_err(|e| fail(1, e.diagnostics, None))?;
+    let parsed = crate::syntax::parse_with(text, parse)
+        .map_err(|e| fail(STEP_PARSE, e.diagnostics, None))?;
     // Step 2: always with the check.
     let (program, _) = compile_checked(env, parsed, &Want::Type(ty.clone()))
-        .map_err(|e| fail(2, e.diagnostics, None))?;
+        .map_err(|e| fail(STEP_CHECK, e.diagnostics, None))?;
     // Step 3.
-    let out = program.outcome(vars);
+    let out = program.outcome_with(vars, run);
     let usage = out.usage;
     let v = out
         .result
-        .map_err(|f| fail(3, vec![program.diagnostic(&f)], Some(usage)))?;
+        .map_err(|f| fail(STEP_RUN, vec![program.diagnostic(&f)], Some(usage)))?;
     // Step 4: every failure, up to the maximum; not catchable, not part of
     // the run's usage. It counts steps against the default limit (F10 5.2
     // item 1, F8 6.4).
     let all = crate::conform::all(&v, &ty, max.max(1), Some(crate::conform::FREE_STEPS));
     if !all.is_empty() {
         return Err(fail(
-            4,
+            STEP_CONFORM,
             all.iter().map(|f| f.diagnostic()).collect(),
             Some(usage),
         ));
@@ -176,22 +194,36 @@ pub fn load<H: Decode + HostType>(
     vars: &dyn Vars,
     max: usize,
 ) -> Result<H, LoadError> {
-    load_with(env, text, vars, max, ParseOptions::default())
+    load_with(
+        env,
+        text,
+        vars,
+        LoadOptions {
+            max,
+            ..LoadOptions::default()
+        },
+    )
 }
 
-/// [`load`] with parse options: a lower source limit, which step 1 applies.
-/// A limit out of range is `bad-limit`, at step 0.
+/// [`load`] with [`LoadOptions`]: `max`, `source_limit` (step 1) and `run`
+/// (step 3 cancellation). `opts.expected` is ignored: the expected type is
+/// always derived from `H`. A `source_limit` out of range is `bad-limit`, at
+/// step 0.
 pub fn load_with<H: Decode + HostType>(
     env: &Env,
     text: &str,
     vars: &dyn Vars,
-    max: usize,
-    parse: ParseOptions,
+    opts: LoadOptions,
 ) -> Result<H, LoadError> {
-    parse.limit().map_err(|e| fail(0, e.diagnostics, None))?;
+    let parse = ParseOptions {
+        source_limit: opts.source_limit,
+    };
+    parse
+        .limit()
+        .map_err(|e| fail(STEP_DECLARE, e.diagnostics, None))?;
     let ty = crate::hosttype::type_of::<H>().map_err(|e| {
         fail(
-            0,
+            STEP_DECLARE,
             vec![Diagnostic::bare(
                 crate::diag::Phase::Declare,
                 crate::diag::code::BAD_TYPE,
@@ -200,10 +232,10 @@ pub fn load_with<H: Decode + HostType>(
             None,
         )
     })?;
-    let got = run_steps(env, text, parse, ty.into_ty(), vars, max)?;
+    let got = run_steps(env, text, parse, ty.into_ty(), vars, opts.max, opts.run)?;
     let v = crate::value::Value::from_data(&got.value);
     // Step 5.
-    crate::decode::decode_max::<H>(&v, max).map_err(|d| fail(5, d, Some(got.usage)))
+    crate::decode::decode_max::<H>(&v, opts.max).map_err(|d| fail(STEP_DECODE, d, Some(got.usage)))
 }
 
 #[cfg(test)]

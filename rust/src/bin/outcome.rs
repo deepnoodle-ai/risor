@@ -5,7 +5,7 @@
 //! cargo run --quiet --release --bin outcome -- FILE
 //! ```
 
-use risor::testing::{load_file_lax, outcome_line};
+use risor::__private::{load_file_lax, outcome_line};
 use std::path::Path;
 use std::process::ExitCode;
 

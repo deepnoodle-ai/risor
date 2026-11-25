@@ -390,7 +390,8 @@ impl Type {
     }
 
     /// Whether the two are the same type: the same by structure (F5 2.5),
-    /// whatever the names of their recursive types (F17 12).
+    /// whatever the names of their recursive types (F17 12). False when
+    /// either is invalid.
     pub fn equal(&self, u: &Type) -> bool {
         match (self.valid(), u.valid()) {
             (Some(a), Some(b)) => {
@@ -398,7 +399,7 @@ impl Type {
                 let r = cty::equal(a, b);
                 r && !w.passed()
             }
-            _ => self == u,
+            _ => false,
         }
     }
 }

@@ -24,6 +24,7 @@ use crate::syntax::ast::{
 };
 use crate::value::{
     self, from_view, is_whole, lcp_size, log2_ceil, size, weight, Kind, MapVal, Str, Value,
+    ValueInner,
 };
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::rc::Rc;
@@ -259,7 +260,7 @@ impl Fail<'_> {
 pub(crate) type R<'h, T> = Result<T, Box<Fail<'h>>>;
 
 /// Options of one run.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RunOptions {
     /// Set by the host to cancel the run.
     pub cancel: Option<Arc<AtomicBool>>,
@@ -323,7 +324,7 @@ impl Program {
             parts_buf: Vec::new(),
         };
         if n > 0 {
-            run.slots.resize_with(n, || Value::Null);
+            run.slots.resize_with(n, || Value(ValueInner::Null));
         }
         // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
@@ -478,7 +479,7 @@ impl Program {
             let mut vals = Vec::with_capacity(entry.params.len());
             for p in &entry.params {
                 let k = p.name.as_deref().expect("row 2 parameter has a name");
-                vals.push(input_val.field(k).unwrap_or(Value::Null));
+                vals.push(input_val.field(k).unwrap_or(Value(ValueInner::Null)));
             }
             value::release(input_val);
             vals
@@ -538,7 +539,7 @@ impl Program {
             parts_buf: Vec::new(),
         };
         if n > 0 {
-            run.slots.resize_with(n, || Value::Null);
+            run.slots.resize_with(n, || Value(ValueInner::Null));
         }
         let result = run.exec_entry(entry, &mut arg_vals);
         release_all(&mut arg_vals);
@@ -688,10 +689,10 @@ fn kind_p<'h>(v: &Value<'h>) -> String {
 /// A parameter of kind `value` (`03-host.md` 3.8.3).
 fn value_p(v: &Value<'_>) -> String {
     match v {
-        Value::Null => "null".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Num(n) => number::to_text(*n),
-        Value::Str(s) => json_string(s.as_str()),
+        Value(ValueInner::Null) => "null".into(),
+        Value(ValueInner::Bool(b)) => b.to_string(),
+        Value(ValueInner::Num(n)) => number::to_text(*n),
+        Value(ValueInner::Str(s)) => json_string(s.as_str()),
         _ => v.kind().name().to_string(),
     }
 }
@@ -759,7 +760,7 @@ fn function_error<'h>(e: crate::host::HostError, span: Range) -> Box<Fail<'h>> {
 #[inline(never)]
 fn release_all(args: &mut [Value<'_>]) {
     for a in args.iter_mut() {
-        value::release(std::mem::replace(a, Value::Null));
+        value::release(std::mem::replace(a, Value(ValueInner::Null)));
     }
 }
 
@@ -830,7 +831,7 @@ impl<'h> Run<'h> {
     /// Read a value: a host number that cannot enter fails here.
     fn read(&self, v: Value<'h>, span: Range) -> R<'h, Value<'h>> {
         match v {
-            Value::BadNum => Err(self.host_number(Some(span))),
+            Value(ValueInner::BadNum) => Err(self.host_number(Some(span))),
             v => Ok(v),
         }
     }
@@ -916,13 +917,13 @@ impl<'h> Run<'h> {
     fn leaf(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let node = &self.ast.nodes[id.index()];
         match &node.kind {
-            NodeKind::Number { value } => Ok(Value::Num(*value)),
-            NodeKind::String { value, .. } => Ok(Value::Str(Str::Lent(value))),
-            NodeKind::Bool { value } => Ok(Value::Bool(*value)),
-            NodeKind::Null => Ok(Value::Null),
+            NodeKind::Number { value } => Ok(Value(ValueInner::Num(*value))),
+            NodeKind::String { value, .. } => Ok(Value(ValueInner::Str(Str::Lent(value)))),
+            NodeKind::Bool { value } => Ok(Value(ValueInner::Bool(*value))),
+            NodeKind::Null => Ok(Value(ValueInner::Null)),
             NodeKind::Ident { .. } => self.ident(id),
             NodeKind::Member { .. } => match self.res(id) {
-                Res::Constant(v) => Ok(Value::Num(*v)),
+                Res::Constant(v) => Ok(Value(ValueInner::Num(*v))),
                 _ => Err(self.internal(node.span)),
             },
             _ => Err(self.internal(node.span)),
@@ -981,9 +982,9 @@ impl<'h> Run<'h> {
             Ok(None) => Ok(if form == AsForm::As {
                 v
             } else {
-                Value::Bool(true)
+                Value(ValueInner::Bool(true))
             }),
-            Ok(Some(_)) if form == AsForm::Is => Ok(Value::Bool(false)),
+            Ok(Some(_)) if form == AsForm::Is => Ok(Value(ValueInner::Bool(false))),
             Ok(Some(f)) => {
                 let mut fl = fail("not-conforming", f.template, span, f.params);
                 fl.path = Some(f.path);
@@ -1014,7 +1015,7 @@ impl<'h> Run<'h> {
         }
         match &self.slots[v] {
             _ if self.vars_missing.test(v) => Err(self.missing_var(id)),
-            Value::BadNum => Err(self.host_number(Some(self.ast.span(id)))),
+            Value(ValueInner::BadNum) => Err(self.host_number(Some(self.ast.span(id)))),
             x => Ok(x.dup()),
         }
     }
@@ -1107,12 +1108,14 @@ impl<'h> Run<'h> {
             for t in texts {
                 match t {
                     Some(t) => o.push(t),
-                    None => r.render(vs.next().unwrap_or(&Value::Null), o, true, span)?,
+                    None => {
+                        r.render(vs.next().unwrap_or(&Value(ValueInner::Null)), o, true, span)?
+                    }
                 }
             }
             Ok(())
         })?;
-        let v = Value::Str(Str::Rc(Rc::from(s.as_str())));
+        let v = Value(ValueInner::Str(Str::Rc(Rc::from(s.as_str()))));
         self.scratch = s;
         for v in vals.drain(..) {
             crate::value::release(v);
@@ -1146,26 +1149,26 @@ impl<'h> Run<'h> {
     /// second rendering of `Run::rendered` charges nothing.
     fn render(&mut self, v: &Value<'h>, out: &mut Rendering, top: bool, span: Range) -> R<'h, ()> {
         match v {
-            Value::Str(s) => {
+            Value(ValueInner::Str(s)) => {
                 if top {
                     out.push(s.as_str());
                 } else {
                     out.quote(s.as_str());
                 }
             }
-            Value::Num(n) => out.number(*n),
-            Value::Bool(b) => out.push(if *b { "true" } else { "false" }),
-            Value::Null => {
+            Value(ValueInner::Num(n)) => out.number(*n),
+            Value(ValueInner::Bool(b)) => out.push(if *b { "true" } else { "false" }),
+            Value(ValueInner::Null) => {
                 if !top {
                     out.push("null");
                 }
             }
-            Value::BadNum => return Err(self.host_number(Some(span))),
-            Value::Opaque(_) => {
+            Value(ValueInner::BadNum) => return Err(self.host_number(Some(span))),
+            Value(ValueInner::Opaque(_)) => {
                 let t = if self.json_mode { "json" } else { "text" };
                 return Err(fail("wrong-kind", t, span, Vec::new()));
             }
-            Value::List(_) | Value::HList(_) => {
+            Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) => {
                 let n = v.len().unwrap_or(0);
                 let paid = out.paid();
                 if !paid {
@@ -1186,7 +1189,7 @@ impl<'h> Run<'h> {
                     self.m.depth -= 1;
                 }
             }
-            Value::Map(_) | Value::HMap(_) => {
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => {
                 let paid = out.paid();
                 if !paid {
                     self.depth_test(1, span)?;
@@ -1376,8 +1379,8 @@ impl<'h> Run<'h> {
         let span = self.ast.span(e);
         let kv = self.eval(k)?;
         match kv {
-            Value::Str(s) => Ok(s),
-            Value::Null => Err(fail("null-operand", "key", span, vec![])),
+            Value(ValueInner::Str(s)) => Ok(s),
+            Value(ValueInner::Null) => Err(fail("null-operand", "key", span, vec![])),
             other => Err(fail(
                 "wrong-kind",
                 "key",
@@ -1400,7 +1403,7 @@ impl<'h> Run<'h> {
         if spreads.is_empty() {
             let m = MapVal::from_written(es);
             self.alloc(1 + 2 * m.0.len() as u64)?;
-            return Ok(Value::Map(Rc::new(m)));
+            return Ok(Value(ValueInner::Map(Rc::new(m))));
         }
         // The map's units come before the map (`02-evaluation.md` 6.2 item
         // 3). When nk keys could pass the limit, the number of entries is
@@ -1441,7 +1444,7 @@ impl<'h> Run<'h> {
         if size.is_none() {
             self.alloc(1 + 2 * m.0.len() as u64)?;
         }
-        Ok(Value::Map(Rc::new(m)))
+        Ok(Value(ValueInner::Map(Rc::new(m))))
     }
 
     // ---- operators ------------------------------------------------------
@@ -1450,14 +1453,14 @@ impl<'h> Run<'h> {
         match op {
             UnaryOp::Not => {
                 self.charge(1)?;
-                Ok(Value::Bool(!v.truthy()))
+                Ok(Value(ValueInner::Bool(!v.truthy())))
             }
             UnaryOp::Neg => match v {
-                Value::Num(n) => {
+                Value(ValueInner::Num(n)) => {
                     self.charge(1)?;
-                    Ok(Value::Num(number::neg(n)))
+                    Ok(Value(ValueInner::Num(number::neg(n))))
                 }
-                Value::Null => Err(fail(
+                Value(ValueInner::Null) => Err(fail(
                     "null-operand",
                     "operand",
                     span,
@@ -1581,22 +1584,22 @@ impl<'h> Run<'h> {
     ) -> R<'h, Value<'h>> {
         // Two numbers: the charge of 1, then the operation, as `binop` does
         // it.
-        if let (Value::Num(a), Value::Num(c)) = (&v, &r) {
+        if let (Value(ValueInner::Num(a)), Value(ValueInner::Num(c))) = (&v, &r) {
             let (a, c) = (*a, *c);
             let quick = match op {
-                BinaryOp::Lt => Some(Value::Bool(a < c)),
-                BinaryOp::Le => Some(Value::Bool(a <= c)),
-                BinaryOp::Gt => Some(Value::Bool(a > c)),
-                BinaryOp::Ge => Some(Value::Bool(a >= c)),
-                BinaryOp::Eq => Some(Value::Bool(a == c)),
-                BinaryOp::Ne => Some(Value::Bool(a != c)),
+                BinaryOp::Lt => Some(Value(ValueInner::Bool(a < c))),
+                BinaryOp::Le => Some(Value(ValueInner::Bool(a <= c))),
+                BinaryOp::Gt => Some(Value(ValueInner::Bool(a > c))),
+                BinaryOp::Ge => Some(Value(ValueInner::Bool(a >= c))),
+                BinaryOp::Eq => Some(Value(ValueInner::Bool(a == c))),
+                BinaryOp::Ne => Some(Value(ValueInner::Bool(a != c))),
                 // A result that fails is left to `binop`, which charges
                 // first and then fails.
-                BinaryOp::Add => number::add(a, c).ok().map(Value::Num),
-                BinaryOp::Sub => number::sub(a, c).ok().map(Value::Num),
-                BinaryOp::Mul => number::mul(a, c).ok().map(Value::Num),
-                BinaryOp::Div => number::div(a, c).ok().map(Value::Num),
-                BinaryOp::Rem => number::rem(a, c).ok().map(Value::Num),
+                BinaryOp::Add => number::add(a, c).ok().map(|x| Value(ValueInner::Num(x))),
+                BinaryOp::Sub => number::sub(a, c).ok().map(|x| Value(ValueInner::Num(x))),
+                BinaryOp::Mul => number::mul(a, c).ok().map(|x| Value(ValueInner::Num(x))),
+                BinaryOp::Div => number::div(a, c).ok().map(|x| Value(ValueInner::Num(x))),
+                BinaryOp::Rem => number::rem(a, c).ok().map(|x| Value(ValueInner::Num(x))),
                 _ => None,
             };
             if let Some(q) = quick {
@@ -1605,10 +1608,12 @@ impl<'h> Run<'h> {
             }
         }
         // Two strings, `==` or `!=`: as `eq` charges them.
-        if let (Value::Str(a), Value::Str(c), BinaryOp::Eq | BinaryOp::Ne) = (&v, &r, op) {
+        if let (Value(ValueInner::Str(a)), Value(ValueInner::Str(c)), BinaryOp::Eq | BinaryOp::Ne) =
+            (&v, &r, op)
+        {
             let (a, c) = (a.as_str(), c.as_str());
             self.charge(1 + lcp_size(a, c))?;
-            return Ok(Value::Bool((a == c) == (op == BinaryOp::Eq)));
+            return Ok(Value(ValueInner::Bool((a == c) == (op == BinaryOp::Eq))));
         }
         self.binop(op, v, r, span)
     }
@@ -1638,7 +1643,7 @@ impl<'h> Run<'h> {
 
     fn arith(&self, op: BinaryOp, r: Result<f64, NumErr>, span: Range) -> R<'h, Value<'h>> {
         match r {
-            Ok(x) => Ok(Value::Num(x)),
+            Ok(x) => Ok(Value(ValueInner::Num(x))),
             Err(NumErr::Range) => Err(fail(
                 "number-range",
                 "operator",
@@ -1662,18 +1667,18 @@ impl<'h> Run<'h> {
         match op {
             BinaryOp::Eq | BinaryOp::Ne => {
                 let r = self.eq(&a, &b, span)?;
-                Ok(Value::Bool(r == (op == BinaryOp::Eq)))
+                Ok(Value(ValueInner::Bool(r == (op == BinaryOp::Eq))))
             }
             BinaryOp::In | BinaryOp::NotIn => {
                 let r = self.contains(op, &a, &b, span)?;
-                Ok(Value::Bool(r == (op == BinaryOp::In)))
+                Ok(Value(ValueInner::Bool(r == (op == BinaryOp::In))))
             }
             BinaryOp::Add => match (&a, &b) {
-                (Value::Num(x), Value::Num(y)) => {
+                (Value(ValueInner::Num(x)), Value(ValueInner::Num(y))) => {
                     self.charge(1)?;
                     self.arith(op, number::add(*x, *y), span)
                 }
-                (Value::Str(x), Value::Str(y)) => {
+                (Value(ValueInner::Str(x)), Value(ValueInner::Str(y))) => {
                     let (x, y) = (x.as_str(), y.as_str());
                     let sz = if x.len() + y.len() < 64 {
                         0
@@ -1686,14 +1691,14 @@ impl<'h> Run<'h> {
                     let mut out = self.take_scratch();
                     out.push_str(x);
                     out.push_str(y);
-                    let v = Value::Str(Str::Rc(Rc::from(out.as_str())));
+                    let v = Value(ValueInner::Str(Str::Rc(Rc::from(out.as_str()))));
                     self.scratch = out;
                     Ok(v)
                 }
                 _ => Err(self.operands(op, &a, &b, span)),
             },
             BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem | BinaryOp::Pow => {
-                let (Value::Num(x), Value::Num(y)) = (&a, &b) else {
+                let (Value(ValueInner::Num(x)), Value(ValueInner::Num(y))) = (&a, &b) else {
                     return Err(self.operands(op, &a, &b, span));
                 };
                 let (x, y) = (*x, *y);
@@ -1717,23 +1722,23 @@ impl<'h> Run<'h> {
             }
             BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
                 let ord = match (&a, &b) {
-                    (Value::Num(x), Value::Num(y)) => {
+                    (Value(ValueInner::Num(x)), Value(ValueInner::Num(y))) => {
                         self.charge(1)?;
                         x.partial_cmp(y)
                     }
-                    (Value::Str(x), Value::Str(y)) => {
+                    (Value(ValueInner::Str(x)), Value(ValueInner::Str(y))) => {
                         self.charge(1 + lcp_size(x.as_str(), y.as_str()))?;
                         Some(x.as_str().cmp(y.as_str()))
                     }
                     _ => return Err(self.operands(op, &a, &b, span)),
                 };
                 let ord = ord.unwrap_or(std::cmp::Ordering::Equal);
-                Ok(Value::Bool(match op {
+                Ok(Value(ValueInner::Bool(match op {
                     BinaryOp::Lt => ord.is_lt(),
                     BinaryOp::Le => ord.is_le(),
                     BinaryOp::Gt => ord.is_gt(),
                     _ => ord.is_ge(),
-                }))
+                })))
             }
             _ => Err(self.internal(span)),
         }
@@ -1748,7 +1753,7 @@ impl<'h> Run<'h> {
             return Ok(false);
         }
         match (a, b) {
-            (Value::Str(x), Value::Str(y)) => {
+            (Value(ValueInner::Str(x)), Value(ValueInner::Str(y))) => {
                 self.charge(1 + lcp_size(x.as_str(), y.as_str()))?;
                 Ok(x.as_str() == y.as_str())
             }
@@ -1845,14 +1850,14 @@ impl<'h> Run<'h> {
         for e in items {
             self.charge(1)?;
             let equal = match (x, e) {
-                (Value::Str(a), code::Scalar::Str(b)) => {
+                (Value(ValueInner::Str(a)), code::Scalar::Str(b)) => {
                     let a = a.as_str();
                     self.charge(lcp_size(a, b))?;
                     value::str_eq(a, b)
                 }
-                (Value::Num(a), code::Scalar::Num(b)) => a == b,
-                (Value::Bool(a), code::Scalar::Bool(b)) => a == b,
-                (Value::Null, code::Scalar::Null) => true,
+                (Value(ValueInner::Num(a)), code::Scalar::Num(b)) => a == b,
+                (Value(ValueInner::Bool(a)), code::Scalar::Bool(b)) => a == b,
+                (Value(ValueInner::Null), code::Scalar::Null) => true,
                 _ => false,
             };
             if equal {
@@ -1867,7 +1872,7 @@ impl<'h> Run<'h> {
     fn in_elem(&mut self, x: &Value<'h>, e: &Value<'h>, span: Range) -> R<'h, bool> {
         self.charge(1)?;
         Ok(match (x, e) {
-            (Value::Str(a), Value::Str(b)) => {
+            (Value(ValueInner::Str(a)), Value(ValueInner::Str(b))) => {
                 self.charge(lcp_size(a.as_str(), b.as_str()))?;
                 a.as_str() == b.as_str()
             }
@@ -1898,11 +1903,11 @@ impl<'h> Run<'h> {
                 Ok(false)
             }
             Kind::String | Kind::Map => {
-                let Value::Str(xs) = x else {
+                let Value(ValueInner::Str(xs)) = x else {
                     return Err(self.operands(op, x, y, span));
                 };
                 let xs = xs.as_str();
-                if let Value::Str(ys) = y {
+                if let Value(ValueInner::Str(ys)) = y {
                     let ys = ys.as_str();
                     self.charge(1 + size(ys))?;
                     // A needle longer than the text is answered
@@ -1960,7 +1965,7 @@ impl<'h> Run<'h> {
         while let Some(s) = steps.pop() {
             match self.step(s, v)? {
                 Some(nv) => v = nv,
-                None => return Ok(Value::Null),
+                None => return Ok(Value(ValueInner::Null)),
             }
         }
         Ok(v)
@@ -1994,7 +1999,9 @@ impl<'h> Run<'h> {
                 continue;
             }
             let mut cur = match e {
-                Value::BadNum => return Err(self.host_number(Some(self.ast.span(reads[0])))),
+                Value(ValueInner::BadNum) => {
+                    return Err(self.host_number(Some(self.ast.span(reads[0]))))
+                }
                 e => e,
             };
             for &r in reads {
@@ -2006,7 +2013,7 @@ impl<'h> Run<'h> {
                 } = &self.ast.nodes[r.index()].kind
                 {
                     match self.star_receiver(&cur, *optional, *star)? {
-                        None => out.push(Value::Null),
+                        None => out.push(Value(ValueInner::Null)),
                         Some(()) => self.level(&cur, inner, out)?,
                     }
                     continue 'elements;
@@ -2016,7 +2023,7 @@ impl<'h> Run<'h> {
                     None => {
                         // An optional step on null skips the rest of the
                         // projection for this element.
-                        out.push(Value::Null);
+                        out.push(Value(ValueInner::Null));
                         continue 'elements;
                     }
                 }
@@ -2039,14 +2046,14 @@ impl<'h> Run<'h> {
         span: Range,
     ) -> R<'h, Option<Value<'h>>> {
         match &v {
-            Value::Map(_) | Value::HMap(_) => {}
-            Value::Null if optional => return Ok(None),
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => {}
+            Value(ValueInner::Null) if optional => return Ok(None),
             _ => return Err(self.member_fail(&v, name, span)),
         }
         self.charge(1 + size(name))?;
         let found = match &v {
-            Value::Map(m) => m.get(name).map(Value::dup),
-            Value::HMap(m) => {
+            Value(ValueInner::Map(m)) => m.get(name).map(Value::dup),
+            Value(ValueInner::HMap(m)) => {
                 let m: &'h dyn crate::host::HostMap = *m;
                 m.get(name).map(from_view)
             }
@@ -2054,9 +2061,9 @@ impl<'h> Run<'h> {
         };
         value::release(v);
         match found {
-            Some(Value::BadNum) => Err(self.host_number(Some(span))),
+            Some(Value(ValueInner::BadNum)) => Err(self.host_number(Some(span))),
             Some(x) => Ok(Some(x)),
-            None if optional || coalesced => Ok(Some(Value::Null)),
+            None if optional || coalesced => Ok(Some(Value(ValueInner::Null))),
             None => Err(fail(
                 "missing-field",
                 "field",
@@ -2183,7 +2190,7 @@ impl<'h> Run<'h> {
         }
         match k {
             Kind::Map => {
-                let Value::Str(key) = &iv else {
+                let Value(ValueInner::Str(key)) = &iv else {
                     return Err(fail(
                         "wrong-kind",
                         "key",
@@ -2194,7 +2201,7 @@ impl<'h> Run<'h> {
                 self.charge(1 + size(key.as_str()))?;
                 match v.field(key.as_str()) {
                     Some(x) => Ok(Some(self.read(x, span)?)),
-                    None if optional || coalesced => Ok(Some(Value::Null)),
+                    None if optional || coalesced => Ok(Some(Value(ValueInner::Null))),
                     None => Err(fail(
                         "missing-field",
                         "key",
@@ -2205,7 +2212,7 @@ impl<'h> Run<'h> {
             }
             _ => {
                 let i = match iv {
-                    Value::Num(i) if is_whole(i) => i,
+                    Value(ValueInner::Num(i)) if is_whole(i) => i,
                     other => {
                         return Err(fail(
                             "wrong-kind",
@@ -2215,7 +2222,7 @@ impl<'h> Run<'h> {
                         ))
                     }
                 };
-                if let Value::Str(st) = &v {
+                if let Value(ValueInner::Str(st)) = &v {
                     let st = st.as_str();
                     self.charge(1 + size(st))?;
                     let found = if i >= 0.0 {
@@ -2228,7 +2235,7 @@ impl<'h> Run<'h> {
                             self.alloc(1)?;
                             Ok(Some(Value::str(c.to_string())))
                         }
-                        None if optional => Ok(Some(Value::Null)),
+                        None if optional => Ok(Some(Value(ValueInner::Null))),
                         None => Err(fail(
                             "index-range",
                             "index",
@@ -2246,7 +2253,7 @@ impl<'h> Run<'h> {
                     if i >= 0.0 && (i as usize) < n {
                         Ok(Some(self.read(v.elem(i as usize), span)?))
                     } else if optional {
-                        Ok(Some(Value::Null))
+                        Ok(Some(Value(ValueInner::Null)))
                     } else {
                         Err(fail(
                             "index-range",
@@ -2309,7 +2316,7 @@ impl<'h> Run<'h> {
     #[inline(never)]
     fn bound(&self, s: u32, span: Range) -> R<'h, Fun> {
         let c = match &self.slots[self.slot(s)] {
-            Value::Num(i) => *i as usize,
+            Value(ValueInner::Num(i)) => *i as usize,
             _ => usize::MAX,
         };
         match self.closures.get(c) {
@@ -2331,7 +2338,7 @@ impl<'h> Run<'h> {
         self.closure_display
             .extend_from_slice(&self.display[..depth]);
         self.closures.push((l, start as u32));
-        Value::Num((self.closures.len() - 1) as f64)
+        Value(ValueInner::Num((self.closures.len() - 1) as f64))
     }
 
     /// The arguments of a library call into `out`, left to right. A call of
@@ -2389,7 +2396,7 @@ impl<'h> Run<'h> {
             }
             return Err(self.method_null(name, span));
         }
-        if let Value::Opaque(_) = &recv {
+        if let Value(ValueInner::Opaque(_)) = &recv {
             return self.opaque_method(recv, name, args, span).map(Some);
         }
         let idx = self.method_entry(recv.kind(), name, args, span)?;
@@ -2426,7 +2433,7 @@ impl<'h> Run<'h> {
         args: &'h [NodeId],
         span: Range,
     ) -> R<'h, Value<'h>> {
-        let Value::Opaque(o) = &recv else {
+        let Value(ValueInner::Opaque(o)) = &recv else {
             return Err(self.internal(span));
         };
         let env = &self.p.env;
@@ -2989,7 +2996,7 @@ impl<'h> Run<'h> {
         }
         let base = self.slots.len();
         self.slots
-            .resize_with(base + f.size as usize, || Value::Null);
+            .resize_with(base + f.size as usize, || Value(ValueInner::Null));
         std::mem::replace(&mut self.display[f.depth as usize], base)
     }
 
@@ -3087,7 +3094,7 @@ impl<'h> Run<'h> {
         };
         // 3. Each supplied host argument is read (`03-host.md` 3.4.4).
         for (v, &pid) in args.iter().zip(params.iter()) {
-            if matches!(v, Value::BadNum) {
+            if matches!(v, Value(ValueInner::BadNum)) {
                 return Err(self.host_number(Some(self.ast.span(pid))));
             }
         }
@@ -3118,8 +3125,8 @@ impl<'h> Run<'h> {
             let base = self.display[p.frames[l.index()].depth as usize];
             for (i, s) in slots.iter().enumerate() {
                 let v = match args.get_mut(i) {
-                    Some(a) => std::mem::replace(a, Value::Null),
-                    None => Value::Null,
+                    Some(a) => std::mem::replace(a, Value(ValueInner::Null)),
+                    None => Value(ValueInner::Null),
                 };
                 match s {
                     Some(s) => value::put(&mut self.slots[base + *s as usize], v),
@@ -3134,11 +3141,13 @@ impl<'h> Run<'h> {
                 else {
                     continue;
                 };
-                let a = args.get_mut(i).map(|a| std::mem::replace(a, Value::Null));
+                let a = args
+                    .get_mut(i)
+                    .map(|a| std::mem::replace(a, Value(ValueInner::Null)));
                 let v = match (a, default) {
                     (Some(v), _) if !v.is_null() => v,
                     (_, Some(d)) => self.eval(*d)?,
-                    (a, None) => a.unwrap_or(Value::Null),
+                    (a, None) => a.unwrap_or(Value(ValueInner::Null)),
                 };
                 self.bind_pattern(*pattern, v)?;
             }
@@ -3186,7 +3195,7 @@ impl<'h> Run<'h> {
                         Some(x) if !x.is_null() => self.read(x, f.span)?,
                         other => match f.default {
                             Some(d) => self.eval(d)?,
-                            None if other.is_some() => Value::Null,
+                            None if other.is_some() => Value(ValueInner::Null),
                             None => {
                                 return Err(fail(
                                     "missing-field",
@@ -3218,7 +3227,7 @@ impl<'h> Run<'h> {
                     let _ = r;
                     if let Some(slot) = rest_slot {
                         let i = self.slot(slot);
-                        self.slots[i] = Value::Map(Rc::new(MapVal(left)));
+                        self.slots[i] = Value(ValueInner::Map(Rc::new(MapVal(left))));
                     }
                 }
                 Ok(())
@@ -3248,7 +3257,7 @@ impl<'h> Run<'h> {
                         Some(x) if !x.is_null() => x,
                         other => match e.default {
                             Some(d) => self.eval(d)?,
-                            None if other.is_some() => Value::Null,
+                            None if other.is_some() => Value(ValueInner::Null),
                             None => {
                                 return Err(fail(
                                     "index-range",
@@ -3302,13 +3311,13 @@ impl<'h> Run<'h> {
                     let mut equal = false;
                     for l in lits {
                         equal = match (&l.lit, &s) {
-                            (Lit::Str(x), Value::Str(y)) => {
+                            (Lit::Str(x), Value(ValueInner::Str(y))) => {
                                 self.charge(lcp_size(x, y.as_str()))?;
                                 x == y.as_str()
                             }
-                            (Lit::Number(x), Value::Num(y)) => x == y,
-                            (Lit::Bool(x), Value::Bool(y)) => x == y,
-                            (Lit::Null, Value::Null) => true,
+                            (Lit::Number(x), Value(ValueInner::Num(y))) => x == y,
+                            (Lit::Bool(x), Value(ValueInner::Bool(y))) => x == y,
+                            (Lit::Null, Value(ValueInner::Null)) => true,
                             _ => false,
                         };
                         if equal {
@@ -3363,20 +3372,25 @@ impl<'h> Run<'h> {
                                 p.iter()
                                     .map(|s| match s {
                                         crate::diag::PathStep::Key(k) => Value::str(k.clone()),
-                                        crate::diag::PathStep::Index(i) => Value::Num(*i as f64),
+                                        crate::diag::PathStep::Index(i) => {
+                                            Value(ValueInner::Num(*i as f64))
+                                        }
                                     })
                                     .collect(),
                             )
                         }
-                        None => Value::Null,
+                        None => Value(ValueInner::Null),
                     };
                     let entries = vec![
-                        (Str::Lent("code"), Value::Str(Str::Lent(f.code))),
-                        (Str::Lent("data"), f.data.clone().unwrap_or(Value::Null)),
+                        (Str::Lent("code"), Value(ValueInner::Str(Str::Lent(f.code)))),
+                        (
+                            Str::Lent("data"),
+                            f.data.clone().unwrap_or(Value(ValueInner::Null)),
+                        ),
                         (Str::Lent("message"), Value::str(msg)),
                         (Str::Lent("path"), path),
                     ];
-                    self.slots[slot] = Value::Map(Rc::new(MapVal(entries)));
+                    self.slots[slot] = Value(ValueInner::Map(Rc::new(MapVal(entries))));
                 }
                 self.eval(handler)
             }
@@ -3591,11 +3605,11 @@ impl Spine {
 
 fn scalar_eq(a: &Value<'_>, b: &Value<'_>) -> bool {
     match (a, b) {
-        (Value::Null, Value::Null) => true,
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::Num(x), Value::Num(y)) => x == y,
-        (Value::Str(x), Value::Str(y)) => x.as_str() == y.as_str(),
-        (Value::Opaque(x), Value::Opaque(y)) => x.same(y),
+        (Value(ValueInner::Null), Value(ValueInner::Null)) => true,
+        (Value(ValueInner::Bool(x)), Value(ValueInner::Bool(y))) => x == y,
+        (Value(ValueInner::Num(x)), Value(ValueInner::Num(y))) => x == y,
+        (Value(ValueInner::Str(x)), Value(ValueInner::Str(y))) => x.as_str() == y.as_str(),
+        (Value(ValueInner::Opaque(x)), Value(ValueInner::Opaque(y))) => x.same(y),
         _ => false,
     }
 }
@@ -3606,19 +3620,19 @@ fn scalar_eq(a: &Value<'_>, b: &Value<'_>) -> bool {
 pub fn to_json(v: &Value<'_>) -> Result<String, &'static str> {
     fn go(v: &Value<'_>, out: &mut String, depth: u32) -> Result<(), &'static str> {
         match v {
-            Value::Null => out.push_str("null"),
-            Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-            Value::Num(n) => number::push_text(out, *n),
-            Value::BadNum => return Err("number-range"),
-            Value::Str(s) => {
+            Value(ValueInner::Null) => out.push_str("null"),
+            Value(ValueInner::Bool(b)) => out.push_str(if *b { "true" } else { "false" }),
+            Value(ValueInner::Num(n)) => number::push_text(out, *n),
+            Value(ValueInner::BadNum) => return Err("number-range"),
+            Value(ValueInner::Str(s)) => {
                 out.push('"');
                 for c in s.as_str().chars() {
                     push_json_char(out, c);
                 }
                 out.push('"');
             }
-            Value::Opaque(_) => return Err("wrong-kind"),
-            Value::List(_) | Value::HList(_) => {
+            Value(ValueInner::Opaque(_)) => return Err("wrong-kind"),
+            Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) => {
                 if depth + 1 > 200 {
                     return Err(DEPTH_EXCEEDED);
                 }
@@ -3631,7 +3645,7 @@ pub fn to_json(v: &Value<'_>) -> Result<String, &'static str> {
                 }
                 out.push(']');
             }
-            Value::Map(_) | Value::HMap(_) => {
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => {
                 if depth + 1 > 200 {
                     return Err(DEPTH_EXCEEDED);
                 }
@@ -3640,7 +3654,7 @@ pub fn to_json(v: &Value<'_>) -> Result<String, &'static str> {
                     if i > 0 {
                         out.push(',');
                     }
-                    go(&Value::Str(k.clone()), out, depth + 1)?;
+                    go(&Value(ValueInner::Str(k.clone())), out, depth + 1)?;
                     out.push(':');
                     go(x, out, depth + 1)?;
                 }

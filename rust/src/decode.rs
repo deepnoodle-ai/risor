@@ -141,9 +141,9 @@ fn kind_fail<T>(cx: &mut DecodeCx, what: &str) -> Option<T> {
 
 impl Decode for bool {
     fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self> {
-        match v {
-            Value::Bool(b) => Some(*b),
-            _ => kind_fail(cx, "a bool"),
+        match v.as_bool() {
+            Some(b) => Some(b),
+            None => kind_fail(cx, "a bool"),
         }
     }
 }
@@ -161,16 +161,16 @@ macro_rules! integer {
     ($($t:ty),*) => {$(
         impl Decode for $t {
             fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self> {
-                let Value::Num(n) = v else {
+                let Some(n) = v.as_f64() else {
                     return kind_fail(cx, "a number");
                 };
                 // 6.1 item 7: whole and within the type's range.
-                if n.fract() == 0.0 && *n >= <$t>::MIN as f64 && *n <= <$t>::MAX as f64 {
-                    Some(*n as $t)
+                if n.fract() == 0.0 && n >= <$t>::MIN as f64 && n <= <$t>::MAX as f64 {
+                    Some(n as $t)
                 } else {
                     cx.fail(format!(
                         "{} does not fit the host type {}",
-                        crate::number::to_text(*n),
+                        crate::number::to_text(n),
                         stringify!($t)
                     ));
                     None
@@ -184,27 +184,27 @@ integer!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
 
 impl Decode for f64 {
     fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self> {
-        match v {
-            Value::Num(n) => Some(*n),
-            _ => kind_fail(cx, "a number"),
+        match v.as_f64() {
+            Some(n) => Some(n),
+            None => kind_fail(cx, "a number"),
         }
     }
 }
 
 impl Decode for f32 {
     fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self> {
-        let Value::Num(n) = v else {
+        let Some(n) = v.as_f64() else {
             return kind_fail(cx, "a number");
         };
         // 6.1 item 11: rounded to nearest, ties to even; beyond the largest
         // finite value of `f32`, a failure.
-        let x = *n as f32;
+        let x = n as f32;
         if x.is_finite() {
             Some(x)
         } else {
             cx.fail(format!(
                 "{} does not fit the host type f32",
-                crate::number::to_text(*n)
+                crate::number::to_text(n)
             ));
             None
         }
@@ -280,9 +280,10 @@ impl<T: Decode> Decode for BTreeMap<String, T> {
 
 impl<T: Decode> Decode for Option<T> {
     fn decode(v: &Value<'_>, cx: &mut DecodeCx) -> Option<Self> {
-        match v {
-            Value::Null => Some(None),
-            _ => T::decode(v, cx).map(Some),
+        if v.is_null() {
+            Some(None)
+        } else {
+            T::decode(v, cx).map(Some)
         }
     }
 }
@@ -312,7 +313,7 @@ impl Decode for Data {
             match v.kind() {
                 Kind::List => (0..v.len().unwrap_or(0)).any(|i| opaque(&v.elem(i))),
                 Kind::Map => v.entries().iter().any(|(_, x)| opaque(x)),
-                _ => matches!(v, Value::Opaque(_)),
+                _ => v.as_opaque().is_some(),
             }
         }
         if opaque(v) {

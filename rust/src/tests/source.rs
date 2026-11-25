@@ -188,9 +188,13 @@ fn a_load_is_held_to_the_limit() {
     let e = load_value(&env, &spaces(LIMIT + 1), &vars, LoadOptions::default()).unwrap_err();
     assert_eq!((e.step, e.diagnostics[0].code), (1, "source-too-large"));
     // A host type.
-    let got = load_with::<BTreeMap<String, u8>>(&env, "{a: 1}", &vars, 1, opts(6)).unwrap();
+    let load_opts = |source_limit| LoadOptions {
+        source_limit,
+        ..LoadOptions::default()
+    };
+    let got = load_with::<BTreeMap<String, u8>>(&env, "{a: 1}", &vars, load_opts(6)).unwrap();
     assert_eq!(got.get("a"), Some(&1));
-    let e = load_with::<BTreeMap<String, u8>>(&env, "{a: 12}", &vars, 1, opts(6)).unwrap_err();
+    let e = load_with::<BTreeMap<String, u8>>(&env, "{a: 12}", &vars, load_opts(6)).unwrap_err();
     assert_eq!((e.step, e.diagnostics[0].code), (1, "source-too-large"));
 }
 
@@ -216,9 +220,9 @@ fn a_limit_out_of_range_is_bad_limit() {
         source_limit: LIMIT + 1,
         ..LoadOptions::default()
     };
-    let e = load_value(&env, "1", &vars, opts_over).unwrap_err();
+    let e = load_value(&env, "1", &vars, opts_over.clone()).unwrap_err();
     assert_eq!((e.step, e.diagnostics[0].code), (0, "bad-limit"));
-    let e = load_with::<u8>(&env, "1", &vars, 1, over).unwrap_err();
+    let e = load_with::<u8>(&env, "1", &vars, opts_over).unwrap_err();
     assert_eq!((e.step, e.diagnostics[0].code), (0, "bad-limit"));
     // The bounds are in range.
     assert!(parse_with(&spaces(LIMIT), opts(LIMIT)).is_ok());

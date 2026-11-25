@@ -2,7 +2,7 @@
 //!
 //! What a run creates is shared behind `Rc` and never changed. Host data is
 //! held by reference (`HList`, `HMap`, lent strings) and read in place. A
-//! host number that cannot enter the language is held as [`Value::BadNum`]
+//! host number that cannot enter the language is held as `ValueInner::BadNum`
 //! inside a container until something reads it, which then fails with
 //! `number-range` (`03-host.md` 3.4.4).
 
@@ -115,18 +115,18 @@ pub struct MapVal<'h>(pub Vec<(Str<'h>, Value<'h>)>);
 
 fn drop_all(mut stack: Vec<Value<'_>>) {
     while let Some(v) = stack.pop() {
-        match v {
-            Value::List(rc) => {
+        match v.0 {
+            ValueInner::List(rc) => {
                 if let Ok(mut inner) = Rc::try_unwrap(rc) {
                     stack.append(&mut inner.0);
                 }
             }
-            Value::Map(rc) => {
+            ValueInner::Map(rc) => {
                 if let Ok(mut inner) = Rc::try_unwrap(rc) {
                     stack.extend(std::mem::take(&mut inner.0).into_iter().map(|(_, v)| v));
                 }
             }
-            v => release(v),
+            inner => release(Value(inner)),
         }
     }
 }
@@ -145,7 +145,7 @@ impl Drop for MapVal<'_> {
         if self
             .0
             .iter()
-            .any(|(_, v)| matches!(v, Value::List(_) | Value::Map(_)))
+            .any(|(_, v)| matches!(v.0, ValueInner::List(_) | ValueInner::Map(_)))
         {
             drop_all(
                 std::mem::take(&mut self.0)
@@ -190,24 +190,24 @@ impl<'h> MapVal<'h> {
     }
 }
 
-/// A value of a run.
+/// A value of a run (`01-language.md` 6).
+///
+/// A `Value` borrows host data for the lifetime `'h` of the variables passed
+/// to [`Program::run`](crate::Program::run) or a host function call. Convert
+/// it to an owned [`Data`] tree with [`Value::to_data`], or inspect it in
+/// place with its accessors.
 #[derive(Clone)]
-pub enum Value<'h> {
-    /// The language's `null`.
+pub struct Value<'h>(pub(crate) ValueInner<'h>);
+
+#[derive(Clone)]
+pub(crate) enum ValueInner<'h> {
     Null,
-    /// A boolean value.
     Bool(bool),
-    /// A finite IEEE 754 binary64 number.
     Num(f64),
-    /// A string value (owned or borrowed from host data).
     Str(Str<'h>),
-    /// A list constructed during the run.
     List(Rc<ListVal<'h>>),
-    /// A map constructed during the run.
     Map(Rc<MapVal<'h>>),
-    /// A host list borrowed for the lifetime of the run.
     HList(&'h dyn HostList),
-    /// A host map or record borrowed for the lifetime of the run.
     HMap(&'h dyn HostMap),
     /// Behind `Rc`, so that a value is small.
     Opaque(Rc<OpaqueRef>),
@@ -217,26 +217,19 @@ pub enum Value<'h> {
 
 /// The seven kinds (`01-language.md` 6.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
-    /// `null`.
+pub(crate) enum Kind {
     Null,
-    /// `bool`.
     Bool,
-    /// `number`.
     Number,
-    /// `string`.
     String,
-    /// `list`.
     List,
-    /// `map`.
     Map,
-    /// `opaque`.
     Opaque,
 }
 
 impl Kind {
     /// What `type(x)` gives.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Kind::Null => "null",
             Kind::Bool => "bool",
@@ -253,7 +246,7 @@ impl Kind {
 /// glue of `Value` is a call, and most values a run drops (numbers, host
 /// data, lent strings) need none.
 #[inline(always)]
-pub fn release(v: Value<'_>) {
+pub(crate) fn release(v: Value<'_>) {
     if v.owns() {
         drop(v)
     } else {
@@ -263,82 +256,129 @@ pub fn release(v: Value<'_>) {
 
 /// Store a value into a slot, releasing the one it replaces.
 #[inline(always)]
-pub fn put<'h>(slot: &mut Value<'h>, v: Value<'h>) {
+pub(crate) fn put<'h>(slot: &mut Value<'h>, v: Value<'h>) {
     release(std::mem::replace(slot, v))
 }
 
 impl<'h> Value<'h> {
     /// Whether dropping the value does any work.
     #[inline(always)]
-    pub fn owns(&self) -> bool {
+    pub(crate) fn owns(&self) -> bool {
         matches!(
-            self,
-            Value::Str(Str::Rc(_)) | Value::List(_) | Value::Map(_) | Value::Opaque(_)
+            self.0,
+            ValueInner::Str(Str::Rc(_))
+                | ValueInner::List(_)
+                | ValueInner::Map(_)
+                | ValueInner::Opaque(_)
         )
     }
 
     /// A copy: inline for a value that owns nothing, else `clone`.
     #[inline(always)]
-    pub fn dup(&self) -> Value<'h> {
-        match self {
-            Value::Null => Value::Null,
-            Value::Bool(b) => Value::Bool(*b),
-            Value::Num(n) => Value::Num(*n),
-            Value::Str(Str::Lent(s)) => Value::Str(Str::Lent(s)),
-            Value::HList(l) => Value::HList(*l),
-            Value::HMap(m) => Value::HMap(*m),
+    pub(crate) fn dup(&self) -> Value<'h> {
+        match &self.0 {
+            ValueInner::Null => Value(ValueInner::Null),
+            ValueInner::Bool(b) => Value(ValueInner::Bool(*b)),
+            ValueInner::Num(n) => Value(ValueInner::Num(*n)),
+            ValueInner::Str(Str::Lent(s)) => Value(ValueInner::Str(Str::Lent(s))),
+            ValueInner::HList(l) => Value(ValueInner::HList(*l)),
+            ValueInner::HMap(m) => Value(ValueInner::HMap(*m)),
             _ => self.clone(),
         }
     }
 
     /// Wrap an owned string as a [`Value`].
-    pub fn str(s: String) -> Value<'h> {
-        Value::Str(Str::new(s))
+    pub(crate) fn str(s: String) -> Value<'h> {
+        Value(ValueInner::Str(Str::new(s)))
     }
 
     /// Wrap a vector of values as a list [`Value`].
-    pub fn list(v: Vec<Value<'h>>) -> Value<'h> {
-        Value::List(Rc::new(ListVal(v)))
+    pub(crate) fn list(v: Vec<Value<'h>>) -> Value<'h> {
+        Value(ValueInner::List(Rc::new(ListVal(v))))
     }
 
     /// The language kind of this value (`01-language.md` 6.1).
-    pub fn kind(&self) -> Kind {
-        match self {
-            Value::Null => Kind::Null,
-            Value::Bool(_) => Kind::Bool,
-            Value::Num(_) | Value::BadNum => Kind::Number,
-            Value::Str(_) => Kind::String,
-            Value::List(_) | Value::HList(_) => Kind::List,
-            Value::Map(_) | Value::HMap(_) => Kind::Map,
-            Value::Opaque(_) => Kind::Opaque,
+    pub(crate) fn kind(&self) -> Kind {
+        match &self.0 {
+            ValueInner::Null => Kind::Null,
+            ValueInner::Bool(_) => Kind::Bool,
+            ValueInner::Num(_) | ValueInner::BadNum => Kind::Number,
+            ValueInner::Str(_) => Kind::String,
+            ValueInner::List(_) | ValueInner::HList(_) => Kind::List,
+            ValueInner::Map(_) | ValueInner::HMap(_) => Kind::Map,
+            ValueInner::Opaque(_) => Kind::Opaque,
         }
     }
 
     /// Whether this value is `null`.
     pub fn is_null(&self) -> bool {
-        matches!(self, Value::Null)
+        matches!(self.0, ValueInner::Null)
+    }
+
+    /// Whether this value is a list.
+    pub fn is_list(&self) -> bool {
+        matches!(self.0, ValueInner::List(_) | ValueInner::HList(_))
+    }
+
+    /// Whether this value is a map.
+    pub fn is_map(&self) -> bool {
+        matches!(self.0, ValueInner::Map(_) | ValueInner::HMap(_))
+    }
+
+    /// The boolean value when this value is a `bool`; `None` otherwise.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self.0 {
+            ValueInner::Bool(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// The finite IEEE 754 binary64 number when this value is a number; `None`
+    /// otherwise (including for a host number out of range).
+    pub fn as_f64(&self) -> Option<f64> {
+        match self.0 {
+            ValueInner::Num(n) => Some(n),
+            _ => None,
+        }
+    }
+
+    /// The integer value when this value is a whole number within
+    /// `±(2^53 - 1)`; `None` otherwise.
+    pub fn as_i64(&self) -> Option<i64> {
+        match self.0 {
+            ValueInner::Num(n) if is_whole(n) => Some(n as i64),
+            _ => None,
+        }
+    }
+
+    /// Borrow the opaque handle when this value is opaque; `None` otherwise.
+    pub fn as_opaque(&self) -> Option<&OpaqueRef> {
+        match &self.0 {
+            ValueInner::Opaque(o) => Some(o.as_ref()),
+            _ => None,
+        }
     }
 
     /// The truthiness test (`01-language.md` 6.5). It reads no element.
     pub(crate) fn truthy(&self) -> bool {
-        match self {
-            Value::Null => false,
-            Value::Bool(b) => *b,
-            Value::Num(n) => *n != 0.0,
-            Value::BadNum => true,
-            Value::Str(s) => !s.as_str().is_empty(),
-            Value::List(l) => !l.0.is_empty(),
-            Value::HList(l) => !l.is_empty(),
-            Value::Map(m) => !m.0.is_empty(),
-            Value::HMap(m) => !m.is_empty(),
-            Value::Opaque(_) => true,
+        match &self.0 {
+            ValueInner::Null => false,
+            ValueInner::Bool(b) => *b,
+            ValueInner::Num(n) => *n != 0.0,
+            ValueInner::BadNum => true,
+            ValueInner::Str(s) => !s.as_str().is_empty(),
+            ValueInner::List(l) => !l.0.is_empty(),
+            ValueInner::HList(l) => !l.is_empty(),
+            ValueInner::Map(m) => !m.0.is_empty(),
+            ValueInner::HMap(m) => !m.is_empty(),
+            ValueInner::Opaque(_) => true,
         }
     }
 
     /// Borrow the string contents when this value is a string; `None` otherwise.
     pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Value::Str(s) => Some(s.as_str()),
+        match &self.0 {
+            ValueInner::Str(s) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -350,46 +390,55 @@ impl<'h> Value<'h> {
 
     /// The length of a list, or the number of entries of a map.
     pub fn len(&self) -> Option<usize> {
-        match self {
-            Value::List(l) => Some(l.0.len()),
-            Value::HList(l) => Some(l.len()),
-            Value::Map(m) => Some(m.0.len()),
-            Value::HMap(m) => Some(m.len()),
+        match &self.0 {
+            ValueInner::List(l) => Some(l.0.len()),
+            ValueInner::HList(l) => Some(l.len()),
+            ValueInner::Map(m) => Some(m.0.len()),
+            ValueInner::HMap(m) => Some(m.len()),
             _ => None,
         }
     }
 
-    /// The element at `i` of a list, which must be in range. It may be
-    /// `BadNum`; the reader tests it.
+    /// The element at `i` of a list, or `null` if not a list or `i` is out of
+    /// range.
     pub fn elem(&self, i: usize) -> Value<'h> {
-        match self {
-            Value::List(l) => l.0[i].dup(),
-            Value::HList(l) => match l.get(i) {
+        match &self.0 {
+            ValueInner::List(l) => {
+                l.0.get(i)
+                    .map(Value::dup)
+                    .unwrap_or(Value(ValueInner::Null))
+            }
+            ValueInner::HList(l) => match l.get(i) {
                 Some(x) => from_view(x),
-                None => Value::Null,
+                None => Value(ValueInner::Null),
             },
-            _ => Value::Null,
+            _ => Value(ValueInner::Null),
         }
     }
 
     /// The value under a key of a map.
     pub fn field(&self, key: &str) -> Option<Value<'h>> {
-        match self {
-            Value::Map(m) => m.get(key).map(Value::dup),
-            Value::HMap(m) => m.get(key).map(from_view),
+        match &self.0 {
+            ValueInner::Map(m) => m.get(key).map(Value::dup),
+            ValueInner::HMap(m) => m.get(key).map(from_view),
             _ => None,
         }
     }
 
     /// The entries of a map in key order.
-    pub fn entries(&self) -> Vec<(Str<'h>, Value<'h>)> {
-        match self {
-            Value::Map(m) => m.0.clone(),
-            Value::HMap(m) => {
+    pub(crate) fn entries(&self) -> Vec<(Str<'h>, Value<'h>)> {
+        match &self.0 {
+            ValueInner::Map(m) => m.0.clone(),
+            ValueInner::HMap(m) => {
                 let mut keys = m.keys();
                 keys.sort_unstable();
                 keys.into_iter()
-                    .map(|k| (Str::Lent(k), m.get(k).map(from_view).unwrap_or(Value::Null)))
+                    .map(|k| {
+                        (
+                            Str::Lent(k),
+                            m.get(k).map(from_view).unwrap_or(Value(ValueInner::Null)),
+                        )
+                    })
                     .collect()
             }
             _ => Vec::new(),
@@ -399,13 +448,13 @@ impl<'h> Value<'h> {
     /// Visit each key of a map in any order, without sorting or cloning
     /// values.
     pub fn for_each_key<'a>(&'a self, mut f: impl FnMut(&'a str)) {
-        match self {
-            Value::Map(m) => {
+        match &self.0 {
+            ValueInner::Map(m) => {
                 for (k, _) in &m.0 {
                     f(k.as_str());
                 }
             }
-            Value::HMap(m) => {
+            ValueInner::HMap(m) => {
                 for k in m.keys() {
                     f(k);
                 }
@@ -415,10 +464,10 @@ impl<'h> Value<'h> {
     }
 
     /// The keys of a map in key order.
-    pub fn keys(&self) -> Vec<Str<'h>> {
-        match self {
-            Value::Map(m) => m.0.iter().map(|(k, _)| k.clone()).collect(),
-            Value::HMap(m) => {
+    pub(crate) fn keys(&self) -> Vec<Str<'h>> {
+        match &self.0 {
+            ValueInner::Map(m) => m.0.iter().map(|(k, _)| k.clone()).collect(),
+            ValueInner::HMap(m) => {
                 let mut keys = m.keys();
                 keys.sort_unstable();
                 keys.into_iter().map(Str::Lent).collect()
@@ -430,18 +479,18 @@ impl<'h> Value<'h> {
     /// A host value tree, as a run's value (a host function's result).
     pub fn from_data(d: &Data) -> Value<'static> {
         match d {
-            Data::Null => Value::Null,
-            Data::Bool(b) => Value::Bool(*b),
+            Data::Null => Value(ValueInner::Null),
+            Data::Bool(b) => Value(ValueInner::Bool(*b)),
             Data::Int(i) => int_value(*i),
             Data::Float(f) => float_value(*f),
             Data::Str(s) => Value::str(s.clone()),
             Data::List(l) => Value::list(l.iter().map(Value::from_data).collect()),
-            Data::Map(m) => Value::Map(Rc::new(MapVal(
+            Data::Map(m) => Value(ValueInner::Map(Rc::new(MapVal(
                 m.iter()
                     .map(|(k, v)| (Str::new(k.clone()), Value::from_data(v)))
                     .collect(),
-            ))),
-            Data::Opaque(o) => Value::Opaque(Rc::new(o.clone())),
+            )))),
+            Data::Opaque(o) => Value(ValueInner::Opaque(Rc::new(o.clone()))),
         }
     }
 
@@ -468,12 +517,12 @@ impl<'h> Value<'h> {
         if depth > 1024 {
             return Data::Null;
         }
-        match self {
-            Value::Null | Value::BadNum => Data::Null,
-            Value::Bool(b) => Data::Bool(*b),
-            Value::Num(n) => Data::Float(*n),
-            Value::Str(s) => Data::Str(s.as_str().to_string()),
-            Value::List(_) | Value::HList(_) => {
+        match &self.0 {
+            ValueInner::Null | ValueInner::BadNum => Data::Null,
+            ValueInner::Bool(b) => Data::Bool(*b),
+            ValueInner::Num(n) => Data::Float(*n),
+            ValueInner::Str(s) => Data::Str(s.as_str().to_string()),
+            ValueInner::List(_) | ValueInner::HList(_) => {
                 let n = self.len().unwrap_or(0);
                 if let Some(b) = budget.as_deref_mut() {
                     if n > *b {
@@ -487,7 +536,7 @@ impl<'h> Value<'h> {
                 }
                 Data::List(out)
             }
-            Value::Map(_) | Value::HMap(_) => {
+            ValueInner::Map(_) | ValueInner::HMap(_) => {
                 let n = self.len().unwrap_or(0);
                 if let Some(b) = budget.as_deref_mut() {
                     if n > *b {
@@ -510,65 +559,65 @@ impl<'h> Value<'h> {
                 }
                 Data::Map(out)
             }
-            Value::Opaque(o) => Data::Opaque(OpaqueRef::clone(o)),
+            ValueInner::Opaque(o) => Data::Opaque(OpaqueRef::clone(o)),
         }
     }
 }
 
 fn int_value(i: i64) -> Value<'static> {
     if (i as i128).abs() > MAX_WHOLE as i128 {
-        Value::BadNum
+        Value(ValueInner::BadNum)
     } else {
-        Value::Num(i as f64)
+        Value(ValueInner::Num(i as f64))
     }
 }
 
 fn float_value(f: f64) -> Value<'static> {
     if !f.is_finite() {
-        Value::BadNum
+        Value(ValueInner::BadNum)
     } else if f == 0.0 {
-        Value::Num(0.0)
+        Value(ValueInner::Num(0.0))
     } else {
-        Value::Num(f)
+        Value(ValueInner::Num(f))
     }
 }
 
 /// A host view as a value. Nothing is copied.
 #[inline]
-pub fn from_view<'h>(v: View<'h>) -> Value<'h> {
+pub(crate) fn from_view<'h>(v: View<'h>) -> Value<'h> {
     match v {
-        View::Null => Value::Null,
-        View::Bool(b) => Value::Bool(b),
+        View::Null => Value(ValueInner::Null),
+        View::Bool(b) => Value(ValueInner::Bool(b)),
         View::Int(i) => int_value(i),
         View::UInt(u) => {
             if u as f64 > MAX_WHOLE {
-                Value::BadNum
+                Value(ValueInner::BadNum)
             } else {
-                Value::Num(u as f64)
+                Value(ValueInner::Num(u as f64))
             }
         }
         View::Float(f) => float_value(f),
-        View::Str(s) => Value::Str(Str::Lent(s)),
-        View::List(l) => Value::HList(l),
-        View::Map(m) => Value::HMap(m),
-        View::Opaque(o) => Value::Opaque(Rc::new(o)),
+        View::Str(s) => Value(ValueInner::Str(Str::Lent(s))),
+        View::List(l) => Value(ValueInner::HList(l)),
+        View::Map(m) => Value(ValueInner::HMap(m)),
+        View::Opaque(o) => Value(ValueInner::Opaque(Rc::new(o))),
     }
 }
 
 /// Equality with no charge and no depth limit, for comparing with data a
 /// case file states. It stops where `d` stops, so its depth is `d`'s.
 pub fn eq_data(v: &Value<'_>, d: &Data) -> bool {
-    match (v, d) {
-        (Value::Null, Data::Null) => true,
-        (Value::Bool(a), Data::Bool(b)) => a == b,
-        (Value::Num(a), Data::Float(b)) => a == b,
-        (Value::Num(a), Data::Int(b)) => *a == *b as f64,
-        (Value::Str(a), Data::Str(b)) => a.as_str() == b,
-        (Value::Opaque(a), Data::Opaque(b)) => a.same(b),
-        (Value::List(_) | Value::HList(_), Data::List(b)) => {
+    match (&v.0, d) {
+        (ValueInner::Null, Data::Null) => true,
+        (ValueInner::Bool(a), Data::Bool(b)) => a == b,
+        (ValueInner::Num(a), Data::Float(b)) => a == b,
+        (ValueInner::Num(a), Data::Int(b)) => *a == *b as f64,
+        (ValueInner::Str(a), Data::Str(b)) => a.as_str() == b,
+        (ValueInner::Opaque(a), Data::Opaque(b)) => a.same(b),
+        (ValueInner::List(_) | ValueInner::HList(_), Data::List(b)) => {
             v.len() == Some(b.len()) && b.iter().enumerate().all(|(i, x)| eq_data(&v.elem(i), x))
         }
-        (Value::Map(_) | Value::HMap(_), Data::Map(b)) => {
+        (ValueInner::Map(_) | ValueInner::HMap(_), Data::Map(b)) => {
             v.len() == Some(b.len())
                 && b.iter()
                     .all(|(k, x)| v.field(k).is_some_and(|y| eq_data(&y, x)))
@@ -595,25 +644,25 @@ impl fmt::Debug for Value<'_> {
 
 impl Value<'_> {
     fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Null => f.write_str("null"),
-            Value::Bool(b) => write!(f, "{b}"),
-            Value::Num(n) => f.write_str(&crate::number::to_text(*n)),
-            Value::BadNum => f.write_str("<host number out of range>"),
-            Value::Str(s) => write!(f, "{:?}", s.as_str()),
-            Value::List(_) | Value::HList(_) => {
+        match &self.0 {
+            ValueInner::Null => f.write_str("null"),
+            ValueInner::Bool(b) => write!(f, "{b}"),
+            ValueInner::Num(n) => f.write_str(&crate::number::to_text(*n)),
+            ValueInner::BadNum => f.write_str("<host number out of range>"),
+            ValueInner::Str(s) => write!(f, "{:?}", s.as_str()),
+            ValueInner::List(_) | ValueInner::HList(_) => {
                 let n = self.len().unwrap_or(0);
                 f.debug_list()
                     .entries((0..n).map(|i| self.elem(i)))
                     .finish()
             }
-            Value::Map(_) | Value::HMap(_) => {
+            ValueInner::Map(_) | ValueInner::HMap(_) => {
                 let es = self.entries();
                 f.debug_map()
                     .entries(es.iter().map(|(k, v)| (k.as_str(), v)))
                     .finish()
             }
-            Value::Opaque(o) => write!(f, "{o:?}"),
+            ValueInner::Opaque(o) => write!(f, "{o:?}"),
         }
     }
 }

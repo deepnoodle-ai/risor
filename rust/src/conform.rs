@@ -13,7 +13,7 @@
 use crate::check::ty::{print, Num, Strs, Ty};
 use crate::diag::{Diagnostic, PathStep, Phase};
 use crate::messages::json_string;
-use crate::value::{is_whole, size, weight, Kind, Value};
+use crate::value::{is_whole, size, weight, Kind, Value, ValueInner};
 
 /// What the walk charges and how deep it goes (`02-evaluation.md` 8.4). A
 /// run meters it; the conformance function meters it with [`Free`].
@@ -191,10 +191,10 @@ struct Walk<'m, M: WalkMeter> {
 
 fn wrong(path: &[PathStep], t: &Ty, v: &Value<'_>) -> Failure {
     let found = match v {
-        Value::Null => "null".to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Num(n) => crate::number::to_text(*n),
-        Value::Str(s) => json_string(s.as_str()),
+        Value(ValueInner::Null) => "null".to_string(),
+        Value(ValueInner::Bool(b)) => b.to_string(),
+        Value(ValueInner::Num(n)) => crate::number::to_text(*n),
+        Value(ValueInner::Str(s)) => json_string(s.as_str()),
         // 4.4 item 3, and the kind of a list, a map or an opaque value.
         _ => v.kind().name().to_string(),
     };
@@ -252,15 +252,15 @@ impl<M: WalkMeter> Walk<'_, M> {
         }
         // 4, 5, 6.
         match v {
-            Value::BadNum => Ok(Some(wrong(&self.path, t, v))),
-            Value::Null if u.null => Ok(None),
-            Value::Bool(_) if u.boolean => Ok(None),
-            Value::Num(n) => match u.num {
+            Value(ValueInner::BadNum) => Ok(Some(wrong(&self.path, t, v))),
+            Value(ValueInner::Null) if u.null => Ok(None),
+            Value(ValueInner::Bool(_)) if u.boolean => Ok(None),
+            Value(ValueInner::Num(n)) => match u.num {
                 Some(Num::Float) => Ok(None),
                 Some(Num::Int) if is_whole(*n) => Ok(None),
                 _ => Ok(Some(wrong(&self.path, t, v))),
             },
-            Value::Str(s) => match &u.str {
+            Value(ValueInner::Str(s)) => match &u.str {
                 Some(Strs::All) => Ok(None),
                 Some(Strs::Lits(l)) => {
                     self.m.charge(size(s.as_str()))?;
@@ -272,8 +272,8 @@ impl<M: WalkMeter> Walk<'_, M> {
                 }
                 None => Ok(Some(wrong(&self.path, t, v))),
             },
-            Value::Opaque(o) if u.opaque.contains(o.type_name.as_ref()) => Ok(None),
-            Value::List(_) | Value::HList(_) if u.list.is_some() => {
+            Value(ValueInner::Opaque(o)) if u.opaque.contains(o.type_name.as_ref()) => Ok(None),
+            Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) if u.list.is_some() => {
                 // 7.
                 let Some(e) = u.list.as_deref() else {
                     return Ok(None);
@@ -289,11 +289,15 @@ impl<M: WalkMeter> Walk<'_, M> {
                 }
                 Ok(None)
             }
-            Value::Map(_) | Value::HMap(_) if u.variants.is_some() => self.union(v, u),
-            Value::Map(_) | Value::HMap(_) if u.map.is_some() => match u.map.as_deref() {
-                Some(r) => self.record(v, r, None),
-                None => Ok(None),
-            },
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) if u.variants.is_some() => {
+                self.union(v, u)
+            }
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) if u.map.is_some() => {
+                match u.map.as_deref() {
+                    Some(r) => self.record(v, r, None),
+                    None => Ok(None),
+                }
+            }
             _ => Ok(Some(wrong(&self.path, t, v))),
         }
     }
@@ -402,7 +406,7 @@ impl<M: WalkMeter> Walk<'_, M> {
         self.m.charge(together)?;
         let mut first: Option<Failure> = None;
         for k in &others {
-            let x = v.field(k).unwrap_or(Value::Null);
+            let x = v.field(k).unwrap_or(Value(ValueInner::Null));
             self.path.push(PathStep::Key(k.clone()));
             let res = self.test(&x, &r.rest, false)?;
             self.path.pop();
@@ -542,15 +546,15 @@ impl All {
     fn walk_body(&mut self, v: &Value<'_>, t: &Ty, u: &Ty) {
         match v {
             // 2, 3, 4.
-            Value::BadNum => self.add(wrong(&self.path, t, v)),
-            Value::Null if u.null => {}
-            Value::Bool(_) if u.boolean => {}
-            Value::Num(n) => match u.num {
+            Value(ValueInner::BadNum) => self.add(wrong(&self.path, t, v)),
+            Value(ValueInner::Null) if u.null => {}
+            Value(ValueInner::Bool(_)) if u.boolean => {}
+            Value(ValueInner::Num(n)) => match u.num {
                 Some(Num::Float) => {}
                 Some(Num::Int) if is_whole(*n) => {}
                 _ => self.add(wrong(&self.path, t, v)),
             },
-            Value::Str(s) => match &u.str {
+            Value(ValueInner::Str(s)) => match &u.str {
                 Some(Strs::All) => {}
                 Some(Strs::Lits(l)) => {
                     if self.charge(size(s.as_str())) && !l.contains(s.as_str()) {
@@ -559,9 +563,9 @@ impl All {
                 }
                 None => self.add(wrong(&self.path, t, v)),
             },
-            Value::Opaque(o) if u.opaque.contains(o.type_name.as_ref()) => {}
+            Value(ValueInner::Opaque(o)) if u.opaque.contains(o.type_name.as_ref()) => {}
             // 5.
-            Value::List(_) | Value::HList(_) if u.list.is_some() => {
+            Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) if u.list.is_some() => {
                 let Some(e) = u.list.as_deref() else {
                     return;
                 };
@@ -575,9 +579,11 @@ impl All {
                 }
             }
             // 7.
-            Value::Map(_) | Value::HMap(_) if u.variants.is_some() => self.union(v, u),
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) if u.variants.is_some() => {
+                self.union(v, u)
+            }
             // 6.
-            Value::Map(_) | Value::HMap(_) if u.map.is_some() => {
+            Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) if u.map.is_some() => {
                 if let Some(r) = u.map.as_deref() {
                     self.record(v, r, None);
                 }
@@ -610,12 +616,12 @@ impl All {
             .map(|f| f.ty.clone())
             .unwrap_or_default();
         let s = x.as_str().unwrap_or_default();
-        if matches!(x, Value::Str(_)) && !self.charge(size(s)) {
+        if matches!(x, Value(ValueInner::Str(_))) && !self.charge(size(s)) {
             return;
         }
         let vs: &[crate::check::ty::Rec] = t.variants.as_deref().map_or(&[], |v| v.as_slice());
         let var = match &x {
-            Value::Str(_) => vs.iter().find(|r| {
+            Value(ValueInner::Str(_)) => vs.iter().find(|r| {
                 matches!(r.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(l)) if l.contains(s))
             }),
             _ => None,
@@ -687,7 +693,7 @@ impl All {
                     params: vec![("key", json_string(k))],
                 });
             } else {
-                let x = v.field(k).unwrap_or(Value::Null);
+                let x = v.field(k).unwrap_or(Value(ValueInner::Null));
                 self.path.push(PathStep::Key(k.clone()));
                 self.walk(&x, &r.rest, false);
                 self.path.pop();

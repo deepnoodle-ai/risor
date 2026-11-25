@@ -4,9 +4,9 @@
 //! gives `skip` to a case that needs the checker (3.10.8 item 5) or a
 //! library entry this build does not run yet.
 
-use super::case::{
-    load_file, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, ExpectResult, Stub,
-};
+#[cfg(test)]
+use super::case::load_file;
+use super::case::{opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, ExpectResult, Stub};
 use crate::compile::{compile_unchecked as compile, Program, Res};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::{check_expected, Env, HostImpl, Limits};
@@ -17,9 +17,11 @@ use crate::library;
 use crate::render::View;
 use crate::syntax::ast::NodeKind;
 use crate::syntax::{parse, parse_with, ParseOptions};
-use crate::value::{eq_data, Value};
+use crate::value::{eq_data, Value, ValueInner};
 use std::collections::{BTreeMap, HashMap};
+#[cfg(test)]
 use std::fmt;
+#[cfg(test)]
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -86,11 +88,11 @@ fn form_into(j: &Json, out: &mut String) {
 /// A value of a run as JSON data, an opaque value as a case file writes it.
 pub fn value_to_json(v: &Value<'_>) -> Json {
     match v {
-        Value::Null | Value::BadNum => Json::Null,
-        Value::Bool(b) => Json::Bool(*b),
-        Value::Num(n) => Json::Num(*n),
-        Value::Str(s) => Json::Str(s.as_str().to_string()),
-        Value::Opaque(o) => {
+        Value(ValueInner::Null) | Value(ValueInner::BadNum) => Json::Null,
+        Value(ValueInner::Bool(b)) => Json::Bool(*b),
+        Value(ValueInner::Num(n)) => Json::Num(*n),
+        Value(ValueInner::Str(s)) => Json::Str(s.as_str().to_string()),
+        Value(ValueInner::Opaque(o)) => {
             let id = o.value.downcast_ref::<u64>().copied().unwrap_or(0);
             Json::Obj(vec![(
                 "$opaque".into(),
@@ -100,12 +102,12 @@ pub fn value_to_json(v: &Value<'_>) -> Json {
                 ]),
             )])
         }
-        Value::List(_) | Value::HList(_) => Json::Arr(
+        Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) => Json::Arr(
             (0..v.len().unwrap_or(0))
                 .map(|i| value_to_json(&v.elem(i)))
                 .collect(),
         ),
-        Value::Map(_) | Value::HMap(_) => Json::Obj(
+        Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => Json::Obj(
             v.entries()
                 .into_iter()
                 .map(|(k, x)| (k.as_str().to_string(), value_to_json(&x)))
@@ -391,8 +393,9 @@ impl Verdict {
 }
 
 /// The verdict of each case of one file.
+#[cfg(test)]
 #[derive(Clone, Debug)]
-pub struct FileReport {
+pub(crate) struct FileReport {
     /// Path to the case file that was run.
     pub path: PathBuf,
     /// Per-case `(name, verdict)` pairs in file order.
@@ -400,8 +403,9 @@ pub struct FileReport {
 }
 
 /// The number of cases of each verdict.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Counts {
+pub(crate) struct Counts {
     /// Number of passing cases.
     pub pass: usize,
     /// Number of failing cases.
@@ -414,6 +418,7 @@ pub struct Counts {
     pub updated: usize,
 }
 
+#[cfg(test)]
 impl Counts {
     /// Increment the counter corresponding to `v`.
     pub fn add(&mut self, v: &Verdict) {
@@ -439,6 +444,7 @@ impl Counts {
     }
 }
 
+#[cfg(test)]
 impl fmt::Display for Counts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -453,6 +459,7 @@ impl fmt::Display for Counts {
     }
 }
 
+#[cfg(test)]
 impl FileReport {
     pub fn counts(&self) -> Counts {
         let mut c = Counts::default();
@@ -463,6 +470,7 @@ impl FileReport {
     }
 }
 
+#[cfg(test)]
 impl fmt::Display for FileReport {
     /// The file's counts, then each case that did not pass or skip, with what
     /// differed.
@@ -493,15 +501,10 @@ impl fmt::Display for FileReport {
     }
 }
 
-/// Run every case of a file. A file that is not valid gives one result,
-/// `invalid`, named after the file, standing for all its cases.
-pub fn run_file(path: &Path) -> FileReport {
-    run_file_with(path, true)
-}
-
 /// Run every case of a file: as a runner with a checker does (`checked`),
 /// or as one with none.
-pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
+#[cfg(test)]
+pub(crate) fn run_file_with(path: &Path, checked: bool) -> FileReport {
     // `suite/core-check/` and F1's `suite/host-types/` (7.3 item 1) run
     // each case checked, once.
     let core_check = path
@@ -534,7 +537,8 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
 /// `03-host.md` 3.11 item 7: in a package's directory, a file
 /// whose name ends `-check.json` is run as `suite/core-check/` is: each case
 /// once, checked.
-pub fn check_only_file(path: &Path) -> bool {
+#[cfg(test)]
+pub(crate) fn check_only_file(path: &Path) -> bool {
     let in_core = path
         .parent()
         .and_then(|d| d.file_name())
@@ -548,7 +552,8 @@ pub fn check_only_file(path: &Path) -> bool {
 
 /// Whether the runner does not run a file (`03-host.md` 3.11 item 4):
 /// its name begins `until-fNN-` and this build offers package NN.
-pub fn skipped_by_package(path: &Path) -> bool {
+#[cfg(test)]
+pub(crate) fn skipped_by_package(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -565,7 +570,8 @@ pub fn skipped_by_package(path: &Path) -> bool {
 }
 
 /// The case files under a directory that the runner does not run, by `03-host.md` 3.11 item 4.
-pub fn skipped_files(dir: &Path) -> Vec<PathBuf> {
+#[cfg(test)]
+pub(crate) fn skipped_files(dir: &Path) -> Vec<PathBuf> {
     all_json(dir)
         .into_iter()
         .filter(|p| skipped_by_package(p))
@@ -574,13 +580,15 @@ pub fn skipped_files(dir: &Path) -> Vec<PathBuf> {
 
 /// Every `.json` file under a directory that the runner runs, in order of
 /// path: an `until-fNN-` file of a package this build offers is left out.
-pub fn case_files(dir: &Path) -> Vec<PathBuf> {
+#[cfg(test)]
+pub(crate) fn case_files(dir: &Path) -> Vec<PathBuf> {
     all_json(dir)
         .into_iter()
         .filter(|p| !skipped_by_package(p))
         .collect()
 }
 
+#[cfg(test)]
 fn all_json(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -1339,7 +1347,8 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
 
 /// Run one case as a runner with no type checker does (3.10.8 item 6): the
 /// static rules alone at step 4, and `skip` for what needs the checker.
-pub fn run_case_unchecked(case: &Case) -> Verdict {
+#[cfg(test)]
+pub(crate) fn run_case_unchecked(case: &Case) -> Verdict {
     // F9 9.3 item 2: a runner case is run once, and has no second pass.
     if let Some(r) = &case.runner {
         return run_runner_case(r);
@@ -2169,7 +2178,7 @@ pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
         let out = p.outcome(&vars);
         let steps = out.usage.steps;
         let r = match out.result {
-            Ok(Value::Bool(b)) if form == "is" => Ok(b),
+            Ok(Value(ValueInner::Bool(b))) if form == "is" => Ok(b),
             Ok(v) if form == "as" => Ok(eq_data(&v, &data)),
             Ok(_) => Ok(false),
             Err(f) => Err(p.diagnostic(&f)),
@@ -2843,19 +2852,19 @@ fn value_json(v: &Value<'_>, out: &mut String, _depth: u32) -> Result<(), &'stat
                 out.push(':');
             }
             Item::Val(v) => match &v {
-                Value::Null => out.push_str("null"),
-                Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-                Value::Num(n) => out.push_str(&crate::number::to_text(*n)),
-                Value::BadNum => return Err("number-range"),
-                Value::Str(s) => out.push_str(&json_text(s.as_str())),
-                Value::Opaque(o) => {
+                Value(ValueInner::Null) => out.push_str("null"),
+                Value(ValueInner::Bool(b)) => out.push_str(if *b { "true" } else { "false" }),
+                Value(ValueInner::Num(n)) => out.push_str(&crate::number::to_text(*n)),
+                Value(ValueInner::BadNum) => return Err("number-range"),
+                Value(ValueInner::Str(s)) => out.push_str(&json_text(s.as_str())),
+                Value(ValueInner::Opaque(o)) => {
                     let id = o.value.downcast_ref::<u64>().copied().unwrap_or(0);
                     out.push_str(&format!(
                         "{{\"$opaque\":{{\"type\":{},\"id\":{id}}}}}",
                         json_text(&o.type_name)
                     ));
                 }
-                Value::List(_) | Value::HList(_) => {
+                Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) => {
                     out.push('[');
                     stack.push(Item::Text("]"));
                     let n = v.len().unwrap_or(0);
@@ -2866,7 +2875,7 @@ fn value_json(v: &Value<'_>, out: &mut String, _depth: u32) -> Result<(), &'stat
                         }
                     }
                 }
-                Value::Map(_) | Value::HMap(_) => {
+                Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => {
                     out.push('{');
                     stack.push(Item::Text("}"));
                     let es = v.entries();
@@ -3100,10 +3109,10 @@ pub(super) struct Ran {
 
 fn has_opaque_key(v: &Value<'_>) -> bool {
     match v {
-        Value::List(_) | Value::HList(_) => {
+        Value(ValueInner::List(_)) | Value(ValueInner::HList(_)) => {
             (0..v.len().unwrap_or(0)).any(|i| has_opaque_key(&v.elem(i)))
         }
-        Value::Map(_) | Value::HMap(_) => v
+        Value(ValueInner::Map(_)) | Value(ValueInner::HMap(_)) => v
             .entries()
             .into_iter()
             .any(|(k, x)| k.as_str() == "$opaque" || has_opaque_key(&x)),

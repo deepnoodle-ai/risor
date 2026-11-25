@@ -92,9 +92,9 @@ fn a_host_function_charges_through_its_handle() {
                 .map_err(|_| crate::HostError::Text("stop".into()))?;
             call.allocate(2)
                 .map_err(|_| crate::HostError::Text("stop".into()))?;
-            match args[0] {
-                Value::Num(n) => Ok(Data::Float(n * 2.0)),
-                _ => Ok(Data::Null),
+            match args[0].as_f64() {
+                Some(n) => Ok(Data::Float(n * 2.0)),
+                None => Ok(Data::Null),
             }
         })
         .build()
@@ -200,8 +200,10 @@ fn opaque_env() -> Env {
         .var_record("{t: Token, u: Token}")
         .opaque("Token")
         .function("same", "(a: Token, b: Token) => bool", |_, args| {
-            Ok(Data::Bool(matches!((&args[0], &args[1]),
-                (Value::Opaque(a), Value::Opaque(b)) if a.same(b))))
+            Ok(Data::Bool(
+                matches!((args[0].as_opaque(), args[1].as_opaque()),
+                (Some(a), Some(b)) if a.same(b)),
+            ))
         })
         .function("make", "() => Token", |_, _| {
             Ok(Data::Opaque(OpaqueRef::new("Token", 7u32)))
@@ -209,11 +211,11 @@ fn opaque_env() -> Env {
         .method_decl(
             "Token.id",
             "() => int",
-            Some(Arc::new(|_, args| match &args[0] {
-                Value::Opaque(o) => Ok(Data::Float(
+            Some(Arc::new(|_, args| match args[0].as_opaque() {
+                Some(o) => Ok(Data::Float(
                     *o.value.downcast_ref::<u32>().unwrap_or(&0) as f64
                 )),
-                _ => Ok(Data::Null),
+                None => Ok(Data::Null),
             })),
         )
         .build()
@@ -338,26 +340,26 @@ fn an_opaque_value_state_belongs_to_the_host() {
     let env = Env::builder()
         .var_record("{w: Label}")
         .opaque("Label")
-        .method("Label", "text", "() => string", |_, args| match &args[0] {
-            Value::Opaque(o) => {
+        .method("Label", "text", "() => string", |_, args| {
+            match args[0].as_opaque() {
+                Some(o) => {
+                    let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
+                    Ok(Data::Str(m.lock().unwrap().clone()))
+                }
+                None => Ok(Data::Null),
+            }
+        })
+        .method("Label", "setText", "(s: string) => null", |_, args| match (
+            args[0].as_opaque(),
+            args[1].as_str(),
+        ) {
+            (Some(o), Some(s)) => {
                 let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
-                Ok(Data::Str(m.lock().unwrap().clone()))
+                *m.lock().unwrap() = s.to_string();
+                Ok(Data::Null)
             }
             _ => Ok(Data::Null),
         })
-        .method(
-            "Label",
-            "setText",
-            "(s: string) => null",
-            |_, args| match (&args[0], &args[1]) {
-                (Value::Opaque(o), Value::Str(s)) => {
-                    let m = o.value.downcast_ref::<Mutex<String>>().unwrap();
-                    *m.lock().unwrap() = s.as_str().to_string();
-                    Ok(Data::Null)
-                }
-                _ => Ok(Data::Null),
-            },
-        )
         .build()
         .unwrap();
     let w = OpaqueRef::new("Label", Mutex::new("a".to_string()));

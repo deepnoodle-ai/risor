@@ -3,13 +3,17 @@
 
 use risor::{
     conform, conform_all, exact_record_type, format, join, json_text, list_type, literal_type,
-    load_value, map_type, nullable, opaque_type_named, parse, parse_template, record_type,
-    render_line, schema_of, tagged_union_type, truthy, type_from_schema, union_type,
+    load_value, load_with, map_type, nullable, opaque_type_named, parse, parse_template,
+    record_type, render_line, schema_of, tagged_union_type, truthy, type_from_schema, union_type,
     CompileOptions, Data, Entry, EntryParam, Env, Expected, FieldType, Host, LoadOptions, NoVars,
     OpaqueRef, PathStep, Phase, Pos, RunOptions, SchemaOptions, TemplateMode, Type, TypeKind,
-    Value,
+    Value, SOURCE_LIMIT, STEP_CHECK, STEP_CONFORM, STEP_DECLARE, STEP_DECODE, STEP_PARSE, STEP_RUN,
 };
 use std::collections::BTreeMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 fn field(key: &str, ty: Type) -> FieldType {
     FieldType {
@@ -73,6 +77,13 @@ fn unions_and_invalid_types() {
     assert_eq!(bad.err().unwrap().first().code, "bad-type");
     assert_eq!(literal_type(&[]).kind(), TypeKind::Invalid);
     assert!(!bad.fits(&Type::ANY));
+    // P2: invalid types are never equal, even with identical messages.
+    let bad_a = literal_type(&[]);
+    let bad_b = literal_type(&[]);
+    assert!(!bad_a.equal(&bad_b));
+    assert!(!bad_a.equal(&bad_a));
+    assert!(!bad_a.equal(&Type::ANY));
+    assert!(!Type::ANY.equal(&bad_a));
     let dup = exact_record_type(&[field("a", Type::INT), field("a", Type::INT)]);
     assert!(dup.err().is_some());
     // An invalid type declared is `bad-type`.
@@ -182,17 +193,105 @@ fn a_config_file_loads() {
         &NoVars,
         opts(Expected::of(&ty)),
     );
-    assert_eq!(e.unwrap_err().step, 2);
+    assert_eq!(e.unwrap_err().step, STEP_CHECK);
     let e = load_value(&Env::default(), "1", &NoVars, opts(Expected::text("Nope")));
-    assert_eq!(e.unwrap_err().step, 0);
+    assert_eq!(e.unwrap_err().step, STEP_DECLARE);
+    assert_eq!(SOURCE_LIMIT, 1_048_576);
+    assert_eq!(
+        [
+            STEP_DECLARE,
+            STEP_PARSE,
+            STEP_CHECK,
+            STEP_RUN,
+            STEP_CONFORM,
+            STEP_DECODE
+        ],
+        [0, 1, 2, 3, 4, 5]
+    );
+}
+
+#[test]
+fn load_honors_cancellation() {
+    let cancel = Arc::new(AtomicBool::new(true));
+    let opts = LoadOptions {
+        expected: Expected::text("int"),
+        run: RunOptions {
+            cancel: Some(Arc::clone(&cancel)),
+        },
+        ..LoadOptions::default()
+    };
+    let e = load_value(
+        &Env::default(),
+        "len(range(5000).map(x => x + 1))",
+        &NoVars,
+        opts.clone(),
+    )
+    .unwrap_err();
+    assert_eq!(e.step, STEP_RUN);
+    assert_eq!(e.diagnostics[0].code, "cancelled");
+    assert!(e.usage.is_some());
+
+    // Cancellation also works through `load_with` into a host type.
+    cancel.store(true, Ordering::Relaxed);
+    let e = load_with::<i64>(
+        &Env::default(),
+        "len(range(5000).map(x => x + 1))",
+        &NoVars,
+        opts,
+    )
+    .unwrap_err();
+    assert_eq!(e.step, STEP_RUN);
+    assert_eq!(e.diagnostics[0].code, "cancelled");
+    assert!(e.usage.is_some());
+}
+
+#[test]
+fn opaque_value_accessors() {
+    assert!(Value::from_data(&Data::Null).is_null());
+    assert_eq!(Value::from_data(&Data::Bool(true)).as_bool(), Some(true));
+    assert_eq!(Value::from_data(&Data::Int(42)).as_f64(), Some(42.0));
+    assert_eq!(Value::from_data(&Data::Int(42)).as_i64(), Some(42));
+    assert_eq!(Value::from_data(&Data::Float(1.5)).as_f64(), Some(1.5));
+    assert_eq!(Value::from_data(&Data::Float(1.5)).as_i64(), None);
+    assert_eq!(
+        Value::from_data(&Data::Str("hi".into())).as_str(),
+        Some("hi")
+    );
+    let list = Value::from_data(&Data::List(vec![Data::Int(1), Data::Int(2)]));
+    assert!(list.is_list());
+    assert!(!list.is_map());
+    assert_eq!(list.len(), Some(2));
+    assert_eq!(list.is_empty(), Some(false));
+    assert_eq!(list.elem(1).as_i64(), Some(2));
+    assert!(list.elem(99).is_null());
+    let mut m = BTreeMap::new();
+    m.insert("k".to_string(), Data::Str("v".into()));
+    let map = Value::from_data(&Data::Map(m));
+    assert!(map.is_map());
+    assert_eq!(
+        map.field("k").and_then(|v| v.as_str().map(str::to_string)),
+        Some("v".into())
+    );
+    let mut keys = Vec::new();
+    map.for_each_key(|k| keys.push(k.to_string()));
+    assert_eq!(keys, ["k"]);
+    let o = OpaqueRef::new("Token", 9u8);
+    let ov = Value::from_data(&Data::Opaque(o.clone()));
+    assert!(ov.as_opaque().is_some_and(|x| x.same(&o)));
 }
 
 #[test]
 fn templates_and_tools() {
     let t = parse_template("a ${{ x }} b ${{ y + 1 }}").unwrap();
     assert!(!t.is_single());
-    assert_eq!(t.part(1).unwrap().text(), "a ${{ x }} b ${{ y + 1 }}");
+    assert_eq!(t.part(0).unwrap().text(), "x");
+    assert_eq!(t.part(1).unwrap().text(), "y + 1");
     assert!(t.part(2).is_none());
+    assert_eq!(parse("  // note\n x + 1 ").unwrap().text(), "x + 1");
+    let call_arg = parse("f(a + 1, 2)").unwrap().analyze().calls[0].args[0]
+        .clone()
+        .unwrap();
+    assert_eq!(call_arg.text(), "a + 1");
     assert_eq!(t.analyze(TemplateMode::String).names, ["x", "y"]);
     assert_eq!(format("1+2").unwrap(), "1 + 2\n");
     let env = Env::builder()
@@ -331,7 +430,6 @@ export const sumRec = (q: {a: int, b: int}) => q.a + q.b;
 export const noRec = (_: int) => 42;
 "#;
     let parsed = parse(src).unwrap();
-    assert!(!parsed.has_result());
 
     // CheckResult and Program both expose Entries in text order.
     let opts = CompileOptions::default()

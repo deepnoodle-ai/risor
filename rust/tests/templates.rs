@@ -74,7 +74,8 @@ fn the_two_modes() {
 fn a_part_as_its_own_program() {
     let t = parse_template("a ${{ pr.number + 1 }} b ${{ len(tags) }}").unwrap();
     let p = t.part(1).unwrap();
-    assert_eq!(run(p), format!("{:?}", Value::Num(2.0)));
+    assert_eq!(p.text(), "len(tags)");
+    assert_eq!(run(p), format!("{:?}", Value::from_data(&Data::Float(2.0))));
     let p = t.part(0).unwrap();
     // Spans are in the whole text.
     assert!(env().check(&p, &Expected::None).is_ok());
@@ -146,11 +147,12 @@ fn analysis_of_a_template() {
     assert_eq!(r.calls[0].name, "geo.distance");
     // An argument as a program of its own text, with spans in the whole text.
     let arg = r.calls[0].args[1].clone().unwrap();
+    assert_eq!(arg.text(), "1 + 2");
     let prog = Env::default()
         .compile(&arg, CompileOptions::default())
         .unwrap();
     let out = prog.run(&risor::NoVars).unwrap();
-    assert_eq!(format!("{out:?}"), format!("{:?}", Value::Num(3.0)));
+    assert_eq!(out.as_f64(), Some(3.0));
     // A lambda argument is not a program.
     let p = parse("f(x => x)").unwrap();
     assert!(p.analyze().calls[0].args[0].is_none());
@@ -187,7 +189,7 @@ fn a_call_of_many_arguments() {
             .compile(&arg, CompileOptions::default())
             .unwrap();
         let out = prog.run(&risor::NoVars).unwrap();
-        assert_eq!(format!("{out:?}"), format!("{:?}", Value::Num(i as f64)));
+        assert_eq!(out.as_f64(), Some(i as f64));
     }
     // The last argument reads a name no environment declares: its
     // diagnostic is at its span in the whole text, the `z` of `z)`.

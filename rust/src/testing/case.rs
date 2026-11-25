@@ -284,89 +284,90 @@ pub struct RunnerCase {
 /// One case, with the header laid over it (3.10.2).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Case {
+    /// The unique name of the case within its file.
     pub name: String,
     /// The program text, from `source` or read from `file`.
-    pub source: String,
+    pub(crate) source: String,
     /// F2: the text is a template, taken in this mode (4.1).
-    pub template: Option<crate::template::TemplateMode>,
-    pub version: Option<String>,
-    pub env: Option<String>,
+    pub(crate) template: Option<crate::template::TemplateMode>,
+    pub(crate) version: Option<String>,
+    pub(crate) env: Option<String>,
     /// F1: variables declared by schema, with their options (7.1).
-    pub schemas: Vec<(String, Json, SchemaOptions)>,
+    pub(crate) schemas: Vec<(String, Json, SchemaOptions)>,
     /// F4: named types, in order (9.1).
-    pub types: Vec<TypeDecl>,
+    pub(crate) types: Vec<TypeDecl>,
     /// F4 9.1 item 5: the case has the field `types`, perhaps empty.
-    pub has_types: bool,
+    pub(crate) has_types: bool,
     /// F6: the opt-in groups the case turns on (`f06-groups.md` 11.1).
-    pub groups: Vec<String>,
+    pub(crate) groups: Vec<String>,
     /// F4: a case of the second kind: a type text and a host value (9.2).
-    pub conform: Option<(String, Json)>,
+    pub(crate) conform: Option<(String, Json)>,
     /// F8: the maximum of `ConformAll` in a conform case (`f08-errors.md` 7.5).
-    pub conform_max: Option<usize>,
+    pub(crate) conform_max: Option<usize>,
     /// F4: the step limit of the conformance function in a conform case
     /// (`f04-conversion.md` 9.2), or `None` for the default.
-    pub conform_limit: Option<u64>,
+    pub(crate) conform_limit: Option<u64>,
     /// F8: a case of the third kind (`f08-errors.md` 7.4).
-    pub render: Option<RenderCase>,
+    pub(crate) render: Option<RenderCase>,
     /// F9: a runner case (`f09-testing.md` 3).
-    pub runner: Option<RunnerCase>,
+    pub(crate) runner: Option<RunnerCase>,
     /// F12: a format, completion or hover case (`f12-tools.md` 7).
-    pub tool: Option<super::tools::ToolCase>,
+    pub(crate) tool: Option<super::tools::ToolCase>,
     /// The `expect` as written, or `None` when the case has none (update
     /// mode, `f09-testing.md` 4.2).
-    pub expect_raw: Option<Json>,
+    pub(crate) expect_raw: Option<Json>,
     /// The base environment of the file it was loaded from (F9 7.4).
-    pub base: Option<Base>,
+    pub(crate) base: Option<Base>,
     /// The static codes of the case, by the directory of its file.
-    pub statics: Statics,
-    pub opaque: Vec<String>,
+    pub(crate) statics: Statics,
+    pub(crate) opaque: Vec<String>,
     /// `Type.method` and its stub (3.10.4 item 2).
-    pub methods: Vec<(String, Stub)>,
-    pub functions: Vec<(String, Stub)>,
+    pub(crate) methods: Vec<(String, Stub)>,
+    pub(crate) functions: Vec<(String, Stub)>,
     /// F16 11.8: the `Doc` of each declaration that has one, by its key.
-    pub docs: Vec<(String, String)>,
-    pub reject: Option<Vec<String>>,
+    pub(crate) docs: Vec<(String, String)>,
+    pub(crate) reject: Option<Vec<String>>,
     /// The removed library entries (`03-host.md` 3.10.3).
-    pub removed: Vec<String>,
+    pub(crate) removed: Vec<String>,
     /// F14: the host facts `someNotNull`, each as written (`f14-host-facts.md`
     /// 10.1). `None` when the case gives no `facts`.
-    pub facts: Option<Vec<Vec<String>>>,
-    pub returns: Option<String>,
+    pub(crate) facts: Option<Vec<Vec<String>>>,
+    pub(crate) returns: Option<String>,
     /// F10: the expected result by schema, with its options (`f10-config.md`
     /// 10.1).
-    pub returns_schema: Option<(Json, SchemaOptions)>,
+    pub(crate) returns_schema: Option<(Json, SchemaOptions)>,
     /// F10: the case is run as a load (10.2).
-    pub load: bool,
+    pub(crate) load: bool,
     /// F16 12.10: the entry point to call, positional `args` or record `input`,
     /// and per-entry expected return types (`entryReturns`).
-    pub entry: Option<String>,
-    pub args: Option<Vec<Json>>,
-    pub input: Option<Json>,
-    pub entry_returns: Vec<(String, String)>,
+    pub(crate) entry: Option<String>,
+    pub(crate) args: Option<Vec<Json>>,
+    pub(crate) input: Option<Json>,
+    pub(crate) entry_returns: Vec<(String, String)>,
     /// `None` when the case gives no `vars`.
-    pub vars: Option<Vec<(String, Json)>>,
-    pub limits: Limits,
-    pub skip: Option<String>,
-    pub precondition: Option<bool>,
+    pub(crate) vars: Option<Vec<(String, Json)>>,
+    pub(crate) limits: Limits,
+    pub(crate) skip: Option<String>,
+    pub(crate) precondition: Option<bool>,
     /// `false`: the program is one the type rules reject on purpose; it is
     /// run with the static rules alone (`03-host.md` 3.10.3).
-    pub check: bool,
-    pub expect: Expect,
+    pub(crate) check: bool,
+    pub(crate) expect: Expect,
 }
 
 /// A case file that was read and found valid.
 #[derive(Clone, Debug)]
 pub struct CaseFile {
     /// Source path the file was loaded from, or empty when loaded from text.
-    pub path: PathBuf,
+    pub(crate) path: PathBuf,
     /// Cases in file order.
-    pub cases: Vec<Case>,
+    pub(crate) cases: Vec<Case>,
     /// The file's text, which update mode rewrites (`f09-testing.md` 4.5).
-    pub text: Option<String>,
+    pub(crate) text: Option<String>,
     /// A program case file (`f09-testing.md` 5), which is never written.
-    pub program: bool,
+    pub(crate) program: bool,
     /// The base environment the file was loaded with (F9 7.4).
-    pub base: Option<Base>,
+    pub(crate) base: Option<Base>,
 }
 
 /// The base environment of a loaded file, in which its cases run.

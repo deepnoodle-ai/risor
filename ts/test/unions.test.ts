@@ -3,11 +3,11 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv } from "../src/host/api.ts";
+import { createEnv, envDeclaredType } from "../src/host/api.ts";
 import { join, printType, typeEqual, typeSize, unite } from "../src/types/type.ts";
 
 const env = createEnv({ namedTypes: [{ name: "Shape", type: '{kind: "circle", r: float} | {kind: "rect", h: float, w: float}' }] });
-const T = (text: string) => env.declaredType(text);
+const T = (text: string) => envDeclaredType(env, text);
 
 describe("tagged unions (f05 2, 4)", () => {
   test("printing follows the least string of each tag set, and reads back", () => {

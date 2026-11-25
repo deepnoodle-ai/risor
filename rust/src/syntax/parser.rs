@@ -29,10 +29,12 @@ pub struct Expr {
 }
 
 impl Expr {
-    /// The text of the program, as parsed: a U+FEFF at the start is not part
-    /// of it.
+    /// The program's own text: the source between the start and end of its
+    /// span, without surrounding white space or comments. For a part of a
+    /// larger text, such as [`Template::part`](crate::Template::part) or
+    /// [`CallSite::args`](crate::CallSite::args), it is that part alone.
     pub fn text(&self) -> String {
-        self.source.chars().iter().collect()
+        self.source.slice(self.ast.span(self.ast.root))
     }
 
     /// The analysis of the program (F2 3.1): the names it reads, the paths
@@ -43,7 +45,7 @@ impl Expr {
     }
 
     /// Whether the program has a result expression (`f16-entry-points.md` 12.2).
-    pub fn has_result(&self) -> bool {
+    pub(crate) fn has_result(&self) -> bool {
         matches!(
             self.ast.kind(self.ast.root),
             NodeKind::Program {

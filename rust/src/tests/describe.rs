@@ -282,7 +282,7 @@ fn a_schema_variable_reads_its_value_in_place() {
     m.insert("order".to_string(), crate::Data::Map(o));
     assert_eq!(
         format!("{:?}", p.run(&m).unwrap()),
-        format!("{:?}", crate::Value::Num(1.0))
+        format!("{:?}", crate::Value::from_data(&crate::Data::Float(1.0)))
     );
 }
 

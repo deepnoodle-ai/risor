@@ -243,9 +243,11 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
     return (this.#t === null ? this : wrap(T.nonnull(this.#t), this.#cls)) as Type<Exclude<T, null>>;
   }
 
-  /** Whether null is one of the alternatives. `any` is not nullable by this test. */
+  /** Whether `null` is a value of this type. `any` is nullable; an invalid type is not. */
   isNullable(): boolean {
-    return this.#t !== null && T.hasNull(this.#t);
+    if (this.#t === null) return false;
+    const u = T.unfold(this.#t);
+    return T.isAny(u) || u.null === true;
   }
 
   /** Whether the map alternative is an exact record: no keys beyond its fields. */

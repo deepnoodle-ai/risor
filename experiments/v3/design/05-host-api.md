@@ -2526,14 +2526,13 @@ A binding may differ from the others only in these five ways.
 | 2 | How an environment is declared | Option values: `NewEnv(decls...)` | One options object: `createEnv({...})` | A builder: `Env::builder()...build()` |
 | 3 | How a failure reaches the host | A returned `error` | A thrown `RisorError` | A returned `Result` |
 | 4 | How a run is cancelled | `context.Context` | `AbortSignal` | `RunOptions` |
-| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero`, `Budget` / `ZeroLimit`, `Func` (`Params`, `Signature`, `Reflective`), `Methods[T]` (`ForMethod`, `Rename`, `Skip`), `ErrCallEnded` | `Infer<X>`, the parameters of `Type<T>`, `Env<V>` and `Program<V>`, `Type` as a Standard Schema (open, R202), `@deepnoodle/risor/tokens` | `type_of::<T>()`, `#[derive(Host)]`, `Host` / `HostList` / `HostMap` / `HostType` / `Opaque` / `OpaqueType` / `OptionLike` / `TypeCx` / `RecordType` / `TypeError`, `var_host::<T>()`, `load::<T>()` / `load_with::<T>()`, `Decode` / `DecodeCx`, `Env::limits()`, `Expr::has_result()` |
+| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero`, `Budget` / `ZeroLimit`, `Func` (`Params`, `Signature`, `Reflective`), `Methods[T]` (`ForMethod`, `Rename`, `Skip`), `ErrCallEnded` | `Infer<X>`, the parameters of `Type<T>`, `Env<V>` and `Program<V>`, `Type` as a Standard Schema (open, R202), `@deepnoodle/risor/tokens` | `type_of::<T>()`, `#[derive(Host)]`, `Host` / `HostList` / `HostMap` / `HostType` / `Opaque` / `OpaqueType` / `OptionLike` / `TypeCx` / `RecordType` / `TypeError`, `var_host::<T>()`, `load::<T>()` / `load_with::<T>()`, `Decode` / `DecodeCx`, `Env::limits()` |
 
 Everything else is the same: the concepts, their names, which object a
 function belongs to, what it takes, and what it gives. A name in the tables
 below is the canonical name. Each binding writes it in its own case (row 1).
 `23-host-api-freeze.md` records the full measured API listing of all three
-bindings and the small parity and boundary items awaiting owner approval
-before 3.0 freezes (issue #706).
+bindings and the pre-freeze cleanups settled before 3.0 freezes (issue #706).
 
 ### E.2 The boundary
 
@@ -2543,10 +2542,9 @@ before 3.0 freezes (issue #706).
    `@deepnoodle/risor/testing`, Rust `risor::testing`. TypeScript also exports
    `@deepnoodle/risor/tokens` for editor syntax colouring.
 3. Everything else is private: Go `go/internal/`; TypeScript not exported from
-   `index.ts`; Rust `pub(crate)`, or `#[doc(hidden)]` where a binary or an
-   integration test of the crate needs it. (Pending owner review in
-   `23-host-api-freeze.md`: narrowing `risor::testing` submodules and hiding
-   internal TypeScript class fields.)
+   `index.ts`, with internal class state hidden in `#` private fields and
+   module-internal closures rather than public members; Rust `pub(crate)`, or
+   `#[doc(hidden)]` where a binary or an integration test of the crate needs it.
 4. One concept has one way to reach it. An alias or a second spelling of the
    same step is removed.
 5. The options, field types, constants and result records of a concept listed
@@ -2622,7 +2620,7 @@ code for it.
 | --- | --- | --- | --- | --- |
 | A parsed program | `Expr` | `*Expr` | `Expr` | `Expr` |
 | Parse | `parse` | `Parse(text, opts...)` | `parse(text, options?)` | `parse(text)`, `parse_with(text, opts)` |
-| Source size limit (03 3.6.1) | `sourceLimit` | `SourceLimit`, `MaxSource` | `SourceOptions{sourceLimit}` | `ParseOptions{source_limit}`, `SOURCE_LIMIT` |
+| Source size limit (03 3.6.1) | `sourceLimit` | `SourceLimit`, `MaxSource` | `SourceOptions{sourceLimit}`, `SOURCE_LIMIT` | `ParseOptions{source_limit}`, `SOURCE_LIMIT` |
 | Its text | `text` | `x.Text()` | `x.text` | `x.text()` |
 | Analyze (F2) | `analyze` | `x.Analyze()` | `x.analyze()` | `x.analyze()` |
 | The report of an analysis | `Analysis` | `Analysis` | `Analysis` | `Analysis` |
@@ -2635,7 +2633,7 @@ code for it.
 | A compiled program | `Program` | `*Program` | `Program` | `Program` |
 | Its check result | `checkResult` | `p.CheckResult()` | `p.checkResult` | `p.check_result()` |
 | Its entry points (F16 D2) | `entries` | `p.Entries()` | `p.entries()` | `p.entries()` |
-| Whether it has a result expression (F16 D2) | `hasResult` | `p.HasResult()` | `p.hasResult` | `p.has_result()` (also `x.has_result()`) |
+| Whether it has a result expression (F16 D2) | `hasResult` | `p.HasResult()` | `p.hasResult` | `p.has_result()` |
 | Run | `run` | `p.Run(ctx, vars)` | `p.run(vars?, {signal}?)` | `p.run(&vars)`, `p.run_with(&vars, opts)` |
 | Run and report usage | `measure` | `p.Measure(ctx, vars)` | `p.measure(vars?, {signal}?)` | `p.measure(&vars)`, `p.measure_with(&vars, opts)` |
 | Call an entry point (F16 D2) | `call` | `p.Call(ctx, name, args, vars)` | `p.call(name, args?, vars?, {signal}?)` | `p.call(name, &args, &vars)`, `p.call_with(...)` |
@@ -2673,9 +2671,12 @@ code for it.
 | Format | `formatTemplate` | `FormatTemplate(text, opts...)` | `formatTemplate(text, options?)` | `format_template(text)`, `format_template_with(text, opts)` |
 
 `part(i)` counts the parts only, from 0, not the segments. It gives the part's
-expression as a program, or absent when there is no part `i`. (Open item in
-`23-host-api-freeze.md`: Go's `x.Text()` returns only the part's slice while
-TypeScript's `x.text` and Rust's `x.text()` return the whole template text.)
+expression as a program, or absent when there is no part `i`. In all three
+bindings, `Expr.text` / `Text()` returns the program's own text slice between
+the start and end of its span (without surrounding white space or comments):
+for a part of a larger text (`Template.part(i)` or `CallSite.args[i]`), that
+is the part's own slice, while spans inside diagnostics from checking, compiling
+or running that `Expr` remain positions in the whole source text.
 
 ### E.6 Host functions and values
 
@@ -2700,10 +2701,10 @@ TypeScript's `x.text` and Rust's `x.text()` return the whole template text.)
 | Building and reading a type (R179) | | constructors, accessors, `Join`, `Fits`, `Equal`, `String` | the same names | the same names |
 | Test a value against a type | `conform` | `Conform(v, t, opts...)` (`ConformSteps`) | `conform(v, t, options?)` (`ConformOptions`) | `conform(&v, &t)`, `conform_with(&v, &t, &opts)` (`ConformOptions`) |
 | Every failure, up to a maximum | `conformAll` | `ConformAll(v, t, max, opts...)` | `conformAll(v, t, max, options?)` | `conform_all(&v, &t, max)`, `conform_all_with(&v, &t, max, &opts)` |
-| Load a config file into a value | `loadValue` | `LoadValue(ctx, env, text, vars, opts...)` | `loadValue(env, text, options)` | `load_value(&env, text, &vars, opts)` |
-| Load into a host type | `load` | `Load[T](ctx, env, text, vars, dst, opts...)` | none (E.1 row 5) | `load::<T>(&env, text, &vars, max)`, `load_with::<T>(...)` |
+| Load a config file into a value | `loadValue` | `LoadValue(ctx, env, text, vars, opts...)` | `loadValue(env, text, options)` | `load_value(&env, text, &vars, opts)` (`LoadOptions.run`) |
+| Load into a host type | `load` | `Load[T](ctx, env, text, vars, dst, opts...)` | none (E.1 row 5) | `load::<T>(&env, text, &vars, max)`, `load_with::<T>(&env, text, &vars, opts)` |
 | Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)`, into plain data (F10 6.6) | `decode::<T>(&v)` |
-| A failed load | `LoadError` | `*LoadError` (`StepDeclare`..`StepDecode`) | `LoadError` | `LoadError` |
+| A failed load | `LoadError` | `*LoadError` (`StepDeclare`..`StepDecode`) | `LoadError` (`STEP_DECLARE`..`STEP_DECODE`) | `LoadError` (`STEP_DECLARE`..`STEP_DECODE`) |
 
 The structural type API of R179 is offered by all three. A `Type` is immutable
 and may be shared. "Absent" below is the binding's own form: Go a second
@@ -2733,10 +2734,10 @@ and may be shared. "Absent" below is the binding's own form: Go a second
 | `t.literals()` | | the strings of its literal set, sorted; empty when its string alternative is every string or it has none |
 | `t.tag()` | | the tag key of a tagged union, or absent |
 | `t.nonNull()` | | `t` without null |
-| `t.isNullable()`, `t.isExact()` | | bool |
+| `t.isNullable()`, `t.isExact()` | | bool. `isNullable()` reports whether `null` is a value of `t` (`true` for `any`, `null`, and any union containing `null`; `false` for invalid types). |
 | `t.opaqueName()` | | the opaque name, or empty |
-| `t.fits(want)` | a `Type` | whether `t` fits `want` by Fits (`spec/core/05-types.md` 4.2), the checker's one assignability relation. `any` fits every type |
-| `t.equal(u)` | a `Type` | whether the two are the same type |
+| `t.fits(want)` | a `Type` | whether `t` fits `want` by Fits (`spec/core/05-types.md` 4.2), the checker's one assignability relation. `any` fits every type; `false` when either is invalid |
+| `t.equal(u)` | a `Type` | whether the two are the same type; `false` when either is invalid |
 | text form | | the type text of `spec/core/05-types.md` 3.9: Go `String()`, TypeScript `toString()`, Rust `Display` |
 | `t.err()` | | the `bad-type` failure of an invalid type, or absent |
 
@@ -2794,7 +2795,7 @@ gives the TypeScript type of its values, in the types only (E.1 row 5).
 | Hover (F12) | `hover` | `env.Hover(text, pos, opts...)` | `env.hover(text, pos, expected?, options?)` | `env.hover(text, pos, &expected)`, `env.hover_with(text, pos, &expected, opts)` |
 | A completion | `Completion`, `Candidate` | the same | the same | the same |
 | A hover | `Hover` | `Hover` | `Hover` | `Hover` |
-| Case-file testing (F9; separate entry point) | (E.2 item 2) | `risortest`: `Run`, `Load`, `Parse`, `File`, `Case`, `Verdict`, `Diff`, `Origin`, `Option` (`Base`, `Filter`, `Sources`, `Update`, `Vars`) | `@deepnoodle/risor/testing`: `loadCaseFile`, `caseFile`, `caseFileText`, `defineCases`, `CaseFile`, `Case`, `Verdict`, `Difference`, `CaseOptions` | `risor::testing`: `load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError` (plus internal suite helpers; see `23-host-api-freeze.md`) |
+| Case-file testing (F9; separate entry point) | (E.2 item 2) | `risortest`: `Run`, `Load`, `Parse`, `File`, `Case`, `Verdict`, `Diff`, `Origin`, `Option` (`Base`, `Filter`, `Sources`, `Update`, `Vars`) | `@deepnoodle/risor/testing`: `loadCaseFile`, `caseFile`, `caseFileText`, `defineCases`, `CaseFile`, `Case`, `Verdict`, `Difference`, `CaseOptions` | `risor::testing`: `load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError` |
 
 A position `Pos` has two public fields, a line and a column
 (`spec/core/03-host.md` 3.7.7), in all three, and no offset. There is one
