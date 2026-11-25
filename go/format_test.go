@@ -156,6 +156,19 @@ func TestFormatManyCommentsAfterOneToken(t *testing.T) {
 	assert.True(t, took < 3*time.Second, "took %v", took)
 }
 
+// TestFormatTemplateManyCommentedParts checks that the parts of a template
+// share one count of the template's line ends, so a template of many parts
+// with comments formats in time linear in its length.
+func TestFormatTemplateManyCommentedParts(t *testing.T) {
+	src := strings.Repeat("x ${{ a /* c */ }}\n", 20000)
+	start := time.Now()
+	out, err := risor.FormatTemplate(src)
+	took := time.Since(start)
+	assert.NoError(t, err)
+	assert.Equal(t, strings.Repeat("x ${{ a /* c */ }}\n", 20000), out)
+	assert.True(t, took < 3*time.Second, "took %v", took)
+}
+
 // TestFormatLongConditionalChain checks that a broken `? :` chain is
 // written flat, so its output grows linearly with its length (issue #665).
 func TestFormatLongConditionalChain(t *testing.T) {
@@ -164,5 +177,5 @@ func TestFormatLongConditionalChain(t *testing.T) {
 	out, err := risor.Format(src)
 	assert.NoError(t, err)
 	// Each link is a line: "true ? 1\n", then ": true ? 1\n".
-	assert.Equal(t, out, "true ? 1\n"+strings.Repeat(": true ? 1\n", n-1)+": 2\n")
+	assert.Equal(t, "true ? 1\n"+strings.Repeat(": true ? 1\n", n-1)+": 2\n", out)
 }
