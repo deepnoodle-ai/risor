@@ -793,7 +793,8 @@ function compare(c: Case, o: Outcome): Difference[] {
   if (ex.phase === "parse") {
     ok = ex.diagnostics.length <= found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   } else if (ex.phase === "declare") {
-    ok = ex.diagnostics.length === found.length && matchUnordered(ex.diagnostics, found);
+    // 03-host 3.10.7 item 6: the one expected is among those reported.
+    ok = ex.diagnostics.length <= found.length && matchUnordered(ex.diagnostics, found);
   } else {
     ok = ex.diagnostics.length === found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   }

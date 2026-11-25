@@ -789,8 +789,8 @@ func compareDiagnostics(c *casefile.Case, got []risor.Diagnostic, checked bool) 
 				return d
 			}
 		}
-	case "declare": // without regard to order
-		if len(got) != len(e.Diagnostics) {
+	case "declare": // without regard to order; further reported ones are not compared (03-host 3.10.7 item 6)
+		if len(got) < len(e.Diagnostics) {
 			return d
 		}
 		used := make([]bool, len(got))

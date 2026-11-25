@@ -404,6 +404,12 @@ creates no value, then charges, then builds:
 Scratch space is not a value and is not charged. It is bounded by the units and
 steps already charged (`04:A.4`).
 
+D65 relaxes the order for an entry whose result is no larger than its input:
+`groupBy`, `countBy`, `unique`, `uniqueBy`, `indexBy` and `toMap` may build
+their result and then charge, with the same charges, failure and callback
+order (`02-evaluation.md` 6.2 item 3). `repeat`, `padStart`, `padEnd`, `range`
+and every entry whose result can outgrow its input still charge first.
+
 *Why this is enough.* Every entry's work is at most a constant times its steps,
 and every value it creates is covered by its units, before the memory is taken.
 `range(1e9)` fails with `allocation-exceeded` and allocates nothing.
@@ -1172,7 +1178,7 @@ follows the harness of Canonical's Starlark fork (`01:4.2`).
 | --- | --- |
 | 1. Generate | For each entry, arguments of size N, for N of 0, 1, 2, 63, 64, 65, 1,000 and 100,000. Size means elements for a list, entries for a map and code points for a string. Generators come from the parameter types, in several shapes: all equal, all distinct, already sorted, reversed, every position a match, no match, text above U+FFFF. Callbacks are fixed lambdas whose cost is known, and for an entry that takes a key they give keys in the same shapes, as numbers and as strings. An optional parameter is tried present and absent |
 | 2. Declared against charged | The steps and units the run reports must **equal** the formulas evaluated on those arguments and that result, at every N and shape |
-| 3. Charged before work | With a budget one short of each formula, the run fails with the limit error, and the implementation's allocation counter shows the result was not built |
+| 3. Charged before work | With a budget one short of each formula, the run fails with the limit error, and the implementation's allocation counter shows the result was not built. An entry that D65 lets build first is exempt from the counter test |
 | 4. Charged against real work | Time per step at N of 100,000 is at most a fixed factor above time per step at 1,000. Memory created per unit is under the implementation's published bytes per unit (`04:A.6`). This is what catches an entry whose formula is linear and whose code is not |
 | 5. No mutation | The arguments are deeply equal before and after |
 | 6. Determinism | A second run, with maps built in another insertion order, gives the same result, steps and units |

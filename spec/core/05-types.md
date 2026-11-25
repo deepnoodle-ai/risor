@@ -1501,7 +1501,8 @@ wrong. What is wrong is the message's business.
 of 3.1 and the token rules of 3.2, whether or not it has a type checker. It
 needs the names of the variables and functions, and the count of parameters of
 each function (22.2). These errors need no type checker, and every
-implementation reports them:
+implementation reports them, except in the type text of a declaration whose
+name is refused (`03-host.md` 3.3.4 item 4):
 
 | Error | Code |
 | --- | --- |

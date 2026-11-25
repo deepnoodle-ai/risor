@@ -1601,10 +1601,11 @@ fn compare_failure(
                     .zip(diags)
                     .all(|(e, a)| diag_matches(e, a, checked))
         }
-        // Without regard to order (item 6).
+        // Without regard to order; further reported ones are not
+        // compared (item 6).
         Phase::Declare => {
             let mut used = vec![false; diags.len()];
-            f.diagnostics.len() == diags.len()
+            f.diagnostics.len() <= diags.len()
                 && f.diagnostics.iter().all(|e| {
                     match (0..diags.len())
                         .find(|&i| !used[i] && diag_matches(e, &diags[i], checked))
