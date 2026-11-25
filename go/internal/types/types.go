@@ -790,10 +790,16 @@ func Merge(r *Record, m *Type) *Record {
 		}
 		rt := r.Rest
 		req := false
-		if rf, ok := r.field(mf.Key); ok {
+		rf, inR := r.field(mf.Key)
+		if inR {
 			rt, req = rf.Type, !rf.Optional
 		}
-		fs = append(fs, Field{Key: mf.Key, Type: Join(mf.Type, rt), Optional: !req})
+		f := Field{Key: mf.Key, Type: Join(mf.Type, rt), Optional: !req}
+		if !inR && r.Rest.IsNever() {
+			// The right operand gives the field alone (F16 11.4).
+			f.Doc = mf.Doc
+		}
+		fs = append(fs, f)
 	}
 	for _, rf := range r.Fields {
 		if _, ok := mr.field(rf.Key); ok {

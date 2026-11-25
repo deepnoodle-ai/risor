@@ -892,7 +892,7 @@ func compareSchema(want any, cr *risor.CheckResult) *Diff {
 	// out (F17 12.4 item 3): the schema found, with such a $ref replaced by
 	// its entry, must be the schema of the type it gives.
 	g2, _ := casefile.DecodeJSON(again)
-	if !value.Equal(inlineDefs(got, g2), g2) {
+	if !value.Equal(sortAnyOf(inlineDefs(got, g2)), sortAnyOf(g2)) {
 		return &Diff{"schema", jsonForm(want), "the law: maps back to the schema " + string(again)}
 	}
 	return nil
@@ -916,6 +916,22 @@ func inlineDefs(s, back any) any {
 	}
 	var walk func(v any) any
 	walk = func(v any) any {
+		if m, ok := v.(map[string]any); ok && m["properties"] != nil {
+			// A property named $defs is a field: walk its schema as any.
+			out := map[string]any{}
+			for k, e := range m {
+				if k == "properties" {
+					ps := map[string]any{}
+					for pk, pv := range e.(map[string]any) {
+						ps[pk] = walk(pv)
+					}
+					out[k] = ps
+				} else {
+					out[k] = walk(e)
+				}
+			}
+			return out
+		}
 		switch x := v.(type) {
 		case []any:
 			out := make([]any, len(x))
@@ -943,16 +959,19 @@ func inlineDefs(s, back any) any {
 			}
 			out := map[string]any{}
 			for k, e := range x {
-				if k == "$defs" {
-					continue
-				}
 				out[k] = walk(e)
 			}
 			return out
 		}
 		return v
 	}
-	out := walk(sm).(map[string]any)
+	root := map[string]any{}
+	for k, e := range sm {
+		if k != "$defs" { // only the root's $defs
+			root[k] = e
+		}
+	}
+	out := walk(root).(map[string]any)
 	if len(keep) > 0 {
 		nd := map[string]any{}
 		for k := range keep {
@@ -963,6 +982,30 @@ func inlineDefs(s, back any) any {
 		out["$defs"] = nd
 	}
 	return out
+}
+
+// sortAnyOf puts the alternatives of each anyOf in the order of their JSON
+// text, so that two schemas are compared with their alternatives in any
+// order (F16 11.8 item 2).
+func sortAnyOf(v any) any {
+	switch x := v.(type) {
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = sortAnyOf(e)
+		}
+		return out
+	case map[string]any:
+		out := map[string]any{}
+		for k, e := range x {
+			out[k] = sortAnyOf(e)
+		}
+		if alts, ok := out["anyOf"].([]any); ok {
+			sort.Slice(alts, func(i, j int) bool { return jsonForm(alts[i]) < jsonForm(alts[j]) })
+		}
+		return out
+	}
+	return v
 }
 
 // sameType compares two type texts by structure (3.10.6).

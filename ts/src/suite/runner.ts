@@ -188,32 +188,24 @@ function applyDocs(c: Case, functions: Record<string, HostFunction>, opaque: Rec
 
 type SchemaJson = Parameters<typeof schemaJsonText>[0];
 
-/**
- * f16 11.8: the result field `schema`. SchemaOf of the checked type, compared
- * as JSON data (null: refused); then the law (11.8 item 2): the schema found,
- * mapped back by F1 with no option, is Equal to the checked type, and its
- * SchemaOf is the schema found with each `$ref` to a `$defs` entry it does not
- * hold written out (11.5 item 6).
- */
-function schemaLaw(checked: HostType | undefined, expected: Json): { ok: boolean; found: Json } {
-  if (checked === undefined) return { ok: false, found: "no checked type" };
-  let found: SchemaJson | null;
+/** The schema a case's checked type gives (f16 11.8), null when SchemaOf refuses it, and why the law fails, or null. */
+function schemaFound(checked: HostType | undefined): { found: Json; law: string | null } {
+  if (checked === undefined) return { found: null, law: "no checked type" };
+  let found: SchemaJson;
   const t = innerType(checked);
   try {
     found = innerSchemaOf(t);
   } catch (e) {
     if (!(e instanceof SchemaRefused)) throw e;
-    found = null;
+    return { found: null, law: null };
   }
-  const foundJson = found === null ? null : (JSON.parse(schemaJsonText(found)) as Json);
-  if (found === null || expected === null) return { ok: found === null && expected === null, found: foundJson };
-  if (!plainEqual(hostValue(foundJson as Json), hostValue(expected), CLASSIFIER)) return { ok: false, found: foundJson };
-  // The law.
+  const foundJson = JSON.parse(schemaJsonText(found)) as Json;
+  // The law (11.8 item 2).
   let back: Type;
   try {
     back = typeOfSchema(foundJson, []);
   } catch (e) {
-    return { ok: false, found: `the law: the schema found maps to no type (${(e as Error).message})` };
+    return { found: foundJson, law: `the law: the schema found maps to no type (${(e as Error).message})` };
   }
   let equal: boolean;
   try {
@@ -222,24 +214,61 @@ function schemaLaw(checked: HostType | undefined, expected: Json): { ok: boolean
     if (!(e instanceof PairLimit)) throw e;
     equal = false;
   }
-  if (!equal) return { ok: false, found: "the law: the type of the schema found is not Equal to the checked type" };
+  if (!equal) return { found: foundJson, law: "the law: the type of the schema found is not Equal to the checked type" };
   let again: SchemaJson;
   try {
     again = innerSchemaOf(back);
   } catch (e) {
     if (!(e instanceof SchemaRefused)) throw e;
-    return { ok: false, found: "the law: SchemaOf refuses the type of the schema found" };
+    return { found: foundJson, law: "the law: SchemaOf refuses the type of the schema found" };
   }
   const held = new Set(isObject(again as Json) && isObject((again as JsonObject)["$defs"]) ? Object.keys((again as JsonObject)["$defs"] as JsonObject) : []);
   const want = writeOut(found, held);
-  if (schemaJsonText(again) !== schemaJsonText(want)) return { ok: false, found: `the law: SchemaOf of the type of the schema found is ${schemaJsonText(again)}` };
-  return { ok: true, found: foundJson };
+  if (lawText(again) !== lawText(want)) return { found: foundJson, law: `the law: SchemaOf of the type of the schema found is ${schemaJsonText(again)}` };
+  return { found: foundJson, law: null };
 }
 
-/** A schema with each `$ref` to a `$defs` entry not in `held` replaced by that entry, and those entries dropped (f16 11.8 item 2). */
+/**
+ * f16 11.8: the result field `schema`. SchemaOf of the checked type, compared
+ * as JSON data (null: refused); then the law (11.8 item 2).
+ */
+function schemaLaw(checked: HostType | undefined, expected: Json): { ok: boolean; found: Json } {
+  const r = schemaFound(checked);
+  if (canonicalJson(r.found) !== canonicalJson(expected)) return { ok: false, found: r.found };
+  if (r.law !== null) return { ok: false, found: r.law };
+  return { ok: true, found: r.found };
+}
+
+/** Set an own key, `__proto__` among them. */
+function putKey(o: { [k: string]: SchemaJson }, k: string, v: SchemaJson): void {
+  Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+}
+
+/** The text of a schema for the law's comparison: the alternatives of each `anyOf` in any order (f16 11.8 item 2). */
+function lawText(s: SchemaJson): string {
+  const norm = (x: SchemaJson): SchemaJson => {
+    if (Array.isArray(x)) return x.map(norm);
+    if (typeof x !== "object") return x;
+    const out: { [k: string]: SchemaJson } = {};
+    for (const [k, v] of Object.entries(x)) {
+      let w = norm(v);
+      if (k === "anyOf" && Array.isArray(w)) w = [...w].sort((a, b) => compareText(schemaJsonText(a), schemaJsonText(b)));
+      putKey(out, k, w);
+    }
+    return out;
+  };
+  return schemaJsonText(norm(s));
+}
+
+/**
+ * A schema with each `$ref` to a root `$defs` entry not in `held` replaced by
+ * that entry (a `description` beside the `$ref` kept), and those entries
+ * dropped (f16 11.8 item 2). Only the root's `$defs` is read or dropped.
+ */
 function writeOut(s: SchemaJson, held: ReadonlySet<string>): SchemaJson {
   if (typeof s !== "object" || Array.isArray(s)) return s;
   const defs = isObject(s["$defs"] as Json) ? (s["$defs"] as { [k: string]: SchemaJson }) : {};
+  const has = (n: string) => Object.prototype.hasOwnProperty.call(defs, n);
   const go = (x: SchemaJson, depth: number): SchemaJson => {
     if (depth > 200) return x;
     if (Array.isArray(x)) return x.map((y) => go(y, depth + 1));
@@ -247,25 +276,27 @@ function writeOut(s: SchemaJson, held: ReadonlySet<string>): SchemaJson {
     const ref = x["$ref"];
     if (typeof ref === "string" && ref.startsWith("#/$defs/")) {
       const n = ref.slice("#/$defs/".length);
-      if (!held.has(n) && defs[n] !== undefined) {
+      if (!held.has(n) && has(n)) {
         const body = go(defs[n], depth + 1);
         if (typeof x.description !== "string" || typeof body !== "object" || Array.isArray(body)) return body;
-        return { ...body, description: x.description };
+        const out: { [k: string]: SchemaJson } = {};
+        for (const [k, v] of Object.entries(body)) putKey(out, k, v);
+        putKey(out, "description", x.description);
+        return out;
       }
     }
     const out: { [k: string]: SchemaJson } = {};
-    for (const [k, v] of Object.entries(x)) {
-      if (k === "$defs" && depth === 0) continue;
-      out[k] = go(v, depth + 1);
-    }
+    for (const [k, v] of Object.entries(x)) putKey(out, k, go(v, depth + 1));
     return out;
   };
-  const out = go(s, 0) as { [k: string]: SchemaJson };
+  const root: { [k: string]: SchemaJson } = {};
+  for (const [k, v] of Object.entries(s)) if (k !== "$defs") putKey(root, k, v);
+  const out = go(root, 0);
   const kept = Object.keys(defs).filter((n) => held.has(n));
-  if (kept.length > 0) {
+  if (kept.length > 0 && typeof out === "object" && !Array.isArray(out)) {
     const d: { [k: string]: SchemaJson } = {};
-    for (const n of kept) d[n] = go(defs[n], 1);
-    out["$defs"] = d;
+    for (const n of kept) putKey(d, n, go(defs[n], 1));
+    putKey(out, "$defs", d);
   }
   return out;
 }
@@ -1200,6 +1231,13 @@ function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): 
         case "sites":
           out.sites = (o.sites ?? []).map((x) => ({ class: x.class, span: x.span })) as Json;
           break;
+        case "schema": {
+          // f16 11.8: made anew from the checked type; a case whose law fails is not updated.
+          const r = schemaFound(o.checked);
+          if (r.law !== null) return null;
+          out.schema = r.found;
+          break;
+        }
         case "value": {
           if (!o.ran) break;
           const w = writable(o.value);

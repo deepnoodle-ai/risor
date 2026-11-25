@@ -600,6 +600,15 @@ export class Env<V = any, N = any> {
       methods.set(t, new Map(Object.entries(o.methods ?? {}).map(([m, f]) => [m, hostImpl(f)])));
     }
     this.classifier = new Classifier(tests);
+    // f16 11.6: each Doc is copied when the environment is built, so a later change to the options changes nothing.
+    const keep = (key: string, d: unknown) => {
+      if (typeof d === "string" && d !== "") this.docs.set(key, d);
+    };
+    for (const [k, f] of Object.entries(options.functions ?? {})) if (environment.functions.has(k)) keep(`function:${k}`, f.doc);
+    for (const [t, o] of Object.entries(options.opaque ?? {})) {
+      if (environment.opaque.has(t)) keep(`opaque:${t}`, o.doc);
+      for (const [m, f] of Object.entries(o.methods ?? {})) if (environment.methods.has(`${t}.${m}`)) keep(`method:${t}.${m}`, f.doc);
+    }
     this.compileEnv = { functions: fns, methods, removed: environment.removed };
     const hostCounts = new Map<string, Counts>();
     for (const [k, f] of fns) hostCounts.set(k, f.counts);
@@ -648,14 +657,10 @@ export class Env<V = any, N = any> {
    * or an opaque type (f16 11.6), or null when it has none or it is empty.
    */
   docOf(kind: "function" | "method" | "opaque", name: string): string | null {
-    let d: string | undefined;
-    if (kind === "function") d = this.environment.functions.has(name) ? this.options.functions?.[name]?.doc : undefined;
-    else if (kind === "method") {
-      const dot = name.indexOf(".");
-      d = this.environment.methods.has(name) ? this.options.opaque?.[name.slice(0, dot)]?.methods?.[name.slice(dot + 1)]?.doc : undefined;
-    } else d = this.environment.opaque.has(name) ? this.options.opaque?.[name]?.doc : undefined;
-    return typeof d === "string" && d !== "" ? d : null;
+    return this.docs.get(`${kind}:${name}`) ?? null;
   }
+
+  private readonly docs = new Map<string, string>();
 
   /**
    * An environment from a description (f01 5.4). It has no implementation of
@@ -963,13 +968,16 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
   const inherited = new Map<string, { node: TypeNode; type: InnerType | undefined }>();
   for (const [n, node] of pe.variables) if (!valueNames.has(n)) inherited.set(n, { node, type: pe.variableTypes.get(n) });
   const functions: Record<string, HostFunction> = {};
-  for (const [k, f] of Object.entries(p.functions ?? {})) if (!valueNames.has(k)) functions[k] = f;
+  for (const [k, f] of Object.entries(p.functions ?? {})) if (!valueNames.has(k)) functions[k] = { ...f, doc: parent.docOf("function", k) ?? undefined };
   Object.assign(functions, options.functions ?? {});
   // Opaque types: the parent's, less those the child declares.
   const childTypes = new Set(options.opaqueNames ?? Object.entries(options.opaque ?? {}).filter(([, o]) => o.test !== undefined).map(([k]) => k));
   const opaqueNames = [...pe.opaque].filter((t) => !childTypes.has(t));
   const opaque: Record<string, OpaqueType> = {};
-  for (const t of opaqueNames) opaque[t] = { test: p.opaque?.[t]?.test ?? (() => false), methods: { ...(p.opaque?.[t]?.methods ?? {}) }, doc: p.opaque?.[t]?.doc };
+  // f16 11.6 item 4: what the child inherits keeps the Doc the parent copied.
+  const inheritedMethods = (t: string): Record<string, HostFunction> =>
+    Object.fromEntries(Object.entries(p.opaque?.[t]?.methods ?? {}).map(([m, f]) => [m, { ...f, doc: parent.docOf("method", `${t}.${m}`) ?? undefined }]));
+  for (const t of opaqueNames) opaque[t] = { test: p.opaque?.[t]?.test ?? (() => false), methods: inheritedMethods(t), doc: parent.docOf("opaque", t) ?? undefined };
   for (const [t, o] of Object.entries(options.opaque ?? {})) {
     // f16 11.6 item 4: a replacement brings its own Doc; a type kept keeps its parent's.
     if (childTypes.has(t)) opaque[t] = { test: o.test ?? (() => false), methods: { ...(o.methods ?? {}) }, doc: o.doc };

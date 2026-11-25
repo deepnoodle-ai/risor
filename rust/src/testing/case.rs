@@ -2008,11 +2008,16 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             Ok(())
         }
         "render" => Ok(()),
-        // F16 11.8: its keys are tested against the case's declarations.
-        "docs" => match v {
-            Json::Obj(_) => Ok(()),
-            _ => Err("docs is not an object".into()),
-        },
+        // F16 11.8: each value a string, in the header too, whether or not
+        // a case replaces it; its keys are tested against the case's
+        // declarations once the header is laid over the case.
+        "docs" => {
+            let m = v.as_obj().ok_or("docs is not an object")?;
+            match m.iter().find(|(_, x)| x.as_str().is_none()) {
+                Some((k, _)) => Err(format!("the doc of {k:?} is not a string")),
+                None => Ok(()),
+            }
+        }
         "runner" => match v {
             Json::Str(_) | Json::Obj(_) | Json::Arr(_) => Ok(()),
             _ => Err("runner is not a string, an object or an array".into()),

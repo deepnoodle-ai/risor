@@ -621,10 +621,18 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                 Some(fr) => (&fr.ty, !fr.optional),
                 None => (&r.rest, false),
             };
+            // F16 11.4: a field the left does not list, beside a left rest
+            // of `never`, comes from the right alone and keeps its
+            // description; one joined with the left's has none.
+            let alone = !r.fields.contains_key(k) && r.rest.is_never();
             Field {
                 ty: join(&fm.ty, rt),
                 optional: !req,
-                doc: Default::default(),
+                doc: if alone {
+                    fm.doc.clone()
+                } else {
+                    Default::default()
+                },
             }
         };
         fields.insert(k.clone(), f);

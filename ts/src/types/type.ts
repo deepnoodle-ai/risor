@@ -1077,7 +1077,11 @@ export function merge(r: Rec, m: Rec | AnyType): Rec {
     }
     const rf = r.fields.get(k);
     const rt = rf !== undefined ? rf.type : r.rest;
-    fields.set(k, { type: join(mf.type, rt), optional: !(rf !== undefined && !rf.optional) });
+    const f: Field = { type: join(mf.type, rt), optional: !(rf !== undefined && !rf.optional) };
+    // f16 11.4: an optional field of the right operand that the left does not list, beside a left rest of never,
+    // comes from one source and keeps its description.
+    if (rf === undefined && isNever(r.rest) && mf.desc !== undefined) f.desc = mf.desc;
+    fields.set(k, f);
   }
   return { fields, rest: join(r.rest, mm.rest) };
 }

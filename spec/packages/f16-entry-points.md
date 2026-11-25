@@ -75,9 +75,9 @@ version number and no version marker.
 
 1. Packages are offered in a fixed order, each only with every package before
    it (`03-host.md` 3.11 item 2): F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11,
-   F13, F14, F16 slice D1, F17, F12. Slice D1 stands before F17, and each
-   later slice takes a place of its own after F17, in the order the slices
-   are built: F16 slice D1, F17, F16 slice D3 (`15-build-rulings.md` R211,
+   F13, F14, F16 slice D1, F17, F16 slice D3, F12. Slice D1 stands before
+   F17, and each later slice takes a place of its own after F17, in the order
+   the slices are built: F16 slice D1, F17, F16 slice D3 (`15-build-rulings.md` R211,
    R261, R371). Slice D2 takes its place after slice D3 when it is built.
 2. An implementation that offers this package offers F4: an annotation is a
    program type of F4, resolved by F4's rules. It offers F8, so a case of this
@@ -689,7 +689,7 @@ checkers cannot keep different ones (`17` 3.6, 17-11).
 | A field of a record that a Join of two records builds (`05-types.md` 4.1; F5 4.1 for the flat record of a union), and a field of a Meet (F1 3.6) | None, even when both sources had the same description and even when the two are one type: in `c ? a : a` no field of the result has one |
 | A Join that gives one of its operands as it is: `never` and the other, an alternative that one side has alone, two unions the same by structure (A's union, F5 4.1), and the steps of F17 12.5 item 4 that give A or B (steps 2, 4 and 6) | That operand's |
 | Pick (F1 3.6 item 2): a type that steps 1 and 3 give as it is | Kept. A Meet in step 2: none |
-| A spread, Merge (`05-types.md` 4.3) | A field that one source gives alone is kept: a required field of the right operand, a field of the left operand that the right does not list, beside a right rest of `never`. A field whose type joins the two sources has none |
+| A spread, Merge (`05-types.md` 4.3) | A field that one source gives alone is kept: a required field of the right operand; an optional field of the right operand that the left does not list, beside a left rest of `never`; a field of the left operand that the right does not list, beside a right rest of `never`. A field whose type joins the two sources has none |
 | `x as T`, `x is T` narrowing to T, an annotation | The type is T, with T's descriptions |
 | A literal's type (`05-types.md` 7): a map literal, a shorthand | None for its own fields. A field's type keeps the descriptions inside it: in `{w: x.w}` the field `w` has none, and the fields of `w`'s type keep theirs |
 | A type from a JSON Schema (F1 3) | 11.5 item 5 |
@@ -764,7 +764,11 @@ order. So two implementations give the same text for one type.
 7. **Bounded.** The text of SchemaOf(T) grows with the size of T (`05-types.md`
    20.7), which is at most 100,000, and with the text of its keys, strings and
    descriptions. A recursive type is written once.
-8. SchemaOf reads a type and nothing else. It charges no step and no unit, and
+8. **Depth.** The law needs F1 to read the schema, and F1 reads a schema of
+   depth 64 at most (F1 3.10). A type of depth 64 can give a deeper schema: an
+   `anyOf` adds a level the type does not count. Such a type is outside the
+   law. SchemaOf does not refuse it, and no case holds one (R383).
+9. SchemaOf reads a type and nothing else. It charges no step and no unit, and
    needs no environment.
 
 ```js
@@ -833,7 +837,9 @@ Every other column stays.
    gave. And SchemaOf of it must be the schema found, once each `$ref` to an
    entry of `$defs` that SchemaOf of it does not hold is replaced by that
    entry (with the `description` beside the `$ref` kept), and those entries
-   are dropped (11.5 item 6). Otherwise the case fails.
+   are dropped (11.5 item 6). The alternatives of each `anyOf` are compared in
+   any order there, since a `$ref` written out can change their order of
+   printing. Otherwise the case fails.
 3. The difference is named `schema`. It stands after `type` in the order of
    3.10.8 item 2.
 
@@ -844,8 +850,9 @@ Every other column stays.
 | --- | --- | --- |
 | `docs` | An object. Each key is the name of a host function the case declares in `functions`, a `Type.method` it declares in `methods`, or an opaque type it declares in `opaque`. Each value is a string, that declaration's `Doc` (11.6) | No declaration has a `Doc` |
 
-1. `docs` may stand in the header and in any case, a completion and a hover
-   case among them (F12 7.2 item 1). Only hover reads it.
+1. `docs` may stand where `functions` may: in the header, in a program case,
+   and in a completion and a hover case (F12 7.2 item 1). A format case and a
+   render case take none. Only hover reads it.
 2. A key that names no declaration of the case, and a value that is not a
    string, make the file invalid.
 

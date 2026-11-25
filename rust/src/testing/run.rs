@@ -736,13 +736,46 @@ fn schema_difference(want: &Json, got: &crate::check::ty::Ty) -> Option<Differen
             )))
         }
     };
-    if !crate::json::same_data(&inline_missing_defs(&found, &again), &again) {
+    if !same_schema(&inline_missing_defs(&found, &again), &again) {
         return differ(Some(format!(
             "the law: SchemaOf of the type mapped back is {}",
             crate::json::to_text(&again)
         )));
     }
     None
+}
+
+/// 11.8 item 2: equality as JSON data, but the alternatives of each
+/// `anyOf` in any order, since inlining an entry can change their order.
+fn same_schema(a: &Json, b: &Json) -> bool {
+    match (a, b) {
+        (Json::Obj(x), Json::Obj(y)) => {
+            x.len() == y.len()
+                && x.iter().all(|(k, v)| {
+                    let Some(w) = b.get(k) else {
+                        return false;
+                    };
+                    match (k.as_str(), v, w) {
+                        ("anyOf", Json::Arr(p), Json::Arr(q)) => {
+                            let mut used = vec![false; q.len()];
+                            p.len() == q.len()
+                                && p.iter().all(|e| {
+                                    let hit = q
+                                        .iter()
+                                        .enumerate()
+                                        .position(|(i, f)| !used[i] && same_schema(e, f));
+                                    hit.map(|i| used[i] = true).is_some()
+                                })
+                        }
+                        _ => same_schema(v, w),
+                    }
+                })
+        }
+        (Json::Arr(x), Json::Arr(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(v, w)| same_schema(v, w))
+        }
+        _ => a == b,
+    }
 }
 
 /// 11.8 item 2: `found` with each `$ref` to an entry of its `$defs` that
@@ -2764,6 +2797,9 @@ pub(super) enum Captured {
         description: Option<Json>,
         /// F16 11.8: SchemaOf of the checked type, `null` when refused.
         schema: Option<Json>,
+        /// F16 11.8 item 2: the schema found fails the law, so update mode
+        /// does not write it.
+        schema_lawless: bool,
         ran: Option<Ran>,
     },
     Conform(Conformed),
@@ -2822,6 +2858,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         Err(e) => return fail(Phase::Parse, e.diagnostics),
     };
     let (mut ty, mut sites, mut site_list, mut schema) = (None, None, None, None);
+    let mut schema_lawless = false;
     if case.check {
         let exp = match case_expected(case, &env) {
             Ok(x) => x,
@@ -2835,6 +2872,9 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         schema =
             r.ty.as_ref()
                 .map(|t| crate::schema::schema_of(t).unwrap_or(Json::Null));
+        if let (Some(s), Some(t)) = (&schema, &r.ty) {
+            schema_lawless = schema_difference(s, t).is_some();
+        }
         sites = Some(Json::Arr(
             r.sites
                 .iter()
@@ -2869,6 +2909,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             sites,
             description,
             schema,
+            schema_lawless,
             ran: None,
         };
     }
@@ -2900,6 +2941,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             sites,
             description,
             schema,
+            schema_lawless,
             ran: Some(Ran {
                 value: value_to_json(&v),
                 opaque_key: has_opaque_key(&v),

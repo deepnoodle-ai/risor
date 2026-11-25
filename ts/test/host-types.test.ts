@@ -139,4 +139,11 @@ describe("f16 11.5, 11.6: schemaOf, schemaText and Doc", () => {
     const env = createEnv({ functions: { rate: { type: "(code: string) => float", call: () => 1, doc: "The rate." } } });
     assert.equal(env.hover('rate("EUR")', { line: 1, column: 1 })?.doc, "The rate.");
   });
+  test("a Doc is copied when the environment is built, and a child keeps it", () => {
+    const rate = { type: "(code: string) => float", call: () => 1, doc: "The rate." };
+    const env = createEnv({ functions: { rate } });
+    rate.doc = "Changed.";
+    assert.equal(env.hover('rate("EUR")', { line: 1, column: 1 })?.doc, "The rate.");
+    assert.equal(env.with({}).hover('rate("EUR")', { line: 1, column: 1 })?.doc, "The rate.");
+  });
 });

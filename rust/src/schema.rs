@@ -1216,8 +1216,17 @@ fn index(t: &str) -> Option<usize> {
 pub fn schema_of(t: &Ty) -> Result<Json, String> {
     let mut w = SchemaWriter {
         defs: BTreeMap::new(),
+        pending: Vec::new(),
     };
     let root = w.ty(t)?;
+    // Each definition reached is written here, in a loop, so a long chain
+    // of definitions does not deepen the native stack.
+    while let Some((name, d)) = w.pending.pop() {
+        let j = w.ty(&d)?;
+        if let Some(e) = w.defs.get_mut(&name) {
+            e.1 = Some(j);
+        }
+    }
     if w.defs.is_empty() {
         return Ok(root);
     }
@@ -1240,6 +1249,8 @@ struct SchemaWriter {
     /// The recursive types reached, by name: which reference, and its
     /// definition's schema once written (11.5 item 2).
     defs: BTreeMap<String, ((u64, u32), Option<Json>)>,
+    /// The definitions reached and not yet written, by name.
+    pending: Vec<(String, Ty)>,
 }
 
 fn obj(pairs: Vec<(&str, Json)>) -> Json {
@@ -1312,10 +1323,7 @@ impl SchemaWriter {
                     let Some(d) = r.definition() else {
                         return Err(format!("the recursive type {name} has no definition"));
                     };
-                    let j = self.ty(&d)?;
-                    if let Some(e) = self.defs.get_mut(&name) {
-                        e.1 = Some(j);
-                    }
+                    self.pending.push((name.clone(), d));
                 }
             }
             let target = format!("#/{}/{name}", "$defs");
