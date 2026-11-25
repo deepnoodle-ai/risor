@@ -254,10 +254,14 @@ func (p *parser) program() *Program {
 		break
 	}
 	res := p.expr()
-	if p.tok.Kind == Semi {
+	semi := p.tok.Kind == Semi
+	if semi {
 		p.next()
 	}
 	if p.tok.Kind != EOF {
+		if semi { // F19 4.1, E27: a token after the ; that ends the Expr
+			p.raise("E27")
+		}
 		p.unexpected()
 	}
 	return &Program{base: p.base(m), Consts: consts, Types: types, Result: res}
@@ -767,6 +771,9 @@ func (p *parser) branch() Node {
 	if p.tok.Kind == Colon || p.tok.Kind == Comma { // 3.4 rule 7
 		p.raiseAt(lb, "3.4.7")
 	}
+	if p.tok.Kind == Semi { // F19 4.1, E28
+		p.raise("E28")
+	}
 	p.expect(RBrace)
 	p.exit()
 	if len(consts) > 0 {
@@ -1256,6 +1263,9 @@ func (p *parser) block() Node {
 		consts = append(consts, p.constLine())
 	}
 	res := p.expr()
+	if p.tok.Kind == Semi { // F19 4.1, E28
+		p.raise("E28")
+	}
 	p.expect(RBrace)
 	p.exit()
 	return &Block{base: p.base(m), Consts: consts, Result: res}

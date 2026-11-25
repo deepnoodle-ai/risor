@@ -33,7 +33,7 @@
    "diagnostics": [
     {
      "code": "maybe-absent",
-     "message": "field \"v\" may be absent from Expr"
+     "message": "field \"v\" may be absent from Expr: read it with ?., add ?? and a default, or test for it first"
     }
    ]
   }

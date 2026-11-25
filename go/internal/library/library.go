@@ -43,6 +43,8 @@ type Entry struct {
 	Extends string `json:"extends"`
 	// Doc is the record's doc, which hover shows (package F12 3.13).
 	Doc string `json:"doc"`
+	// Wrong are the names people try for the entry (F19 3.2).
+	Wrong []string `json:"wrong"`
 
 	// Sig is the parsed signature.
 	Sig *typetext.Sig `json:"-"`

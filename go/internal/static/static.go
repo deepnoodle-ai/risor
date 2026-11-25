@@ -43,6 +43,9 @@ type Names struct {
 	// Constants are the constants of the groups that are on, by full name
 	// (package F6 2.4).
 	Constants map[string]float64
+	// Removed are the removed library entries, by the names of 03-host.md
+	// 3.3.1: the lookup of package F19 offers none of them.
+	Removed map[string]bool
 }
 
 // BindKind is the kind of a binding.
@@ -187,6 +190,9 @@ type walker struct {
 	self map[*syntax.Lambda]selfRef
 	// last is the binding bind made last.
 	last *Binding
+	// field is the name of the step .f that follows the Ident walked next,
+	// for the lookup of package F19 (f19-author-feedback.md 3.4 item 1).
+	field string
 }
 
 // selfRef is a reference of a const-bound lambda to its own name.
@@ -708,7 +714,7 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		} else if e, ok := w.names.Library[ns+"."+name]; ok { // F6 2.5
 			callee = &Callee{Kind: Lib, Lib: e}
 		} else {
-			w.diagm("undefined-function", nameSpan, "", messages.Word("name", ns+"."+name))
+			w.undefinedFunction(nameSpan, ns+"."+name)
 		}
 	default:
 		if b := s.lookup(name); b != nil {
@@ -732,7 +738,7 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		} else if e, ok := w.names.Library[name]; ok {
 			callee = &Callee{Kind: Lib, Lib: e}
 		} else {
-			w.diagm("undefined-function", nameSpan, "", messages.Word("name", name))
+			w.undefinedFunction(nameSpan, name)
 		}
 	}
 	w.res.Calls[n] = callee
@@ -840,6 +846,8 @@ func (w *walker) argTest(callee *Callee, full string, i int, a syntax.Node, s *s
 }
 
 func (w *walker) expr(n syntax.Node, s *scope) {
+	field := w.field
+	w.field = ""
 	switch n := n.(type) {
 	case nil:
 	case *syntax.Ident:
@@ -866,7 +874,11 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		case w.isFunction(n.Name):
 			w.diagm("not-a-value", n.Span(), "function", nameP(n.Name))
 		default:
-			w.diagm("undefined-name", n.Span(), "name", nameP(n.Name))
+			if fix := w.offer().NameFix(n.Name, field); fix != "" {
+				w.diagm("undefined-name", n.Span(), "hint", nameP(n.Name), messages.Word("fix", fix))
+			} else {
+				w.diagm("undefined-name", n.Span(), "name", nameP(n.Name))
+			}
 		}
 	case *syntax.Call:
 		w.call(n, "", n.Name, n.NameSpan, n.Args, s)
@@ -876,12 +888,14 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 			w.call(n, id.Name, n.Name, syntax.Span{Start: id.Span().Start, End: n.NameSpan.End}, n.Args, s)
 			return
 		}
+		w.field = n.Name
 		w.chainBase(n.X, s)
 		w.args(n.Name, n.Args, s)
 	case *syntax.Member:
 		if w.constant(n) {
 			return
 		}
+		w.field = n.Name
 		w.chainBase(n.X, s)
 	case *syntax.Index:
 		w.chainBase(n.X, s)
@@ -1036,6 +1050,10 @@ func (w *walker) notLastOperand(n syntax.Node) {
 
 // chainBase walks the receiver of a step. A chain is walked by a loop.
 func (w *walker) chainBase(x syntax.Node, s *scope) {
+	// field is the name of the step that the caller's node is, when it is
+	// a field read or a method call (F19 3.4 item 1).
+	field := w.field
+	w.field = ""
 	// Collect the steps down to the base, then walk from the base out.
 	var steps []syntax.Node
 	for {
@@ -1061,7 +1079,18 @@ func (w *walker) chainBase(x syntax.Node, s *scope) {
 		}
 		break
 	}
+	if len(steps) > 0 {
+		field = ""
+		switch st := steps[len(steps)-1].(type) {
+		case *syntax.Member:
+			field = st.Name
+		case *syntax.MethodCall:
+			field = st.Name
+		}
+	}
+	w.field = field
 	w.expr(x, s)
+	w.field = ""
 	for i := len(steps) - 1; i >= 0; i-- {
 		switch n := steps[i].(type) {
 		case *syntax.Index:
@@ -1091,6 +1120,22 @@ func (w *walker) constant(n *syntax.Member) bool {
 	}
 	w.res.Consts[n] = v
 	return true
+}
+
+// offer is what the environment offers, for the lookup of package F19.
+func (w *walker) offer() library.Offer {
+	return library.Offer{Funcs: w.names.Library, Removed: w.names.Removed}
+}
+
+// undefinedFunction reports a call of a name that no function has, with
+// the fix of package F19 when the lookup gives one (f19-author-feedback.md
+// 3.4).
+func (w *walker) undefinedFunction(sp syntax.Span, name string) {
+	if fix := w.offer().FunctionFix(name); fix != "" {
+		w.diagm("undefined-function", sp, "hint", messages.Word("name", name), messages.Word("fix", fix))
+		return
+	}
+	w.diagm("undefined-function", sp, "", messages.Word("name", name))
 }
 
 func (w *walker) isFunction(name string) bool {

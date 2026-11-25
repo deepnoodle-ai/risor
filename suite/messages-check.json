@@ -512,11 +512,11 @@
       "key": "string"
     },
     "templates": {
-      "field": "field {key} may be absent from {type}",
-      "index": "the key may be absent from {type}"
+      "field": "field {key} may be absent from {type}: read it with ?., add ?? and a default, or test for it first",
+      "index": "the key may be absent from {type}: read it with ?.[ ], and add ?? and a default"
     },
     "when": {
-      "field": "A field or a String key. type is the record read",
+      "field": "A field or a String key, but not a field of a map pattern (f19-author-feedback.md 2). type is the record read",
       "index": "An index read of a record with any other index. type is the record read"
     },
     "cases": [
@@ -535,7 +535,7 @@
                 1,
                 7
               ],
-              "message": "field \"note\" may be absent from {id: string, note?: string}"
+              "message": "field \"note\" may be absent from {id: string, note?: string}: read it with ?., add ?? and a default, or test for it first"
             }
           ]
         }
@@ -555,7 +555,7 @@
                 1,
                 4
               ],
-              "message": "field \"x\" may be absent from map<int>"
+              "message": "field \"x\" may be absent from map<int>: read it with ?., add ?? and a default, or test for it first"
             }
           ]
         }
@@ -575,7 +575,7 @@
                 1,
                 4
               ],
-              "message": "the key may be absent from map<int>"
+              "message": "the key may be absent from map<int>: read it with ?.[ ], and add ?? and a default"
             }
           ]
         }

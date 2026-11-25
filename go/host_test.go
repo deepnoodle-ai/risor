@@ -112,10 +112,13 @@ func TestNestedRisorError(t *testing.T) {
 	assert.True(t, errors.As(d.Cause, &cause))
 	assert.Equal(t, cause.Diagnostics[0].Code, "function-error")
 
-	// The error value: the code and the message only; no data.
+	// The error value carries the innermost data (package F19 5.1).
 	v := run(t, outer, `try { ask("Atlantis") } catch (e) { e }`, nil)
 	assert.Equal(t, v, any(map[string]any{"code": "function-error",
-		"message": "unknown city Atlantis", "path": nil, "data": nil}))
+		"message": "unknown city Atlantis", "path": nil, "data": map[string]any{"city": "Atlantis"}}))
+	// The JSON form writes the chain of causes (F19 5.2).
+	assert.True(t, strings.HasPrefix(risor.RenderJSON([]risor.Diagnostic{d}),
+		`{"cause":{"cause":{"class":"value","code":"failed","data":{"city":"Atlantis"},"message":"unknown city Atlantis"`))
 	// Any other error keeps its text, and a diagnostic of another code has
 	// no cause.
 	d = runErr(t, outer, `fail("x")`, nil)

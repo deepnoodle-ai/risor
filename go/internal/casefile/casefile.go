@@ -164,6 +164,9 @@ type Row struct {
 type StubDiag struct {
 	Code    string
 	Message string
+	// Data is the object's data, for the code failed (package F19 5.3);
+	// nil, the null value, when it has none.
+	Data any
 }
 
 // HasError reports whether the row answers with an error of either form.
@@ -317,7 +320,7 @@ var (
 	diagFields         = set("code", "class", "span", "path", "message", "data", "trace")
 	stubFields         = set("type", "calls")
 	rowFields          = set("args", "result", "error", "charge", "allocate")
-	stubDiagFields     = set("code", "message")
+	stubDiagFields     = set("code", "message", "data")
 	limitFields        = set("steps", "allocation", "depth", "source")
 	siteFields         = set("class", "span")
 	phases             = set("declare", "parse", "check", "run")
@@ -716,6 +719,9 @@ func (v *validator) stubError(e any, w string) error {
 		if _, ok := e["message"].(string); !ok {
 			return v.invalid("%s: error: message is not a string", w)
 		}
+		if _, ok := e["data"]; ok && code != "failed" { // F19 5.3 item 2
+			return v.invalid("%s: error: data with a code other than failed", w)
+		}
 		return nil
 	}
 	return v.invalid("%s: error is neither a string nor a diagnostic object", w)
@@ -954,6 +960,13 @@ func (v *validator) buildStub(s any, where, name string, opaque []string) (*Stub
 				row.Error = optString(rm, "error")
 				if d, ok := rm["error"].(map[string]any); ok {
 					row.Diag = &StubDiag{Code: d["code"].(string), Message: d["message"].(string)}
+					if dv, ok := d["data"]; ok { // F19 5.3
+						cd, err := v.opaque(dv, opaque, where)
+						if err != nil {
+							return nil, err
+						}
+						row.Diag.Data = cd
+					}
 				}
 				row.Charge, _ = isWhole(rm["charge"])
 				row.Allocate, _ = isWhole(rm["allocate"])

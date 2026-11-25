@@ -1,0 +1,13 @@
+{"env": "{o: {id: string, note?: string}, m: map<int>, k: string, args: {q: string, limit?: int}}", "cases": [
+  {"name": "field: a plain read", "source": "o.note", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 3, 1, 7], "message": "field \"note\" may be absent from {id: string, note?: string}: read it with ?., add ?? and a default, or test for it first"}]}},
+  {"name": "field: a String key", "source": "o[\"note\"]", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 3, 1, 9], "message": "field \"note\" may be absent from {id: string, note?: string}: read it with ?., add ?? and a default, or test for it first"}]}},
+  {"name": "field: a field of a map", "source": "m.x", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 3, 1, 4], "message": "field \"x\" may be absent from map<int>: read it with ?., add ?? and a default, or test for it first"}]}},
+  {"name": "index: a computed key of a map", "source": "m[k]", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 3, 1, 4], "message": "the key may be absent from map<int>: read it with ?.[ ], and add ?? and a default"}]}},
+  {"name": "pattern: a field with no default", "source": "const {limit} = args; limit", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 8, 1, 13], "message": "field \"limit\" may be absent from {limit?: int, q: string}: give it a default in the pattern, as \"limit\" = ..."}]}},
+  {"name": "pattern: a field with a key and a name", "source": "const {limit: l} = args; l", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 8, 1, 13], "message": "field \"limit\" may be absent from {limit?: int, q: string}: give it a default in the pattern, as \"limit\" = ..."}]}},
+  {"name": "pattern: a parameter's pattern", "source": "[args].map(({limit}) => limit)", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 14, 1, 19], "message": "field \"limit\" may be absent from {limit?: int, q: string}: give it a default in the pattern, as \"limit\" = ..."}]}},
+  {"name": "pattern: a field of a map", "source": "const {x} = m; x", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 8, 1, 9], "message": "field \"x\" may be absent from map<int>: give it a default in the pattern, as \"x\" = ..."}]}},
+  {"name": "pattern: a default is the fix", "source": "const {limit = 5} = args; limit", "expect": {"type": "int", "sites": []}},
+  {"name": "the fix ?? and a default", "source": "args.limit ?? 5", "expect": {"type": "int", "sites": []}},
+  {"name": "the fix ?.", "source": "args?.limit", "expect": {"type": "int | null", "sites": []}}
+]}

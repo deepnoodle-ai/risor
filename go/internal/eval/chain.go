@@ -685,6 +685,12 @@ func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name str
 	}
 	if err != nil {
 		ff := &failure{code: "function-error", span: sp, hasSpan: true, msg: msg, ownMsg: true, cause: err}
+		// A Risor diagnostic as the error carries its data (package F19
+		// 5.1).
+		var de *diag.Error
+		if errors.As(err, &de) && de != nil && len(de.Diagnostics) > 0 && de.Diagnostics[0].HasData {
+			ff.data, ff.hasData = de.Diagnostics[0].Data, true
+		}
 		r.raise(ff)
 	}
 	return r.read(res, sp)

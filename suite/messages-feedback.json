@@ -1,0 +1,294 @@
+[
+  {
+    "code": "undefined-name",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "fix": "fix"
+    },
+    "templates": {
+      "hint": "{name} is not defined; {fix}"
+    },
+    "when": {
+      "hint": "f19-author-feedback.md 3.4: an identifier that resolves to nothing, for which the lookup gives a fix. name is the identifier"
+    },
+    "cases": [
+      {
+        "name": "undefined-name: hint",
+        "source": "Math.round(1.5)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-name",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "Math is not defined; use round(...)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "undefined-function",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "fix": "fix"
+    },
+    "templates": {
+      "hint": "no function is named {name}; {fix}"
+    },
+    "when": {
+      "hint": "f19-author-feedback.md 3.4: a call of a name that no function has, for which the lookup gives a fix"
+    },
+    "cases": [
+      {
+        "name": "undefined-function: hint",
+        "source": "parseInt(\"1\")",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-function",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ],
+              "message": "no function is named parseInt; use int(...)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "no-method",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "name": "word",
+      "fix": "fix"
+    },
+    "templates": {
+      "hint": "a value of type {type} has no method {name}; {fix}"
+    },
+    "when": {
+      "hint": "f19-author-feedback.md 3.4: a method that the receiver's type does not have, for which the lookup gives a fix. type is the receiver's type"
+    },
+    "cases": [
+      {
+        "name": "no-method: hint",
+        "env": "{s: string}",
+        "source": "s.includes(\"a\")",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "no-method",
+              "span": [
+                1,
+                3,
+                1,
+                11
+              ],
+              "message": "a value of type string has no method includes; use the operator in: x in xs"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "kind",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "fix": "fix"
+    },
+    "templates": {
+      "field-read-hint": "a value of type {type} has no fields to read; {fix}"
+    },
+    "when": {
+      "field-read-hint": "f19-author-feedback.md 3.4 row 5: a field step on a receiver that is not a record, for which the lookup gives a fix. type is the receiver's type"
+    },
+    "cases": [
+      {
+        "name": "kind: field-read-hint",
+        "env": "{xs: int[]}",
+        "source": "xs.length",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                3
+              ],
+              "message": "a value of type int[] has no fields to read; use len(...)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "maybe-absent",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "key": "string"
+    },
+    "templates": {
+      "pattern": "field {key} may be absent from {type}: give it a default in the pattern, as {key} = ..."
+    },
+    "when": {
+      "pattern": "f19-author-feedback.md 2: a field of a map pattern with no default. type is the record bound"
+    },
+    "cases": [
+      {
+        "name": "maybe-absent: pattern",
+        "env": "{args: {q: string, limit?: int}}",
+        "source": "const {limit} = args; limit",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-absent",
+              "span": [
+                1,
+                8,
+                1,
+                13
+              ],
+              "message": "field \"limit\" may be absent from {limit?: int, q: string}: give it a default in the pattern, as \"limit\" = ..."
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "async-await",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "await": "there is no await: a host call gives its value directly; remove await",
+      "async": "there is no async: a lambda gives its value directly; remove async"
+    },
+    "when": {
+      "await": "f19-author-feedback.md 4.1, E26: the word before is await",
+      "async": "f19-author-feedback.md 4.1, E26: the word before is async"
+    },
+    "cases": [
+      {
+        "name": "async-await: await",
+        "source": "await f()",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "async-await",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "there is no await: a host call gives its value directly; remove await"
+            }
+          ]
+        }
+      },
+      {
+        "name": "async-await: async",
+        "source": "async x => x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "async-await",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "there is no async: a lambda gives its value directly; remove async"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "statement-sequence",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "program": "a program is const lines and then one expression; bind earlier values with const, and remember that values never change",
+      "block": "a block is const lines and then one expression, with no ; after it"
+    },
+    "when": {
+      "program": "f19-author-feedback.md 4.1, E27: a token after the ; that ends the program's expression",
+      "block": "f19-author-feedback.md 4.1, E28: a ; after the expression of a block or a branch"
+    },
+    "cases": [
+      {
+        "name": "statement-sequence: program",
+        "source": "1; 2",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "statement-sequence",
+              "span": [
+                1,
+                2,
+                1,
+                3
+              ],
+              "message": "a program is const lines and then one expression; bind earlier values with const, and remember that values never change"
+            }
+          ]
+        }
+      },
+      {
+        "name": "statement-sequence: block",
+        "source": "if (true) { 1; } else { 2 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "statement-sequence",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "a block is const lines and then one expression, with no ; after it"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -112,7 +112,7 @@
             1,
             7
           ],
-          "message": "field \"s2\" may be absent from {id: int, kind: \"a\" | \"b\", s2?: int}"
+          "message": "field \"s2\" may be absent from {id: int, kind: \"a\" | \"b\", s2?: int}: read it with ?., add ?? and a default, or test for it first"
         }
       ]
     }

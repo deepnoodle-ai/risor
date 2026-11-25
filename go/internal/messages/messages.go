@@ -55,6 +55,10 @@ func init() {
 	// template pairs of check-limit, and the five templates of step E3
 	// (f17-recursion.md 9, 13.5).
 	addTemplates(sourceRecursionJSON, true)
+	// Package F19's file adds hint templates, with the parameter fix, the
+	// template pattern of maybe-absent, and the entries of two parse codes
+	// (f19-author-feedback.md 7).
+	addTemplates(sourceFeedbackJSON, true)
 }
 
 // addTemplates merges a catalog file whose entries add templates to the
@@ -177,6 +181,9 @@ func find(ps []Param, name string) Param {
 // code points.
 func render(kind string, p Param) string {
 	if !p.HasValue {
+		if kind == "fix" { // never cut (f19-author-feedback.md 3.1)
+			return p.Text
+		}
 		return value.Cut(p.Text)
 	}
 	v := p.Value

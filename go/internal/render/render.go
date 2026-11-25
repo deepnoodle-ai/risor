@@ -4,6 +4,7 @@
 package render
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -59,7 +60,7 @@ func Detail(ds []diag.Diagnostic, source string, hasSource bool) string {
 func JSON(ds []diag.Diagnostic) string {
 	var b strings.Builder
 	for i := range ds {
-		jsonOf(&b, &ds[i])
+		jsonOf(&b, &ds[i], 0)
 		b.WriteByte('\n')
 	}
 	return b.String()
@@ -211,8 +212,18 @@ func excerpt(b *strings.Builder, lines []string, sp diag.Span) {
 	b.WriteByte('\n')
 }
 
-func jsonOf(b *strings.Builder, d *diag.Diagnostic) {
+// maxCauseDepth is the depth to which the JSON form writes a cause that is
+// a Risor diagnostic (package F19 5.2).
+const maxCauseDepth = 8
+
+func jsonOf(b *strings.Builder, d *diag.Diagnostic, depth int) {
 	b.WriteByte('{')
+	var de *diag.Error
+	if depth < maxCauseDepth && d.Cause != nil && errors.As(d.Cause, &de) && de != nil && len(de.Diagnostics) > 0 {
+		b.WriteString(`"cause":`)
+		jsonOf(b, &de.Diagnostics[0], depth+1)
+		b.WriteByte(',')
+	}
 	if d.Class != "" {
 		b.WriteString(`"class":`)
 		b.WriteString(value.QuoteJSON(d.Class))

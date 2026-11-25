@@ -29,6 +29,7 @@ var SuiteDirs = []string{
 	"facts",        // F14
 	"entry-points", // F16, slice D1
 	"recursion",    // F17
+	"feedback",     // F19
 	"tools",        // F12
 }
 
@@ -45,6 +46,7 @@ var SuiteCatalogs = []SuiteCatalog{
 	{"messages-queries.json", "code"},      // F7
 	{"messages-entry-points.json", "code"}, // F16
 	{"messages-recursion.json", "code"},    // F17
+	{"messages-feedback.json", "code"},     // F19
 	{"messages-parse.json", "code"},        // F8
 	{"messages-check.json", "code"},        // F8
 	{"messages.json", "code"},
@@ -88,7 +90,7 @@ func RunSuiteCatalog(path, key string) ([]Result, error) {
 	// messages-recursion.json runs checked only; in the second, F16's codes
 	// are static (F16 9), and in the third F17's (F17 8 item 5).
 	b := filepath.Base(path)
-	CheckedOnly = b == "messages-check.json" || b == "messages-entry-points.json" || b == "messages-recursion.json"
+	CheckedOnly = b == "messages-check.json" || b == "messages-entry-points.json" || b == "messages-recursion.json" || b == "messages-feedback.json"
 	if b == "messages-entry-points.json" {
 		casefile.ExtraStatic = casefile.EntryPointsStatic
 	}
