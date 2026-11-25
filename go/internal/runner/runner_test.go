@@ -99,7 +99,7 @@ func TestOutcomeDescriptionWithEmptyFacts(t *testing.T) {
 	assert.True(t, strings.HasPrefix(Outcome(f.Cases[0]), `{"name":"from the header","description":`), Outcome(f.Cases[0]))
 }
 
-func TestOutcomeHostConformanceOmitsTrace(t *testing.T) {
+func TestOutcomeEntryConformanceIncludesTraceAndLoadOmitsTrace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "entry-and-load.json")
 	assert.NoError(t, os.WriteFile(path, []byte(`[
 		{"name": "entry conformance", "source": "export const f = (x: int) => x;", "entry": "f", "args": ["bad"]},
@@ -109,8 +109,7 @@ func TestOutcomeHostConformanceOmitsTrace(t *testing.T) {
 	assert.NoError(t, err)
 
 	entryLine := Outcome(f.Cases[0])
-	assert.True(t, strings.Contains(entryLine, `"path":[0]}`), entryLine)
-	assert.False(t, strings.Contains(entryLine, `"trace"`), entryLine)
+	assert.True(t, strings.Contains(entryLine, `"path":[0],"trace":[]`), entryLine)
 
 	loadLine := Outcome(f.Cases[1])
 	assert.True(t, strings.Contains(loadLine, `"path":["port"]}`), loadLine)

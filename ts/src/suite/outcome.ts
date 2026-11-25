@@ -124,14 +124,16 @@ export function outcomeLine(c: Case): string {
       default:
         // f08 8: a run diagnostic has its trace, but for class limit.
         diags = o.diagnostics.map((d) => {
-          // f10 10.4, f16 12.10: a load step 5a or entry argument conformance failure has code, span null, class, message and path (no trace).
-          if ((c.load === true || c.entry !== undefined) && d.span === undefined && d.path !== undefined) {
-            return `{"code":${jsonString(d.code)},"span":null,"class":${jsonString(d.class ?? "value")},"message":${jsonString(d.message)},"path":${JSON.stringify(d.path)}}`;
+          // f10 10.4: a load step 5a failure has code, span null, class, message and path (no trace).
+          if (c.load === true && d.span === undefined && d.code === "not-conforming") {
+            return `{"code":${jsonString(d.code)},"span":null,"class":${jsonString(d.class ?? "value")},"message":${jsonString(d.message)},"path":${JSON.stringify(d.path ?? [])}}`;
           }
+          // f16 12.5: an entry argument conformance failure has span null, path and an empty trace.
+          const path = c.entry !== undefined && d.span === undefined && d.code === "not-conforming" ? `,"path":${JSON.stringify(d.path ?? [])}` : "";
           const trace = d.class === "limit" ? "" : `,"trace":[${(d.trace ?? []).map((t) => `{"span":${span(t)},"name":${jsonString(t.name)},"index":${t.index === null ? "null" : t.index}}`).join(",")}]`;
           // R73: a limit failure's span is not specified, and its line has none.
           const sp = d.class === "limit" ? "null" : span(d);
-          return `{"code":${jsonString(d.code)},"span":${sp},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
+          return `{"code":${jsonString(d.code)},"span":${sp},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${path}${trace}}`;
         });
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);
