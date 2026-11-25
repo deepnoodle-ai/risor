@@ -697,7 +697,9 @@ fn stub_impl(
             "no row of {name} matches {}",
             form(&Json::Arr(args))
         ));
-        Err(HostError::from("no row of the stub matches the call"))
+        Err(HostError::from(format!(
+            "no row of the stub {name} matches the call"
+        )))
     })
 }
 
@@ -2425,7 +2427,11 @@ pub fn outcome_line(case: &Case) -> String {
                         Some([a, b, c, f]) => format!("[{a},{b},{c},{f}]"),
                         None => "null".to_string(),
                     };
-                    out.push_str(&format!("{{\"code\":\"{}\",\"span\":{span}}}", d.code));
+                    out.push_str(&format!(
+                        "{{\"code\":\"{}\",\"span\":{span},\"message\":{}}}",
+                        d.code,
+                        json_text(&d.message)
+                    ));
                 }
                 out.push(']');
             }
@@ -2637,13 +2643,14 @@ fn outcome_core(case: &Case) -> String {
                 out.push_str(",\"message\":");
                 out.push_str(&json_text(&d.message));
             }
-            // F10 10.4: the path of a failure of step 5a.
-            if let (Phase::Run, Some(p)) = (phase, &d.path) {
+            // F10 10.4, F16 12.10: a load step 5a or entry argument conformance failure has path and no trace.
+            if phase == Phase::Run && d.span.is_none() && d.code == "not-conforming" {
                 out.push_str(",\"path\":");
-                out.push_str(&crate::json::to_text(&path_json(p)));
-            }
-            // F8 8: the trace of a run diagnostic, but for class `limit`.
-            if phase == Phase::Run && d.class != Some("limit") {
+                out.push_str(&crate::json::to_text(&path_json(
+                    d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
+                )));
+            } else if phase == Phase::Run && d.class != Some("limit") {
+                // F8 8: the trace of a run diagnostic, but for class `limit`.
                 out.push_str(",\"trace\":[");
                 for (i, e) in d.trace().iter().enumerate() {
                     if i > 0 {

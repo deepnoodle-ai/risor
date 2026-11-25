@@ -629,6 +629,7 @@ pub(super) fn outcome(case: &Case, tc: &ToolCase) -> String {
                             None => Json::Null,
                         },
                     ));
+                    o.push(("message".into(), Json::Str(d.message.clone())));
                 }
                 Json::Obj(o)
             })

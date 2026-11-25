@@ -875,12 +875,17 @@ function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>
 
 /** The report of the analysis of a case's text, or its parse failure (f02 3, 4.2). */
 export function analysisOf(c: Case): { ok: true; report: Analysis; source: Source } | { ok: false; diagnostics: Diagnostic[]; source: Source } {
+  const lim = c.limits?.source;
+  if (lim !== undefined && (!Number.isInteger(lim) || lim < 0 || lim > SOURCE_LIMIT)) {
+    return { ok: false, diagnostics: [], source: new Source("") };
+  }
+  const sourceLimit = lim ?? SOURCE_LIMIT;
   if (c.template !== undefined) {
-    const t = parseTemplateText(c.source);
+    const t = parseTemplateText(c.source, sourceLimit);
     if (!t.ok) return t;
     return { ok: true, report: new Template(t.template).analyze(c.template), source: t.template.source };
   }
-  const p = parse(c.source);
+  const p = parse(c.source, sourceLimit);
   if (!p.ok) return p;
   return { ok: true, report: new Expr(p.source, p.program).analyze(), source: p.source };
 }

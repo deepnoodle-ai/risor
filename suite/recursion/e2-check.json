@@ -2971,5 +2971,19 @@
     "type": "{next: Right[]}"
    }
   ]
+ },
+ {
+  "name": "extra key on a variant of a recursive union prints the chosen variant record, not the union name",
+  "source": "type Rt0 = {k: \"\"} | {k: \"a\", l: Rt0}; const v: Rt0 = {k: \"\", r: 1}; v",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [1, 63, 1, 64],
+     "message": "{k: \"\"} does not allow key \"r\""
+    }
+   ]
+  }
  }
 ]

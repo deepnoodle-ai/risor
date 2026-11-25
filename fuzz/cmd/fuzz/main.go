@@ -635,14 +635,26 @@ func replayFile(cfg *config, path string) int {
 			fmt.Printf("(%s)\n", r.Describe())
 			status = 1
 		}
-		lines, _ := outcome.ParseAll(r.Stdout)
+		lines, perr := outcome.ParseAll(r.Stdout)
+		if perr != nil {
+			fmt.Printf("(bad line: %v)\n", perr)
+			status = 1
+		}
 		all = append(all, lines)
 	}
-	for i := 1; i < len(all); i++ {
-		for j := range all[0] {
-			if j < len(all[i]) {
-				if d := outcome.Diff(all[0][j], all[i][j]); d != "" {
-					fmt.Printf("%s: %s and %s differ in %s\n", all[0][j].Name, cfg.impls[0].Name, cfg.impls[i].Name, d)
+	for i := 0; i < len(all); i++ {
+		for j := i + 1; j < len(all); j++ {
+			if len(all[i]) != len(all[j]) {
+				fmt.Printf("%s and %s differ in line count (%d vs %d)\n", cfg.impls[i].Name, cfg.impls[j].Name, len(all[i]), len(all[j]))
+				status = 1
+			}
+			n := len(all[i])
+			if len(all[j]) < n {
+				n = len(all[j])
+			}
+			for k := range n {
+				if d := outcome.Diff(all[i][k], all[j][k]); d != "" {
+					fmt.Printf("%s: %s and %s differ in %s\n", all[i][k].Name, cfg.impls[i].Name, cfg.impls[j].Name, d)
 					status = 1
 				}
 			}

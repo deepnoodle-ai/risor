@@ -4070,6 +4070,12 @@ impl<'a> Checker<'a> {
                     &chosen
                 }
                 None => {
+                    let mut tag_ty = Ty::never();
+                    for v in tv.variants() {
+                        if let Some(f) = v.fields.get(&tag) {
+                            join_into(&mut tag_ty, &f.ty);
+                        }
+                    }
                     for i in contributors {
                         match &ents[i] {
                             Ent::Written {
@@ -4087,12 +4093,15 @@ impl<'a> Checker<'a> {
                                     self.span(*value)
                                 };
                                 let vt = self.types[value.index()].clone();
-                                self.report(vs, &vt, t, mode, Why::Fit);
+                                self.report(vs, &vt, &tag_ty, mode, Why::Fit);
                             }
                             Ent::Spread { operand, .. } => {
                                 let vs = self.span(*operand);
-                                let vt = self.types[operand.index()].clone();
-                                self.report(vs, &vt, t, mode, Why::Fit);
+                                let at = g[i]
+                                    .as_ref()
+                                    .map(|(ty, _)| ty.clone())
+                                    .unwrap_or_else(|| self.types[operand.index()].clone());
+                                self.report(vs, &at, &tag_ty, mode, Why::Fit);
                             }
                             Ent::Nothing => {}
                         }
@@ -4113,13 +4122,25 @@ impl<'a> Checker<'a> {
         }
         keys.sort();
         keys.dedup();
-        let mut failed: Vec<usize> = Vec::new();
+        let mut failed: Vec<Option<(Ty, Ty, Why)>> = vec![None; ents.len()];
         let mut used_any: Vec<usize> = Vec::new();
-        // F16 3.3: a spread whose fit used `any`, with the first key's types,
-        // by entry index.
-        let mut strict_failed: Vec<Option<(Ty, Ty)>> = vec![None; ents.len()];
         let mut written: Vec<usize> = Vec::new();
         let mut surely: Vec<String> = Vec::new();
+        let extra_shown = || {
+            // F17 12.6: a record a reference stands for prints by
+            // the reference's name; a variant chosen prints whole.
+            match t
+                .refs
+                .iter()
+                .find(|x| x.unfolding().is_some_and(|u| u.map.is_some()))
+            {
+                Some(x) if t.map.is_none() && tv.variants.is_none() => Ty {
+                    refs: [x.clone()].into(),
+                    ..Ty::default()
+                },
+                _ => Ty::rec(r.clone()),
+            }
+        };
         let all: Vec<Option<&str>> = keys
             .iter()
             .map(|k| Some(k.as_str()))
@@ -4144,16 +4165,24 @@ impl<'a> Checker<'a> {
                 let Some((ty, _)) = x else { continue };
                 match &ents[i] {
                     Ent::Written { .. } => written.push(i),
-                    Ent::Spread { .. } => match fits(ty, &want) {
-                        None => failed.push(i),
-                        Some(true) if self.strict => {
-                            if strict_failed[i].is_none() {
-                                strict_failed[i] = Some((ty.clone(), want.clone()));
+                    Ent::Spread { .. } => {
+                        let fit = fits(ty, &want);
+                        if fit.is_none() || (fit == Some(true) && self.strict) {
+                            if failed[i].is_none() {
+                                let why = match k {
+                                    Some(key)
+                                        if !r.fields.contains_key(key) && r.rest.is_never() =>
+                                    {
+                                        Why::Extra(key.to_string(), extra_shown())
+                                    }
+                                    _ => Why::Fit,
+                                };
+                                failed[i] = Some((ty.clone(), want.clone(), why));
                             }
+                        } else if fit == Some(true) {
+                            used_any.push(i);
                         }
-                        Some(true) => used_any.push(i),
-                        _ => {}
-                    },
+                    }
                     Ent::Nothing => {}
                 }
             }
@@ -4171,50 +4200,25 @@ impl<'a> Checker<'a> {
                     Some(f) => self.fit_form(*value, &f.ty, mode),
                     None if r.rest.is_never() => {
                         let vt = self.types[value.index()].clone();
-                        // F17 12.6: a record a reference stands for prints by
-                        // the reference's name; a variant chosen prints whole.
-                        let shown = match t
-                            .refs
-                            .iter()
-                            .find(|x| x.unfolding().is_some_and(|u| u.map.is_some()))
-                        {
-                            Some(x) if t.map.is_none() && tv.variants.is_none() => Ty {
-                                refs: [x.clone()].into(),
-                                ..Ty::default()
-                            },
-                            _ => Ty::rec(r.clone()),
-                        };
-                        let why = Why::Extra(key.clone(), shown);
+                        let why = Why::Extra(key.clone(), extra_shown());
                         self.report(*key_span, &vt, &Ty::never(), mode, why);
                     }
                     None => self.fit_form(*value, &r.rest, mode),
                 }
             }
         }
-        failed.sort_unstable();
-        failed.dedup();
+        let has_failed: Vec<bool> = failed.iter().map(Option::is_some).collect();
         used_any.sort_unstable();
         used_any.dedup();
-        for i in failed.iter().copied() {
+        for (i, f) in failed.into_iter().enumerate() {
+            let Some((ty, want, why)) = f else { continue };
             if let Ent::Spread { operand, .. } = &ents[i] {
                 let vs = self.span(*operand);
-                let vt = self.types[operand.index()].clone();
-                self.report(vs, &vt, t, mode, Why::Fit);
-            }
-        }
-        for (i, s) in strict_failed.into_iter().enumerate() {
-            // A definite failure takes priority for the same operand.
-            let Some((ty, want)) = s else { continue };
-            if failed.binary_search(&i).is_ok() {
-                continue;
-            }
-            if let Ent::Spread { operand, .. } = &ents[i] {
-                let vs = self.span(*operand);
-                self.report(vs, &ty, &want, mode, Why::Fit);
+                self.report(vs, &ty, &want, mode, why);
             }
         }
         for i in used_any {
-            if failed.contains(&i) {
+            if has_failed[i] {
                 continue;
             }
             if let Ent::Spread { operand, rec } = &ents[i] {
@@ -4237,6 +4241,7 @@ impl<'a> Checker<'a> {
 }
 
 /// Which template a place of failure takes (`f08-errors.md` 3.5 item 2).
+#[derive(Clone)]
 enum Why {
     Fit,
     /// The least required key with no entry.

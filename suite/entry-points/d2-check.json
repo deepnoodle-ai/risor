@@ -260,5 +260,25 @@
       "phase": "declare",
       "diagnostics": [{"code": "no-result"}]
     }
+  },
+  {
+    "name": "entryReturns checks the annotated return type directly without descending into body form",
+    "source": "export const f = (): string => { const c = null; 0 }; 0",
+    "entryReturns": {"f": "bool"},
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "result-mismatch",
+          "span": [1, 32, 1, 53],
+          "message": "expected bool, found string"
+        },
+        {
+          "code": "result-mismatch",
+          "span": [1, 50, 1, 51],
+          "message": "expected string, found int"
+        }
+      ]
+    }
   }
 ]

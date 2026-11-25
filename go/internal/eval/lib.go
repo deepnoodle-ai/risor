@@ -121,10 +121,12 @@ func (f *fenv) arg(name string) any {
 func (f *fenv) Weight(name string) int64 {
 	switch name {
 	case "s":
-		if s, ok := f.c.recv.(string); ok {
-			return value.Weight(s)
+		if f.c.e.Receiver != "" {
+			if s, ok := f.c.recv.(string); ok {
+				return value.Weight(s)
+			}
+			return 0
 		}
-		return 0
 	case "result":
 		return f.resultW
 	case "elements":
@@ -207,7 +209,9 @@ func newQuick(e *library.Entry, text string, f *library.Formula) quickFormula {
 	if m := qSzRe.FindStringSubmatch(text); m != nil {
 		switch m[1] {
 		case "s":
-			return quickFormula{kind: qSzRecv}
+			if e.Receiver != "" {
+				return quickFormula{kind: qSzRecv}
+			}
 		case "result", "elements", "keys", "arguments":
 			return quickFormula{}
 		}
