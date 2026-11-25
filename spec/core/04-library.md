@@ -1535,8 +1535,9 @@ The receiver is a string, named `s` in the formulas.
    gives null.
 3. The comparison is of code points, so case matters and nothing is normalized.
 4. The steps are `sz(s)` wherever the occurrence is, and when there is none.
-5. There is no start position argument. To search after a position `i`, search
-   `s.slice(i)` and add `i` to a position found.
+5. There is no start position argument. To search from a position `i` from 0
+   to `len(s)`, search `s.slice(i)` and add `i` to a position found. A
+   negative `i` is first resolved by the rule of positions (3.10).
 
 | Program | Data | Result |
 | --- | --- | --- |
