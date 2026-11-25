@@ -14,6 +14,8 @@ on:
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
+      - "docs/library/**"
+      - "docs/scripts/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
@@ -24,6 +26,8 @@ on:
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
+      - "docs/library/**"
+      - "docs/scripts/**"
       - ".github/workflows/ci.yml"
 
 permissions:
@@ -203,3 +207,22 @@ jobs:
 
       - name: Test
         run: go test -count=1 ./...
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check generated library reference
+        run: node docs/scripts/generate-library-docs.mjs --check
+
+      - name: Test library reference generator
+        run: node --test docs/scripts/generate-library-docs.test.mjs
