@@ -67,8 +67,9 @@ type builder struct {
 	byEnd    map[int]int
 	match    map[int]int
 	blankBef []int // line ends in the blank space directly before each unit
-	comments []*comment
-	lead     map[int][]*comment
+	comments  []*comment
+	breakPref []int // prefix count of breaking comments (2.13 item 2)
+	lead      map[int][]*comment
 	trail    map[int][]*comment
 	kept     map[int]bool
 	slots    map[int]*slot
@@ -213,6 +214,27 @@ func (b *builder) attach() {
 		}
 		b.lead[j] = append(b.lead[j], c)
 	}
+	b.breakPref = make([]int, len(b.comments)+1)
+	for k, c := range b.comments {
+		v := b.breakPref[k]
+		if c.line || c.nl || !c.trailing {
+			v++
+		}
+		b.breakPref[k+1] = v
+	}
+}
+
+// hasBreakingComment reports whether any comment between the opening unit lb
+// and closing unit rb is a line comment, a leading comment, or a block comment
+// that holds a line end (2.13 item 2).
+func (b *builder) hasBreakingComment(lb, rb int) bool {
+	if !b.pass2 || len(b.comments) == 0 {
+		return false
+	}
+	from, to := b.us[lb].end, b.us[rb].start
+	i := sort.Search(len(b.comments), func(k int) bool { return b.comments[k].start >= from })
+	j := sort.Search(len(b.comments), func(k int) bool { return b.comments[k].start >= to })
+	return b.breakPref[j] > b.breakPref[i]
 }
 
 // at is the unit that starts at an offset.
@@ -351,9 +373,9 @@ func (b *builder) leadDoc(i int, eligible, closer bool) []part {
 }
 
 // slotOf is the slot of a unit's trailing comments (2.12 item 4). After an
-// opening bracket, a first block comment has no space before it, and the
-// comments are followed by a space when the closing bracket does not follow
-// them.
+// opening bracket, the first trailing comment has no space before it, and a
+// last block comment is followed by a space when the closing bracket does not
+// follow it.
 func (b *builder) slotOf(i int, opening bool) *slot {
 	s := &slot{}
 	b.slots[i] = s
@@ -363,7 +385,7 @@ func (b *builder) slotOf(i int, opening bool) *slot {
 	var out []part
 	cs := b.trail[i]
 	for k, c := range cs {
-		if k == 0 && opening && !c.line {
+		if k == 0 && opening {
 			out = append(out, txt(c.text))
 		} else {
 			out = append(out, pSpace, txt(c.text))
@@ -557,6 +579,35 @@ func (b *builder) program(p *syntax.Program) part {
 	return out
 }
 
+// outerParens finds the outermost matching pair of parentheses directly
+// enclosing x in the source (2.12 item 1).
+func (b *builder) outerParens(x syntax.Node) (int, int, bool) {
+	lp := b.at(x.Span().Start) - 1
+	rp := b.ending(x.Span().End) + 1
+	found := false
+	for lp >= 0 && rp < len(b.us) && b.us[lp].kind == syntax.LParen && b.match[lp] == rp {
+		found = true
+		lp--
+		rp++
+	}
+	if !found {
+		return 0, 0, false
+	}
+	return lp + 1, rp - 1, true
+}
+
+// wrapParens wraps inner in parentheses, keeping the source's outermost
+// matching pair directly around x when it has one (2.12 item 1).
+func (b *builder) wrapParens(x syntax.Node, inner func() part) part {
+	if lp, rp, ok := b.outerParens(x); ok {
+		o := b.tok(lp)
+		d := inner()
+		c := b.tok(rp)
+		return []part{o, d, c}
+	}
+	return []part{txt("("), inner(), txt(")")}
+}
+
 // sub is the document of x in its place: in parentheses when 2.6 says.
 func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
 	// The left operand of a * / % run that is itself of the run stays in
@@ -568,7 +619,7 @@ func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
 		defer func() { b.rdepth, b.own = rdepth, own }()
 	}
 	if r == rSubject && b.startsBrace(x) || r != rSubject && needParens(parent, r, x) {
-		return []part{txt("("), b.node(x), txt(")")}
+		return b.wrapParens(x, func() part { return b.node(x) })
 	}
 	if b.reader(parent, r, x) {
 		count := &b.rdepth
@@ -576,9 +627,9 @@ func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
 			count = &b.own
 		}
 		*count++
-		d := b.node(x)
+		d := b.wrapParens(x, func() part { return b.node(x) })
 		*count--
-		return []part{txt("("), d, txt(")")}
+		return d
 	}
 	return b.node(x)
 }
@@ -761,6 +812,19 @@ func (b *builder) test(x syntax.Node) part {
 	return b.node(x)
 }
 
+// testGroup is g(i(S test) S), or broken-group when lp has a trailing line
+// comment (2.8).
+func (b *builder) testGroup(lp int, x syntax.Node) part {
+	g := grp(ind(pSoft, b.test(x)), pSoft)
+	for _, c := range b.trail[lp] {
+		if c.line {
+			g.broken = true
+			break
+		}
+	}
+	return g
+}
+
 // branch is the document of a branch whose braces are the units lb and rb.
 func (b *builder) branch(content syntax.Node, lb, rb int) part {
 	o := b.brace(lb)
@@ -811,7 +875,7 @@ func (b *builder) ifChain(n *syntax.Cond) part {
 		it := b.at(cur.Span().Start)
 		lp := it + 1
 		rp := b.match[lp]
-		out = append(out, b.tok(it), pSpace, b.tok(lp), grp(ind(pSoft, b.test(cur.Test)), pSoft), b.tok(rp), pSpace)
+		out = append(out, b.tok(it), pSpace, b.tok(lp), b.testGroup(lp, cur.Test), b.tok(rp), pSpace)
 		lb := rp + 1
 		rb := b.match[lb]
 		out = append(out, b.branch(cur.Then, lb, rb))
@@ -1099,7 +1163,7 @@ func (b *builder) arm(a *syntax.Arm) part {
 		it := b.next(end, syntax.Word)
 		lp := it + 1
 		rp := b.match[lp]
-		out = append(out, pSpace, b.tok(it), pSpace, b.tok(lp), grp(ind(pSoft, b.test(a.Guard)), pSoft), b.tok(rp))
+		out = append(out, pSpace, b.tok(it), pSpace, b.tok(lp), b.testGroup(lp, a.Guard), b.tok(rp))
 		end = b.us[rp].end
 	}
 	ar := b.next(end, syntax.Arrow)
@@ -1275,27 +1339,21 @@ func (b *builder) pprim(p *syntax.PPrim) part {
 		return []part{b.tok(lp), b.ptype(p.Elem), b.tok(b.ending(p.Span.End))}
 	case syntax.PRecord:
 		lb, rb := b.at(p.Span.Start), b.ending(p.Span.End)
-		out := []part{b.tok(lb)}
-		for k, f := range p.Fields {
-			if k > 0 {
-				out = append(out, pSpace)
-			}
-			key := b.at(f.KeySpan.Start)
-			out = append(out, b.tok(key))
-			c := key + 1
-			if f.Optional {
-				out = append(out, b.tok(c))
-				c++
-			}
-			out = append(out, b.tok(c), pSpace, b.ptype(f.Type))
-			if k < len(p.Fields)-1 || p.HasRest {
-				out = append(out, comma(), b.moveTrail(b.last))
-			}
+		var items []item
+		for _, f := range p.Fields {
+			f := f
+			items = append(items, item{f.KeySpan.Start, f.Type.Span.End, plain(func() part {
+				key := b.at(f.KeySpan.Start)
+				out := []part{b.tok(key)}
+				c := key + 1
+				if f.Optional {
+					out = append(out, b.tok(c))
+					c++
+				}
+				return append(out, b.tok(c), pSpace, b.ptype(f.Type))
+			})})
 		}
 		if p.HasRest {
-			if len(p.Fields) > 0 {
-				out = append(out, pSpace)
-			}
 			var dots int
 			if p.Rest != nil {
 				dots = b.at(p.Rest.Span.Start) - 1
@@ -1305,12 +1363,53 @@ func (b *builder) pprim(p *syntax.PPrim) part {
 					dots--
 				}
 			}
-			out = append(out, b.tok(dots))
+			end := b.us[dots].end
 			if p.Rest != nil {
-				out = append(out, b.ptype(p.Rest))
+				end = p.Rest.Span.End
+			}
+			items = append(items, item{b.us[dots].start, end, plain(func() part {
+				if p.Rest != nil {
+					return []part{b.tok(dots), b.ptype(p.Rest)}
+				}
+				return b.tok(dots)
+			})})
+		}
+		o := b.tok(lb)
+		els := b.elements(lb, items)
+		cl := b.closeLead(rb, len(items) > 0)
+		c := b.bare(rb)
+		if len(els) == 0 {
+			return []part{o, cl, c}
+		}
+		if b.hasBreakingComment(lb, rb) {
+			inner := []part{pSoft}
+			for k, e := range els {
+				if k > 0 {
+					inner = append(inner, pLine)
+					if e.blank {
+						inner = append(inner, pBlank)
+					}
+				}
+				inner = append(inner, e.d, comma(), e.moved)
+				if k == len(els)-1 {
+					inner = append(inner, cl)
+				}
+			}
+			return &group{d: []part{o, &indent{d: inner}, pSoft, c}, broken: true}
+		}
+		out := []part{o}
+		for k, e := range els {
+			if k > 0 {
+				out = append(out, pSpace)
+			}
+			out = append(out, e.d)
+			if k < len(els)-1 {
+				out = append(out, comma(), e.moved)
+			} else {
+				out = append(out, e.moved)
 			}
 		}
-		return append(out, b.tok(rb))
+		return append(out, c)
 	}
 	panic("format: unknown type")
 }

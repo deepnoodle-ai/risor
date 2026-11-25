@@ -73,7 +73,7 @@
   "name": "a comment in an empty list",
   "format": "[ // nothing yet\n]",
   "expect": {
-   "formatted": "[ // nothing yet\n]\n"
+   "formatted": "[// nothing yet\n]\n"
   }
  },
  {
@@ -94,7 +94,7 @@
   "name": "a line comment after an opening bracket",
   "format": "[ // open\n  1]",
   "expect": {
-   "formatted": "[ // open\n  1,\n]\n"
+   "formatted": "[// open\n  1,\n]\n"
   }
  },
  {
@@ -213,7 +213,7 @@
   "name": "a comment in a program type",
   "format": "x is {a: int, // the a\n b: string}",
   "expect": {
-   "formatted": "x is {a: int, // the a\nb: string}\n"
+   "formatted": "x is {\n  a: int, // the a\n  b: string,\n}\n"
   }
  },
  {
@@ -234,7 +234,7 @@
   "name": "a comment in the parameters of a lambda",
   "format": "xs.map(( // why\n  x) => x)",
   "expect": {
-   "formatted": "xs.map( // why\n  x => x,\n)\n"
+   "formatted": "xs.map(// why\n  x => x,\n)\n"
   }
  },
  {
@@ -424,6 +424,286 @@
   "format": "const [/* x */ a, b] = l; a",
   "expect": {
    "formatted": "const [/* x */ a, b] = l;\na\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept parentheses of a binary operand",
+  "format": "(/* why */ a + b) * c",
+  "expect": {
+   "formatted": "(/* why */ a + b) * c\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept parentheses on the right",
+  "format": "x * (/* why */ a + b)",
+  "expect": {
+   "formatted": "x * (/* why */ a + b)\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept parentheses in a const line",
+  "format": "const x = (/* why */ a + b) * c; x",
+  "expect": {
+   "formatted": "const x = (/* why */ a + b) * c;\nx\n"
+  }
+ },
+ {
+  "name": "a block comment inside nested parentheses around a kept pair",
+  "format": "((/* why */ a + b)) * c",
+  "expect": {
+   "formatted": "(/* why */ a + b) * c\n"
+  }
+ },
+ {
+  "name": "a block comment between outer and inner parentheses around a kept pair",
+  "format": "(/* outer */ (a + b)) * c",
+  "expect": {
+   "formatted": "(/* outer */ a + b) * c\n"
+  }
+ },
+ {
+  "name": "a block comment after kept closing parenthesis stays outside",
+  "format": "(a + b) /* after */ * c",
+  "expect": {
+   "formatted": "(a + b) /* after */ * c\n"
+  }
+ },
+ {
+  "name": "a block comment before kept closing parenthesis stays inside",
+  "format": "(a + b /* inner */) * c",
+  "expect": {
+   "formatted": "(a + b /* inner */) * c\n"
+  }
+ },
+ {
+  "name": "a block comment before kept opening parenthesis stays outside",
+  "format": "/* before */ (a + b) * c",
+  "expect": {
+   "formatted": "/* before */ (a + b) *\n  c\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept parentheses under unary minus",
+  "format": "-(/* why */ a + b)",
+  "expect": {
+   "formatted": "-(/* why */ a + b)\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept parentheses of a receiver",
+  "format": "(/* why */ a + b).c",
+  "expect": {
+   "formatted": "(/* why */ a + b).c\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept reader parentheses",
+  "format": "(/* why */ a && b) || c",
+  "expect": {
+   "formatted": "(/* why */ a && b) || c\n"
+  }
+ },
+ {
+  "name": "two block comments inside kept parentheses",
+  "format": "(/* a */ /* b */ a + b) * c",
+  "expect": {
+   "formatted": "(/* a */ /* b */ a + b) * c\n"
+  }
+ },
+ {
+  "name": "a block comment inside kept match subject parentheses",
+  "format": "match (/* why */ {a: 1}.a) { _ => 0 }",
+  "expect": {
+   "formatted": "match (/* why */ {a: 1}.a) { _ => 0 }\n"
+  }
+ },
+ {
+  "name": "a line comment directly after a kept opening parenthesis",
+  "format": "( // why\n  a + b) * c",
+  "expect": {
+   "formatted": "(// why\na + b) *\n  c\n"
+  }
+ },
+ {
+  "name": "a blank line and leading comment before kept parentheses in a list",
+  "format": "[\n  1,\n\n  // sum\n  (a + b) * c,\n]",
+  "expect": {
+   "formatted": "[\n  1,\n\n  // sum\n  (a + b) *\n    c,\n]\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the parenthesis of an if test",
+  "format": "if ( // why\n  c) { 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (// why\n  c\n) {\n  1\n} else {\n  2\n}\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the parenthesis of an else if test",
+  "format": "if (c) { 1 } else if ( // why\n  d) { 2 } else { 3 }",
+  "expect": {
+   "formatted": "if (c) {\n  1\n} else if (// why\n  d\n) {\n  2\n} else {\n  3\n}\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the parenthesis of a match guard",
+  "format": "match x { 1 if ( // why\n  c) => 2, _ => 3 }",
+  "expect": {
+   "formatted": "match x {\n  1 if (// why\n    c\n  ) => 2,\n  _ => 3,\n}\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the parenthesis of a call",
+  "format": "f( // why\n  a, b)",
+  "expect": {
+   "formatted": "f(// why\n  a,\n  b,\n)\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the parenthesis of lambda parameters",
+  "format": "const f = ( // why\n  a, b) => a + b; f(1, 2)",
+  "expect": {
+   "formatted": "const f = (// why\n  a,\n  b,\n) => a + b;\nf(1, 2)\n"
+  }
+ },
+ {
+  "name": "a line comment directly after the brace of a map",
+  "format": "{ // open\n  a: 1}",
+  "expect": {
+   "formatted": "{// open\n  a: 1,\n}\n"
+  }
+ },
+ {
+  "name": "a line comment after the brace of a branch keeps its space",
+  "format": "if (c) { // yes\n  1 } else { 2 }",
+  "expect": {
+   "formatted": "if (c) { // yes\n  1\n} else {\n  2\n}\n"
+  }
+ },
+ {
+  "name": "a line comment after the brace of a block keeps its space",
+  "format": "{ // block\n  const a = 1; a }",
+  "expect": {
+   "formatted": "{ // block\n  const a = 1;\n  a\n}\n"
+  }
+ },
+ {
+  "name": "a line comment after the brace of a match keeps its space",
+  "format": "match x { // arms\n  _ => 1 }",
+  "expect": {
+   "formatted": "match x { // arms\n  _ => 1,\n}\n"
+  }
+ },
+ {
+  "name": "a block comment then a line comment after an opening parenthesis",
+  "format": "f(/* a */ // b\n  c)",
+  "expect": {
+   "formatted": "f(/* a */ // b\n  c,\n)\n"
+  }
+ },
+ {
+  "name": "a trailing line comment after the closing parenthesis of an if test",
+  "format": "if (c) // why\n  { 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (c) // why\n{\n  1\n} else {\n  2\n}\n"
+  }
+ },
+ {
+  "name": "a type line with single-line and multi-line doc comments on fields",
+  "format": "/** A city's weather. */\ntype Weather = {\n  /** The city name, such as \"Paris\". */\n  city: string,\n  /**\n   * Temperature in degrees.\n   * Celsius unless asked otherwise.\n   */\n  temp: float,\n};\n1",
+  "expect": {
+   "formatted": "/** A city's weather. */\ntype Weather = {\n  /** The city name, such as \"Paris\". */\n  city: string,\n  /**\n   * Temperature in degrees.\n   * Celsius unless asked otherwise.\n   */\n  temp: float,\n};\n1\n"
+  }
+ },
+ {
+  "name": "a type line with a single-line doc comment on its own line",
+  "format": "type Place = {\n  /** The city. */\n  city: string\n};\n1",
+  "expect": {
+   "formatted": "type Place = {\n  /** The city. */\n  city: string,\n};\n1\n"
+  }
+ },
+ {
+  "name": "a type line with a single-line doc comment on the same line stays flat",
+  "format": "type Place = {/** The city. */ city: string, /** The count. */ n: int};\n1",
+  "expect": {
+   "formatted": "type Place = {/** The city. */ city: string, /** The count. */ n: int};\n1\n"
+  }
+ },
+ {
+  "name": "a type line with a multi-line doc comment starting on the brace line breaks",
+  "format": "type Place = {/**\n * The city.\n */ city: string, n: int};\n1",
+  "expect": {
+   "formatted": "type Place = {/**\n * The city.\n */\n  city: string,\n  n: int,\n};\n1\n"
+  }
+ },
+ {
+  "name": "a type line with a multi-line doc comment on a later field breaks",
+  "format": "type Place = {city: string, /**\n * The count.\n */ n: int};\n1",
+  "expect": {
+   "formatted": "type Place = {\n  city: string, /**\n * The count.\n */\n  n: int,\n};\n1\n"
+  }
+ },
+ {
+  "name": "nested record types break when an inner field has a doc comment",
+  "format": "type Outer = {id: string, inner: {\n    /**\n     * Value.\n     */\n    n: int,\n}};\n1",
+  "expect": {
+   "formatted": "type Outer = {\n  id: string,\n  inner: {\n    /**\n     * Value.\n     */\n    n: int,\n  },\n};\n1\n"
+  }
+ },
+ {
+  "name": "an uncommented nested record stays on one line inside a broken outer record",
+  "format": "type Order = {\n  /** The order id. */\n  id: string,\n  /** Dimensions. */\n  size: {w: int, h: int},\n};\n1",
+  "expect": {
+   "formatted": "type Order = {\n  /** The order id. */\n  id: string,\n  /** Dimensions. */\n  size: {w: int, h: int},\n};\n1\n"
+  }
+ },
+ {
+  "name": "blank lines between documented fields of a record type are kept",
+  "format": "type Weather = {\n  /** The city. */\n  city: string,\n\n  /** The temperature. */\n  temp: float,\n};\n1",
+  "expect": {
+   "formatted": "type Weather = {\n  /** The city. */\n  city: string,\n\n  /** The temperature. */\n  temp: float,\n};\n1\n"
+  }
+ },
+ {
+  "name": "a broken record type with rest and comments keeps trailing commas",
+  "format": "type Ext = {\n  /** The id. */\n  id: string,\n  // extra fields\n  ...string\n};\n1",
+  "expect": {
+   "formatted": "type Ext = {\n  /** The id. */\n  id: string,\n  // extra fields\n  ...string,\n};\n1\n"
+  }
+ },
+ {
+  "name": "a leading comment before the closing brace of a record type",
+  "format": "type Rec = {\n  a: int,\n  // more later\n};\n1",
+  "expect": {
+   "formatted": "type Rec = {\n  a: int,\n  // more later\n};\n1\n"
+  }
+ },
+ {
+  "name": "a trailing line comment on the last field of a record type moves after its comma",
+  "format": "type Rec = {\n  a: int,\n  b: string // the b\n};\n1",
+  "expect": {
+   "formatted": "type Rec = {\n  a: int,\n  b: string, // the b\n};\n1\n"
+  }
+ },
+ {
+  "name": "an annotated parameter whose record type has a doc comment breaks the parameter list",
+  "format": "const f = (x: {\n  /** The id. */\n  id: int,\n}) => x.id;\nf({id: 1})",
+  "expect": {
+   "formatted": "const f = (\n  x: {\n    /** The id. */\n    id: int,\n  },\n) => x.id;\nf({id: 1})\n"
+  }
+ },
+ {
+  "name": "a union of record types with doc comments",
+  "format": "type Shape = {\n  /** Circle. */\n  kind: \"circle\",\n  r: float,\n} | {\n  /** Square. */\n  kind: \"square\",\n  s: float,\n};\n1",
+  "expect": {
+   "formatted": "type Shape = {\n  /** Circle. */\n  kind: \"circle\",\n  r: float,\n} | {\n  /** Square. */\n  kind: \"square\",\n  s: float,\n};\n1\n"
+  }
+ },
+ {
+  "name": "an empty record type with a line comment",
+  "format": "type Empty = { // none\n};\n1",
+  "expect": {
+   "formatted": "type Empty = {// none\n};\n1\n"
   }
  }
 ]

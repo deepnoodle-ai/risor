@@ -352,7 +352,7 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 | `Const` | `"const" sp ‹pattern› sp "=" assigned(value) ";"`. With an annotation, F16 7.1 |
 | `Block` | `"{" i(H body) H "}"`, where body is the `const` lines and the result, separated by `H` and by empty lines as 2.9 says |
 | A branch of `if` or `try` | `"{" i(L body) L "}"`. A branch whose whole content is a `Block` is written with that block's `const` lines and result as its body: the two are one tree (`01-language.md` 4.2) |
-| `Cond`, form `if` | `g("if" sp "(" g(i(S ‹test›) S) ")" sp branch, then for each `else if`: sp "else" sp "if" sp "(" g(i(S ‹test›) S) ")" sp branch, then sp "else" sp branch)`. An `else` branch whose whole content is an `if` is written `else if`: the two are one tree |
+| `Cond`, form `if` | `g("if" sp "(" g(i(S ‹test›) S) ")" sp branch, then for each `else if`: sp "else" sp "if" sp "(" g(i(S ‹test›) S) ")" sp branch, then sp "else" sp branch)`. An `else` branch whose whole content is an `if` is written `else if`: the two are one tree. When the `(` of a test has a trailing line comment, that test's group `g(i(S ‹test›) S)` is a `broken-group` |
 | `Cond`, form `?:` | A chain of links (item 5), with tests t1 to tn, branches v1 to vn and the last `else` branch e: `g(link1 L ":" sp link2 L ":" sp ... L ":" sp linkn L ":" sp ‹e›)`, where linkk is `g(‹tk› i(L "?" sp ‹vk›))`. A vk that is a `Cond` of form `?:` is written `i(‹vk›)`. With one link: `g(g(‹t1› i(L "?" sp ‹v1›)) L ":" sp ‹e›)` |
 | `Try` | `g("try" sp branch sp "catch" sp, then "(" name ")" sp when it has a name, then branch)` |
 | `Binary` | The operands x1 to xn and operators o1 to on−1 of a run of one level (item 3): `g(‹x1› sp o1 i(L ‹x2› sp o2 L ‹x3› ... L ‹xn›))`. Unindented (item 4): the same without `i( )` |
@@ -367,7 +367,7 @@ token with its comments (2.12). `‹x›` is the document of x, in parentheses w
 | `NamePat` | The name or `_` |
 | `MapPat` | `seq("{", fields and rest, "}")`. A field whose key is a word equal to its name is the name alone: `{a: a}` and `{a}` are one tree. Another field is `key ":" sp name`. A default is `sp "=" assigned(default)`. The rest is `"..." name` |
 | `ListPat` | `seq("[", elements and rest, "]")`. An element is the name or `_`, then its default as for a field |
-| `Match` | `g("match" sp ‹subject› sp "{" i(L arm1 "," L arm2 "," ... L armn ib(",", "")) L "}")`, with the leading comments of `}` inside the indent and empty lines as 2.9 says. An arm: its literals separated by `sp "\|" sp`, or `_`; then, for an arm with a guard (F17 2), `sp "if" sp "(" g(i(S ‹guard›) S) ")"`; then `sp "=>" assigned(result)`. A literal is `-` and the number when it has one |
+| `Match` | `g("match" sp ‹subject› sp "{" i(L arm1 "," L arm2 "," ... L armn ib(",", "")) L "}")`, with the leading comments of `}` inside the indent and empty lines as 2.9 says. An arm: its literals separated by `sp "\|" sp`, or `_`; then, for an arm with a guard (F17 2), `sp "if" sp "(" g(i(S ‹guard›) S) ")"` (a `broken-group` when its `(` has a trailing line comment); then `sp "=>" assigned(result)`. A literal is `-` and the number when it has one |
 
 1. A text such as `"const"` is the token of the source, not a new one, so its
    comments come with it (2.12). A comma and a parenthesis the formatter writes
@@ -491,11 +491,20 @@ it, and is written there. No comment is lost or written twice.
 
 1. **Kept tokens.** The formatted text has a token for each token of the source
    but these: a comma; the `;` that ends a program; a parenthesis of a
-   parenthesized expression; the parentheses around the one parameter of a
-   lambda that 2.8 writes without them; the braces of an `else` branch written
-   `else if`, and of a `Block` that is the whole content of a branch (2.8); the
-   key and the colon of a pattern field written as its name. The other tokens
-   are **kept**.
+   parenthesized expression, except the outermost matching pair directly around
+   a subexpression that 2.6 writes in parentheses; the parentheses around the
+   one parameter of a lambda that 2.8 writes without them; the braces of an
+   `else` branch written `else if`, and of a `Block` that is the whole content
+   of a branch (2.8); the key and the colon of a pattern field written as its
+   name. The other tokens are **kept**.
+
+   For a subexpression x that 2.6 writes in parentheses, a matching pair of
+   parentheses stands **directly around** x when its `(` is the token directly
+   before x's span (`01-language.md` 4.3 item 1) and its matching `)` is the
+   token directly after x's span; walking outward while the next token before
+   and after are another matching `(` and `)` gives the outermost pair. That
+   pair is kept and any inner pair around x is dropped. When the source has no
+   pair directly around x, the formatter writes new `(` and `)` tokens.
 2. **Trailing and leading.** A comment is **trailing** when a token stands
    before it and the comment starts on the line where that token ends. Every
    other comment is **leading**.
@@ -507,34 +516,35 @@ it, and is written there. No comment is lost or written twice.
    A line comment is followed by `after-comment`. Several trailing comments of
    one token are written in their order.
 
-   After an opening bracket, a block comment stands where the bracket's first
+   After an opening bracket, a trailing comment stands where the bracket's first
    token inside would stand. The table gives the brackets. The `{` of a block,
    of a branch and of a `match` is not in it: a space or a break always follows
    that brace, so its comments are written as those of any token, as in
-   `{ /* why */ 1 }`.
+   `{ /* why */ 1 }` and `{ // why`.
 
    | Opening bracket | Example |
    | --- | --- |
-   | `(` of a call, a lambda's parameters or a function type's | `f(/* why */ c)`, `(/* none */) => int` |
-   | `(` of an `if` test, a `match` guard or a `catch` | `if (/* why */ c)`, `catch (/* e */ e)` |
-   | `[` of a list, a list pattern, an index, an optional index or a computed key | `[/* first */ 1, 2]`, `a[/* why */ 0]`, `a?.[/* why */ 0]` |
-   | `{` of a map, a record type or a record pattern | `{/* why */ a: 1}`, `const {/* x */ a, b} = m` |
+   | `(` of a call, a lambda's parameters or a function type's | `f(/* why */ c)`, `(/* none */) => int`, `f(// why` |
+   | `(` of an `if` test, a `match` guard or a `catch` | `if (/* why */ c)`, `if (// why`, `catch (/* e */ e)` |
+   | `(` of a kept parenthesized expression (item 1) | `(/* why */ a + b) * c`, `(// why` |
+   | `[` of a list, a list pattern, an index, an optional index or a computed key | `[/* first */ 1, 2]`, `[// open`, `a[/* why */ 0]`, `a?.[/* why */ 0]` |
+   | `{` of a map, a record type or a record pattern | `{/* why */ a: 1}`, `{// open`, `const {/* x */ a, b} = m` |
    | `<` of a map type | `map</* v */ int>` |
    | `(` and `[` of a program type | `(/* why */ int \| null)[]` |
 
-   1. No space is written between the bracket and its first trailing comment
-      when that comment is a block comment.
+   1. No space is written between the bracket and its first trailing comment,
+      whether a block comment or a line comment.
    2. When the last trailing comment of the bracket is a block comment, one
       space is written after it, unless the bracket's closing bracket is the
       next token: `f(/* no args */)`, `f(/* a */ /* b */ c)`.
 5. **After an element.** The trailing comments of the last token of an element
    are written after the whole element's document, and after its comma when the
-   formatter writes one. The elements are those of a sequence (2.9), the `const`
-   lines and the result of a program, a block and a branch, and the arms of a
-   `match`. So `a, // c` and `a // c` then `,` both give `a, // c`; and the
-   comment of `1 + 2; // done` stands outside the group of `1 + 2`, which a line
-   comment would otherwise break. In a program type, the trailing comments of the
-   last token of a field are written after the comma that follows it.
+   formatter writes one. The elements are those of a sequence (2.9), the fields
+   and rest of a record type (2.13), the `const` lines and the result of a
+   program, a block and a branch, and the arms of a `match`. So `a, // c` and
+   `a // c` then `,` both give `a, // c`; and the comment of `1 + 2; // done`
+   stands outside the group of `1 + 2`, which a line comment would otherwise
+   break.
 6. **A leading comment** is written before its token: `hard`, the comment, then
    `hard` when it is a line comment or a line end follows it in the source, and
    `space` when it is a block comment that its token follows on the same line.
@@ -548,7 +558,8 @@ it, and is written there. No comment is lost or written twice.
    token is a closing bracket or the end of the text and it is the last leading
    comment of that token.
 8. **Leading comments of a closing bracket** are written inside the indentation
-   of their sequence, block, branch or `match`, after its last element.
+   of their sequence, broken record type, block, branch or `match`, after its
+   last element.
 9. **The text of a comment.** A line comment is written without the spaces and
    tabs at its end. A block comment is written as it stands, each line end
    written U+000A. A block comment that holds a line end is a `text` with a line
@@ -566,12 +577,45 @@ at the end of a line (2.8).
 
 ### 2.13 Program types and stars
 
-1. **A program type** (F4 2.2) is written on one line, from its tokens: `sp "|"
-   sp` between alternatives; `", " ` between the fields of a record type, and no
-   comma after its last field; `": "` after a field's key or its `?`; `[]`,
-   `map<` and `>`, `(` and `)`, `{` and `}` with no space inside; `...` directly
-   before its type. A comment in it is attached and written by 2.12.
-2. **A star** step is `"[" "*" "]"`, with no space, or `"?.[" "*" "]"` (F7 2.1).
+1. **A program type** (F4 2.2) is written on one line, from its tokens, except
+   as item 2 says for a record type: `sp "|" sp` between alternatives; `": "`
+   after a field's key or its `?`; `[]`, `map<` and `>`, `(` and `)`, `{` and
+   `}` with no space inside; `...` directly before its type. A comment in it is
+   attached and written by 2.12.
+2. **A record type** has its fields (`key [ "?" ] ":" sp type`) and optional
+   rest (`"..."` or `"..." type`) as its elements, in order.
+   1. With no element (`{}`): `"{"`, the leading comments of `"}"`, `"}"` (as
+      2.9 item 1).
+   2. With one or more elements, the record type **breaks** when any comment
+      between its `{` and its `}` (nested record types included) is a leading
+      comment, a line comment, or a block comment that holds a line end.
+   3. When it does not break, it is written on one line, however long: `", "`
+      between elements, no comma after the last, no empty line between
+      elements, and the trailing comments of each element's last token after
+      the comma that follows it (or after the element for the last).
+   4. When it breaks, it is written as a broken sequence (`broken-group` of 2.9
+      item 2): `broken-group("{" i(S x1 "," L x2 "," ... L xn "," closeLead) S
+      "}")`, with empty lines as 2.9 item 4 and 2.12 item 7 say, trailing
+      comments of each element's last token after its comma (2.12 item 5), and
+      leading comments of `}` inside the indent after the last element's comma
+      (2.12 item 8). Because it is a `broken-group`, it holds a forced break
+      (2.4 item 4), so an enclosing group (such as a lambda's parameter list)
+      breaks around it; and an enclosing record type also breaks because the
+      comment stands between its `{` and `}`.
+
+   ```
+   type Weather = {
+     /** The city name. */
+     city: string,
+     /**
+      * Temperature in degrees.
+      * Celsius unless asked otherwise.
+      */
+     temp: float,
+   };
+   ```
+
+3. **A star** step is `"[" "*" "]"`, with no space, or `"?.[" "*" "]"` (F7 2.1).
 
 ### 2.14 A template
 

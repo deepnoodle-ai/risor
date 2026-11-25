@@ -518,7 +518,8 @@ expression of it (2.2). So:
 ### 7.1 The formatter
 
 F12 2.8 gives the document of an arm with a guard: the literals, or `_`, then
-`sp "if" sp "(" g(i(S ‹guard›) S) ")"`, then `sp "=>" assigned(result)`. A run
+`sp "if" sp "(" g(i(S ‹guard›) S) ")"` (a `broken-group` when its `(` has a
+trailing line comment), then `sp "=>" assigned(result)`. A run
 of one level as the guard is unindented, as the test of an `if` is (F12 2.8
 item 4). The `if` and the two parentheses of a guard are kept tokens (F12 2.12
 item 1): they are not the parentheses of a parenthesized expression, and the
