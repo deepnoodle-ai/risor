@@ -1509,7 +1509,7 @@ func (v *validator) buildConform(c *Case, m, cf map[string]any, where string) (*
 		// F4 9.2 item 3: a declare failure, or the function's
 		// steps-exceeded, which states only its code and message.
 		stepsOK := e.Phase == "run" && len(e.Diagnostics) == 1 && e.Diagnostics[0].Code == "steps-exceeded" &&
-			e.Diagnostics[0].Class == nil && e.Diagnostics[0].Span == nil && !e.Diagnostics[0].HasPath &&
+			e.Diagnostics[0].Class == nil && e.Diagnostics[0].Span == nil && !e.Diagnostics[0].SpanNull && !e.Diagnostics[0].HasPath &&
 			!e.Diagnostics[0].HasData && e.Diagnostics[0].Trace == nil
 		if e.Phase != "declare" && !stepsOK {
 			return nil, v.invalid("%s: a conform case expects a conform result, a declare failure or steps-exceeded", where)

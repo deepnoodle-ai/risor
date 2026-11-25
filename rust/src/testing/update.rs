@@ -62,7 +62,13 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             }
             let limit = diags.iter().any(|d| code::LIMIT.contains(&d.code));
             if !same(Shape::Failure(phase.as_str().into())) {
-                return Some(failure_json(*phase, diags, None));
+                // A conform case's steps-exceeded states only its code and
+                // message (F4 9.2 item 3).
+                let steps_cols = ["code".to_string(), "message".to_string()];
+                let cols = (case.conform.is_some()
+                    && diags.first().is_some_and(|d| d.code == "steps-exceeded"))
+                .then_some(&steps_cols[..]);
+                return Some(failure_json(*phase, diags, cols));
             }
             let old = old?;
             // The columns: `code` and every field some old diagnostic has,
