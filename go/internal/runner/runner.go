@@ -954,6 +954,7 @@ func runAnalysis(c *casefile.Case) Result {
 // conformOutcome is what the three ways of F4 9.3 give for a conform case.
 type conformOutcome struct {
 	declare  *risor.Error
+	limit    *risor.Error // the function's steps-exceeded (F4 9.3 item 6)
 	conforms bool
 	path     []any
 	message  string
@@ -977,9 +978,24 @@ func doConform(base *risor.Env, c *casefile.Case) conformOutcome {
 		o.declare = err.(*risor.Error)
 		return o
 	}
-	ferr := risor.Conform(c.Conform.Value, t)
+	var opts []risor.ConformOption
+	if c.Conform.Limit != nil { // F4 9.2: the function's step limit
+		opts = append(opts, risor.ConformSteps(*c.Conform.Limit))
+	}
+	ferr := risor.Conform(c.Conform.Value, t, opts...)
 	if c.Conform.Max != nil {
-		o.all = risor.ConformAll(c.Conform.Value, t, int(*c.Conform.Max))
+		o.all = risor.ConformAll(c.Conform.Value, t, int(*c.Conform.Max), opts...)
+	}
+	if e, ok := ferr.(*risor.Error); ok && e.Diagnostics[0].Code == "steps-exceeded" {
+		// F4 9.3 item 6: no run is made. With max, ConformAll gives that
+		// one diagnostic (F8 6.4 step 1, 7.5 item 4).
+		o.limit = e
+		if c.Conform.Max != nil && (len(o.all) != 1 || o.all[0].Code != "steps-exceeded") {
+			o.agree, o.why = false, "ConformAll does not end with the function's steps-exceeded alone"
+		} else {
+			o.agree = true
+		}
+		return o
 	}
 	o.conforms = ferr == nil
 	if ferr != nil {
@@ -1047,6 +1063,14 @@ func runConform(cr *caseRun) Result {
 	e := c.Expect
 	if o.declare != nil {
 		return compareFailure(c, o.declare, nil, &stubState{}, &runOutcome{err: o.declare})
+	}
+	if o.limit != nil { // F4 9.3 item 6: the outcome alone
+		r := compareFailure(c, o.limit, nil, &stubState{}, &runOutcome{err: o.limit})
+		if !o.agree {
+			r.Verdict = Fail
+			r.Diffs = append(r.Diffs, Diff{"outcome", expectedOutcome(c), value.QuoteJSON(o.why)})
+		}
+		return r
 	}
 	if e.IsFailure() || c.NoExpect {
 		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", expectedOutcome(c), jsonForm(o.whole())}}}

@@ -1,6 +1,7 @@
 //! Tests of the crate's internals, which reach what the root does not
 //! export.
 mod assist;
+mod conform_steps;
 mod conversion;
 mod describe;
 mod env;

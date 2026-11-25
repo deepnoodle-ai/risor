@@ -93,7 +93,8 @@ pub(crate) fn decode_max<T: Decode + HostType>(
         vec![d]
     })?;
     let ty = ty.into_ty();
-    let all = crate::conform::all(v, &ty, max.max(1));
+    // The decode counts no steps (R324).
+    let all = crate::conform::all(v, &ty, max.max(1), None);
     if !all.is_empty() {
         return Err(all.iter().map(|f| f.diagnostic()).collect());
     }

@@ -540,33 +540,70 @@ pub fn type_from_schema(schema: &str, opts: SchemaOptions) -> Result<Type, Error
     crate::schema::ty_schema(&j, opts).map(strong).map_err(bad)
 }
 
-/// The conformance function (`05-host-api.md` A.13): `Ok(())` when the
+/// The options of [`conform_with`] and [`conform_all_with`]
+/// (`f04-conversion.md` 7.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConformOptions {
+    /// The step limit (7.3), or `None` for no limit. The default is the
+    /// default step limit, 1,000,000, whatever the limits of the environment
+    /// that resolved the type.
+    pub steps: Option<u64>,
+}
+
+impl Default for ConformOptions {
+    fn default() -> ConformOptions {
+        ConformOptions {
+            steps: Some(crate::conform::FREE_STEPS),
+        }
+    }
+}
+
+/// The conformance function (`f04-conversion.md` 7): `Ok(())` when the
 /// value conforms to the type, else the diagnostic of the first failure. It
-/// is not a run: no limit, no usage. An invalid type gives its `bad-type`
-/// diagnostic.
+/// is not a run, but it charges the steps a run's walk charges, against the
+/// default step limit: past it, `steps-exceeded` with no path (7.3). Host
+/// data that holds one list at many places is charged at each. An invalid
+/// type gives its `bad-type` diagnostic.
 pub fn conform(v: &Value<'_>, t: &Type) -> Result<(), Diagnostic> {
-    use crate::conform::{test, too_deep, Free};
+    conform_with(v, t, &ConformOptions::default())
+}
+
+/// [`conform`] with the step limit of `options` (7.2, 7.3).
+pub fn conform_with(v: &Value<'_>, t: &Type, options: &ConformOptions) -> Result<(), Diagnostic> {
+    use crate::conform::{limit_diagnostic, test, Free};
     let ty = t
         .ty()
         .map_err(|m| Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m))?;
-    match test(v, ty, &mut Free::default()) {
+    match test(v, ty, &mut Free::new(options.steps)) {
         Ok(Some(f)) => Err(f.diagnostic()),
         Ok(None) => Ok(()),
-        // F17 12.7 item 3: past the default depth limit.
-        Err(_) => Err(too_deep()),
+        // F17 12.7 item 3: past the default depth limit; 7.3: past the
+        // step limit.
+        Err(code) => Err(limit_diagnostic(code, options.steps)),
     }
 }
 
 /// Every failure of the value, up to `max` (`f08-errors.md` 6), in the
 /// order of 6.2. A maximum less than 1 is read as 1. The list is empty
 /// exactly when the value conforms, and its first entry is the diagnostic
-/// of [`conform`].
+/// of [`conform`]. It counts steps as [`conform`] does (6.4): a limit ends
+/// the list with its diagnostic.
 pub fn conform_all(v: &Value<'_>, t: &Type, max: usize) -> Vec<Diagnostic> {
+    conform_all_with(v, t, max, &ConformOptions::default())
+}
+
+/// [`conform_all`] with the step limit of `options` (F4 7.2, F8 6.4).
+pub fn conform_all_with(
+    v: &Value<'_>,
+    t: &Type,
+    max: usize,
+    options: &ConformOptions,
+) -> Vec<Diagnostic> {
     let ty = match t.ty() {
         Ok(ty) => ty,
         Err(m) => return vec![Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m)],
     };
-    crate::conform::all(v, ty, max.max(1))
+    crate::conform::all(v, ty, max.max(1), options.steps)
         .iter()
         .map(crate::conform::Failure::diagnostic)
         .collect()

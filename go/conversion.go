@@ -273,23 +273,60 @@ func (e *Env) ParseType(text string) (Type, error) {
 	return Type{t: t}, nil
 }
 
+// ConformOption is an option of Conform and ConformAll.
+type ConformOption interface{ applyConform(*conformConfig) }
+
+type conformConfig struct{ steps int64 }
+
+type conformSteps int64
+
+func (n conformSteps) applyConform(c *conformConfig) { c.steps = int64(n) }
+
+// ConformSteps sets the step limit of Conform and ConformAll (F4 7.3): n
+// steps, or NoLimit for none. Any other number below 0 is read as 0. Without
+// it the limit is the default step limit, 1,000,000, whatever the limits of
+// the environment that resolved the type.
+func ConformSteps(n int64) ConformOption { return conformSteps(n) }
+
+func conformLimit(opts []ConformOption) int64 {
+	c := conformConfig{steps: eval.DefaultLimits.Steps}
+	for _, o := range opts {
+		if o != nil {
+			o.applyConform(&c)
+		}
+	}
+	if c.steps < 0 && c.steps != NoLimit {
+		c.steps = 0
+	}
+	return c.steps
+}
+
+// limitDiagnostic is the diagnostic of the conformance function at a limit:
+// phase run, class limit, no path and no span.
+func limitDiagnostic(code, msg string) Diagnostic {
+	return Diagnostic{Phase: PhaseRun, Code: code, Class: "limit", Message: msg, Trace: []diag.TraceEntry{}}
+}
+
 // Conform tests a value against a type by the conformance walk of F4 4: the
 // test x is T and x as T make. It returns nil when v conforms, else an
 // *Error with one diagnostic: phase run, code not-conforming, class value,
 // the path and the message of the first failure, and no span. It is not a
-// run: it charges nothing, and its work is bounded by the value and the
-// type. A value nested past the default depth limit is depth-exceeded, of
-// class limit, with no path (F17 12.7). It changes nothing.
-func Conform(v any, t Type) error {
+// run, but it charges the steps a run's walk charges, against the default
+// step limit or the one ConformSteps gives: past it, the diagnostic is
+// steps-exceeded, of class limit, with no path (F4 7.3). Host data that
+// shares a list at many places is charged at each. A value nested past the
+// default depth limit is depth-exceeded, of class limit, with no path (F17
+// 12.7). It changes nothing.
+func Conform(v any, t Type, opts ...ConformOption) error {
 	if p := t.problem(); p != "" {
 		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}}
 	}
-	path, code, msg, ok := eval.ConformCode(v, t.t)
+	path, code, msg, ok := eval.ConformCode(v, t.t, conformLimit(opts))
 	if ok {
 		return nil
 	}
-	if code == "depth-exceeded" { // F17 12.7: no path
-		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "limit", Message: msg, Trace: []diag.TraceEntry{}}}}
+	if code != "not-conforming" { // F17 12.7, F4 7.3: no path
+		return &Error{Diagnostics: []Diagnostic{limitDiagnostic(code, msg)}}
 	}
 	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: "value",
 		Message: msg, Path: path, Trace: []diag.TraceEntry{}}}}
@@ -299,16 +336,18 @@ func Conform(v any, t Type) error {
 // the order of package F8 6.2. A max less than 1 is read as 1. Each is a
 // not-conforming diagnostic of class value with a path and no span; the
 // list is empty exactly when v conforms, and its first diagnostic is the
-// one Conform gives. It charges nothing and changes nothing.
-func ConformAll(v any, t Type, max int) []Diagnostic {
+// one Conform gives. It counts steps as Conform does (F8 6.4), under the
+// same option: a limit ends the list with steps-exceeded or depth-exceeded,
+// with no path. It changes nothing.
+func ConformAll(v any, t Type, max int, opts ...ConformOption) []Diagnostic {
 	if p := t.problem(); p != "" {
 		return []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}
 	}
-	fs := eval.ConformAll(v, t.t, max)
+	fs := eval.ConformAll(v, t.t, max, conformLimit(opts))
 	out := make([]Diagnostic, len(fs))
 	for i, f := range fs {
-		if f.Code == "depth-exceeded" {
-			out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "limit", Message: f.Message, Trace: []diag.TraceEntry{}}
+		if f.Code != "not-conforming" {
+			out[i] = limitDiagnostic(f.Code, f.Message)
 			continue
 		}
 		out[i] = Diagnostic{Phase: PhaseRun, Code: f.Code, Class: "value", Message: f.Message,

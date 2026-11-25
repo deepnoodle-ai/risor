@@ -18,7 +18,7 @@ It adds no run code, no message template, no library entry, no reserved word
 and no `declare` code. It raises the run code `not-conforming`, which Core
 reserves (`01-language.md` 14.5 item 3), with the three templates Core's
 catalog already holds for it. It reports the `parse` code `bad-type-text`, one
-of Core's 15 (`01-language.md` 14.2), and the check codes `never-conforms` and
+of Core's 16 (`01-language.md` 14.2), and the check codes `never-conforms` and
 `untagged-union` (`05-types.md` 16.2).
 
 The chapters of Core are cited by file and section: `05-types.md` 3.9 is
@@ -806,20 +806,22 @@ Every binding gives the host the test that `as` and `is` make.
 | Matter | Rule |
 | --- | --- |
 | Takes | A value and a type. The value is anything a host may supply (`03-host.md` 3.4) or a run may return. The type is resolved by an environment (3.5), which gives its names |
-| Gives | Nothing when the value conforms. Otherwise one diagnostic: phase `run`, code `not-conforming`, class `value`, the path and message of 4.4, and no span |
-| Agrees with | `x is T` for every value and type, and `x as T` with its path and message |
+| Gives | Nothing when the value conforms. Otherwise one diagnostic: phase `run`, code `not-conforming`, class `value`, the path and message of 4.4, and no span. Or a limit's diagnostic: `steps-exceeded` (7.3), or `depth-exceeded` with package F17 |
+| Agrees with | `x is T` for every value and type, and `x as T` with its path and message, when it ends within its limits |
 | Changes | Nothing. The value is not copied, filled in or trimmed |
 
-1. **It is not a run.** It has no program, no usage, no limits and no
-   cancellation signal. It charges nothing.
-2. **Its work** is bounded by the value: it visits a value at most once for
-   each way the type reaches it. **Its depth** is bounded by the type, at most
+1. **It is not a run.** It has no program, no usage, no allocation limit, no
+   deadline and no cancellation signal. It counts steps against a step limit
+   (7.3), and gives no count.
+2. **Its work** is bounded by the step limit (7.3). It walks a value as a
+   tree: a list or a map that host data holds at several places is walked,
+   and charged, at each place. **Its depth** is bounded by the type, at most
    64, whatever the data. Cyclic host data cannot make it loop. With package
    F17 a recursive type does not bound it, and the function fails with
    `depth-exceeded` past the default depth limit, 200
    (`spec/packages/f17-recursion.md` 12.7).
-3. A host that wants limits and a count runs the program `v as T`, with `v`
-   declared `any`.
+3. A host that wants a count, a deadline or a cancellation signal runs the
+   program `v as T`, with `v` declared `any`.
 4. Type text given to it is resolved as declared type text (`05-types.md`
    19.5): an error is the `declare` error `bad-type`.
 5. **It is the precondition of `05-types.md` 18.4, made testable.** A host
@@ -831,9 +833,38 @@ Every binding gives the host the test that `as` and `is` make.
 
 | Binding | Form |
 | --- | --- |
-| Go | `t, err := env.ParseType(text)`, then `risor.Conform(v, t)`, which returns `nil` or an `error` that holds the diagnostic |
-| TypeScript | `const t = env.parseType(text)`, then `conform(value, t)`, which returns `null` or the diagnostic |
-| Rust | `let t = env.parse_type(text)?`, then `risor::conform(&value, &t)`, which returns `Ok(())` or `Err(diagnostic)` |
+| Go | `t, err := env.ParseType(text)`, then `risor.Conform(v, t)`, which returns `nil` or an `error` that holds the diagnostic. The option `risor.ConformSteps(n)` gives the step limit: `risor.Conform(v, t, risor.ConformSteps(5000))`. `risor.NoLimit` turns it off |
+| TypeScript | `const t = env.parseType(text)`, then `conform(value, t)`, which returns `null` or the diagnostic. The step limit is given as `conform(value, t, {steps: 5000})`, and `{steps: null}` turns it off |
+| Rust | `let t = env.parse_type(text)?`, then `risor::conform(&value, &t)`, which returns `Ok(())` or `Err(diagnostic)`. The step limit is given as `risor::conform_with(&value, &t, &ConformOptions { steps: Some(5000) })`, and `steps: None` turns it off |
+
+### 7.3 Steps
+
+The function charges the steps a run's walk charges, against a step limit.
+When the limit is passed it fails, as a run does.
+
+| Matter | Rule |
+| --- | --- |
+| What is charged | The steps of 5.3 item 1, at the places of 4.2 and 4.3 where the walk of a run charges them. The count starts at 0 at each call |
+| The limit | The default step limit of `03-host.md` 3.6.1, 1,000,000, unless the host gives another (7.2): a whole number, or off. A number below 0 is read as 0 |
+| Passed | A charge that would make the count more than the limit is not made. The function ends with one diagnostic: phase `run`, code `steps-exceeded`, class `limit`, the message of `steps-exceeded` with that limit, no path, no span and an empty trace |
+| Order | The depth test of 5.4 is made before the charge of 4.2 step 3, as in a run. A place that passes both limits fails with `depth-exceeded` |
+
+1. **The count is exact.** The same value and type give the same count in
+   every binding: the steps the run of `v as T` charges for its walk, which a
+   conform case states as `steps` (9.2). So a case can pin where the limit is
+   reached (9.2, `limit`).
+2. **Sharing is not detected.** The function does not remember the lists and
+   maps it has walked, and no identity of a host value is defined. Host data
+   that holds one list twice at each of k levels has 2^k places. Each place
+   the walk looks at charges at least 1 step, so the limit bounds the places
+   it looks at, whatever the data shares.
+3. A limit of 0 lets only `any` pass: every other test charges at least 1.
+4. **The limit of an environment does not apply.** The function takes a type,
+   not an environment, and a type may be made with none (F1 2, F1 6). The
+   environment that resolved a type, and its step limit, play no part. This
+   is the rule of the depth limit too (`spec/packages/f17-recursion.md` 12.7).
+5. The message is the template `default` of `steps-exceeded`, as a run gives
+   it. No code and no template is added: Core freezes the run codes.
 
 ## 8. The description
 
@@ -893,7 +924,7 @@ and expects an answer.
 
 | Field | Holds |
 | --- | --- |
-| `conform` | An object with exactly two fields: `type`, a type text, and `value`, a host value as `03-host.md` 3.10.3 items 4 and 7 read one, opaque values included |
+| `conform` | An object with the fields `type`, a type text, and `value`, a host value as `03-host.md` 3.10.3 items 4 and 7 read one, opaque values included, both required; and `limit`, optional: a whole number, the step limit the host gives the conformance function (7.3). Without `limit` the function has the default |
 
 1. `source`, `file` and `conform` count as one field for the header rule
    (`03-host.md` 3.10.2 item 4). After the header rule a case has exactly one
@@ -901,7 +932,9 @@ and expects an answer.
 2. A case with `conform` may have, after the header rule, only `name`,
    `version`, `opaque`, `types`, `conform`, `skip` and `expect`. Any other field
    makes the file invalid.
-3. Its `expect` is a **conform result**, or a failure of phase `declare`.
+3. Its `expect` is a **conform result**, a failure of phase `declare`, or a
+   failure of phase `run` with one diagnostic of code `steps-exceeded` (7.3),
+   which may state `message` and nothing more.
 
 | Field of a conform result | Holds | Compared with |
 | --- | --- | --- |
@@ -913,8 +946,8 @@ and expects an answer.
 4. `path` and `message` stand only beside `conforms: false`. Either may be left
    out, and is then not compared.
 5. A conform result in a case without `conform`, or an `expect` of a case with
-   `conform` that is neither a conform result nor a failure of phase
-   `declare`, makes the file invalid.
+   `conform` that is none of the three of item 3, makes the file invalid. So
+   does a `limit` that is not a whole number of 0 or more.
 6. The differences of a conform case are named `outcome`, `conforms`, `path`,
    `message` and `steps`, in that order.
 
@@ -924,7 +957,7 @@ and expects an answer.
 | --- | --- | --- |
 | 1. Declare | The case's environment is built: `version`, `opaque`, `types` | The outcome: a failure of phase `declare` |
 | 2. Resolve | `conform.type` is resolved in it as declared type text (7.1 item 4) | The outcome: a failure of phase `declare`, `bad-type` |
-| 3. The function | The conformance function (7) on the value, supplied as a host value | |
+| 3. The function | The conformance function (7) on the value, supplied as a host value, with the step limit `limit` when the case gives it | When it ends with `steps-exceeded`, the outcome: that failure. Step 4 is not made |
 | 4. Two runs | The programs `v as ` followed by the text of `conform.type`, and `v is ` followed by it, each compiled in a child of the case's environment that declares the variable `v` of type `any`, with the static rules alone, and each run with `v` supplied as the value, under the base environment's limits | |
 | 5. Compare | Each of the three answers is compared with `expect` | The verdict `fail` |
 
@@ -935,6 +968,13 @@ and expects an answer.
    Another value is the difference `conforms`.
 3. The runs charge no unit. A conform result has no `allocated`.
 4. A case with a `declare` failure stops at the step that failed.
+5. `limit` is the function's alone. The runs of step 4 keep the base
+   environment's limits, so a case that pins the limit at the function's
+   count still runs `v as T` to its end, and states its `steps`.
+6. A case whose function ends with `steps-exceeded` compares only the
+   outcome, as a failure of phase `run`: its code and, when stated, its
+   message. A function that does not, against such an `expect`, or that does
+   against a conform result, is the difference `outcome`.
 
 ### 9.4 The runner
 
@@ -960,7 +1000,7 @@ The line of the `outcome` command (`suite/README.md`) changes so:
 | Case | Line |
 | --- | --- |
 | A case with `types`, whose environment was built | The field `description` of F1 7.4 |
-| A conform case | `name`; then `phase`, null, or `"declare"` with `diagnostics` as for any `declare` failure; then, when `phase` is null, `conforms`, `path` and `message` from the conformance function (absent when it conforms), `steps` from the run of `v as T`, and `agree`, `true` when the three ways of 9.3 agree in answer, path, message and steps |
+| A conform case | `name`; then `phase`, null, `"declare"` with `diagnostics` as for any `declare` failure, or `"run"` with the function's `steps-exceeded` diagnostic in `diagnostics`; then, when `phase` is null, `conforms`, `path` and `message` from the conformance function (absent when it conforms), `steps` from the run of `v as T`, and `agree`, `true` when the three ways of 9.3 agree in answer, path, message and steps |
 
 ### 9.6 The JSON Schema of the additions
 
@@ -995,7 +1035,8 @@ in `$defs/fields`, `"types"` and `"conform"` in both lists of `propertyNames`,
       "required": ["type", "value"],
       "properties": {
         "type": {"type": "string"},
-        "value": {"$ref": "#/$defs/hostValue"}},
+        "value": {"$ref": "#/$defs/hostValue"},
+        "limit": {"$ref": "#/$defs/count"}},
       "additionalProperties": false}}},
   "conformResult": {
     "type": "object",
