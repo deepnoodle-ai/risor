@@ -35,7 +35,7 @@ chapter.
 | --- | --- |
 | **Core diagnostic** | The first `parse` diagnostic of a text, with its code and span, as Core and the packages before F8 give it (`01-language.md` 14.1, F3 6.2, F4 2.6) |
 | **Failing token** | The token at which the Core diagnostic is reported, or the end of input |
-| **Targeted code** | A `parse` code of 2.11 that is not one of Core's 14 |
+| **Targeted code** | A `parse` code of 2.11 that is not one of Core's 15 |
 | **Operand word** | A word read as a `Name` where a `Primary` stands, not followed by `(`: not after `.` or `?.`, not a key, not a shorthand entry of a map literal, not a pattern |
 | **Directly**, of code points | With no code point between |
 | **The token before, the token after** | The previous or the next token. White space and comments may stand between |
@@ -62,11 +62,11 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
 | Core rule | With this package |
 | --- | --- |
 | `01-language.md` 14.1 item 1 | The first `parse` diagnostic has a specified message (3) |
-| `01-language.md` 14.2, the 14 codes | 44 more codes (2.11). Each is reported only where 2 says |
+| `01-language.md` 14.2, the 15 codes | 44 more codes (2.11). Each is reported only where 2 says |
 | `01-language.md` 14.3 | Each row is reported with the targeted code of 2, at the span the row gives, or at the span of 2.8 where no earlier case pins it (rulings BA5) |
 | `03-host.md` 3.7.1, `span` and `message` | The message of a `parse` and of a `check` diagnostic is specified. A `run` diagnostic has the field `trace` (4) |
 | `03-host.md` 3.7.2, the sentence on messages of `parse` and `check` | Those messages are built from the catalog (3) |
-| `03-host.md` 3.7.3 | The `parse` phase has 58 codes (2.11) |
+| `03-host.md` 3.7.3 | The `parse` phase has 59 codes (2.11) |
 | `03-host.md` 3.8.1 item 2 | The catalog also has the entries of 3.1 |
 | `03-host.md` 3.8.3 | Two more kinds of parameter, and the kind `token` made exact (3.2) |
 | `03-host.md` 3.10 | The additions of 7 |
@@ -366,7 +366,7 @@ section applies to type text, but those of F4's `bad-type-text` (3.4).
 
 ### 2.11 The parse codes
 
-With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
+With this package the `parse` phase has 59 codes: the 15 of `01-language.md`
 14.2 and these 44.
 
 | Code | Rows |
@@ -428,7 +428,7 @@ With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
 1. The entries of the `parse` phase are in `suite/messages-parse.json`, and
    those of the `check` phase in `suite/messages-check.json`. Each file has the
    format of `03-host.md` 3.8.2, and every rule of 3.8.2 holds for it.
-2. `messages-parse.json` has one entry for each of the 58 codes of 2.11, with 97
+2. `messages-parse.json` has one entry for each of the 59 codes of 2.11, with 98
    templates. `messages-check.json` has one entry for each of the 30 check codes
    (`05-types.md` 16.1, F4 6.7), with 72 templates. Package F16 adds a code
    and a template in a file of its own (`spec/packages/f16-entry-points.md`
@@ -512,6 +512,7 @@ one template, its name is `default`.
 
 | Code | Template | Text | Chosen when |
 | --- | --- | --- | --- |
+| `source-too-large` | `default` | `the source text is longer than the limit of {limit} code points` | limit is the source limit of the parse (`03-host.md` 3.6.1) |
 | `unexpected-token` | `key` | `a map key is followed by :, found {token}` | The token stands where the : after a string key or a computed key [e] is needed, in a map literal or a map pattern. token is that token, or end of input |
 |  | `default` | `unexpected {token}` | Every other place. token is the token at the span, or end of input |
 | `unexpected-character` | `default` | `unexpected character {char}` |  |
@@ -614,6 +615,7 @@ The parameters of each code, with their kinds:
 
 | Code | Parameters |
 | --- | --- |
+| `source-too-large` | `limit` (number) |
 | `unexpected-token` | `token` (token) |
 | `unexpected-character` | `char` (char) |
 | `bad-escape` | `token` (token) |

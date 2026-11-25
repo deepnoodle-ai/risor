@@ -106,7 +106,7 @@ are those of Core and of the packages before this one.
 
 | Takes | Gives |
 | --- | --- |
-| A source text | The formatted text, or the `parse` diagnostics of the text |
+| A source text, and a source limit (`03-host.md` 3.6.1 item 5) | The formatted text, or the `parse` diagnostics of the text |
 
 1. The text is parsed by `01-language.md`, with the forms of every package the
    implementation offers. When it does not parse, the formatter gives no text
@@ -559,6 +559,10 @@ The formatter of a template (F2 2) takes a template text and gives a text.
    candidates it lists.
 4. A position that is not in the text, or that is in no line of it, gives an
    empty list and no hover.
+5. Assist takes a source limit, as parse does (`03-host.md` 3.6.1 item 5). A
+   text longer than the limit (`01-language.md` 2.1 item 4) gives an empty
+   list whose span is empty at the position, and no hover. Nothing of the text
+   is read but its length.
 
 ### 3.2 The cut
 
@@ -1068,7 +1072,8 @@ with its meaning unchanged.
 
 1. A case with `format` or `formatTemplate` is a **format case**. It may have,
    after the header rule, only `name`, `format` or `formatTemplate`, `env`,
-   `vars`, `skip` and `expect`.
+   `vars`, `limits`, `skip` and `expect`. Of `limits`, the formatter uses
+   `source` alone (`03-host.md` 3.10.3).
 2. Its `expect` is a **format result**, an object with the one field
    `formatted`, a string; or a failure of phase `parse` (`03-host.md` 3.10.6).
 3. **How it is run.** The text is formatted. A text that does not parse gives
@@ -1096,7 +1101,8 @@ with its meaning unchanged.
 
 1. A case with `complete` may have, after the header rule, only `name`,
    `complete`, `version`, `env`, `opaque`, `methods`, `functions`, `removed`,
-   `groups`, `types`, `returns`, `skip` and `expect`. Its environment is built
+   `groups`, `types`, `returns`, `limits`, `skip` and `expect`. Of `limits`,
+   completion uses `source` alone. Its environment is built
    from them as for a program case (`03-host.md` 3.10.3 item 3), and `returns` is
    the expected result. A stub's rows are not used.
 2. Its `expect` is `{"completion": C}` or a failure of phase `declare`. C is an

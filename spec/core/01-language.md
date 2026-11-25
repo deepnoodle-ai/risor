@@ -48,6 +48,21 @@ A word that starts with an upper-case letter is a production or a lexical class.
    one-line string with an error (2.6), a `\` before one is an error in a
    template (2.8), and a raw U+000D in a template reads as U+000A (2.8). A
    position counts lines by `03-host.md`, at U+000A only.
+4. **The size of a source text.** A source text has at most **1,048,576**
+   code points (1 MiB of code points). The count is of the text as the host
+   passed it, after it is decoded (`03-host.md` 3.4.5), and before anything is
+   removed: a U+FEFF at the start counts, and so does each code point of a line
+   end. A host may set a lower limit; it cannot set a higher one (`03-host.md`
+   3.6.1).
+5. A text with more code points than the limit is `source-too-large`, of phase
+   `parse`, with no span. It is found before the text is divided into tokens,
+   and it is the only diagnostic of the parse. Nothing in the text is read for
+   it but its length, so `@` repeated past the limit is `source-too-large`, not
+   `unexpected-character`.
+6. Every part of an implementation that takes source text applies the limit
+   first: the parser, and so compile and check, and the formatter, analysis,
+   completion and hover of the packages. So the time and the memory that each
+   part spends on one text have a bound that does not depend on the text.
 
 ### 2.2 White space and comments
 
@@ -273,7 +288,8 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
 
 ### 2.11 Order of lexical diagnostics
 
-1. The whole text is divided into tokens before it is parsed.
+1. The whole text is divided into tokens before it is parsed, once it is
+   within the size limit (2.1 item 4).
 2. If that finds a lexical diagnostic, the first diagnostic of the parse is the
    first lexical diagnostic the lexer meets, reading from the start. An
    unterminated literal or comment is met where it stops. So in `"a\q` and then
@@ -547,7 +563,7 @@ its last token, where its tokens are these:
    `a + b`, and the `Binary` `*` spans from `(` to `c`.
 2. The span of `Bad` is not specified.
 3. The span of each `parse` diagnostic is given in 2.5 to 2.10, 3.4, 3.5, 13.2,
-   14.2 and 14.3. The span of each `run` diagnostic that the language raises is
+   14.2 and 14.3. `source-too-large` has no span (2.1). The span of each `run` diagnostic that the language raises is
    given in 14.5.
 
 ## 5. Programs, blocks and scope
@@ -1280,14 +1296,15 @@ Nothing else opens a level. In particular these do not:
 5. The **nesting depth** of an expression is the number of levels open at its
    first token. `02-evaluation.md` uses it for the depth limit.
 6. What does not open a level must not cost an implementation stack. A sum of
-   100,000 terms, a chain of 100,000 calls, a `? :` with 100,000 `else`
-   branches, an `if` with 100,000 `else if` parts and a block of 100,000 `const`
+   10,000 terms, a chain of 10,000 calls, a `? :` with 10,000 `else`
+   branches, an `if` with 10,000 `else if` parts and a block of 10,000 `const`
    lines each parse, and each runs within the limits of `02-evaluation.md`.
    This binds every part of an implementation that reads a program: the
    parser, the static rules, the checker, the evaluator, analysis, the
    formatter, completion and hover. None of them overflows its stack because
-   of the length of such a form. The rule is about the stack. It does not
-   state the time or the memory that a part may use.
+   of the length of such a form, up to the size of a source text (2.1). The
+   rule is about the stack. The time and the memory of each part are bounded
+   through the size of the source text (2.1 item 6).
 
 | Text | Levels open at `x` |
 | --- | --- |
@@ -1310,8 +1327,11 @@ Nothing else opens a level. In particular these do not:
 1. Only the first `parse` diagnostic is specified: its code and its span. Its
    message is not specified in Core. What a parser reports after it is in
    `03-host.md`.
-2. If the text has a lexical diagnostic, the first diagnostic is lexical (2.11).
-3. Otherwise the parser reads the tokens from the start. The first diagnostic is
+2. If the text is longer than the limit of 2.1 item 4, the only diagnostic is
+   `source-too-large` (2.1 item 5).
+3. Otherwise, if the text has a lexical diagnostic, the first diagnostic is
+   lexical (2.11).
+4. Otherwise the parser reads the tokens from the start. The first diagnostic is
    the first rule the text breaks as the parser reads it: a token that does not
    fit (3.5), a rule of 3.4 or 14.3, a reserved word by 14.2, or a level past
    the limit (13.2). A rule of 3.4 whose span is an earlier token is broken at
@@ -1321,10 +1341,11 @@ Nothing else opens a level. In particular these do not:
 
 ### 14.2 The `parse` codes in Core
 
-Core has 14 `parse` codes: the 13 general codes and `reserved-word`.
+Core has 15 `parse` codes: the 14 general codes and `reserved-word`.
 
 | Code | Reported when | Span |
 | --- | --- | --- |
+| `source-too-large` | The text has more code points than the limit (2.1) | None |
 | `unexpected-token` | Text does not fit the grammar (3.5); a rule of 3.4 is broken; a token of the last row of 2.3 stands anywhere; text of 14.3 | 3.4, 3.5, 14.3; for a token of 2.3, 2.3 rule 4 |
 | `unexpected-character` | A code point that begins no token (2.10) | The code point |
 | `unterminated-string` | A one-line string or a template has no closing delimiter (2.6, 2.8) | From the opening delimiter to where the literal stops |
@@ -1506,7 +1527,7 @@ and changes nothing else. Its chapter is the home of its rules.
 | F3, string forms | The raw string `r"..."` and `r'...'`, the text block `"""`, the raw text block `r"""`. It reports the codes `text-block-open`, `text-block-close` and `text-block-indent` (14.2). It replaces rows 7 and 9 of 2.3 for these forms | `spec/packages/f03-strings.md` |
 | F4, checked conversion | The tests `x as T` and `x is T`, at the level of comparison, with a type written in the program. Node 31, `As`. The code `bad-type-text`. It replaces the rows of 14.3 for `as` and `is` | `spec/packages/f04-conversion.md` |
 | F7, queries | The steps `[*]` and `?.[*]` of a chain, and the node `Each`. It replaces the rows of 14.3 for these texts | `spec/packages/f07-queries.md` |
-| F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 58 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
+| F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 59 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
 | F16, entry points, slice D1 | Type lines, `type Name = T;`, at the top level of a program, and annotations: on a `const` line, `const n: T = e;`; on a lambda's parameters, `(x: T = d) => e`; on its result, `(x): R => e`; and a function type on a parameter that is a name, `(f: (a: T) => R) => e`. The fields `types` of node 1, `Program`; `type` of node 2, `Const`, and of node 23, `Param`; `fn` of node 23; `result` of node 22, `Lambda`. No node kind is added. It changes 3.1, 3.2 rule 5 and 8.1, and replaces the rows of 14.3 for `(x: int) => x` in an argument, `const n: int = 1;` and `type Name = T` | `spec/packages/f16-entry-points.md` 2 and 3 |
 | F17, recursion and guards | A guard on a `match` arm, `"a" if (c) => e`: the field `guard` of node 25, `Arm`. It changes 9.3 items 3, 7 and 9, and replaces the row of 14.3 for a guard. A lambda whose every parameter and result carry a type may refer to its own name: it changes 5 rule 6, 7.3 item 2, 8.1 rule 3 and the row of 14.4 for `recursion-needs-types` | `spec/packages/f17-recursion.md` 2 to 4, 11 |
 
