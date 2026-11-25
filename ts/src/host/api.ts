@@ -1225,7 +1225,7 @@ export class Program<V = any> {
 
   /** The program's `export const` entry points, in text order (f16 12.6). */
   entries(): readonly Entry[] {
-    return this.entryList;
+    return this.entryList.map((e) => ({ ...e, params: e.params.map((p) => ({ ...p })) }));
   }
 
   /** Internal. A host compiles a program with `env.compile`. */

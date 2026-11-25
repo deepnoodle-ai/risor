@@ -733,6 +733,10 @@ func runEntry(ctx context.Context, env, expr any, vars eval.Vars, held [][]any) 
 	if err != nil {
 		return nil, nil, err
 	}
+	if !p.p.HasResult() {
+		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}}}
+	}
 	if vars == nil {
 		vars = Map(nil)
 	}

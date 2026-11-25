@@ -146,8 +146,7 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 	var hasResult bool
 	var entries map[string]*entryPoint
 	if cfg.Entry {
-		root, constSlots = c.entry(prog.Consts, prog.Result)
-		hasResult = true
+		root, constSlots, hasResult = c.entry(prog.Consts, prog.Result)
 	} else {
 		root, hasResult, entries = c.compileTop(prog)
 	}
@@ -165,6 +164,10 @@ func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, 
 // entry (Config.Entry) that succeeds, it also gives the values of each
 // top-level const line, by the slots of its pattern.
 func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Usage, held [][]any, d *diag.Diagnostic) {
+	if !p.hasResult {
+		return nil, Usage{}, nil, &diag.Diagnostic{Phase: diag.PhaseDeclare, Code: diag.CodeNoResult,
+			Message: "the program has no result expression"}
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -283,7 +286,7 @@ func (c *compiler) block(consts []*syntax.Const, result syntax.Node) code {
 
 // entry compiles the top level of a REPL entry (Config.Entry). A held
 // lambda line is compiled, since calls name it, but not run.
-func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int) {
+func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int, bool) {
 	held := c.cfg.Held
 	if len(held) > len(consts) {
 		panic("more held values than const lines")
@@ -300,6 +303,9 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 	}
+	if result == nil {
+		return nil, slots, false
+	}
 	body := c.block(consts[len(held):], result)
 	return func(r *run) any {
 		for i, vals := range held {
@@ -308,7 +314,7 @@ func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]
 			}
 		}
 		return body(r)
-	}, slots
+	}, slots, true
 }
 
 // patternSlots are the slots a const pattern binds, in the order of the

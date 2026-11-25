@@ -100,6 +100,12 @@ func TestReplSession(t *testing.T) {
 	r = s.eval("const z = 1 / 0;")
 	assert.True(t, r.diags != "")
 	assert.Equal(t, s.held, held)
+	// An export-only entry has no result expression: it returns no-result, not internal-error.
+	r = s.eval("export const g = (x: int) => x;")
+	assert.Equal(t, r.value, "")
+	assert.True(t, strings.Contains(r.diags, "error[no-result]"), r.diags)
+	assert.False(t, strings.Contains(r.diags, "internal-error"), r.diags)
+	assert.Equal(t, s.held, held)
 	assert.Equal(t, s.eval("\"s\"").value, "\"s\"\n")
 }
 

@@ -96,6 +96,16 @@ export const untypedRec = ([a, b]: int[]) => a + b;
     assert.equal(unchecked.checkResult, null);
     assert.equal(unchecked.entries()[0].resultType, null);
     assert.equal(unchecked.entries()[0].inputType?.toString(), "{name: string, prefix?: string}");
+
+    // Program.entries() returns a defensive copy: mutating it does not affect future calls.
+    const copied = prog.entries() as unknown as Array<{ name: string; params: Array<{ name: string | null }> }>;
+    copied[0].name = "mutated";
+    copied[0].params[0].name = "mutatedParam";
+    copied[0].params.pop();
+    copied.pop();
+    const fresh = prog.entries();
+    assert.deepEqual(fresh.map((e) => e.name), ["greet", "walkNode", "untypedRec"]);
+    assert.deepEqual(fresh[0].params.map((p) => p.name), ["name", "prefix"]);
   });
 
   test("hasResult is true when result expression is present, and Run/Measure fail declare no-result when absent", () => {
