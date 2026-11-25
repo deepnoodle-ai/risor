@@ -48,6 +48,11 @@ func NamedType(name, text string) Decl {
 // with the options of F1 4.
 func NamedTypeSchema(name string, schema any, opts ...SchemaOption) Decl {
 	return declFunc(func(e *Env) {
+		// The name is tested first: a bad name's schema is not read (3.2).
+		if !syntax.IsTypeName(name) {
+			e.errf(diag.CodeBadName, fmt.Sprintf("%q is not a type name", name))
+			return
+		}
 		t, err := mapSchema(schema, opts, name)
 		d := &namedDecl{name: name, ty: t}
 		if err != nil {
