@@ -147,6 +147,14 @@ each of them (7.1).
 2. The third law follows from the second, since a program's type, value and
    counts depend on its tree and not on its spans (`02-evaluation.md`). It is
    stated because it is what an author relies on.
+3. **A formatted text past the source limit.** Formatting may make a text
+   longer: it adds spaces, line ends and indentation. The formatter formats
+   every text within the source limit, and its formatted text may be longer
+   than the default limit (`01-language.md` 2.1 item 4). The laws are stated
+   for a formatted text within the default limit. Reading a longer one again
+   is `source-too-large`, as for any text. A text that close to the limit is
+   not a program an author writes by hand, so the formatter keeps no promise
+   past it.
 
 ### 2.3 What the formatter keeps and what it writes
 

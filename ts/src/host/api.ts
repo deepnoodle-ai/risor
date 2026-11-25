@@ -889,14 +889,14 @@ export class Env<V = any, N = any> {
 
   /** Completion at a position of a text that need not parse (package F12, f12 3.1). */
   complete(text: string, pos: Pos, expected?: Expected, options: SourceOptions = {}): Completion {
-    const limit = options.sourceLimit ?? SOURCE_LIMIT;
+    const limit = options.sourceLimit === undefined ? SOURCE_LIMIT : options.sourceLimit;
     const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, expected, limit);
     return { span: spanFromLine(c.span), items: c.items };
   }
 
   /** The hover record at a position of a text that need not parse (package F12, f12 3.13), or null. */
   hover(text: string, pos: Pos, expected?: Expected, options: SourceOptions = {}): Hover | null {
-    const limit = options.sourceLimit ?? SOURCE_LIMIT;
+    const limit = options.sourceLimit === undefined ? SOURCE_LIMIT : options.sourceLimit;
     const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, expected, limit);
     if (h === null) return null;
     return { ...h, span: spanFromLine(h.span), declaration: h.declaration === null ? null : spanFromLine(h.declaration) };

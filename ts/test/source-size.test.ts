@@ -151,7 +151,7 @@ describe("a lower source limit, an option of each call (03 3.6.1 item 5)", () =>
   });
 
   test("completion and hover never fail: a limit out of range gives their empty result", () => {
-    for (const sourceLimit of [-1, 1.5, LIMIT + 1, Number.NaN]) {
+    for (const sourceLimit of [-1, 1.5, LIMIT + 1, Number.NaN, null as unknown as number]) {
       assert.deepEqual(env.complete("use", { line: 1, column: 4 }, undefined, { sourceLimit }), { span: { start: { line: 1, column: 4 }, end: { line: 1, column: 4 } }, items: [] });
       assert.equal(env.hover("user", { line: 1, column: 2 }, undefined, { sourceLimit }), null);
     }

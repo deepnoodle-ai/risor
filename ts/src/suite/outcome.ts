@@ -41,7 +41,7 @@ export function outcomeLine(c: Case): string {
     const a = analysisOf(c);
     if (!a.ok) {
       const d = a.diagnostics[0];
-      return `{"name":${jsonString(c.name)},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${JSON.stringify(a.source.lineSpan(d.span!))}}]}`;
+      return `{"name":${jsonString(c.name)},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${d.span ? JSON.stringify(a.source.lineSpan(d.span)) : "null"}}]}`;
     }
     return `{"name":${jsonString(c.name)},"phase":null,"analysis":${a.report.json()}}`;
   }
