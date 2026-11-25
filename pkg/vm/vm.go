@@ -1599,10 +1599,14 @@ func (vm *VirtualMachine) callFunction(
 
 		vm.fillDefaults(fn, copyCount, paramsCount)
 
-		// Collect remaining args into rest param list
+		// Collect remaining args into rest param list. Copy them: args may
+		// be a Go caller's slice (vm.Call, Closure.Call), and the list is
+		// mutable, so sharing the backing array would let the script and
+		// the caller write into each other's values.
 		var restArgs []object.Object
 		if argc > paramsCount {
-			restArgs = args[paramsCount:]
+			restArgs = make([]object.Object, argc-paramsCount)
+			copy(restArgs, args[paramsCount:])
 		} else {
 			restArgs = []object.Object{}
 		}
