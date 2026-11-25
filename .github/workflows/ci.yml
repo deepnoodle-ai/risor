@@ -14,6 +14,7 @@ on:
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
+      - "docs/guide.md"
       - "docs/library/**"
       - "docs/migrating.md"
       - "docs/scripts/**"
@@ -27,6 +28,7 @@ on:
       - "rust/**"
       - "fuzz/**"
       - "suite/**"
+      - "docs/guide.md"
       - "docs/library/**"
       - "docs/migrating.md"
       - "docs/scripts/**"
@@ -262,3 +264,9 @@ jobs:
 
       - name: Verify migration guide examples
         run: node docs/scripts/check-migrating-examples.mjs
+
+      - name: Check language guide examples
+        run: node docs/scripts/check-guide-examples.mjs
+
+      - name: Test language guide example checker
+        run: node --test docs/scripts/check-guide-examples.test.mjs

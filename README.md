@@ -226,8 +226,9 @@ the specification or an implementation.
 
 | To read | Start with |
 | --- | --- |
-| The language | [`spec/core/01-language.md`](spec/core/01-language.md) |
+| Language guide (by example) | [`docs/guide.md`](docs/guide.md) |
 | The standard library | [`docs/library/README.md`](docs/library/README.md) |
+| The language specification | [`spec/core/01-language.md`](spec/core/01-language.md) |
 | How a host embeds it | [`spec/core/03-host.md`](spec/core/03-host.md) |
 | The design and its decisions | [`experiments/v3/design/00-overview.md`](experiments/v3/design/00-overview.md) |
 | The conformance suite | [`suite/README.md`](suite/README.md) |
