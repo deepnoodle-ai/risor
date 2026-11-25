@@ -155,6 +155,14 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             if !c.agree() {
                 return None;
             }
+            // A limit's diagnostic has no path, and an entry of `failures`
+            // needs one (F8 7.5): nothing is written.
+            if c.all
+                .as_ref()
+                .is_some_and(|all| all.iter().any(|d| d.path.is_none()))
+            {
+                return None;
+            }
             let conforms = c.function.is_none();
             let path = c
                 .function

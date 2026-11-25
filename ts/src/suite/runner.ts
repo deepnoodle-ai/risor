@@ -377,11 +377,12 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
 /** The fixture test (f09 2): vars, then functions, then methods, each in code point order; the first failure. */
 function fixtureTest(c: Case, env: Env): { path: (string | number)[]; message: string } | null {
   const e = env.environment;
-  const free = freeCtx(env.classifier);
   const test = (value: Json, t: Type, place: (string | number)[]) => {
-    const f = conformWalk(hostValue(value), t, free);
+    // Each value is one call of the conformance function, with its own count (f04 7.3).
+    const f = conformWalk(hostValue(value), t, freeCtx(env.classifier));
     if (f === null) return null;
-    return { path: [...place, ...f.path], message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) };
+    // A limit (f04 7.3, f17 12.7) has its own message and no path.
+    return { path: [...place, ...f.path], message: conformDiagnostic(f, env.classifier).message };
   };
   for (const k of Object.keys(c.vars ?? {}).sort(compareText)) {
     const t = e.variableTypes.get(k);
@@ -1138,6 +1139,12 @@ function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): 
 
 /** The `expect` update mode writes for a conform case, or null when its three ways disagree (f09 4.3, 4.4). */
 function conformExpect(c: Case, r: ConformRun): Json | null {
+  if (r.ok === "limit") {
+    // f04 9.3 item 6: the function's steps-exceeded, written as the failure a conform case may expect.
+    // With max, ConformAll must give that one diagnostic; otherwise the ways disagree.
+    if (r.all !== null && (r.all.length !== 1 || r.all[0].code !== "steps-exceeded")) return null;
+    return { phase: "run", diagnostics: [{ code: r.diagnostic.code, message: r.diagnostic.message }] };
+  }
   if (r.ok !== true) return null;
   const asOk = r.asRun.ok && plainEqual(r.asRun.value, r.value, CLASSIFIER);
   const isOk = r.isRun.ok && r.isRun.value === true;
@@ -1153,7 +1160,11 @@ function conformExpect(c: Case, r: ConformRun): Json | null {
   if (!fnOk && has("path")) out.path = r.fn!.path as Json;
   if (!fnOk && has("message")) out.message = r.fn!.message;
   if (has("steps")) out.steps = r.asRun.steps;
-  if (same && "failures" in raw && r.all !== null) out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+  if (same && "failures" in raw && r.all !== null) {
+    // A limit's diagnostic has no path, and an entry of failures needs one (f08 7.5): nothing is written.
+    if (r.all.some((x) => x.path === undefined)) return null;
+    out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+  }
   return out;
 }
 
