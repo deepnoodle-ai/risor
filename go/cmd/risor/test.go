@@ -326,6 +326,8 @@ func paintReport(rep string, color bool) string {
 }
 
 // visible writes each control character in s as an escape (F8 1.1).
+// Keep in sync with go/internal/render.Visible (which this separate CLI module
+// cannot import).
 func visible(s string) string {
 	clean := true
 	for _, r := range s {
