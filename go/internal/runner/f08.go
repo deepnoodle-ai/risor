@@ -130,16 +130,31 @@ func conformAllDiffs(c *casefile.Case, o conformOutcome, fs []risor.Diagnostic) 
 	}
 	ok := len(want) == len(fs)
 	for i := 0; ok && i < len(want); i++ {
-		if !value.Equal(want[i].Path, fs[i].Path) || (want[i].Message != nil && *want[i].Message != fs[i].Message) {
+		w, f := want[i], fs[i]
+		if w.Code != "" {
+			ok = f.Path == nil && f.Code == w.Code
+		} else {
+			ok = f.Path != nil && value.Equal(w.Path, f.Path)
+		}
+		if w.Message != nil && *w.Message != f.Message {
 			ok = false
 		}
 	}
 	if !ok {
 		got := make([]any, len(fs))
 		for i, f := range fs {
-			got[i] = map[string]any{"path": f.Path, "message": f.Message}
+			got[i] = failureEntry(f)
 		}
 		list = &Diff{"failures", jsonForm(rawField(c, "failures")), jsonForm(got)}
 	}
 	return agree, list
+}
+
+// failureEntry is an entry of ConformAll's list as failures states it
+// (7.5): a failure by its path, the limit diagnostic by its code.
+func failureEntry(d risor.Diagnostic) map[string]any {
+	if d.Path == nil {
+		return map[string]any{"code": d.Code, "message": d.Message}
+	}
+	return map[string]any{"path": d.Path, "message": d.Message}
 }

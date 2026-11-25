@@ -73,12 +73,13 @@ func TestAnalysisSurface(t *testing.T) {
 	assert.Equal(t, len(calls), 4)
 	assert.Equal(t, calls[0].Name, "geo.distance")
 	assert.Equal(t, calls[0].Namespace, "geo")
-	rates := []risor.CallSite{calls[1], calls[3]}
-	assert.Equal(t, rates[0].Name, "rate")
-	assert.Equal(t, rates[1].Name, "rate")
-	assert.Equal(t, len(rates), 2)
+	rates := x.Analyze().CallsOf("rate")
+	assert.Equal(t, rates, []risor.CallSite{calls[1], calls[3]})
 	assert.False(t, rates[0].InLambda)
 	assert.True(t, rates[1].InLambda)
+	assert.Equal(t, len(x.Analyze().CallsOf("geo.distance", "rate")), 3)
+	assert.Equal(t, len(x.Analyze().CallsOf("distance")), 0)
+	assert.Equal(t, len(x.Analyze().CallsOf()), 0)
 
 	// Each argument is a program of its own, with spans in the whole text.
 	arg := calls[0].Args[0]

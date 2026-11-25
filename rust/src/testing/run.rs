@@ -1784,6 +1784,16 @@ pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
     })
 }
 
+/// An entry of `ConformAll`'s list as `failures` states it (F8 7.5): a
+/// failure by its path, the limit diagnostic that ends the list by its code.
+pub(super) fn failure_entry(d: &Diagnostic) -> Json {
+    let head = match &d.path {
+        Some(p) => ("path".to_string(), path_json(p)),
+        None => ("code".to_string(), Json::Str(d.code.to_string())),
+    };
+    Json::Obj(vec![head, ("message".into(), Json::Str(d.message.clone()))])
+}
+
 pub(super) fn path_json(p: &[crate::diag::PathStep]) -> Json {
     Json::Arr(
         p.iter()
@@ -1914,38 +1924,39 @@ fn run_conform_case(case: &Case) -> Verdict {
         }
         if let Some(fs) = &want.failures {
             let same = fs.len() == all.len()
-                && fs.iter().zip(all).all(|((p, m), d)| {
-                    let path = path_json(d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]));
-                    crate::json::same_data(&Json::Arr(p.clone()), &path)
-                        && m.as_ref().is_none_or(|m| *m == d.message)
+                && fs.iter().zip(all).all(|(f, d)| {
+                    let entry = match (&f.code, &d.path) {
+                        (Some(c), None) => *c == d.code,
+                        (None, Some(p)) => f.path.as_ref().is_some_and(|fp| {
+                            crate::json::same_data(&Json::Arr(fp.clone()), &path_json(p))
+                        }),
+                        _ => false,
+                    };
+                    entry && f.message.as_ref().is_none_or(|m| *m == d.message)
                 });
             if !same {
                 diffs.push(Difference {
                     name: "failures",
                     expected: form(&Json::Arr(
                         fs.iter()
-                            .map(|(p, m)| {
-                                let mut o = vec![("path".to_string(), Json::Arr(p.clone()))];
-                                if let Some(m) = m {
+                            .map(|f| {
+                                let mut o = match (&f.path, &f.code) {
+                                    (Some(p), _) => {
+                                        vec![("path".to_string(), Json::Arr(p.clone()))]
+                                    }
+                                    (None, c) => vec![(
+                                        "code".to_string(),
+                                        Json::Str(c.clone().unwrap_or_default()),
+                                    )],
+                                };
+                                if let Some(m) = &f.message {
                                     o.push(("message".into(), Json::Str(m.clone())));
                                 }
                                 Json::Obj(o)
                             })
                             .collect(),
                     )),
-                    found: form(&Json::Arr(
-                        all.iter()
-                            .map(|d| {
-                                let p = path_json(
-                                    d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
-                                );
-                                Json::Obj(vec![
-                                    ("path".into(), p),
-                                    ("message".into(), Json::Str(d.message.clone())),
-                                ])
-                            })
-                            .collect(),
-                    )),
+                    found: form(&Json::Arr(all.iter().map(failure_entry).collect())),
                 });
             }
         }
@@ -2149,10 +2160,18 @@ pub fn outcome_line(case: &Case) -> String {
                         if i > 0 {
                             out.push(',');
                         }
-                        out.push_str("{\"path\":");
-                        out.push_str(&crate::json::to_text(&path_json(
-                            d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
-                        )));
+                        // The limit diagnostic that ends the list is
+                        // written by its code (F8 8).
+                        match &d.path {
+                            Some(p) => {
+                                out.push_str("{\"path\":");
+                                out.push_str(&crate::json::to_text(&path_json(p)));
+                            }
+                            None => {
+                                out.push_str("{\"code\":");
+                                out.push_str(&json_text(d.code));
+                            }
+                        }
                         out.push_str(",\"message\":");
                         out.push_str(&json_text(&d.message));
                         out.push('}');

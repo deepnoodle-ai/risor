@@ -176,6 +176,7 @@ function conformLine(c: Case): string {
     (fnOk || (asDiag !== null && asDiag.code === "not-conforming" && JSON.stringify(asDiag.path) === JSON.stringify(r.fn!.path) && asDiag.message === r.fn!.message));
   parts.push(`"agree":${agree}`);
   // f08 8: the failures of ConformAll, with `max`.
-  if (r.all !== null) parts.push(`"failures":[${r.all.map((x) => `{"path":${valueJSON(x.path ?? [])},"message":${jsonString(x.message)}}`).join(",")}]`);
+  // The limit diagnostic that ends the list is written by its code.
+  if (r.all !== null) parts.push(`"failures":[${r.all.map((x) => `{${x.path === undefined ? `"code":${jsonString(x.code)}` : `"path":${valueJSON(x.path)}`},"message":${jsonString(x.message)}}`).join(",")}]`);
   return `{${parts.join(",")}}`;
 }

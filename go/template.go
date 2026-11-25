@@ -2,6 +2,7 @@ package risor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -174,6 +175,19 @@ type Analysis struct {
 	Segments []Segment
 	// Template is set for the analysis of a template.
 	Template bool
+}
+
+// CallsOf gives the calls whose Name is one of names, in source order: a
+// function by its name, "upper", or in a namespace, "geo.distance". With no
+// names it gives none.
+func (a *Analysis) CallsOf(names ...string) []CallSite {
+	out := []CallSite{}
+	for _, c := range a.Calls {
+		if slices.Contains(names, c.Name) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Analyze analyzes the program (F2 3). It never fails, charges nothing and

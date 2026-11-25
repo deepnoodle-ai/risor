@@ -79,10 +79,7 @@ func (cr *caseRun) update() Result {
 			if old.Failures != nil && c.Conform.Max != nil {
 				fs := make([]any, len(o.all))
 				for i, f := range o.all {
-					if f.Path == nil { // a limit's diagnostic: failures cannot state it (F8 7.5)
-						return notWritten()
-					}
-					fs[i] = map[string]any{"path": f.Path, "message": f.Message}
+					fs[i] = failureEntry(f)
 				}
 				m["failures"] = fs
 			}

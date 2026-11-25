@@ -703,8 +703,10 @@ function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>
   }
   if (ex.failures !== undefined && r.all !== null) {
     const all = r.all;
-    const same = all.length === ex.failures.length && ex.failures.every((f, i) => JSON.stringify(f.path) === JSON.stringify(all[i].path) && (f.message === undefined || f.message === all[i].message));
-    if (!same) d.push({ field: "failures", expected: ex.failures, found: all.map((x) => ({ path: x.path, message: x.message })) });
+    const entry = (f: { path?: (string | number)[]; code?: string }, x: Diagnostic) =>
+      f.code !== undefined ? x.path === undefined && x.code === f.code : x.path !== undefined && JSON.stringify(f.path) === JSON.stringify(x.path);
+    const same = all.length === ex.failures.length && ex.failures.every((f, i) => entry(f, all[i]) && (f.message === undefined || f.message === all[i].message));
+    if (!same) d.push({ field: "failures", expected: ex.failures, found: all.map(failureEntry) });
   }
   return d.length === 0 ? v("pass") : v("fail", { differences: d });
 }
@@ -1170,9 +1172,7 @@ function conformExpect(c: Case, r: ConformRun): Json | null {
   if (!fnOk && has("message")) out.message = r.fn!.message;
   if (has("steps")) out.steps = r.asRun.steps;
   if (same && "failures" in raw && r.all !== null) {
-    // A limit's diagnostic has no path, and an entry of failures needs one (f08 7.5): nothing is written.
-    if (r.all.some((x) => x.path === undefined)) return null;
-    out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+    out.failures = r.all.map(failureEntry);
   }
   return out;
 }
@@ -1568,4 +1568,9 @@ function sameTree(a: string, b: string, template: boolean): boolean {
 /** The diagnostics of a RisorError of phase `declare`, which carry no span. */
 function declared(x: RisorError): Diagnostic[] {
   return x.diagnostics.map(({ span: _s, trace: _t, ...d }) => d) as Diagnostic[];
+}
+
+/** An entry of ConformAll's list as `failures` states it (f08 7.5): a failure by its path, the limit diagnostic by its code. */
+function failureEntry(x: Diagnostic): { [k: string]: Json } {
+  return x.path === undefined ? { code: x.code, message: x.message } : { path: x.path as Json, message: x.message };
 }

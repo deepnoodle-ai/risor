@@ -305,7 +305,7 @@ every stage: it is run when its program compiles, whether or not it has `vars`.
 | A result, written whole | `type`, when the case was checked; `value`, `steps` and `allocated` |
 | A failure, same phase | `phase`; `diagnostics`, each diagnostic with the columns below; `steps` and `allocated` when the old `expect` had them and the code is not a limit code; F8's `rendered` when the old `expect` had it, with the forms it named, and not for a limit code |
 | A failure, written whole | `phase`, and `diagnostics` with every column the phase may write |
-| A conform result, same shape | Each of `conforms`, `path`, `message`, `steps` and F8's `failures` the old `expect` had. `path` and `message` are left out when `conforms` is `true`; `failures` is left out when `conform` has no `max` |
+| A conform result, same shape | Each of `conforms`, `path`, `message`, `steps` and F8's `failures` the old `expect` had. `path` and `message` are left out when `conforms` is `true`; `failures` is left out when `conform` has no `max`. Each entry of `failures` has `path` and `message`, or for the limit diagnostic that ends the list, `code` and `message` (F8 7.5) |
 | A conform result, written whole | `conforms`; `path` and `message` when it is `false`; `steps` |
 
 **The columns of a diagnostic.** For a failure of the same phase, the columns

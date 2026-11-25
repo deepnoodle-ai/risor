@@ -2588,6 +2588,7 @@ code for it.
 | Analyze (F2) | `analyze` | `x.Analyze()` | `x.analyze()` | `x.analyze()` |
 | The report of an analysis | `Analysis` | `Analysis` | `Analysis` | `Analysis` |
 | An analysis as JSON text | `json` | `a.JSON()` | `a.json()` | `a.json()` |
+| The calls of some names (R347) | `callsOf` | `a.CallsOf(names...)` | `a.callsOf(...names)` | `a.calls_of(&names)` |
 | What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, and `check: false` in `CompileOptions` |
 | Check | `check` | `env.Check(x, opts...)` | `env.check(x, expected)` | `env.check(&x, &expected)` |
 | The result of a check | `CheckResult` | `{Type, Sites}` | `{type, sites}` | `{ty, sites}` |
