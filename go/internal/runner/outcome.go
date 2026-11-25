@@ -134,8 +134,8 @@ func outcome(c *casefile.Case) string {
 			b.WriteByte('}')
 		}
 		b.WriteByte(']')
-		// A limit failure has no fixed usage, so none is written.
-		if u != nil && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
+		// A declare failure did not reach a run, and a limit failure has no fixed usage.
+		if u != nil && ph != "declare" && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
 			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Allocated)
 		}
 		b.WriteByte('}')
