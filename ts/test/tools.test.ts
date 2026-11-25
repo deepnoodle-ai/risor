@@ -71,3 +71,38 @@ describe("the clarifications of f12 3.2 and 3.12", () => {
     assert.equal(env2.hover("user.tags.first (", { line: 1, column: 12 })?.kind, "field");
   });
 });
+
+describe("formatter comment and record-type edge cases (f12 2.8, 2.12, 2.13)", () => {
+  const cases: [string, string][] = [
+    ["a || (/* why */ b && c)", "a || (/* why */ b && c)\n"],
+    ["(/* why */ a ?? b) as int", "(/* why */ a ?? b) as int\n"],
+    ["(/* why */ a ? b : c) ? d : e", "(/* why */ a ? b : c) ? d : e\n"],
+    ["(/* why */ a?.b).c", "(/* why */ a?.b).c\n"],
+    ["(/* why */ a[*].b).c", "(/* why */ a[*].b).c\n"],
+    ["if (( // why\n  c)) { 1 } else { 2 }", "if (// why\n  c\n) {\n  1\n} else {\n  2\n}\n"],
+    ["type Empty = {/* none */};\n1", "type Empty = {/* none */};\n1\n"],
+    ["type Rec = {\n  a: int, // a\n\n  b: string,\n};\n1", "type Rec = {\n  a: int, // a\n\n  b: string,\n};\n1\n"],
+    ["type Rec = {\n  a: int,\n\n  // more\n};\n1", "type Rec = {\n  a: int,\n\n  // more\n};\n1\n"],
+    [
+      "type MapRec = map<{\n  /** key */\n  a: int,\n}>;\n1",
+      "type MapRec = map<{\n  /** key */\n  a: int,\n}>;\n1\n",
+    ],
+    [
+      "const g = (f: (a: {\n  /** id */\n  id: int,\n}) => int) => 1;\n0",
+      "const g = (\n  f: (a: {\n    /** id */\n    id: int,\n  }) => int,\n) => 1;\n0\n",
+    ],
+  ];
+  for (const [src, want] of cases) {
+    test(src.replace(/\n/g, "\\n"), () => {
+      const r = formatProgram(src);
+      assert.ok(r.ok);
+      assert.equal(r.text, want);
+      const again = formatProgram(r.text);
+      assert.ok(again.ok);
+      assert.equal(again.text, r.text);
+      const p1 = parse(src);
+      const p2 = parse(r.text);
+      assert.ok(p1.ok && p2.ok && treeEqual(p1.program, p2.program));
+    });
+  }
+});
