@@ -88,4 +88,25 @@ func TestPointerCutoffConsistentKindAndEqual(t *testing.T) {
 	assert.False(t, Equal(p65, p64))
 	assert.True(t, Truthy(v65))
 	assert.Equal(t, Debug(p65), "opaque()")
+	assert.True(t, IsDeepPointer(v65))
+	assert.True(t, Unwrap(v65) == p65)
+	assert.True(t, Unwrap(v64) == v64)
+
+	// UnwrapDeep unwraps nested containers copy-on-write and handles cycles.
+	origSlice := []any{v65, "ok"}
+	unwrappedSlice := UnwrapDeep(origSlice).([]any)
+	assert.True(t, unwrappedSlice[0] == p65)
+	assert.Equal(t, unwrappedSlice[1], "ok")
+	assert.True(t, IsDeepPointer(origSlice[0]))
+
+	origMap := map[string]any{"p": v65, "s": "ok"}
+	unwrappedMap := UnwrapDeep(origMap).(map[string]any)
+	assert.True(t, unwrappedMap["p"] == p65)
+	assert.Equal(t, unwrappedMap["s"], "ok")
+	assert.True(t, IsDeepPointer(origMap["p"]))
+
+	cycMap := map[string]any{}
+	cycMap["self"] = cycMap
+	gotCyc := UnwrapDeep(cycMap).(map[string]any)
+	assert.True(t, gotCyc["self"] != nil)
 }

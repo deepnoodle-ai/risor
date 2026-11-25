@@ -294,8 +294,9 @@ func (d *decoder) decode(v any, dst reflect.Value, path []any, depth int) {
 		return
 	}
 	if d.args {
-		if v != nil {
-			xv := reflect.ValueOf(v)
+		uv := value.Unwrap(v)
+		if uv != nil {
+			xv := reflect.ValueOf(uv)
 			if xv.Type().AssignableTo(rt) {
 				dst.Set(xv)
 				return
@@ -308,10 +309,10 @@ func (d *decoder) decode(v any, dst reflect.Value, path []any, depth int) {
 			}
 		}
 		if rt.Kind() == reflect.Interface && rt.NumMethod() == 0 {
-			if v == nil {
+			if uv == nil {
 				dst.Set(reflect.Zero(rt))
 			} else {
-				dst.Set(reflect.ValueOf(v))
+				dst.Set(reflect.ValueOf(uv))
 			}
 			return
 		}

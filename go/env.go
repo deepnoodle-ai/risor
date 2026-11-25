@@ -702,7 +702,7 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 	if d != nil {
 		return nil, u, p.fail(d)
 	}
-	return v, u, nil
+	return value.Unwrap(v), u, nil
 }
 
 // fail is the error of a run diagnostic, with its checked class.
@@ -740,7 +740,7 @@ func runEntry(ctx context.Context, env, expr any, vars eval.Vars, held [][]any) 
 	if d != nil {
 		return nil, nil, p.fail(d)
 	}
-	return v, next, nil
+	return value.Unwrap(v), next, nil
 }
 
 // TypedLayer turns the typed layer on or off (package F11). It is on by

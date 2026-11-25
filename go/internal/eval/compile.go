@@ -178,6 +178,9 @@ func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Us
 	}
 	r := p.getRun()
 	r.ctx, r.vars = ctx, vars
+	if p.cfg.Entry && len(p.cfg.Held) > 0 {
+		r.hasDeepPtr = true
+	}
 	if t := p.cfg.Limits.Timeout; t > 0 {
 		r.deadline = time.Now().Add(t)
 	}
@@ -185,14 +188,22 @@ func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Us
 	usage = Usage{Steps: r.steps, Allocated: r.units}
 	var trace []diag.TraceEntry
 	if f != nil {
+		if f.hasData && r.hasDeepPtr {
+			f.data = value.UnwrapDeep(f.data)
+		}
 		trace = r.trace(p.file)
-	} else if p.cfg.Entry {
-		held = make([][]any, len(p.constSlots))
-		for i, slots := range p.constSlots {
-			held[i] = make([]any, len(slots))
-			for j, s := range slots {
-				held[i][j] = r.vals[s]
+	} else {
+		if p.cfg.Entry {
+			held = make([][]any, len(p.constSlots))
+			for i, slots := range p.constSlots {
+				held[i] = make([]any, len(slots))
+				for j, s := range slots {
+					held[i][j] = r.vals[s]
+				}
 			}
+		}
+		if r.hasDeepPtr {
+			v = value.UnwrapDeep(v)
 		}
 	}
 	p.putRun(r)
@@ -247,6 +258,7 @@ func (p *Program) putRun(r *run) {
 	}
 	r.lcTop = 0
 	r.strs = nil
+	r.hasDeepPtr = false
 	r.steps, r.units, r.depth, r.walk = 0, 0, 0, 0
 	r.deadline = time.Time{}
 	r.setStepEdge()

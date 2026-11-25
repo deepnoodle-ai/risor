@@ -266,6 +266,7 @@ type run struct {
 	deadline           time.Time
 	pending            *failure
 	strs               map[strKey]string
+	hasDeepPtr         bool
 
 	// args is a stack of argument values for calls whose callee does not
 	// keep them; lcs is a stack of library calls. Both are reused between
@@ -458,6 +459,9 @@ func (r *run) readMore(v any, sp syntax.Span) any {
 		f := fail("number-range", "host", sp)
 		f.host = true
 		r.raise(f)
+	}
+	if value.IsDeepPointer(x) {
+		r.hasDeepPtr = true
 	}
 	return x
 }

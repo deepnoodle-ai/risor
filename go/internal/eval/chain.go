@@ -665,6 +665,11 @@ func (r *run) hostFrame(as []argCode) (*Call, []any) {
 
 // hostCall calls a host function (03-host.md 3.5).
 func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name string) any {
+	if r.hasDeepPtr {
+		for i, a := range args {
+			args[i] = value.UnwrapDeep(a)
+		}
+	}
 	c.r = r
 	res, err, crashed := r.safeCall(f, c, args)
 	c.end()
