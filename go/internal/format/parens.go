@@ -141,9 +141,8 @@ func needParens(parent syntax.Node, r role, x syntax.Node) bool {
 	return false
 }
 
-// readerParens reports whether x is written in parentheses for the reader
-// (2.6, the second table), before the nesting limit of item 3. Each such x is
-// a Binary.
+// readerParens reports whether x has a place for a pair for the reader
+// (2.6, the second table). Each such x is a Binary.
 func readerParens(parent syntax.Node, r role, x syntax.Node) bool {
 	pb, ok := parent.(*syntax.Binary)
 	if !ok || (r != rLeft && r != rRight) || needParens(parent, r, x) {
@@ -160,17 +159,39 @@ func readerParens(parent syntax.Node, r role, x syntax.Node) bool {
 	return r == rLeft && mul(pb.Op) && mul(xb.Op) && (xb.Op != pb.Op || pb.Op == "%")
 }
 
-// reader reports whether a pair for the reader is written around x, at a
-// place inside d such pairs: only when the text inside it stays within 100
-// levels (2.6 item 3). The plain text is the formatted text without these
-// pairs, and x.Peak is the highest level that a token of x opens there. So
-// the formatter decides them on the tree of its own plain text (Program).
-func (b *builder) reader(parent syntax.Node, r role, x syntax.Node, d int) bool {
-	if !readerParens(parent, r, x) {
-		return false
+// isMul reports whether n is a Binary of *, / or %.
+func isMul(n syntax.Node) bool { return isBin(n, "*", "/", "%") }
+
+// reader reports whether a pair for the reader is written around x (2.6
+// items 3 and 4): only in a run of at most 3 operators, and only when no
+// pair of another run encloses the run. parent is a Binary of the run: of
+// *, / and % for the second row, of || for the first.
+func (b *builder) reader(parent syntax.Node, r role, x syntax.Node) bool {
+	return readerParens(parent, r, x) && b.rdepth == 0 && b.runLen(parent.(*syntax.Binary)) <= 3
+}
+
+// runLen is the number of operators of the run that n is in: the Binary
+// nodes of one kind (*, / and %, or ||) along the left operands, from the top
+// of the run. The builder meets the top of a run first, so the first call
+// for a run is at its top.
+func (b *builder) runLen(n *syntax.Binary) int {
+	if l, ok := b.runs[n]; ok {
+		return l
 	}
-	b.sawReader = true
-	return b.readers && x.(*syntax.Binary).Peak+d+1 <= syntax.MaxLevels
+	same := func(x syntax.Node) bool {
+		if n.Op == "||" {
+			return isBin(x, "||")
+		}
+		return isMul(x)
+	}
+	var nodes []*syntax.Binary
+	for x := syntax.Node(n); same(x); x = x.(*syntax.Binary).X {
+		nodes = append(nodes, x.(*syntax.Binary))
+	}
+	for _, m := range nodes {
+		b.runs[m] = len(nodes)
+	}
+	return len(nodes)
 }
 
 // paren reports whether x is written in parentheses in its place: by the
@@ -179,19 +200,18 @@ func (b *builder) paren(parent syntax.Node, r role, x syntax.Node) bool {
 	if r == rSubject {
 		return b.startsBrace(x)
 	}
-	return needParens(parent, r, x) || b.reader(parent, r, x, b.rdepth)
+	return needParens(parent, r, x) || b.reader(parent, r, x)
 }
 
 // startsBrace reports whether the text of x begins with {, if or try
 // (01-language.md 3.4 rule 6).
 func startsBrace(x syntax.Node) bool {
-	return (&builder{}).startsBrace(x)
+	return (&builder{runs: map[*syntax.Binary]int{}}).startsBrace(x)
 }
 
 // startsBrace reports whether the text of x, written at this place, begins
 // with {, if or try. A pair for the reader on its left edge is a (.
 func (b *builder) startsBrace(x syntax.Node) bool {
-	d := b.rdepth
 	for {
 		switch n := x.(type) {
 		case *syntax.Map, *syntax.Block:
@@ -207,7 +227,7 @@ func (b *builder) startsBrace(x syntax.Node) bool {
 		case *syntax.Try:
 			return true
 		case *syntax.Binary:
-			if needParens(n, rLeft, n.X) || b.reader(n, rLeft, n.X, d) {
+			if needParens(n, rLeft, n.X) || b.reader(n, rLeft, n.X) {
 				return false
 			}
 			x = n.X

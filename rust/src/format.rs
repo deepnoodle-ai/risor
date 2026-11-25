@@ -513,12 +513,9 @@ struct B<'a> {
     trail: Vec<Vec<usize>>,
     defer: Vec<bool>,
     docs: Docs,
-    /// Whether the pairs for the reader are written (2.6 item 3).
-    readers: bool,
-    /// The pairs for the reader written around the node being built.
+    /// The pairs for the reader written around the node being built (2.6
+    /// items 3 and 4).
     rdepth: u32,
-    /// Whether a place for a pair for the reader was met.
-    saw_reader: std::cell::Cell<bool>,
 }
 
 impl<'a> B<'a> {
@@ -647,9 +644,7 @@ impl<'a> B<'a> {
             trail: vec![Vec::new(); n + 1],
             defer: vec![false; n + 1],
             docs: Docs::default(),
-            readers: false,
             rdepth: 0,
-            saw_reader: std::cell::Cell::new(false),
         }
     }
 
@@ -1090,32 +1085,50 @@ impl<'a> B<'a> {
         }
     }
 
-    /// Whether `c` stands in a pair for the reader (2.6, the second table),
-    /// inside `depth` such pairs: only when the highest level that a token
-    /// of `c` opens in the plain text, plus the pairs around it, plus one, is
-    /// 100 or less (2.6 item 3). The formatter decides these pairs on its own
-    /// plain text, parsed again, so the peak is the level of the plain text.
-    fn reader(&self, op: BinaryOp, c: NodeId, role: Role, depth: u32) -> bool {
+    /// Whether `c` stands in a pair for the reader (2.6, the second table).
+    /// `ok` says whether the run of the operator `op` may have such pairs:
+    /// it has at most 3 operators, and no pair encloses its top (2.6 items 3
+    /// and 4).
+    fn reader(&self, op: BinaryOp, c: NodeId, role: Role, ok: bool) -> bool {
         let Some(cop) = self.bin_op(c) else {
             return false;
         };
-        if self.paren_bin(op, c, role) {
+        if !ok || self.paren_bin(op, c, role) {
             return false;
         }
-        let muls = |o: BinaryOp| matches!(o, BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem);
-        let row = (cop == BinaryOp::And && op == BinaryOp::Or)
-            || (role == Role::Left && muls(cop) && muls(op) && (cop != op || cop == BinaryOp::Rem));
-        if !row {
-            return false;
-        }
-        self.saw_reader.set(true);
-        self.readers && u32::from(self.ast.node(c).peak) + depth < 100
+        (cop == BinaryOp::And && op == BinaryOp::Or)
+            || (role == Role::Left
+                && is_mul(cop)
+                && is_mul(op)
+                && (cop != op || cop == BinaryOp::Rem))
     }
 
     /// Parentheses around an operand of a binary operator: by the first
     /// table of 2.6, or for the reader.
-    fn paren_bin_at(&self, op: BinaryOp, c: NodeId, role: Role, depth: u32) -> bool {
-        self.paren_bin(op, c, role) || self.reader(op, c, role, depth)
+    fn paren_bin_at(&self, op: BinaryOp, c: NodeId, role: Role, ok: bool) -> bool {
+        self.paren_bin(op, c, role) || self.reader(op, c, role, ok)
+    }
+
+    /// The number of operators of the run whose top is `id`: it and its
+    /// left operands of the same run (2.6 item 3).
+    fn run_len(&self, id: NodeId) -> usize {
+        let mut k = 1;
+        let mut n = id;
+        while let NodeKind::Binary { op, x, .. } = self.kind(n) {
+            match self.bin_op(*x) {
+                Some(xo) if same_run(*op, xo) => {
+                    k += 1;
+                    n = *x;
+                }
+                _ => break,
+            }
+        }
+        k
+    }
+
+    /// Whether the run whose top is `id` may have pairs for the reader.
+    fn pairs_ok(&self, id: NodeId) -> bool {
+        self.rdepth == 0 && self.run_len(id) <= 3
     }
 
     /// Whether `c` is a comparison, or an `as` or `is` whose value, written
@@ -1143,6 +1156,10 @@ impl<'a> B<'a> {
     /// Whether the text of a node begins with `{`, `if` or `try`.
     fn begins_brace(&self, id: NodeId) -> bool {
         let mut n = id;
+        // The operator of the Binary read before, and whether its run may
+        // have pairs for the reader.
+        let mut prev: Option<BinaryOp> = None;
+        let mut ok = false;
         loop {
             match self.kind(n) {
                 NodeKind::Map { .. } | NodeKind::Block { .. } | NodeKind::Try { .. } => {
@@ -1158,9 +1175,13 @@ impl<'a> B<'a> {
                     n = *test;
                 }
                 NodeKind::Binary { op, x, .. } => {
-                    if self.paren_bin_at(*op, *x, Role::Left, self.rdepth) {
+                    if !prev.is_some_and(|p| same_run(p, *op)) {
+                        ok = self.pairs_ok(n);
+                    }
+                    if self.paren_bin_at(*op, *x, Role::Left, ok) {
                         return false;
                     }
+                    prev = Some(*op);
                     n = *x;
                 }
                 NodeKind::As { x, .. } => {
@@ -1754,29 +1775,40 @@ impl<'a> B<'a> {
     /// builds the documents on the way back up. The documents are made in
     /// the order a recursion would make them: the innermost first.
     fn spine(&mut self, id: NodeId, indent: bool) -> DocId {
-        // Each frame keeps the pairs for the reader around it, which are
-        // decided from the outermost in (2.6 item 3).
-        let mut frames: Vec<(SpineFrame, bool, u32)> = Vec::new();
+        // Each frame keeps the pairs for the reader around it, and whether
+        // its run may have them (2.6 items 3 and 4), decided from the
+        // outermost in.
+        let mut frames: Vec<(SpineFrame, bool, u32, bool)> = Vec::new();
         let mut n = id;
         let mut indent = indent;
         // Whether the document of `n` stands in parentheses.
         let mut paren = false;
         let outer = self.rdepth;
         let mut r = outer;
+        // The operator of the Binary frame above, and its run's `ok`.
+        let mut prev: Option<BinaryOp> = None;
+        let mut ok = false;
         loop {
             match self.kind(n) {
                 NodeKind::As { x, .. } => {
-                    frames.push((SpineFrame::As(n), paren, r));
+                    frames.push((SpineFrame::As(n), paren, r, false));
                     paren = self.paren_as(*x);
+                    prev = None;
                     n = *x;
                 }
-                NodeKind::Binary { .. } => {
-                    let (ops, xs) = self.run(n, r);
+                NodeKind::Binary { op, .. } => {
+                    let op = *op;
+                    if !prev.is_some_and(|p| same_run(p, op)) {
+                        self.rdepth = r;
+                        ok = self.pairs_ok(n);
+                    }
+                    let (ops, xs) = self.run(n, ok);
                     let first = xs[0];
                     let op0 = self.bin_op(ops[0]).expect("a binary");
-                    frames.push((SpineFrame::Run { ops, xs, indent }, paren, r));
+                    frames.push((SpineFrame::Run { ops, xs, indent }, paren, r, ok));
                     let need = self.paren_bin(op0, first, Role::Left);
-                    let rd = !need && self.reader(op0, first, Role::Left, r);
+                    let rd = !need && self.reader(op0, first, Role::Left, ok);
+                    prev = Some(op0);
                     paren = need || rd;
                     if rd {
                         r += 1;
@@ -1789,7 +1821,7 @@ impl<'a> B<'a> {
         }
         self.rdepth = r;
         let mut d = self.sub(n, paren);
-        while let Some((f, paren, fr)) = frames.pop() {
+        while let Some((f, paren, fr, ok)) = frames.pop() {
             self.rdepth = fr;
             d = match f {
                 SpineFrame::As(a) => {
@@ -1803,7 +1835,7 @@ impl<'a> B<'a> {
                     let t = self.ptype(ty.span);
                     self.list(vec![d, s1, k, s2, t])
                 }
-                SpineFrame::Run { ops, xs, indent } => self.run_doc(&ops, &xs, indent, d),
+                SpineFrame::Run { ops, xs, indent } => self.run_doc(&ops, &xs, indent, d, ok),
             };
             if paren {
                 d = self.parens(d);
@@ -1815,9 +1847,9 @@ impl<'a> B<'a> {
 
     /// A run of operators of one level along the left operands of the
     /// operator `id` (2.8 item 4): its operators, and its operands, both in
-    /// the order of the text. `depth` counts the pairs for the reader around
-    /// it.
-    fn run(&self, id: NodeId, depth: u32) -> (Vec<NodeId>, Vec<NodeId>) {
+    /// the order of the text. `ok` says whether the run may have pairs for
+    /// the reader.
+    fn run(&self, id: NodeId, ok: bool) -> (Vec<NodeId>, Vec<NodeId>) {
         let p = self.bin_op(id).map(op_level);
         let mut ops: Vec<NodeId> = Vec::new();
         let mut xs: Vec<NodeId> = Vec::new();
@@ -1828,7 +1860,7 @@ impl<'a> B<'a> {
             if let Some(xo) = self.bin_op(*x) {
                 if Some(op_level(xo)) == p
                     && xo != BinaryOp::Pow
-                    && !self.paren_bin_at(*o, *x, Role::Left, depth)
+                    && !self.paren_bin_at(*o, *x, Role::Left, ok)
                 {
                     n = *x;
                     continue;
@@ -1843,7 +1875,14 @@ impl<'a> B<'a> {
     }
 
     /// The document of a run, given the document `d0` of its first operand.
-    fn run_doc(&mut self, ops: &[NodeId], xs: &[NodeId], indent: bool, d0: DocId) -> DocId {
+    fn run_doc(
+        &mut self,
+        ops: &[NodeId],
+        xs: &[NodeId],
+        indent: bool,
+        d0: DocId,
+        ok: bool,
+    ) -> DocId {
         let mut rest = Vec::new();
         let mut opdocs = Vec::new();
         for (i, &o) in ops.iter().enumerate() {
@@ -1861,7 +1900,7 @@ impl<'a> B<'a> {
             opdocs.push(od);
             if self.paren_bin(oop, y, Role::Right) {
                 rest.push(self.sub(y, true));
-            } else if self.reader(oop, y, Role::Right, self.rdepth) {
+            } else if self.reader(oop, y, Role::Right, ok) {
                 self.rdepth += 1;
                 let d = self.sub(y, true);
                 self.rdepth -= 1;
@@ -2510,10 +2549,17 @@ fn op_level(op: BinaryOp) -> u8 {
     }
 }
 
+/// Whether `xo`, the left operand's operator of `op`, is in `op`'s run: both
+/// of `*`, `/` and `%`, or both `||` (2.6 item 3).
+fn same_run(op: BinaryOp, xo: BinaryOp) -> bool {
+    (is_mul(op) && is_mul(xo)) || (op == BinaryOp::Or && xo == BinaryOp::Or)
+}
+
+fn is_mul(op: BinaryOp) -> bool {
+    matches!(op, BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem)
+}
+
 /// Build the document twice (the module's comment says why) and lay it out.
-/// The formatted text, and whether a place for a pair for the reader was
-/// met. `readers` turns those pairs on.
-#[allow(clippy::too_many_arguments)]
 fn run(
     ch: &[char],
     before: &[u32],
@@ -2522,10 +2568,8 @@ fn run(
     raw: &[Token],
     comments: &[Range],
     width: Option<i64>,
-    readers: bool,
-) -> (String, bool) {
+) -> String {
     let mut b = B::new(ch, before, ast, raw, comments);
-    b.readers = readers;
     b.node(root, true);
     b.attach();
     let d = b.node(root, true);
@@ -2533,16 +2577,10 @@ fn run(
     while s.ends_with([' ', '\n']) {
         s.pop();
     }
-    (s, b.saw_reader.get())
+    s
 }
 
 /// The formatted text of a program (2.1), or its `parse` diagnostics.
-///
-/// The pairs for the reader (2.6) are written only where the text inside
-/// them stays within 100 levels, decided on the levels of the plain text:
-/// the formatted text without them (2.6 item 3). So a program with a place
-/// for one is formatted twice: to the plain text, and then the plain text,
-/// parsed again, with the pairs.
 pub fn format(text: &str) -> Result<String, Error> {
     format_with(text, ParseOptions::default())
 }
@@ -2550,22 +2588,10 @@ pub fn format(text: &str) -> Result<String, Error> {
 /// Format with options: a lower source limit. A limit out of range is the
 /// `declare` error `bad-limit`.
 pub fn format_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
-    let (s, saw) = format_pass(text, opts, false)?;
-    if !saw {
-        return Ok(s);
-    }
-    // The plain text is the formatter's own text: the source limit was the
-    // source's, so it is not applied again. A plain text that the parser
-    // still refuses, longer than the largest limit, is given as it is.
-    let all = ParseOptions::default();
-    Ok(format_pass(&s, all, true).map_or(s, |(t, _)| t))
-}
-
-fn format_pass(text: &str, opts: ParseOptions, readers: bool) -> Result<(String, bool), Error> {
     let parsed = crate::syntax::parse_with(text, opts)?;
     let src = &parsed.source;
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
-    let (mut s, saw) = run(
+    let mut s = run(
         src.chars(),
         &line_ends_before(src.chars()),
         &parsed.ast,
@@ -2573,10 +2599,9 @@ fn format_pass(text: &str, opts: ParseOptions, readers: bool) -> Result<(String,
         &toks,
         &comments,
         Some(WIDTH),
-        readers,
     );
     s.push('\n');
-    Ok((s, saw))
+    Ok(s)
 }
 
 /// The formatted text of a template (2.14), or its `parse` diagnostics.
@@ -2585,23 +2610,8 @@ pub fn format_template(text: &str) -> Result<String, Error> {
 }
 
 /// Format a template with options: a lower source limit. A limit out of
-/// range is the `declare` error `bad-limit`. It is formatted twice when a
-/// part has a place for a pair for the reader, as a program is.
+/// range is the `declare` error `bad-limit`.
 pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
-    let (s, saw) = format_template_pass(text, opts, false)?;
-    if !saw {
-        return Ok(s);
-    }
-    let all = ParseOptions::default();
-    Ok(format_template_pass(&s, all, true).map_or(s, |(t, _)| t))
-}
-
-fn format_template_pass(
-    text: &str,
-    opts: ParseOptions,
-    readers: bool,
-) -> Result<(String, bool), Error> {
-    let mut saw_any = false;
     let t = parse_template_with(text, opts)?;
     let src: &Source = t.source();
     let ch = src.chars();
@@ -2629,8 +2639,7 @@ fn format_template_pass(
                     out.push_str(&as_is);
                     continue;
                 }
-                let (s, saw) = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None, readers);
-                saw_any |= saw;
+                let s = run(ch, &before, &p.ast, p.ast.root, &toks, &cms, None);
                 if s.contains('\n') {
                     out.push_str(&as_is);
                 } else {
@@ -2641,7 +2650,7 @@ fn format_template_pass(
             }
         }
     }
-    Ok((out, saw_any))
+    Ok(out)
 }
 
 // ---- equal trees (2.2 item 1) --------------------------------------------------

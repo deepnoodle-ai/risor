@@ -392,27 +392,6 @@
   }
  },
  {
-  "name": "150 operators that alternate * and /: the 99 outermost pairs for the reader, the rest flat (2.6 item 3)",
-  "format": "a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a",
-  "expect": {
-   "formatted": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a) *\n  a) /\n  a\n"
-  }
- },
- {
-  "name": "a pair for the reader is written when the text inside it stays within 100 levels",
-  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
-  "expect": {
-   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
-  }
- },
- {
-  "name": "a pair for the reader is not written when a token inside it would open level 101",
-  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
-  "expect": {
-   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a *\n  b /\n  c)\n"
-  }
- },
- {
   "name": "a chained comparison does not parse",
   "format": "a == b == c",
   "expect": {
@@ -477,6 +456,62 @@
   "format": "x == ((a == b) is bool)",
   "expect": {
    "formatted": "x == (a == b) is bool\n"
+  }
+ },
+ {
+  "name": "a run of 3 operators that mix * / and % has its pairs for the reader (2.6 item 3)",
+  "format": "a * b / c % d",
+  "expect": {
+   "formatted": "((a * b) / c) % d\n"
+  }
+ },
+ {
+  "name": "a run of 4 operators is written flat: the same tree, no pairs for the reader",
+  "format": "a * b / c % d * e",
+  "expect": {
+   "formatted": "a * b / c % d * e\n"
+  }
+ },
+ {
+  "name": "the pairs of a longer run that the source wrote are dropped",
+  "format": "(((a * b) / c) % d) * e",
+  "expect": {
+   "formatted": "a * b / c % d * e\n"
+  }
+ },
+ {
+  "name": "a long run of 150 operators that alternate * and / is written flat",
+  "format": "a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a",
+  "expect": {
+   "formatted": "a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a\n"
+  }
+ },
+ {
+  "name": "an || run of 3 operators has a pair around each && operand",
+  "format": "a && b || c && d || e && f || g",
+  "expect": {
+   "formatted": "(a && b) || (c && d) || (e && f) || g\n"
+  }
+ },
+ {
+  "name": "an || run of 4 operators is written flat",
+  "format": "a && b || c && d || e && f || g || h",
+  "expect": {
+   "formatted": "a && b || c && d || e && f || g || h\n"
+  }
+ },
+ {
+  "name": "no pair for the reader inside another run's pair: the * / run inside the && pair is flat (2.6 item 4)",
+  "format": "a * b / c > 0 && d || e",
+  "expect": {
+   "formatted": "(a * b / c > 0 && d) || e\n"
+  }
+ },
+ {
+  "name": "a run in a right operand of a run with pairs is inside them, and flat",
+  "format": "a * (b * c / d) / e",
+  "expect": {
+   "formatted": "(a * (b * c / d)) / e\n"
   }
  }
 ]

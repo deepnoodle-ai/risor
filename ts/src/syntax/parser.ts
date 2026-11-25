@@ -643,15 +643,6 @@ class Parser {
 
   /** Binary = Or | Coal (01 3.2 rule 4). */
   private binary(): A.Expr {
-    // maxLevel counts from here, for the peak of each Binary node.
-    const outerMax = this.maxLevel;
-    this.maxLevel = this.level;
-    const out = this.binaryRest();
-    this.maxLevel = Math.max(outerMax, this.maxLevel);
-    return out;
-  }
-
-  private binaryRest(): A.Expr {
     const left = this.climb(this.unary(null), PREC_ADD);
     if (this.isP(this.cur, "??")) {
       let x = left;
@@ -677,7 +668,7 @@ class Parser {
   }
 
   private binaryNode(op: A.BinaryOp, x: A.Expr, y: A.Expr): A.Binary {
-    return { kind: "Binary", op, x, y, span: { start: this.outer(x).start, end: this.outer(y).end }, peak: this.maxLevel };
+    return { kind: "Binary", op, x, y, span: { start: this.outer(x).start, end: this.outer(y).end } };
   }
 
   /** The level of the binary operator at the current token, or 0. `??` is not here. */
@@ -750,10 +741,7 @@ class Parser {
       this.advance();
       if (op === "not-in") this.advance();
       this.open(opSpan);
-      const outerMax = this.maxLevel;
-      this.maxLevel = this.level;
       const right = this.climb(this.unary(null), p + 1, cmp);
-      this.maxLevel = Math.max(outerMax, this.maxLevel);
       this.close();
       left = this.binaryNode(op, left, right);
       leftCmp = cmp;

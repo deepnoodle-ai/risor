@@ -13,46 +13,27 @@ const Width = 80
 
 // Program formats a program text (2.1). It returns the formatted text, or
 // the first parse diagnostic.
-//
-// The text is formatted twice when it has a place for a pair for the
-// reader: first without those pairs, which gives the plain text of 2.6 item
-// 3, and then the plain text with them, decided on the levels of its own
-// tree.
 func Program(source string) (string, *syntax.Error, *syntax.File) {
-	out, err, f, saw := program(source, false)
-	if err != nil || !saw {
-		return out, err, f
-	}
-	out, err, _, _ = program(out, true)
-	if err != nil { // cannot happen: the plain text parses
-		panic("format: the plain text does not parse: " + err.Error())
-	}
-	return out, nil, f
-}
-
-func program(source string, readers bool) (string, *syntax.Error, *syntax.File, bool) {
 	f := syntax.NewFile(source)
 	prog, err := syntax.Parse(f)
 	if err != nil {
-		return "", err, f, false
+		return "", err, f
 	}
 	toks, lerr := syntax.Lex(f)
 	if lerr != nil { // cannot happen: the text parsed
-		return "", lerr, f, false
+		return "", lerr, f
 	}
-	out, saw := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds), readers)
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds))
 	out = strings.TrimRight(out, " \n") + "\n"
-	return out, nil, f, saw
+	return out, nil, f
 }
 
 // run builds the document twice: first to learn the kept tokens, then with
 // the comments attached (2.12), and lays it out. ends is the prefix count of
-// line ends of src, shared by every run over the same text. readers turns on
-// the pairs for the reader (2.6); run reports whether a place for one was met.
-func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds, readers bool) (string, bool) {
+// line ends of src, shared by every run over the same text.
+func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds) string {
 	b := newBuilder(src, toks, from)
 	b.lineEnds = ends
-	b.readers = readers
 	build(b)
 	b.attach()
 	b.reset()
@@ -62,7 +43,7 @@ func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, w
 			panic(fmt.Sprintf("format: a comment was not written: %q", c.text))
 		}
 	}
-	return render(d, width), b.sawReader
+	return render(d, width)
 }
 
 type builder struct {
@@ -80,12 +61,11 @@ type builder struct {
 	kept     map[int]bool
 	slots    map[int]*slot
 	pass2    bool
-	// readers turns on the pairs for the reader (2.6), and rdepth counts
-	// those written around the node being built. sawReader is set when a
-	// place for one is met.
-	readers   bool
-	rdepth    int
-	sawReader bool
+	// The pairs for the reader (2.6 items 3 and 4). rdepth counts those of
+	// other runs around the node being built, and own those of the run
+	// being built around its left operand. runs caches runLen.
+	rdepth, own int
+	runs        map[*syntax.Binary]int
 	// first and last are the first and last kept units emitted since the
 	// start of the element being built; elemStart marks the next unit as the
 	// first of an element other than the first.
@@ -97,7 +77,7 @@ type builder struct {
 
 func newBuilder(src []rune, toks []syntax.Token, from int) *builder {
 	b := &builder{src: src, toks: toks, byStart: map[int]int{}, byEnd: map[int]int{}, match: map[int]int{},
-		lead: map[int][]*comment{}, trail: map[int][]*comment{}, kept: map[int]bool{}, slots: map[int]*slot{}}
+		lead: map[int][]*comment{}, trail: map[int][]*comment{}, kept: map[int]bool{}, slots: map[int]*slot{}, runs: map[*syntax.Binary]int{}}
 	b.us = units(toks)
 	var open []int
 	for i, u := range b.us {
@@ -552,13 +532,25 @@ func (b *builder) program(p *syntax.Program) part {
 
 // sub is the document of x in its place: in parentheses when 2.6 says.
 func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
+	// The left operand of a * / % run that is itself of the run stays in
+	// the run. Anywhere else the run's own pairs enclose another run's.
+	inRun := r == rLeft && isMul(parent) && isMul(x)
+	if !inRun && b.own > 0 {
+		rdepth, own := b.rdepth, b.own
+		b.rdepth, b.own = rdepth+own, 0
+		defer func() { b.rdepth, b.own = rdepth, own }()
+	}
 	if r == rSubject && b.startsBrace(x) || r != rSubject && needParens(parent, r, x) {
 		return []part{txt("("), b.node(x), txt(")")}
 	}
-	if b.reader(parent, r, x, b.rdepth) {
-		b.rdepth++
+	if b.reader(parent, r, x) {
+		count := &b.rdepth
+		if inRun {
+			count = &b.own
+		}
+		*count++
 		d := b.node(x)
-		b.rdepth--
+		*count--
 		return []part{txt("("), d, txt(")")}
 	}
 	return b.node(x)
@@ -693,6 +685,9 @@ func (b *builder) entry(x syntax.Node) part {
 
 // binary is a run of one level (2.8 items 3 and 4).
 func (b *builder) binary(n *syntax.Binary, unindented bool) part {
+	if isMul(n) || isBin(n, "||") {
+		b.runLen(n) // n is the top of its run, or of a part after a pair
+	}
 	var nodes []*syntax.Binary // innermost first
 	cur := n
 	for {

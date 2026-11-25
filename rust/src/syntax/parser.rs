@@ -574,11 +574,7 @@ impl<'a> Parser<'a> {
 
     fn binary_node(&mut self, op: BinaryOp, x: NodeId, y: NodeId) -> NodeId {
         let span = self.outer(x).to(self.outer(y));
-        let id = self.node(NodeKind::Binary { op, x, y }, span);
-        // `max_level` counts from the start of the innermost `binary` or
-        // right operand, which is where this node starts.
-        self.ast.nodes[id.index()].peak = self.max_level as u16;
-        id
+        self.node(NodeKind::Binary { op, x, y }, span)
     }
 
     // ---- programs, blocks and branches ----------------------------------
@@ -916,16 +912,8 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// `Binary = Or | Coal` (3.2 rule 4). `max_level` counts from here, for
-    /// the peak of each `Binary` node (F12 2.6 item 3).
+    /// `Binary = Or | Coal` (3.2 rule 4).
     fn binary(&mut self) -> R<NodeId> {
-        let outer_max = std::mem::replace(&mut self.max_level, self.level);
-        let e = self.binary_inner();
-        self.max_level = outer_max.max(self.max_level);
-        e
-    }
-
-    fn binary_inner(&mut self) -> R<NodeId> {
         let left = self.bin(PREC_ADD, false)?;
         if self.at_punct(P::QQ) {
             let mut acc = left;
@@ -1031,10 +1019,7 @@ impl<'a> Parser<'a> {
                 return Err(self.perr(code::CHAINED_COMPARISON, op_span, Rule::Final));
             }
             self.open(op_span)?;
-            let outer_max = std::mem::replace(&mut self.max_level, self.level);
-            let rhs = self.bin(prec + 1, cmp);
-            self.max_level = outer_max.max(self.max_level);
-            let rhs = rhs?;
+            let rhs = self.bin(prec + 1, cmp)?;
             self.close();
             lhs = self.binary_node(op, lhs, rhs);
             lhs_cmp = cmp;

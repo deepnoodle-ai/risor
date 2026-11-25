@@ -155,6 +155,9 @@ each of them (7.1).
    is `source-too-large`, as for any text. A text that close to the limit is
    not a program an author writes by hand, so the formatter keeps no promise
    past it.
+4. **A formatted text past the nesting limit.** The laws are stated for a
+   source that nests at most 98 levels (`01-language.md` 13.1): the pairs for
+   the reader (2.6 items 3 and 4) add at most 2 levels around any token.
 
 ### 2.3 What the formatter keeps and what it writes
 
@@ -294,20 +297,18 @@ These parentheses are added for the reader. Each changes no tree.
    them: `(xs.map(f)).sum()` is written `xs.map(f).sum()`.
 2. So the formatted text has the parentheses of its tree, wherever the source
    put its own.
-3. **The nesting limit.** Each pair of the second table opens a level
-   (`01-language.md` 13.1), and a run of `*`, `/` and `%` written with them
-   nests one pair inside the next. So the formatter writes a pair of the second
-   table only where the text inside it stays within the limit of 100 levels
-   (`01-language.md` 13.2). The plain text is the formatted text with none of
-   the pairs of the second table. A pair around x is written only when the
-   highest level that a token of x opens in the plain text, plus the pairs of
-   the second table that are written around x, plus one, is 100 or less. The
-   pairs are decided from the outermost in.
-4. So the formatted text always parses. The plain text has the levels of the
-   source's tree, which parsed, and a pair adds one level to each token inside
-   it. A run of 150 operators that alternate `*` and `/`, at the top of a
-   program, is written with the 99 outermost pairs. The 51 operators inside the
-   innermost pair are written flat, which is the same tree.
+3. **Short runs only.** A run is a `Binary` of `*`, `/` or `%` together with
+   the `Binary` nodes of those operators along its left operands; or the same
+   for `||`. The pairs of the second table are written only in a run of at
+   most 3 operators: `a * b / c % d` is written `((a * b) / c) % d`. A longer
+   run is written flat, the same tree with none of these pairs: `a * b / c %
+   d * e`, and so is a run of 150 operators.
+4. **No pair inside another run's pair.** A run has the pairs of the second
+   table only when no such pair of another run encloses it, through any
+   brackets. In `a * b / c > 0 && d || e` the `&&` operand of `||` has its pair,
+   and the run `a * b / c` inside it is written flat. So each token is inside
+   at most 2 of these pairs, those of one run of `*`, `/` and `%`, and the
+   formatted text nests at most 2 levels deeper than the source (2.2 item 4).
 
 ### 2.7 Literals and line ends
 

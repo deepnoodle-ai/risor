@@ -40,7 +40,6 @@ type parser struct {
 	tok     Token
 	prevEnd int
 	level   int
-	peak    int // the highest level opened since the innermost binary() or climb() began
 
 	// What package F8's mapping of a diagnostic reads (f08-errors.md 2.1
 	// item 5): the source, the rule a raise names, the frames of the
@@ -205,9 +204,6 @@ func (p *parser) expect(k TokenKind) Token {
 // enter opens a level of nesting at the token that spans start to end.
 func (p *parser) enter(start, end int) {
 	p.level++
-	if p.level > p.peak {
-		p.peak = p.level
-	}
 	if p.level > MaxLevels {
 		p.fail(diag.CodeNestingExceeded, start, end, "the text is nested more than 100 levels deep")
 	}
@@ -820,9 +816,6 @@ func (p *parser) tryExpr() Node {
 // rest of an Or.
 func (p *parser) binary() Node {
 	m := p.mark()
-	saved := p.peak
-	p.peak = p.level
-	defer func() { p.peak = max(saved, p.peak) }()
 	left, bang := p.climb(7, false)
 	if p.tok.Kind == Coalesce {
 		for p.tok.Kind == Coalesce {
@@ -849,12 +842,8 @@ func (p *parser) binary() Node {
 // is true when the chain is the right operand of a comparison operator.
 func (p *parser) climb(min int, inCmp bool) (Node, *Token) {
 	m := p.mark()
-	saved := p.peak
-	p.peak = p.level
 	x, bang := p.unary(nil)
-	n, b := p.climbFrom(m, x, bang, min, inCmp)
-	p.peak = max(saved, p.peak)
-	return n, b
+	return p.climbFrom(m, x, bang, min, inCmp)
 }
 
 // binop gives the binary operator at the current place, its level (3.3), its
@@ -946,7 +935,7 @@ func (p *parser) climbFrom(m mark, left Node, bang *Token, min int, inCmp bool) 
 		p.enter(s, e)
 		right, _ := p.climb(prec+1, isCmp)
 		p.exit()
-		left = &Binary{base: p.base(m), Op: op, OpPos: Span{s, e}, X: left, Y: right, Peak: p.peak}
+		left = &Binary{base: p.base(m), Op: op, OpPos: Span{s, e}, X: left, Y: right}
 		bang = nil
 		leftCmp = isCmp
 	}

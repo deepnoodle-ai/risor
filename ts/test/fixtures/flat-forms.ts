@@ -48,8 +48,7 @@ export interface FlatForm {
   /**
    * What the formatter does with the form at 10,000 links. `text`: the
    * formatted text parses to the same tree. A run of `*` and `/` is `text`
-   * too: the formatter's pairs for the reader stop at 100 levels (f12 2.6
-   * item 3).
+   * too: a run longer than 3 operators is written flat (f12 2.6 item 3).
    */
   format: "text";
   /** The kind and the type of hover's record on the last word, where the form states them. */

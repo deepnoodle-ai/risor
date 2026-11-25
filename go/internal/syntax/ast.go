@@ -225,10 +225,6 @@ type Binary struct {
 	Op    string
 	OpPos Span // the operator token, "not in" whole
 	X, Y  Node
-	// Peak is the highest level that a token of the node opens
-	// (01-language.md 13.1). The formatter uses it (f12-tools.md 2.6 item
-	// 3). It is set for a Binary of levels 3 to 8, not for ?? or **.
-	Peak int
 }
 
 // Cond is "c ? a : b" (Form "?:") or "if (c) { a } else { b }" (Form "if").
