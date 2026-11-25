@@ -20,7 +20,9 @@ Within major version **3**, every minor release (`3.1`, `3.2`, ...) is
 
 - A program that parses, checks, and runs under specification version `3.x`
   continues to parse, check, and produce the **same value** (or the **same
-  failure code and error class**) in every later `3.y` (`y >= x`).
+  failure code and error class**) in every later `3.y` (`y >= x`), aside from
+  nondeterministic `deadline-exceeded` and `cancelled` outcomes
+  (`spec/core/03-host.md` 3.6.2).
 - **Step counts and allocation unit counts are fixed per specification version**
   (`spec/core/03-host.md` 3.6.3, `04-library.md` 1.2, decision D16). For any
   run that succeeds, or fails with a non-limit code, the exact step and unit
@@ -34,11 +36,17 @@ Within major version **3**, every minor release (`3.1`, `3.2`, ...) is
   specification version the implementation offers (`03-host.md` 3.3.1). Hosts
   that store user-authored programs should pin `3.0` (or their target `3.x`)
   explicitly and advance the pinned version deliberately.
-- Words reserved in `3.0` (`let`, `var`, `for`, `while`, `do`, `break`,
-  `continue`, `return`, `function`, `import`) and namespaces reserved in `3.0`
-  (`json`, `time`, `math`, `base64`, `regexp`) may gain meaning in a later
-  `3.x` minor version. Because they are rejected in `3.0`, giving them meaning
-  later does not break valid `3.0` programs.
+- Words reserved in `3.0` for a later version (`nil`, `let`, `var`, `for`,
+  `while`, `do`, `break`, `continue`, `return`, `function`, `throw`, `finally`,
+  `import`; `spec/core/01-language.md` 2.4) may gain meaning in a later `3.x`
+  minor version. Because they are rejected in `3.0`, giving them meaning later
+  does not break valid `3.0` programs.
+- The namespaces `json`, `time`, `math`, `base64`, and `regexp` are reserved
+  for the library (`spec/core/03-host.md` 3.3.3): host functions may not be
+  declared in them, and later `3.x` minor versions may add entries to them.
+  `json`, `time`, `math`, and `base64` already ship `3.0` entries in opt-in
+  groups (`suite/library-groups.json`, `spec/packages/f13-math.md` 1.1);
+  `regexp` has no entries yet.
 
 ### 1.2 Standard library
 
@@ -94,7 +102,7 @@ the three implementations and companion web packages.
 | --- | --- | --- |
 | Specification (`spec/`, `suite/`) | `major.minor` (e.g., `3.0`, `3.1`) | Recorded in `spec/` and `suite/` |
 | Go module & CLI | `github.com/deepnoodle-ai/risor/go/v3` | Git tag `go/v3.x.y` (never bare `v3.*`; see R200) |
-| TypeScript & web packages | `@deepnoodle/risor`, `@deepnoodle/risor-service`, `@deepnoodle/risor-codemirror`, `@deepnoodle/risor-react`, `@deepnoodle/risor-mantine` | Git tag `npm-v3.x.y`, published in lockstep via `web/scripts/version.ts` and `.github/workflows/release-npm.yml` |
+| TypeScript & web packages | `@deepnoodle/risor`, `@deepnoodle/risor-service`, `@deepnoodle/risor-codemirror`, `@deepnoodle/risor-react`, `@deepnoodle/risor-mantine` | Git tag `npm-v3.x.y`, staged in lockstep via `web/scripts/version.ts` and `.github/workflows/release-npm.yml` (a maintainer approves each staged package with 2FA on npmjs.com before publication) |
 | Rust crates | `risor`, `risor-derive` | crates.io `3.x.y` (currently `0.1.0`, `publish = false` until 3.0 GA) |
 
 ### How the version numbers relate
@@ -127,9 +135,11 @@ the three implementations and companion web packages.
 ### Breaking (requires a new major version, `4.0`)
 
 - Changing the result, failure code, or error class of any valid `3.x` program.
-- Changing the step count or allocation unit count of any valid `3.x` program,
-  operator, or library entry — including repricing a cost formula or adding an
-  optimization that alters counts (D16).
+- Changing the step count or allocation unit count of any valid `3.x` program
+  (for runs that succeed or fail with a non-limit code), operator, or library
+  entry — including repricing a cost formula or adding an optimization that
+  alters counts (D16; usage on limit-code failures stays unspecified per
+  `spec/core/03-host.md` 3.6.3).
 - Changing a `run`-phase diagnostic message template or rendered text.
 - Changing the pinned Unicode 16.0.0 case table (`suite/casemap.json`), the
   25-code-point whitespace set, or number/JSON rendering rules.
@@ -162,8 +172,11 @@ the three implementations and companion web packages.
   3.6.3 explicitly leave unspecified.
 - Performance and memory optimizations that preserve exact step and unit
   counts and all observable behavior.
-- Adding fields to diagnostic objects or environment descriptions (callers
-  ignore unknown fields per `03-host.md` 3.7.1).
+- Adding fields to diagnostic objects (bindings, runners, and hosts ignore
+  unknown fields per `spec/core/03-host.md` 3.7.1 item 1) or adding optional
+  keys to environment descriptions that are omitted when the new feature is not
+  used (`spec/packages/f01-host-types.md` 5.3 item 4; under this policy,
+  consumers reading environment descriptions must ignore unknown keys).
 
 ## 4. Deprecations
 

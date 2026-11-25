@@ -6,15 +6,16 @@ recommended in all three implementations unless noted otherwise.
 
 **How to use this brief.** Part A lists the 13 items genuinely worth a second
 look before 3.0 freezes the language and APIs. Part B batches every remaining
-unconfirmed decision and ruling (all built and tested by the suite) so they can
-be confirmed in one "yes". Items marked *(added)* were found in the design docs
-or spec outside the list in issue #696 so nothing slips past 3.0.
+unconfirmed decision and ruling that is already built so they can be confirmed
+in one "yes". Part C lists deferred items that are not built, so the Part B
+batch does not settle them. Items marked *(added)* were found in the design
+docs or spec outside the list in issue #696 so nothing slips past 3.0.
 
 ## Part A: Items worth a second look
 
 | ID | Built behavior | Why it matters / strongest alternative | Recommendation |
 | --- | --- | --- | --- |
-| D59 (`00` 4.3, `21` 1) | Scope statement: v3 is an embedded expression language with named entry points; nothing outlives a run (no kept closures, no event loop, no mutation, no loops). Two tests for every proposal: improves expressions over host data, and readable by a TypeScript programmer without explanation. | Sets the guardrail written into `AGENTS.md` and `00-overview.md` to turn away scripting requests. Alternative: keep scope informal. | Confirm, and add to `AGENTS.md` and `00-overview.md`. |
+| D59 (`00` 4.3, `21` 1) | *(Pending doc addition; not yet written into `AGENTS.md` or `00-overview.md`.)* Scope statement: v3 is an embedded expression language with named entry points; nothing outlives a run (no kept closures, no event loop, no mutation, no loops). Two tests for every proposal: improves expressions over host data, and readable by a TypeScript programmer without explanation. | Would add an explicit scope constraint to `AGENTS.md` and `00-overview.md` to turn away scripting requests. Alternative: keep scope informal. | Confirm, and add to `AGENTS.md` and `00-overview.md`. |
 | D60 *(added)* (`00` 4.3, `21` 4) | Project is named "Risor v3" (`go/v3`, `@deepnoodle/risor`, `risor` crate). | Renaming as expr's successor is practically impossible once 3.0 packages ship. Keeping "Risor v3" may keep drawing v2 scripting requests. | Owner's call (no recommendation in `00`). |
 | D27 (`00` 4.1) | 3.0 is final only when Go, TypeScript and Rust all pass the full suite (checker and library included). | All three already pass Core and built packages, but Rust is still `publish = false` at `0.1.0`. Alternative: ship Go and TypeScript 3.0 first and let Rust follow (prior art says a third implementation then drifts). | Confirm: require all three at 3.0.0. |
 | D23 (`00` 4.5, `15` 1) | `00` recommends dropping `wonton/assert` so the Go module has zero dependencies. **Actual state:** Go library code imports no `wonton` package, but `go/go.mod` still requires `wonton v0.14.0` (plus 4 indirect deps) for `wonton/assert` in tests **and** `wonton/cli`, `tui`, `color`, `env`, `tty` in `go/cmd/risor`. | Dropping `wonton/assert` alone does not make `go/go.mod` dependency-free unless `cmd/risor` splits into its own module or drops `wonton` too. Alternative: keep `wonton` in `go/go.mod` (zero deps in the library import graph, CLI/tests use `wonton`), or split `cmd/risor` into `go/cmd/risor/go.mod`. | Decide between (1) split `cmd/risor` + drop `wonton/assert` for a 0-dep `go.mod`, or (2) keep `wonton` and reverse D23. |
@@ -30,16 +31,17 @@ or spec outside the list in issue #696 so nothing slips past 3.0.
 
 ## Part B: Routine items already built and proven (batch approval)
 
-Every item below is implemented in Go, TypeScript and Rust, covered by the
-conformance suite, and has no compelling reason to reopen. A single "yes"
-settles the whole batch.
+Every language and spec item below is implemented in Go, TypeScript and Rust
+and covered by the conformance suite; host-specific items (D18, D21, D22) are
+built in the named binding, and D2's build order is historical. None has a
+compelling reason to reopen. A single "yes" settles the whole batch.
 
 ### B.1 Overview decisions (`00-overview.md` section 4)
 
-| ID | Built behavior (all confirmed by suite) |
+| ID | Built behavior |
 | --- | --- |
 | D2 *(note)* | Build order (Go -> TS/Rust reference evaluators -> checker) is historical; all three implementations are built. |
-| D8 *(added)* | `len`, `int` and `float` reject `null` (built in Core; omitted from `00` settled list). |
+| D8 *(added)* | `len`, `int` and `float` reject `null` (built in Core; marked `Yes` in `00` 4.2, not yet marked settled). |
 | D10 | `match` has no binding or structural patterns in 3.0 (guards were added by D54/F17; conditions dropped by D38). Additive later. |
 | D11 | `??` beside a comparison or logical operator requires parentheses. |
 | D12 | `in` on a list tests membership; parameter/pattern defaults replace `null` as well as absent. |
@@ -82,7 +84,15 @@ settles the whole batch.
 | R288 | Unreachable `arg-mismatch` template `fn-value` retired from `suite/messages-entry-points.json` once F17 step E3 landed. |
 | R303 | Recursive JSON Schema mapping visits `properties` in code-point order and `type` arrays in written order so all three implementations name the same cycle target. |
 | R352–R354, R357 | F19 recommended details (`20-4`, `20-5`, `20-9`, `20-11`): hints live in the message (no separate `hint` field), exact table lookup with no edit-distance search, nested host Risor error carries `data` and writes `cause` in JSON. |
-| `18-18` (`18` 7.6) | Type variables in non-recursive lambda annotations remain deferred past 3.0 (additive follow-up; `Fn` stays monomorphic in 3.0). |
+
+## Part C: Deferred, not built (outside the Part B batch)
+
+These items are recorded as recommendations in the design documents but are not
+built for 3.0. Confirming Part B does not settle them.
+
+| ID | Proposed follow-up | Status in design docs |
+| --- | --- | --- |
+| `18-18` *(added)* (`18` 7.6, `18` 10) | Type variables in non-recursive lambda annotations (additive follow-up; `Fn` stays monomorphic in 3.0). | Recommendation, not settled; explicitly out of track E and not built. |
 
 ## Next step once the owner replies
 
