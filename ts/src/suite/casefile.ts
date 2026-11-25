@@ -67,12 +67,32 @@ export interface Renderings {
   json?: string;
 }
 
+/** Package F16 slice D2: expected parameter of an entry point (f16 12.10). */
+export interface ExpectEntryParam {
+  name: string | null;
+  type: string;
+  doc?: string | null;
+  optional: boolean;
+}
+
+/** Package F16 slice D2: expected entry point metadata (f16 12.10). */
+export interface ExpectEntry {
+  name: string;
+  doc?: string | null;
+  params?: ExpectEntryParam[];
+  input?: string | null;
+  inputSchema?: { value: Json };
+  result?: string;
+}
+
 export type Expect =
   | {
       kind: "result";
       type?: string;
       /** Package F16 slice D3: SchemaOf of the checked type, null for a refusal (f16 11.8). */
       schema?: { value: Json };
+      /** Package F16 slice D2: expected Entries of the checked program (f16 12.10). */
+      entries?: ExpectEntry[];
       /** Package F1: the description of the case's environment (f01 7.2). */
       description?: { value: Json };
       /** Package F6: the JSON text of the run's value (f06 11.2). */
@@ -144,6 +164,11 @@ export interface Case {
   returns?: string;
   /** Package F10: the expected result by schema (f10 10.1). */
   returnsSchema?: { schema: Json; options?: string[] };
+  /** Package F16 slice D2: entry point name, positional args, record input, per-entry expected results (f16 12.10). */
+  entry?: string;
+  args?: Json[];
+  input?: { value: Json };
+  entryReturns?: Record<string, string>;
   /** Package F10: the case is run as a load, steps 0 to 4 (f10 10.2). */
   load?: boolean;
   /** Package F14: host facts someNotNull, each the list of its members (f14 10.1). */
@@ -200,8 +225,8 @@ export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SE
 /** The static codes of suite/config/ (f10 10.3 item 3): Core's and `untagged-union`. */
 export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "untagged-union"]);
 
-/** The static codes of suite/entry-points/ (f16 3.1 item 11): Core's, the two of a program type, and `name-clash`. */
-export const ENTRY_POINTS_STATIC: ReadonlySet<string> = new Set([...CONVERSION_STATIC, "name-clash"]);
+/** The static codes of suite/entry-points/ (f16 3.1 item 11, 12.3 item 5): Core's, the two of a program type, `name-clash` and `bad-export`. */
+export const ENTRY_POINTS_STATIC: ReadonlySet<string> = new Set([...CONVERSION_STATIC, "name-clash", "bad-export"]);
 
 /**
  * The static codes of suite/recursion/ and of suite/messages-recursion.json (f17 8 item 5): those of F16 3.1 item 11,
@@ -220,8 +245,8 @@ export function staticCodesOf(dirName: string): ReadonlySet<string> | undefined 
 
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
-/** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
+/** The fields a header and a case share (03 3.10.3; f16 12.10). `precondition` is 3.10.3 too. */
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "entry", "args", "input", "entryReturns", "load", "facts", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED, "docs"]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "docs", "skip", "expect", "render", "runner", "update", "program", "format", "formatTemplate", "complete", "hover"]);
 
@@ -337,6 +362,12 @@ function checkShared(o: JsonObject, where: string): void {
   str("source");
   str("env");
   str("returns");
+  str("entry");
+  if ("args" in o && !Array.isArray(o.args)) fail(`${where}: args is not an array`);
+  if ("entryReturns" in o) {
+    const er = o.entryReturns;
+    if (!isObject(er) || !Object.values(er).every((x) => typeof x === "string")) fail(`${where}: entryReturns is not an object of strings`);
+  }
   if ("returnsSchema" in o) {
     // f10 10.1: an object with `schema` and the optional `options`.
     const r = o.returnsSchema;
@@ -538,6 +569,11 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     delete merged.returns;
     delete merged.returnsSchema;
   }
+  // f16 12.10 item 1: args and input count as one field for the header rule.
+  if ("args" in raw || "input" in raw) {
+    delete merged.args;
+    delete merged.input;
+  }
   if ("source" in raw || "file" in raw || "conform" in raw || "render" in raw) {
     delete merged.source;
     delete merged.file;
@@ -600,14 +636,24 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("facts" in merged) c.facts = (merged.facts as JsonObject[]).map((x) => [...(x.someNotNull as string[])]);
   if ("returnsSchema" in merged) c.returnsSchema = merged.returnsSchema as Case["returnsSchema"];
   if (c.returns !== undefined && c.returnsSchema !== undefined) fail(`${where}: both returns and returnsSchema`);
+  // f16 12.10: entry, args, input, entryReturns.
+  if ("entry" in merged) c.entry = merged.entry as string;
+  if ("args" in merged) c.args = merged.args as Json[];
+  if ("input" in merged) c.input = { value: merged.input };
+  if ("entryReturns" in merged) c.entryReturns = merged.entryReturns as Record<string, string>;
+  if ((c.args !== undefined || c.input !== undefined) && c.entry === undefined) fail(`${where}: args or input without entry`);
+  if (c.args !== undefined && c.input !== undefined) fail(`${where}: both args and input`);
   if (merged.load === true) {
     // f10 10.2 items 1 and 2.
     c.load = true;
     if (c.returnsSchema === undefined && (c.returns === undefined || c.returns === "condition")) fail(`${where}: load with no expected type`);
     if (merged.check === false) fail(`${where}: load with "check": false`);
   }
-  // f10 10.2 item 5: "span": null only in a load case.
-  if (c.load !== true && c.expect.kind === "failure" && c.expect.diagnostics.some((d) => d.span === null)) fail(`${where}: "span": null in a case that is not a load`);
+  // f10 10.2 item 5, f16 12.10 item 5: "span": null in a load case, or in a run diagnostic of an entry case.
+  if (c.expect.kind === "failure" && c.expect.diagnostics.some((d) => d.span === null)) {
+    const allowed = c.load === true || (c.entry !== undefined && c.expect.phase === "run");
+    if (!allowed) fail(`${where}: "span": null in a case that is not a load or entry call`);
+  }
   if ("vars" in merged) c.vars = merged.vars as JsonObject;
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
@@ -632,7 +678,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   }
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.
   if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
-    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "check", "precondition", "version"]) {
+    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "entry", "args", "input", "entryReturns", "load", "facts", "vars", "limits", "check", "precondition", "version"]) {
       if (k in merged) fail(`${where}: an analysis case has the field ${k}`);
     }
   }
@@ -642,8 +688,9 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      // f16 11.8 item 1.
+      // f16 11.8 item 1, 12.10 item 1.
       if (ex.kind === "result" && ex.schema !== undefined) fail(`${where}: "check": false with schema`);
+      if (ex.kind === "result" && ex.entries !== undefined) fail(`${where}: "check": false with entries`);
       const staticCodes = staticCodesOf(basename(dir)) ?? STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
@@ -658,6 +705,8 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   const declared = new Set(c.opaque ?? []);
   const opaqueOk = (v: Json, at: string) => checkOpaque(v, declared, `${where}: ${at}`);
   if (c.vars !== undefined) opaqueOk(c.vars, "vars");
+  if (c.args !== undefined) opaqueOk(c.args, "args");
+  if (c.input !== undefined) opaqueOk(c.input.value, "input");
   for (const st of [...Object.values(c.functions ?? {}), ...Object.values(c.methods ?? {})]) {
     for (const row of st.calls) {
       if (row.args !== undefined) opaqueOk(row.args, "a stub's args");
@@ -951,6 +1000,50 @@ function buildExpect(v: Json, where: string, render = false): Expect {
       case "schema":
         // f16 11.8: a JSON Schema, or null for a refusal.
         out.schema = { value: val };
+        break;
+      case "entries":
+        // f16 12.10: expected Entries of the checked program.
+        if (!Array.isArray(val)) fail(`${where}: entries is not a list`);
+        out.entries = val.map((item): ExpectEntry => {
+          if (!isObject(item)) fail(`${where}: an entry is not an object`);
+          for (const ek of Object.keys(item)) {
+            if (!["name", "doc", "params", "input", "inputSchema", "result"].includes(ek)) fail(`${where}: an entry has the field ${ek}`);
+          }
+          if (typeof item.name !== "string") fail(`${where}: an entry has no string name`);
+          const e: ExpectEntry = { name: item.name };
+          if ("doc" in item) {
+            if (item.doc !== null && typeof item.doc !== "string") fail(`${where}: an entry's doc`);
+            e.doc = item.doc as string | null;
+          }
+          if ("params" in item) {
+            if (!Array.isArray(item.params)) fail(`${where}: an entry's params is not a list`);
+            e.params = item.params.map((p): ExpectEntryParam => {
+              if (!isObject(p)) fail(`${where}: an entry param is not an object`);
+              for (const pk of Object.keys(p)) {
+                if (!["name", "type", "doc", "optional"].includes(pk)) fail(`${where}: an entry param has the field ${pk}`);
+              }
+              if ((p.name !== null && typeof p.name !== "string") || typeof p.type !== "string" || typeof p.optional !== "boolean") {
+                fail(`${where}: an entry param's name, type or optional`);
+              }
+              const ep: ExpectEntryParam = { name: p.name as string | null, type: p.type, optional: p.optional };
+              if ("doc" in p) {
+                if (p.doc !== null && typeof p.doc !== "string") fail(`${where}: an entry param's doc`);
+                ep.doc = p.doc as string | null;
+              }
+              return ep;
+            });
+          }
+          if ("input" in item) {
+            if (item.input !== null && typeof item.input !== "string") fail(`${where}: an entry's input`);
+            e.input = item.input as string | null;
+          }
+          if ("inputSchema" in item) e.inputSchema = { value: item.inputSchema };
+          if ("result" in item) {
+            if (typeof item.result !== "string") fail(`${where}: an entry's result`);
+            e.result = item.result;
+          }
+          return e;
+        });
         break;
       case "sites":
         if (!Array.isArray(val)) fail(`${where}: sites is not a list`);

@@ -419,18 +419,29 @@ class Parser {
     const start = this.cur.start;
     const consts: A.Const[] = [];
     const types: A.TypeLine[] = [];
-    // Package F16 (f16 2.1, 2.2 rule 1): type lines and const lines, in any order.
+    // Package F16 (f16 2.1, 2.2 rule 1, 12.2): type lines, const lines, and export const lines, in any order.
+    let hasExport = false;
     for (;;) {
       if (this.isW(this.cur, "const")) consts.push(this.constLine());
-      else if (this.typeLineStartsHere()) types.push(this.typeLine());
+      else if (this.isW(this.cur, "export") && this.isW(this.peek(1), "const")) {
+        hasExport = true;
+        const expTok = this.advance();
+        consts.push(this.constLine(true, expTok));
+      } else if (this.typeLineStartsHere()) types.push(this.typeLine());
       else break;
     }
-    const result = this.expr();
-    if (this.isP(this.cur, ";")) {
-      this.programSemi = this.advance();
-      this.afterProgramSemi = this.cur;
+    // f16 12.2 item 2: a program may omit its result expression only when it has at least one Export.
+    let result: A.Expr | null;
+    if (this.cur.kind === "eof" && hasExport) {
+      result = null;
+    } else {
+      result = this.expr();
+      if (this.isP(this.cur, ";")) {
+        this.programSemi = this.advance();
+        this.afterProgramSemi = this.cur;
+      }
+      if (this.cur.kind !== "eof") this.unexpected(this.cur);
     }
-    if (this.cur.kind !== "eof") this.unexpected(this.cur);
     return { kind: "Program", consts, types, result, span: { start, end: this.prevEnd } };
   }
 
@@ -480,9 +491,10 @@ class Parser {
     return out;
   }
 
-  private constLine(): A.Const {
+  private constLine(exported = false, exportTok?: Token): A.Const {
     const kw = this.advance(); // const
-    const start = kw.start;
+    // f16 12.2 item 4: the span of an exported Const runs from `export` to its `;`.
+    const start = exported ? exportTok!.start : kw.start;
     const pattern = this.pattern();
     // Package F16 (f16 2.1): an annotation. Its value is an Expr only (2.2 rule 4).
     let type: A.TypeAnn | null = null;
@@ -503,9 +515,10 @@ class Parser {
       value = this.expr();
     }
     this.expect(";");
-    const c: A.Const = { kind: "Const", pattern, type, value, span: this.span(start) };
-    // f16 11.2: a doc comment before the word `const` is the line's description.
-    if (kw.doc !== undefined) c.doc = kw.doc;
+    const c: A.Const = { kind: "Const", exported, pattern, type, value, span: this.span(start) };
+    // f16 11.2, 12.2 item 5: a doc comment attaches at `export` for an Export (not at `const`), else at `const`.
+    const docHolder = exported ? exportTok! : kw;
+    if (docHolder.doc !== undefined) c.doc = docHolder.doc;
     return c;
   }
 

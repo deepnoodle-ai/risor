@@ -79,6 +79,8 @@ export interface CheckResult {
   /** Package F12: the type of each node checked, and of each slot, for assist (f12 3). */
   types: ReadonlyMap<object, Type>;
   slotTypes: readonly (Type | undefined)[];
+  /** Package F16 slice D2: the checked result type of each entry point, by name (f16 12.6). */
+  entryTypes: ReadonlyMap<string, Type>;
 }
 
 export type Expected = { kind: "none" } | { kind: "type"; type: Type } | { kind: "condition" };
@@ -146,18 +148,18 @@ interface Mark {
   s: number;
 }
 
-export function check(program: A.Program, res: Resolution, env: CheckEnv, expected: Expected, staticDiags: Diagnostic[], source?: Source): CheckResult {
+export function check(program: A.Program, res: Resolution, env: CheckEnv, expected: Expected, staticDiags: Diagnostic[], source?: Source, entryExpected?: ReadonlyMap<string, Type>): CheckResult {
   const c = new Checker(res, env);
   let t: Type;
   try {
-    t = c.program(program, expected);
+    t = c.program(program, expected, entryExpected);
   } catch (e) {
     if (!(e instanceof PairLimit)) throw e;
     // f17 12.5 item 7: past the bound the check ends; its diagnostics are this one alone, and the static rules' stand.
-    const span = e.span ?? program.result.span;
+    const span = e.span ?? program.result?.span ?? program.span;
     const diags: Diagnostic[] = [...staticDiags, { phase: "check", code: "check-limit", span: sp(span), message: catalogMessage("check-limit", "pairs", {}) }];
     diags.sort((a, b) => a.span!.start - b.span!.start || a.span!.end - b.span!.end || cmp(a.code, b.code));
-    return { type: NEVER, sites: [], diagnostics: diags, dynamicSpans: new Set(), hostSpans: new Set(), valueSpans: new Set(), types: c.typesOf(), slotTypes: c.slotTypesOf() };
+    return { type: NEVER, sites: [], diagnostics: diags, dynamicSpans: new Set(), hostSpans: new Set(), valueSpans: new Set(), types: c.typesOf(), slotTypes: c.slotTypesOf(), entryTypes: c.entryTypesOf() };
   }
   const diags: Diagnostic[] = [...staticDiags];
   const seen = new Set(staticDiags.map((d) => `${d.code}:${d.span!.start}:${d.span!.end}`));
@@ -192,7 +194,7 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
   const extra: string[] = [];
   for (const { body, call } of c.callbacks) if (dynamicSpans.has(spanKey(body))) extra.push(spanKey(call));
   for (const k of extra) dynamicSpans.add(k);
-  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans, valueSpans, types: c.typesOf(), slotTypes: c.slotTypesOf() };
+  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans, valueSpans, types: c.typesOf(), slotTypes: c.slotTypesOf(), entryTypes: c.entryTypesOf() };
 }
 
 function cmp(a: string, b: string): number {
@@ -299,6 +301,18 @@ class Checker {
   private readonly used = new Set<number>();
   /** Package F16: the result type of each lambda checked once (f16 3.4). */
   private readonly onceTypes = new Map<number, Type>();
+  /** Package F16 slice D2: the checked result type of each entry point, by name (f16 12.6). */
+  private readonly entryTypes = new Map<string, Type>();
+  private entryExpected: ReadonlyMap<string, Type> | undefined;
+
+  entryTypesOf(): ReadonlyMap<string, Type> {
+    return this.entryTypes;
+  }
+
+  /** f16 3.4, 12.3: a const-bound lambda checked once (including zero-parameter exported entry points). */
+  private isCheckedOnce(l: A.Lambda, id: number): boolean {
+    return l.params.every((p) => p.type !== null || p.fn !== null) && (this.res.exportedLambdas.has(id) || l.params.length > 0 || l.result !== null);
+  }
   /** Package F16: a fit at an annotation, where a fit that uses `any` does not hold (f16 3.3). */
   private strict = false;
   private uses = 0;
@@ -623,14 +637,17 @@ class Checker {
 
   // ---- program, blocks, consts ----------------------------------------------
 
-  program(p: A.Program, expected: Expected): Type {
+  program(p: A.Program, expected: Expected, entryExpected?: ReadonlyMap<string, Type>): Type {
+    this.entryExpected = entryExpected;
     let f: Facts = NO_FACTS;
     for (const c of p.consts) f = this.constLine(c, f);
-    const t = this.synth(p.result, f);
+    if (p.result === null) return NEVER;
+    const res = p.result;
+    const t = this.synth(res, f);
     // f17 12.5 item 7: the fit of the program's result to the expected result is on the result.
-    at(p.result.span, () => {
-      if (expected.kind === "condition") this.tested(t, p.result.span);
-      else if (expected.kind === "type") this.fitForm(p.result, expected.type, () => "result-mismatch");
+    at(res.span, () => {
+      if (expected.kind === "condition") this.tested(t, res.span);
+      else if (expected.kind === "type") this.fitForm(res, expected.type, () => "result-mismatch");
     });
     return t;
   }
@@ -645,13 +662,25 @@ class Checker {
       const l = c.value;
       const id = this.res.lambdas.indexOf(l);
       this.lambdaFacts.set(id, f);
-      if (checkedOnce(l)) {
-        // f16 3.4: checked once, where it is written, under the facts there; its sites are kept.
+      if (this.isCheckedOnce(l, id)) {
+        // f16 3.4, 12.3: checked once, where it is written, under the facts there; its sites are kept.
         // One check against 20.3, and its nesting where it is written against 20.2; a check-limit is on the whole lambda.
         // Package F17 (f17 11.3): a typed lambda's result type is its result annotation, known before its body
         // is checked, so a self-reference in the body has it.
         if (typedLambda(l)) this.onceTypes.set(id, this.res.annTypes.get(l.result!) ?? NEVER);
-        this.onceTypes.set(id, this.useLimit(l, l.level - 1, l.span) ? this.lambdaBody(l, [], f, "once") : NEVER);
+        const resType = this.useLimit(l, l.level - 1, l.span) ? this.lambdaBody(l, [], f, "once") : NEVER;
+        this.onceTypes.set(id, resType);
+        if (c.exported && c.pattern.kind === "NamePat" && c.pattern.name !== null) {
+          this.entryTypes.set(c.pattern.name, resType);
+          const want = this.entryExpected?.get(c.pattern.name);
+          if (want !== undefined) {
+            // f16 12.3 item 5: fit T through its form against expected at lam.Body (allowing `any` with a dynamic site).
+            at(l.body.span, () => {
+              if (l.result === null) this.fitForm(l.body, want, () => "result-mismatch");
+              else this.fitSimple(resType, want, l.body.span, "result-mismatch");
+            });
+          }
+        }
         return f;
       }
       if (!this.used.has(id)) {
@@ -2119,7 +2148,7 @@ class Checker {
       const t = this.lambdaBody(la.lambda, qs.map((type) => ({ given: true, type })), f, "lib", callName);
       return { type: t };
     }
-    if (checkedOnce(la.lambda)) {
+    if (this.isCheckedOnce(la.lambda, la.id)) {
       // f16 3.4: its body is not checked again; each value passed is fitted to its parameter.
       la.lambda.params.forEach((p, i) => this.passed(p, qs[i] ?? NEVER));
       return { type: this.onceTypes.get(la.id) ?? NEVER };
@@ -2327,7 +2356,7 @@ class Checker {
       if (t !== null) this.fitStrict(a as A.Expr, p.default !== null ? withNull(t) : t, argCode);
     });
     // f16 3.4: a use of a lambda checked once counts against no limit; the call's type is its result type.
-    if (checkedOnce(l)) return this.onceTypes.get(id) ?? NEVER;
+    if (this.isCheckedOnce(l, id)) return this.onceTypes.get(id) ?? NEVER;
     if (!this.useLimit(l, node.level, node.span)) return NEVER;
     const saved = this.offset;
     this.offset = node.level + this.offset + 1 - l.level;

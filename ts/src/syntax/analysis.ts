@@ -42,7 +42,7 @@ export function analyze(program: A.Program, segments: Segment[] | null = null): 
   const refs = w.refs.sort((a, b) => a.span.start - b.span.start);
   const calls = w.calls.sort((a, b) => a.span.start - b.span.start);
   const names = [...new Set(refs.map((r) => r.name))].sort(compareText);
-  return { names, refs, calls, literal: program.consts.length === 0 ? literalOf(program.result) : null, segments };
+  return { names, refs, calls, literal: program.consts.length === 0 && program.result !== null ? literalOf(program.result) : null, segments };
 }
 
 class Walker {
@@ -63,7 +63,7 @@ class Walker {
   program(p: A.Program): void {
     this.scopes.push(new Set());
     for (const c of p.consts) this.constLine(c);
-    this.expr(p.result);
+    if (p.result !== null) this.expr(p.result);
     this.scopes.pop();
   }
 

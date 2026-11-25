@@ -570,10 +570,11 @@ class Formatter {
   // ---- nodes (f12 2.8) -------------------------------------------------------
 
   program(p: A.Program): Doc {
-    // f16 7.1: a type line is a line of the program, as a const line is, in the order of the text.
+    // f16 7.1, 12.8: a type line and an export const line are lines of the program, in the order of the text; result may be absent.
     const lines = [...p.consts.map((c) => ({ at: c.span.start, item: () => this.constItem(c) })), ...p.types.map((l) => ({ at: l.span.start, item: () => this.typeItem(l) }))];
     lines.sort((a, b) => a.at - b.at);
-    const items = [...lines.map((l) => l.item()), { d: this.expr(p.result), first: this.firstTok(p.result), semi: "" as Doc }];
+    const items = lines.map((l) => l.item());
+    if (p.result !== null) items.push({ d: this.expr(p.result), first: this.firstTok(p.result), semi: "" as Doc });
     return [this.lines(items), H, this.endMark(), H];
   }
 
@@ -586,16 +587,19 @@ class Formatter {
   }
 
   private constItem(c: A.Const): { d: Doc; first: number; semi: Doc } {
-    const kw = this.at(c.span.start);
+    const first = this.at(c.span.start);
+    // f16 12.8: `export` is a kept token before `const`.
+    const kw = c.exported ? this.find("const", this.toks[first].end) : first;
+    const prefix: Doc[] = c.exported ? [this.tok(first), SP] : [];
     const semi = this.find(";", this.outer(c.value).end);
     if (c.type !== null) {
       // f16 7.1: `"const" sp ‹pattern› ":" sp type sp "=" assigned(value) ";"`.
       const colon = this.find(":", this.outer(c.pattern).end);
       const eq = this.find("=", c.type.span.end);
-      return { d: [this.tok(kw), SP, this.pattern(c.pattern), this.tok(colon), SP, this.typeDoc(c.type.span), SP, this.tok(eq), this.assigned(c.value)], first: kw, semi: this.tok(semi) };
+      return { d: [...prefix, this.tok(kw), SP, this.pattern(c.pattern), this.tok(colon), SP, this.typeDoc(c.type.span), SP, this.tok(eq), this.assigned(c.value)], first, semi: this.tok(semi) };
     }
     const eq = this.find("=", this.outer(c.pattern).end);
-    return { d: [this.tok(kw), SP, this.pattern(c.pattern), SP, this.tok(eq), this.assigned(c.value)], first: kw, semi: this.tok(semi) };
+    return { d: [...prefix, this.tok(kw), SP, this.pattern(c.pattern), SP, this.tok(eq), this.assigned(c.value)], first, semi: this.tok(semi) };
   }
 
   /** assigned(v) (f12 2.8 item 2). */

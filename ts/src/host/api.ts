@@ -17,23 +17,24 @@ import { Source, SOURCE_LIMIT, validSourceLimit } from "../syntax/source.ts";
 import type { Position } from "../syntax/source.ts";
 import { arity, parseSignature } from "../types/typetext.ts";
 import { compileProgram, HostError } from "../eval/compile.ts";
-import type { CallHandle, CompileEnv, HostImpl, Remaining } from "../eval/compile.ts";
+import type { CallHandle, CompiledEntry, CompileEnv, HostImpl, Remaining } from "../eval/compile.ts";
 import { LIMIT_CODES, RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
 import { ABSENT_VAR, Run } from "../eval/run.ts";
 import type { VarSource } from "../eval/run.ts";
-import { staticRules } from "../eval/static.ts";
-import type { Counts, StaticEnv } from "../eval/static.ts";
+import { isEntryConst, staticRules } from "../eval/static.ts";
+import type { Counts, Resolution, StaticEnv } from "../eval/static.ts";
 import { functionCounts, FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS } from "../library/registry.ts";
 import "../library/groups.ts";
 import "../library/math.ts";
 import "../library/core.ts";
-import { Classifier, DEFAULT_CLASSIFIER, jsonString, mapGet, mapKeys, readHost, sortKeys, truthy as truthyOf, BAD_NUMBER } from "../value/value.ts";
+import { ABSENT, Classifier, DEFAULT_CLASSIFIER, jsonString, mapGet, mapKeys, readHost, sortKeys, truthy as truthyOf, BAD_NUMBER } from "../value/value.ts";
 import { numberToText } from "../value/number.ts";
 import { declare, DEFAULT_LIMITS } from "./env.ts";
 import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected as CheckExpected, Site as InnerSite } from "../types/check.ts";
-import { depth, fromNode, printType, printUnfolded, opaque as opaqueType, SIZE_LIMIT, soleRef, typeSize } from "../types/type.ts";
-import type { Ref as InnerRef, Type as InnerType } from "../types/type.ts";
+import { depth, fromNode, isAny, kindCount, NEVER, printType, printUnfolded, opaque as opaqueType, record as recordInner, SIZE_LIMIT, soleRef, typeSize, unfold, withNull } from "../types/type.ts";
+import type { Field as InnerField, Ref as InnerRef, Type as InnerType } from "../types/type.ts";
+import type * as A from "../syntax/ast.ts";
 import { CONFORM_STEPS, conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import { SchemaRefused, schemaOf as innerSchemaOf, jsonText as schemaJsonText } from "../types/schemaof.ts";
@@ -209,6 +210,11 @@ type RunVars<V> = HostVars<V> | ReadonlyMap<string, unknown> | ((name: string) =
 export type Outcome =
   | { ok: true; value: unknown; usage: Usage }
   | { ok: false; diagnostic: InnerDiagnostic; usage: Usage };
+
+/** Internal: the outcome of one Call stage invocation, never thrown (may carry multiple conformance diagnostics). */
+export type CallOutcome =
+  | { ok: true; value: unknown; usage: Usage }
+  | { ok: false; diagnostics: InnerDiagnostic[]; usage: Usage };
 
 /** The language's truthiness test (03 3.2.4). Not JavaScript's: [] and {} are falsy. */
 export function truthy(value: unknown): boolean {
@@ -418,6 +424,89 @@ export type CompileResult = { ok: true; program: Program } | { ok: false; diagno
 export type Expected = string | { schema: unknown; options?: SchemaOption[] } | { type: Type };
 
 /**
+ * Package F16 slice D2 (f16 12.3 item 5): what the host expects of an entry
+ * point's result: type text, a JSON Schema with options, or a `Type` (not `"condition"`).
+ */
+export type EntryExpected = string | { schema: unknown; options?: SchemaOption[] } | { type: Type };
+
+/** One parameter of an entry point (package F16 slice D2, f16 12.6). */
+export interface EntryParam {
+  readonly name: string | null;
+  readonly type: Type;
+  readonly doc: string | null;
+  readonly optional: boolean;
+}
+
+/** One `export const` entry point of a program (package F16 slice D2, f16 12.6). */
+export interface Entry {
+  readonly name: string;
+  readonly doc: string | null;
+  readonly params: readonly EntryParam[];
+  readonly inputType: Type | null;
+  readonly resultType: Type | null;
+}
+
+interface EntryMeta {
+  readonly entry: Entry;
+  readonly params: { name: string | null; innerType: InnerType; optional: boolean }[];
+  readonly inputMode: "single" | "fields" | "none";
+  readonly innerInputType: InnerType | null;
+}
+
+/** f16 12.5 Row 1: unfolding recursive references yields a single record alternative (not a tagged union, not nullable, not mixed). */
+function isSingleRecord(t: InnerType): boolean {
+  if (isAny(t)) return false;
+  const u = unfold(t);
+  if (isAny(u)) return false;
+  return u.map !== undefined && u.union === undefined && kindCount(u) === 1;
+}
+
+/** Build entry point metadata in text order (f16 12.5, 12.6). */
+function buildEntries(program: A.Program, res: Resolution, cls: Classifier, resultTypes: ReadonlyMap<string, InnerType> | null): EntryMeta[] {
+  const out: EntryMeta[] = [];
+  for (const c of program.consts) {
+    if (!isEntryConst(c)) continue;
+    const name = (c.pattern as A.NamePat).name!;
+    const lam = c.value as A.Lambda;
+    const doc = c.doc ?? null;
+    const params = lam.params.map((p) => {
+      const pName = p.pattern.kind === "NamePat" && p.pattern.name !== null && p.pattern.name !== "_" ? p.pattern.name : null;
+      const innerType = p.type === null ? NEVER : (res.annTypes.get(p.type) ?? NEVER);
+      const pDoc = p.doc ?? null;
+      const optional = p.default !== null;
+      return { name: pName, innerType, doc: pDoc, optional };
+    });
+    let inputMode: "single" | "fields" | "none";
+    let innerInputType: InnerType | null;
+    if (params.length === 1 && isSingleRecord(params[0].innerType)) {
+      inputMode = "single";
+      innerInputType = params[0].innerType;
+    } else if (params.every((p) => p.name !== null)) {
+      inputMode = "fields";
+      const fields: [string, InnerField][] = params.map((p) => {
+        const f: InnerField = { type: p.innerType, optional: p.optional };
+        if (p.doc !== null) f.desc = p.doc;
+        return [p.name!, f];
+      });
+      innerInputType = recordInner(fields, NEVER);
+    } else {
+      inputMode = "none";
+      innerInputType = null;
+    }
+    const rt = resultTypes === null ? null : (resultTypes.get(name) ?? NEVER);
+    const entry: Entry = {
+      name,
+      doc,
+      params: params.map((p) => ({ name: p.name, type: typeOf(p.innerType, cls), doc: p.doc, optional: p.optional })),
+      inputType: innerInputType === null ? null : typeOf(innerInputType, cls),
+      resultType: rt === null ? null : typeOf(rt, cls),
+    };
+    out.push({ entry, params: params.map((p) => ({ name: p.name, innerType: p.innerType, optional: p.optional })), inputMode, innerInputType });
+  }
+  return out;
+}
+
+/**
  * The option of each call that takes source text (03 3.6.1 item 5): parse,
  * template parse, the formatter, completion, hover and the load.
  */
@@ -444,6 +533,8 @@ export interface CompileOptions {
   check?: boolean;
   /** The expected result (03 3.2.3; f10 2.1). */
   expected?: Expected;
+  /** Package F16 slice D2: expected result type for each named entry point (f16 12.3 item 5). */
+  entryExpected?: Record<string, EntryExpected>;
 }
 
 /** What a load takes besides the environment and the text (package F10, f10 5.1). */
@@ -531,11 +622,13 @@ export interface Site {
   span: Span;
 }
 
-/** The result of a check (03 3.2.1; 05 Part E, E.4). */
+/** The result of a check (03 3.2.1; 05 Part E, E.4; f16 12.6). */
 export interface CheckResult {
-  /** The type of the result. */
+  /** The type of the result (`never` when the program has no result expression). */
   type: Type;
   sites: Site[];
+  /** The program's `export const` entry points, in text order (f16 12.6). */
+  entries: readonly Entry[];
 }
 
 /** The library's signatures, for the checker (05 13.1). */
@@ -879,16 +972,38 @@ export class Env<V = any, N = any> {
     return t;
   }
 
+  /** Internal: resolve per-entry expected result types (f16 12.3 item 5). Throws RisorError `bad-type`. */
+  resolveEntryExpected(entryExpected: Record<string, EntryExpected> | undefined): Map<string, InnerType> {
+    const out = new Map<string, InnerType>();
+    if (entryExpected === undefined) return out;
+    for (const [name, exp] of Object.entries(entryExpected)) {
+      if (exp === "condition") throw declareError("bad-type", `the expected result of ${name}: condition is not allowed for an entry point`);
+      out.set(name, this.expectedType(exp));
+    }
+    return out;
+  }
+
   /**
    * Check a program (03 3.2.1): the static rules and the type rules. Throws
-   * RisorError of phase `declare` (a bad expected result) or `check`.
+   * RisorError of phase `declare` (a bad expected result, `no-result`, or `bad-name`) or `check`.
    */
-  check(x: Expr, expected?: Expected): CheckResult {
+  check(x: Expr, expected?: Expected, entryExpected?: Record<string, EntryExpected>): CheckResult {
     const exp = this.expected(expected);
+    const entryExp = this.resolveEntryExpected(entryExpected);
+    if (x.program.result === null && expected !== undefined) {
+      throw declareError("no-result", "the program has no result expression");
+    }
+    if (entryExp.size > 0) {
+      const names = new Set(x.program.consts.filter(isEntryConst).map((c) => (c.pattern as A.NamePat).name!));
+      for (const name of entryExp.keys()) {
+        if (!names.has(name)) throw declareError("bad-name", `${name} is not an entry point of the program`);
+      }
+    }
     const s = staticRules(x.program, this.staticEnv, x.source);
-    const c = check(x.program, s.resolution, this.checkEnv, exp, s.diagnostics, x.source);
+    const c = check(x.program, s.resolution, this.checkEnv, exp, s.diagnostics, x.source, entryExp.size > 0 ? entryExp : undefined);
     if (c.diagnostics.length > 0) throw failure(c.diagnostics, x.source);
-    return { type: typeOf(c.type, this.classifier), sites: sitesOf(c.sites, x.source) };
+    const entries = buildEntries(x.program, s.resolution, this.classifier, c.entryTypes).map((m) => m.entry);
+    return { type: typeOf(c.type, this.classifier), sites: sitesOf(c.sites, x.source), entries };
   }
 
   /**
@@ -1034,31 +1149,46 @@ export function tryCompile(env: Env, input: string | Expr, options: CompileOptio
     throw declareError("no-implementation", "the environment declares a function with no implementation");
   }
   const checked = options.check !== false;
-  // f10 2.1 item 6: a compile without a check still maps a schema and reports its errors.
-  if (!checked && options.expected !== undefined && typeof options.expected !== "string") env.expected(options.expected);
-  const exp = checked ? env.expected(options.expected) : { kind: "none" as const };
+  // 03 3.3.1, f10 2.1 item 6, f16 12.3 items 4 and 5: validate expected results in every compile.
+  const exp = options.expected !== undefined ? env.expected(options.expected) : { kind: "none" as const };
+  const entryExp = env.resolveEntryExpected(options.entryExpected);
   let x: Expr;
   if (typeof input === "string") {
     const p = parseSource(input, sourceLimit);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     x = new Expr(p.source, p.program);
   } else x = input;
+  // f16 12.3 item 4: an expected result on a program with no result expression fails declare no-result.
+  if (x.program.result === null && options.expected !== undefined) {
+    throw declareError("no-result", "the program has no result expression");
+  }
+  // f16 12.3 item 5: every entryExpected name must be an entry point of the program, in checked and unchecked compiles.
+  if (entryExp.size > 0) {
+    const names = new Set(x.program.consts.filter(isEntryConst).map((c) => (c.pattern as A.NamePat).name!));
+    for (const name of entryExp.keys()) {
+      if (!names.has(name)) throw declareError("bad-name", `${name} is not an entry point of the program`);
+    }
+  }
   const internals = env as unknown as { staticEnv: StaticEnv; checkEnv: CheckEnv; compileEnv: CompileEnv };
   const s = staticRules(x.program, internals.staticEnv, x.source);
   let dynamicSpans: Set<string> | null = null;
   let hostSpans: Set<string> | null = null;
   let valueSpans: Set<string> | null = null;
   let result: CheckResult | null = null;
+  let entryResultTypes: ReadonlyMap<string, InnerType> | null = null;
   if (checked) {
-    const c = check(x.program, s.resolution, internals.checkEnv, exp, s.diagnostics, x.source);
+    const c = check(x.program, s.resolution, internals.checkEnv, exp, s.diagnostics, x.source, entryExp.size > 0 ? entryExp : undefined);
     if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: x.source };
     dynamicSpans = c.dynamicSpans;
     hostSpans = c.hostSpans;
     valueSpans = c.valueSpans;
-    result = { type: typeOf(c.type, env.classifier), sites: sitesOf(c.sites, x.source) };
+    entryResultTypes = c.entryTypes;
+    const entries = buildEntries(x.program, s.resolution, env.classifier, c.entryTypes).map((m) => m.entry);
+    result = { type: typeOf(c.type, env.classifier), sites: sitesOf(c.sites, x.source), entries };
   } else if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: x.source };
+  const entryMetas = buildEntries(x.program, s.resolution, env.classifier, entryResultTypes);
   const c = compileProgram(x.program, s.resolution, internals.compileEnv);
-  const prog = new Program(env, x.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans, c.varCount);
+  const prog = new Program(env, x.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans, c.varCount, entryMetas, c.entries);
   prog.checkResult = result;
   prog.whole = x.program.span;
   return { ok: true, program: prog };
@@ -1069,7 +1199,7 @@ export class Program<V = any> {
   readonly env: Env;
   /** Internal: the source the spans point into. */
   readonly source: Source;
-  private readonly code: (r: Run) => unknown;
+  private readonly code: ((r: Run) => unknown) | null;
   private readonly slotCount: number;
   /** Internal: library entries the program names that this build does not implement yet. */
   readonly missing: ReadonlySet<string>;
@@ -1084,9 +1214,34 @@ export class Program<V = any> {
   private readonly valueSpans: Set<string> | null;
 
   private readonly varCount: number;
+  private readonly entryList: readonly Entry[];
+  private readonly entryMeta: Map<string, EntryMeta>;
+  private readonly compiledEntries: Map<string, CompiledEntry>;
+
+  /** Whether this program has a result expression (false when omitted beside `export const`, f16 12.2). */
+  get hasResult(): boolean {
+    return this.code !== null;
+  }
+
+  /** The program's `export const` entry points, in text order (f16 12.6). */
+  entries(): readonly Entry[] {
+    return this.entryList;
+  }
 
   /** Internal. A host compiles a program with `env.compile`. */
-  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null, valueSpans: Set<string> | null = null, varCount = 0) {
+  constructor(
+    env: Env,
+    source: Source,
+    code: ((r: Run) => unknown) | null,
+    slotCount: number,
+    missing: Set<string>,
+    dynamicSpans: Set<string> | null = null,
+    hostSpans: Set<string> | null = null,
+    valueSpans: Set<string> | null = null,
+    varCount = 0,
+    entryMetas: EntryMeta[] = [],
+    compiledEntries: Map<string, CompiledEntry> = new Map(),
+  ) {
     this.varCount = varCount;
     this.dynamicSpans = dynamicSpans;
     this.hostSpans = hostSpans ?? (dynamicSpans === null ? null : new Set());
@@ -1096,6 +1251,9 @@ export class Program<V = any> {
     this.code = code;
     this.slotCount = slotCount;
     this.missing = missing;
+    this.entryList = entryMetas.map((m) => m.entry);
+    this.entryMeta = new Map(entryMetas.map((m) => [m.entry.name, m]));
+    this.compiledEntries = compiledEntries;
   }
 
   private newRun(vars: Vars | undefined, signal: AbortSignal | undefined): Run {
@@ -1117,6 +1275,9 @@ export class Program<V = any> {
   }
 
   private execute(vars?: Vars, options: { signal?: AbortSignal } = {}): Outcome {
+    if (this.code === null) {
+      return { ok: false, diagnostic: { phase: "declare", code: "no-result", message: "the program has no result expression" }, usage: { steps: 0, allocated: 0 } };
+    }
     let run: Run | undefined;
     try {
       run = this.newRun(vars, options.signal);
@@ -1128,8 +1289,11 @@ export class Program<V = any> {
     }
   }
 
-  /** Run once. Throws RisorError of phase `run`, with the usage. */
+  /** Run once. Throws RisorError of phase `run` (or `declare` `no-result`), with the usage. */
   run(vars?: RunVars<V>, options?: { signal?: AbortSignal }): unknown {
+    if (this.code === null) {
+      throw new RisorError([{ phase: "declare", code: "no-result", message: "the program has no result expression" }], { steps: 0, allocated: 0 });
+    }
     let run: Run | undefined;
     try {
       run = this.newRun(vars as Vars | undefined, options === undefined ? undefined : options.signal);
@@ -1140,10 +1304,124 @@ export class Program<V = any> {
     }
   }
 
-  /** Run once and report the usage. Throws RisorError of phase `run`, whose `usage` is the usage of the failed run. */
+  /** Run once and report the usage. Throws RisorError of phase `run` (or `declare` `no-result`), whose `usage` is the usage of the failed run. */
   measure(vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
     const o = execute(this, vars as Vars | undefined, options);
     if (!o.ok) throw failure([o.diagnostic], this.source, o.usage);
+    return { value: o.value, usage: o.usage };
+  }
+
+  /** Internal: positional Call stage (f16 12.5). Never throws for a failure of the call. */
+  private executeEntry(name: string, args: readonly unknown[], vars?: Vars, options: { signal?: AbortSignal } = {}): CallOutcome {
+    const zero: Usage = { steps: 0, allocated: 0 };
+    const meta = this.entryMeta.get(name);
+    const compiled = this.compiledEntries.get(name);
+    if (meta === undefined || compiled === undefined) {
+      return { ok: false, diagnostics: [{ phase: "declare", code: "bad-name", message: `${name} is not an entry point` }], usage: zero };
+    }
+    if (args.length < compiled.minArgs || args.length > compiled.maxArgs) {
+      return {
+        ok: false,
+        diagnostics: [{ phase: "declare", code: "arity", message: `${name} expects ${compiled.minArgs === compiled.maxArgs ? compiled.minArgs : `${compiled.minArgs} to ${compiled.maxArgs}`} arguments, found ${args.length}` }],
+        usage: zero,
+      };
+    }
+    // f16 12.5 step 3: conform each argument in order, collecting at most 100 diagnostics across all arguments.
+    const diags: InnerDiagnostic[] = [];
+    let stopped = false;
+    for (let i = 0; i < args.length && diags.length < 100 && !stopped; i++) {
+      const param = meta.params[i];
+      const target = param.optional ? withNull(param.innerType) : param.innerType;
+      const fs = conformAllWalk(args[i], target, this.env.classifier, 100 - diags.length);
+      for (const f of fs) {
+        const d = conformDiagnostic(f, this.env.classifier);
+        if (f.template === "depth" || f.template === "steps") {
+          diags.push({ phase: "run", code: d.code, class: "limit", message: d.message, trace: [] });
+          stopped = true;
+          break;
+        }
+        diags.push({ phase: "run", code: "not-conforming", class: "value", path: [i, ...f.path], message: d.message, trace: [] });
+      }
+    }
+    if (diags.length > 0) return { ok: false, diagnostics: diags, usage: zero };
+    let run: Run | undefined;
+    try {
+      run = this.newRun(vars, options.signal);
+      const value = compiled.call(run, args as unknown[]);
+      return { ok: true, value, usage: { steps: run.steps, allocated: run.units } };
+    } catch (x) {
+      const usage = { steps: run?.steps ?? 0, allocated: run?.units ?? 0 };
+      return { ok: false, diagnostics: [this.diagnostic(this.failureOf(x))], usage };
+    }
+  }
+
+  /** Internal: Call stage by record (f16 12.5). Never throws for a failure of the call. */
+  private executeEntryRecord(name: string, input: unknown, vars?: Vars, options: { signal?: AbortSignal } = {}): CallOutcome {
+    const zero: Usage = { steps: 0, allocated: 0 };
+    const meta = this.entryMeta.get(name);
+    const compiled = this.compiledEntries.get(name);
+    if (meta === undefined || compiled === undefined) {
+      return { ok: false, diagnostics: [{ phase: "declare", code: "bad-name", message: `${name} is not an entry point` }], usage: zero };
+    }
+    if (meta.inputMode === "none" || meta.innerInputType === null) {
+      return { ok: false, diagnostics: [{ phase: "declare", code: "no-input-record", message: `${name} has no input record` }], usage: zero };
+    }
+    // f16 12.5 step 3: conform input against inputType with maximum 100.
+    const fs = conformAllWalk(input, meta.innerInputType, this.env.classifier, 100);
+    if (fs.length > 0) {
+      const diags: InnerDiagnostic[] = fs.map((f) => {
+        const d = conformDiagnostic(f, this.env.classifier);
+        if (f.template === "depth" || f.template === "steps") {
+          return { phase: "run", code: d.code, class: "limit", message: d.message, trace: [] };
+        }
+        return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: d.message, trace: [] };
+      });
+      return { ok: false, diagnostics: diags, usage: zero };
+    }
+    // f16 12.5 step 4: extract arguments.
+    const args: unknown[] =
+      meta.inputMode === "single"
+        ? [input]
+        : meta.params.map((p) => {
+            const v = mapGet(input as object, p.name!);
+            return v === ABSENT ? ABSENT : v;
+          });
+    let run: Run | undefined;
+    try {
+      run = this.newRun(vars, options.signal);
+      const value = compiled.call(run, args);
+      return { ok: true, value, usage: { steps: run.steps, allocated: run.units } };
+    } catch (x) {
+      const usage = { steps: run?.steps ?? 0, allocated: run?.units ?? 0 };
+      return { ok: false, diagnostics: [this.diagnostic(this.failureOf(x))], usage };
+    }
+  }
+
+  /** Call an entry point positionally (package F16 slice D2, f16 12.5). Throws RisorError on failure. */
+  call(name: string, args: readonly unknown[] = [], vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): unknown {
+    const o = this.executeEntry(name, args, vars as Vars | undefined, options);
+    if (!o.ok) throw failure(o.diagnostics, this.source, o.usage);
+    return o.value;
+  }
+
+  /** Call an entry point positionally and report its usage (f16 12.5). Throws RisorError on failure. */
+  callMeasure(name: string, args: readonly unknown[] = [], vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
+    const o = this.executeEntry(name, args, vars as Vars | undefined, options);
+    if (!o.ok) throw failure(o.diagnostics, this.source, o.usage);
+    return { value: o.value, usage: o.usage };
+  }
+
+  /** Call an entry point with one input record (package F16 slice D2, f16 12.5). Throws RisorError on failure. */
+  callRecord(name: string, input: unknown, vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): unknown {
+    const o = this.executeEntryRecord(name, input, vars as Vars | undefined, options);
+    if (!o.ok) throw failure(o.diagnostics, this.source, o.usage);
+    return o.value;
+  }
+
+  /** Call an entry point with one input record and report its usage (f16 12.5). Throws RisorError on failure. */
+  callRecordMeasure(name: string, input: unknown, vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
+    const o = this.executeEntryRecord(name, input, vars as Vars | undefined, options);
+    if (!o.ok) throw failure(o.diagnostics, this.source, o.usage);
     return { value: o.value, usage: o.usage };
   }
 
@@ -1177,6 +1455,16 @@ export class Program<V = any> {
 /** Internal: run once. Never throws for a failure of the program. */
 export function execute(p: Program, vars?: Vars, options: { signal?: AbortSignal } = {}): Outcome {
   return p["execute"](vars, options);
+}
+
+/** Internal: positional Call stage. Never throws for a failure of the call. */
+export function executeEntry(p: Program, name: string, args: readonly unknown[] = [], vars?: Vars, options: { signal?: AbortSignal } = {}): CallOutcome {
+  return p["executeEntry"](name, args, vars, options);
+}
+
+/** Internal: Call stage by record. Never throws for a failure of the call. */
+export function executeEntryRecord(p: Program, name: string, input: unknown, vars?: Vars, options: { signal?: AbortSignal } = {}): CallOutcome {
+  return p["executeEntryRecord"](name, input, vars, options);
 }
 
 export { ABSENT_VAR };

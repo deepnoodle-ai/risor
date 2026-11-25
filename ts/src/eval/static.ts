@@ -128,6 +128,25 @@ export interface Resolution {
   hintSlots: Set<number>;
   /** Package F17, step E3: the slot of each function parameter, with its parameter (f17 13.1). */
   fnSlots: Map<number, A.Param>;
+  /** Package F16 slice D2: lambda IDs of `export const` entry points (f16 12.3). */
+  exportedLambdas: Set<number>;
+}
+
+/** Package F16 slice D2 (f16 12.1): an entry point is an export line whose pattern is a name other than `_`, with no const annotation, and whose value is a lambda. */
+export function isEntryConst(c: A.Const): boolean {
+  return c.exported && c.type === null && c.pattern.kind === "NamePat" && c.pattern.name !== null && c.pattern.name !== "_" && c.value.kind === "Lambda";
+}
+
+/** Package F16 slice D2 (f16 12.3): whether a pattern binds no name (`_`, `{}`, `[]`, `[_, _]`, etc.). */
+function patternBindsNothing(p: A.Pattern): boolean {
+  switch (p.kind) {
+    case "NamePat":
+      return p.name === null || p.name === "_";
+    case "MapPat":
+      return p.fields.every((f) => f.name === "_") && p.rest === null;
+    case "ListPat":
+      return p.elems.every((e) => e.pat.name === null || e.pat.name === "_") && p.rest === null;
+  }
 }
 
 /**
@@ -209,6 +228,7 @@ class Walker {
     lambdaDepth: new Map(),
     hintSlots: new Set(),
     fnSlots: new Map(),
+    exportedLambdas: new Set(),
   };
   /** The next free index of the frame of each lambda whose text the walk is in, innermost last (f17 11.5). */
   private readonly frames: number[] = [];
@@ -288,13 +308,14 @@ class Walker {
     // f17 12.3 item 2: the type lines are resolved together before the walk; each line's diagnostics are reported where the walk meets it.
     this.resolveLines(p.types);
     // f16 3.1 item 1: the type lines and the const lines in the order of the text, then the result.
+    const hasExport = p.consts.some((c) => c.exported);
     let t = 0;
     for (const c of p.consts) {
       while (t < p.types.length && p.types[t].span.start < c.span.start) this.typeLine(p.types[t++]);
-      this.constLine(c);
+      this.constLine(c, true, hasExport);
     }
     while (t < p.types.length) this.typeLine(p.types[t++]);
-    this.expr(p.result);
+    if (p.result !== null) this.expr(p.result);
     this.pop();
   }
 
@@ -377,13 +398,32 @@ class Walker {
     return null;
   }
 
-  private constLine(c: A.Const): void {
+  private constLine(c: A.Const, topLevel = false, programHasExport = false): void {
     if (c.value.kind === "Lambda") {
       // 05 22.7: the name is bound first; the lambda is walked in the scope with it bound.
       const id = this.res.lambdas.length;
       this.res.lambdas.push(c.value);
       const p = c.pattern as A.NamePat;
       (this.res.lambdaNames ??= new Map()).set(id, p.name ?? "");
+      if (c.exported) {
+        if (!isEntryConst(c)) {
+          const name = p.kind === "NamePat" && p.name !== null && p.name !== "_" ? p.name : "this line";
+          this.diag("bad-export", c.span, "not-lambda", { name });
+        } else {
+          this.res.exportedLambdas.add(id);
+          const entryName = p.name!;
+          // f16 12.3: every parameter of an entry point must have a program type annotation, not a function type.
+          c.value.params.forEach((param, idx) => {
+            if (param.type === null && param.fn === null) {
+              const paramName = param.pattern.kind === "NamePat" && param.pattern.name !== null ? param.pattern.name : String(idx + 1);
+              this.diag("bad-export", param.span, "unannotated", { name: entryName, param: paramName });
+            } else if (param.fn !== null) {
+              const paramName = param.pattern.kind === "NamePat" && param.pattern.name !== null ? param.pattern.name : String(idx + 1);
+              this.diag("bad-export", param.span, "fn-parameter", { name: entryName, param: paramName });
+            }
+          });
+        }
+      }
       this.bind(p.name, p.span, { k: "lambda", id, counts: lambdaCounts(c.value) });
       this.res.slots.set(p, -1 - id);
       this.walking.add(id);
@@ -392,6 +432,13 @@ class Walker {
       const r = this.selfRefs.get(id);
       if (r !== undefined) this.diag("recursion-needs-types", r, "default", { name: p.name ?? "" });
       return;
+    }
+    if (c.exported) {
+      // f16 12.3: export marks only a const-bound lambda; value and pattern are still walked for other static rules.
+      const name = c.pattern.kind === "NamePat" && c.pattern.name !== null && c.pattern.name !== "_" ? c.pattern.name : "this line";
+      this.diag("bad-export", c.span, "not-lambda", { name });
+    } else if (topLevel && programHasExport && patternBindsNothing(c.pattern)) {
+      this.diag("bad-export", c.span, "binds-nothing", {});
     }
     this.expr(c.value);
     if (c.type !== null) this.annotation(c.type);

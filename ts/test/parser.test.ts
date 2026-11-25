@@ -4,7 +4,11 @@ import { err, ok } from "./helpers.ts";
 import type * as A from "../src/syntax/ast.ts";
 import { NODE_NUMBER } from "../src/syntax/ast.ts";
 
-const result = (src: string) => ok(src).result;
+const result = (src: string): A.Expr => {
+  const r = ok(src).result;
+  assert.notEqual(r, null);
+  return r!;
+};
 
 describe("01 section 15: every example", () => {
   // Examples whose outcome is a parse diagnostic.
@@ -316,7 +320,10 @@ describe("01 14.3: every row", () => {
     // Package F16 (f16 2.5): E17 narrows for `type` to where no type line begins.
     err("type x", "type-declaration", [1, 1, 1, 5]);
     err("{ const a = 1; type Foo = int; a }", "type-declaration", [1, 16, 1, 20]);
-    err("export const x = 1; x", "export-statement", [1, 1, 1, 7]);
+    // Package F16 (f16 12.1): E18 narrows for `export` to where no top-level `export const` begins.
+    err("export default 1", "export-statement", [1, 1, 1, 7]);
+    err("export { x }", "export-statement", [1, 1, 1, 7]);
+    err("{ const a = 1; export const x = () => 1; x() }", "export-statement", [1, 16, 1, 22]);
     err("x => { x + 1 }", "unexpected-token", [1, 3, 1, 5]);
     err("f(x => { x + 1 })", "block-without-const", [1, 8, 1, 9]);
     err("a?[i]", "optional-index", [1, 2, 1, 3]);
