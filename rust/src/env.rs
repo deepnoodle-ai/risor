@@ -107,6 +107,13 @@ impl Env {
         &self.data
     }
 
+    /// The limits of a run in this environment (`03-host.md` 3.6.1). A
+    /// child takes a whole `Limits`, so a host that changes one limit
+    /// starts from these: `Limits { steps, ..env.limits() }`.
+    pub fn limits(&self) -> Limits {
+        self.data.limits
+    }
+
     pub(crate) fn function(&self, name: &str) -> Option<usize> {
         self.data.functions.iter().position(|f| f.name == name)
     }
