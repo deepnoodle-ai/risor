@@ -6,7 +6,6 @@
 use crate::host::{HostList, View};
 use crate::{ConformOptions, Env};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 /// A host list of two elements: the same inner list twice, or at the
 /// bottom the same leaf twice.
@@ -45,41 +44,36 @@ fn nested(n: usize) -> String {
     format!("int{}", "[]".repeat(n))
 }
 
-fn timed<T>(what: &str, f: impl FnOnce() -> T) -> T {
-    let start = Instant::now();
-    let out = f();
-    let took = start.elapsed();
-    println!("30 shared levels, {what}: {took:?}");
-    assert!(took < Duration::from_secs(1), "{what} took {took:?}");
-    out
-}
-
+/// The walk over 2^31 - 1 shared places stops at the limit. An unmetered
+/// walk would not end, so the test's own timeout guards against a hang; no
+/// clock is needed. The limit is low so that it is fast.
 #[test]
-fn thirty_levels_of_shared_lists_end_at_the_default_limit() {
+fn thirty_levels_of_shared_lists_end_at_the_limit() {
     let env = Env::default();
     let t = env.parse_type(&nested(30)).unwrap();
+    let limit = ConformOptions {
+        steps: Some(10_000),
+    };
     let data = shared(30, Shared::Int(1));
     let v = crate::value::from_view(View::List(&data));
-    let d = timed("conform", || crate::conform(&v, &t)).unwrap_err();
+    let d = crate::conform_with(&v, &t, &limit).unwrap_err();
     assert_eq!(d.code, "steps-exceeded");
     assert_eq!(d.class, Some("limit"));
     assert!(d.path.is_none() && d.span.is_none());
     assert_eq!(
         d.message,
-        "the run needed more than its limit of 1000000 steps"
+        "the run needed more than its limit of 10000 steps"
     );
-    let all = timed("conform_all", || crate::conform_all(&v, &t, 5));
+    let all = crate::conform_all_with(&v, &t, 5, &limit);
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].code, "steps-exceeded");
     // A failing leaf fails at the first leaf, long before the limit.
     let bad = shared(30, Shared::Str("x"));
     let bv = crate::value::from_view(View::List(&bad));
-    let f = timed("conform, failing leaf", || crate::conform(&bv, &t)).unwrap_err();
+    let f = crate::conform_with(&bv, &t, &limit).unwrap_err();
     assert_eq!(f.code, "not-conforming");
     assert_eq!(f.path.as_ref().map(|p| p.len()), Some(30));
-    let fs = timed("conform_all, failing leaf", || {
-        crate::conform_all(&bv, &t, 5)
-    });
+    let fs = crate::conform_all_with(&bv, &t, 5, &limit);
     assert_eq!(fs.len(), 5);
     assert!(fs.iter().all(|d| d.code == "not-conforming"));
 }

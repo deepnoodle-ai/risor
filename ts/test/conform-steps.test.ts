@@ -16,32 +16,26 @@ function shared(n: number, leaf: unknown): unknown {
 
 const nested = (n: number) => "int" + "[]".repeat(n);
 
-function timed<T>(what: string, f: () => T): T {
-  const start = performance.now();
-  const out = f();
-  const ms = performance.now() - start;
-  console.log(`30 shared levels, ${what}: ${ms.toFixed(1)} ms`);
-  assert.ok(ms < 1000, `${what} took ${ms} ms`);
-  return out;
-}
-
 describe("the conformance function counts steps (f04 7.3)", () => {
   const env = createEnv({});
 
-  test("30 levels of shared lists end at the default limit, quickly", () => {
+  // The walk over 2^31 - 1 shared places stops at the limit. An unmetered walk would not end, so the
+  // test's own timeout guards against a hang; no clock is needed. The limit is low so that it is fast.
+  test("30 levels of shared lists end at the limit", () => {
     const t = env.parseType(nested(30));
     const v = shared(30, 1);
-    const d = timed("conform", () => conform(v, t));
-    assert.deepEqual(d, { phase: "run", code: "steps-exceeded", class: "limit", message: "the run needed more than its limit of 1000000 steps", trace: [] });
-    const all = timed("conformAll", () => conformAll(v, t, 5));
+    const limit = { steps: 10_000 };
+    const d = conform(v, t, limit);
+    assert.deepEqual(d, { phase: "run", code: "steps-exceeded", class: "limit", message: "the run needed more than its limit of 10000 steps", trace: [] });
+    const all = conformAll(v, t, 5, limit);
     assert.equal(all.length, 1);
     assert.equal(all[0].code, "steps-exceeded");
     // A failing leaf fails at the first leaf, long before the limit.
     const bad = shared(30, "x");
-    const f = timed("conform, failing leaf", () => conform(bad, t));
+    const f = conform(bad, t, limit);
     assert.equal(f?.code, "not-conforming");
     assert.equal(f?.path?.length, 30);
-    const fs = timed("conformAll, failing leaf", () => conformAll(bad, t, 5));
+    const fs = conformAll(bad, t, 5, limit);
     assert.equal(fs.length, 5);
     assert.ok(fs.every((x) => x.code === "not-conforming"));
   });

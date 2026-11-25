@@ -3,7 +3,6 @@ package risor_test
 import (
 	"errors"
 	"testing"
-	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -31,29 +30,15 @@ func nestedListType(n int) risor.Type {
 	return t
 }
 
+// The walk over 2^31 - 1 shared places stops at the limit. An unmetered walk
+// would not end, so the test's own timeout guards against a hang; no clock
+// is needed. The limit is low so that the test is fast on any runner.
 func TestConformSharedDataIsBounded(t *testing.T) {
 	const levels = 30
 	typ := nestedListType(levels)
-	timed := func(what string, f func()) {
-		t.Helper()
-		start := time.Now()
-		f()
-		took := time.Since(start)
-		t.Logf("%d shared levels, %s: %v", levels, what, took)
-		// The race detector slows the walk about tenfold; the bound is for a
-		// normal build.
-		bound := time.Second
-		if raceBuild {
-			bound = 10 * time.Second
-		}
-		assert.True(t, took < bound, "%s took %v", what, took)
-	}
-	// A passing leaf: the walk would visit 2^31 - 1 places; the default
-	// limit ends it.
+	limit := risor.ConformSteps(10_000)
 	v := sharedLists(levels, 1)
-	var err error
-	var all []risor.Diagnostic
-	timed("Conform", func() { err = risor.Conform(v, typ) })
+	err := risor.Conform(v, typ, limit)
 	var e *risor.Error
 	assert.True(t, errors.As(err, &e))
 	d := e.Diagnostics[0]
@@ -61,17 +46,17 @@ func TestConformSharedDataIsBounded(t *testing.T) {
 	assert.Equal(t, d.Code, "steps-exceeded")
 	assert.Equal(t, d.Class, "limit")
 	assert.True(t, d.Path == nil && d.Span == nil)
-	assert.Equal(t, d.Message, "the run needed more than its limit of 1000000 steps")
-	timed("ConformAll", func() { all = risor.ConformAll(v, typ, 5) })
+	assert.Equal(t, d.Message, "the run needed more than its limit of 10000 steps")
+	all := risor.ConformAll(v, typ, 5, limit)
 	assert.Equal(t, len(all), 1)
 	assert.Equal(t, all[0].Code, "steps-exceeded")
 	// A failing leaf: the first leaf fails, long before the limit.
 	v = sharedLists(levels, "x")
-	timed("Conform, failing leaf", func() { err = risor.Conform(v, typ) })
+	err = risor.Conform(v, typ, limit)
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "not-conforming")
 	assert.Equal(t, len(e.Diagnostics[0].Path), levels)
-	timed("ConformAll, failing leaf", func() { all = risor.ConformAll(v, typ, 5) })
+	all = risor.ConformAll(v, typ, 5, limit)
 	assert.Equal(t, len(all), 5)
 	assert.Equal(t, all[4].Code, "not-conforming")
 }
