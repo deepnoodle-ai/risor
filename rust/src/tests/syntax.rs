@@ -429,7 +429,10 @@ fn table_14_3_every_other_text() {
     check("interface I { }", UT, l1(11, 12));
     check("enum E { }", UT, l1(6, 7));
     check("type Name = T", "bad-type-text", l1(13, 14));
-    check("export const x = 1;", UT, l1(8, 13));
+    // F16 slice D2 (`f16-entry-points.md` 12.2): `export const` parses at the
+    // top level; `export default 1` stays a parse error.
+    ok("export const x = 1;");
+    check("export default 1", UT, l1(8, 15));
     check("x => { x + 1 }", UT, l1(3, 5));
     check("f(x => { x + 1 })", UT, l1(12, 13));
     check("a?[i]", UT, l1(6, 6));
@@ -521,7 +524,11 @@ fn first_diagnostics_and_spans() {
 fn spans_of_nodes() {
     let p = ok("(a + b) * c");
     let root = p.ast.kind(p.ast.root);
-    let NodeKind::Program { result, .. } = root else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = root
+    else {
         panic!()
     };
     let NodeKind::Binary { op, x, .. } = p.ast.kind(*result) else {
@@ -538,7 +545,11 @@ fn spans_of_nodes() {
     );
 
     let p = ok("if (c) { a } else if (d) { b } else { e }");
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     let NodeKind::Cond { form, else_, .. } = p.ast.kind(*result) else {
@@ -549,7 +560,11 @@ fn spans_of_nodes() {
     assert_eq!(p.source.line_span(p.ast.span(*else_)).arr(), l1(19, 42));
 
     let p = ok("a?.b.c");
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     assert!(matches!(p.ast.kind(*result), NodeKind::OptChain { .. }));
@@ -586,7 +601,11 @@ fn spans_of_nodes() {
     assert_eq!(p.source.line_span(entries[1].span).arr(), l1(5, 11));
 
     let p = ok("-x.y");
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     assert!(matches!(
@@ -598,12 +617,20 @@ fn spans_of_nodes() {
     ));
 
     let p = ok("`a${1}`");
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     assert_eq!(p.ast.kind(*result).number(), 7);
     let p = ok("`a`");
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     assert_eq!(p.ast.kind(*result).number(), 6);
@@ -727,7 +754,11 @@ fn deep_text_ends_at_the_limit() {
 
 fn str_value(src: &str) -> String {
     let p = ok(src);
-    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+    let NodeKind::Program {
+        result: Some(result),
+        ..
+    } = p.ast.kind(p.ast.root)
+    else {
         panic!()
     };
     match p.ast.kind(*result) {

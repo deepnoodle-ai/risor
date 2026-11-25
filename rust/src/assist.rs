@@ -292,7 +292,13 @@ fn repair(src: &Source, pre: &[Token], post: &[Token], at: usize) -> Option<Ast>
 fn children(k: &NodeKind) -> Vec<NodeId> {
     let mut v = Vec::new();
     match k {
-        NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+        NodeKind::Program { consts, result, .. } => {
+            v.extend(consts);
+            if let Some(r) = result {
+                v.push(*r);
+            }
+        }
+        NodeKind::Block { consts, result } => {
             v.extend(consts);
             v.push(*result);
         }
@@ -664,7 +670,9 @@ impl<'a> Tree<'a> {
         for w in path.windows(2) {
             let (a, c) = (w[0], w[1]);
             e = match self.kind(a) {
-                NodeKind::Program { result, .. } => (*result == c).then(|| e.clone()).flatten(),
+                NodeKind::Program { result, .. } => {
+                    (*result == Some(c)).then(|| e.clone()).flatten()
+                }
                 NodeKind::Block { result, .. } => (*result == c).then(|| e.clone()).flatten(),
                 NodeKind::Cond { test, .. } => (*test != c).then(|| e.clone()).flatten(),
                 NodeKind::Match { subject, .. } => (*subject != c).then(|| e.clone()).flatten(),

@@ -74,6 +74,29 @@ pub struct ExpectResult {
     pub json: Option<String>,
     /// F16 11.8: SchemaOf of the checked type, `null` when it is refused.
     pub schema: Option<Json>,
+    /// F16 12.10: expected entry point metadata from `Entries`.
+    pub entries: Option<Vec<ExpectEntry>>,
+}
+
+/// F16 12.10: one expected parameter inside `expect.entries`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExpectEntryParam {
+    pub name: Option<String>,
+    pub ty: String,
+    /// `None`: omitted in case; `Some(None)`: expected `null`; `Some(Some(s))`: expected string.
+    pub doc: Option<Option<String>>,
+    pub optional: bool,
+}
+
+/// F16 12.10: one expected entry inside `expect.entries`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExpectEntry {
+    pub name: String,
+    pub doc: Option<Option<String>>,
+    pub params: Option<Vec<ExpectEntryParam>>,
+    pub input: Option<Option<String>>,
+    pub input_schema: Option<Json>,
+    pub result: Option<String>,
 }
 
 /// A conform result (F4 9.2).
@@ -161,11 +184,19 @@ pub fn is_static(code: &str, statics: Statics) -> bool {
             Statics::Core => false,
             Statics::ProgramTypes => matches!(code, "untagged-union" | "check-limit"),
             Statics::EntryPoints => {
-                matches!(code, "untagged-union" | "check-limit" | "name-clash")
+                matches!(
+                    code,
+                    "untagged-union" | "check-limit" | "name-clash" | "bad-export"
+                )
             }
             Statics::Recursion => matches!(
                 code,
-                "untagged-union" | "check-limit" | "name-clash" | "circular-type" | "arg-mismatch"
+                "untagged-union"
+                    | "check-limit"
+                    | "name-clash"
+                    | "bad-export"
+                    | "circular-type"
+                    | "arg-mismatch"
             ),
         }
 }
@@ -306,6 +337,12 @@ pub struct Case {
     pub returns_schema: Option<(Json, SchemaOptions)>,
     /// F10: the case is run as a load (10.2).
     pub load: bool,
+    /// F16 12.10: the entry point to call, positional `args` or record `input`,
+    /// and per-entry expected return types (`entryReturns`).
+    pub entry: Option<String>,
+    pub args: Option<Vec<Json>>,
+    pub input: Option<Json>,
+    pub entry_returns: Vec<(String, String)>,
     /// `None` when the case gives no `vars`.
     pub vars: Option<Vec<(String, Json)>>,
     pub limits: Limits,
@@ -359,7 +396,11 @@ impl std::fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
-const HEADER_FIELDS: [&str; 24] = [
+const HEADER_FIELDS: [&str; 28] = [
+    "entry",
+    "args",
+    "input",
+    "entryReturns",
     "docs",
     "facts",
     "returnsSchema",
@@ -386,7 +427,11 @@ const HEADER_FIELDS: [&str; 24] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 34] = [
+const CASE_FIELDS: [&str; 38] = [
+    "entry",
+    "args",
+    "input",
+    "entryReturns",
     "docs",
     "format",
     "formatTemplate",
@@ -815,11 +860,45 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             check_opaque(v, "expect.value")?;
         }
     }
+    // F16 12.10: `entry`, `args`, `input` and `entryReturns`.
+    let entry = get("entry").and_then(|v| v.as_str()).map(String::from);
+    let (args_v, input_v) = if own("args").is_some() || own("input").is_some() {
+        (own("args"), own("input"))
+    } else {
+        (hdr("args"), hdr("input"))
+    };
+    if args_v.is_some() && input_v.is_some() {
+        return Err("a case with both args and input".into());
+    }
+    if (args_v.is_some() || input_v.is_some()) && entry.is_none() {
+        return Err("args or input in a case with no entry".into());
+    }
+    let args = args_v.and_then(|v| v.as_arr()).map(|a| a.to_vec());
+    let input = input_v.cloned();
+    if let Some(a) = &args {
+        for (i, v) in a.iter().enumerate() {
+            check_opaque(v, &format!("args[{i}]"))?;
+        }
+    }
+    if let Some(inp) = &input {
+        check_opaque(inp, "input")?;
+    }
+    let entry_returns: Vec<(String, String)> = get("entryReturns")
+        .and_then(|v| v.as_obj())
+        .map(|m| {
+            m.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
     let check = !matches!(get("check"), Some(Json::Bool(false)));
-    // 3.10.10 item 17: an unchecked case states nothing that needs the check.
+    // 3.10.10 item 17 and F16 12.10 item 1: an unchecked case states nothing
+    // that needs the check.
     if !check {
         let bad = match &expect {
-            Expect::Result(r) => r.ty.is_some() || r.sites.is_some() || r.schema.is_some(),
+            Expect::Result(r) => {
+                r.ty.is_some() || r.sites.is_some() || r.schema.is_some() || r.entries.is_some()
+            }
             Expect::Failure(f) => {
                 f.phase == Phase::Check
                     && f.diagnostics
@@ -929,10 +1008,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             return Err("a load case with \"check\": false".into());
         }
     }
-    if !load {
+    if !load && entry.is_none() {
         if let Expect::Failure(f) = &expect {
             if f.diagnostics.iter().any(|d| d.span_null) {
-                return Err("\"span\": null outside a load case".into());
+                return Err("\"span\": null outside a load or entry case".into());
             }
         }
     }
@@ -950,6 +1029,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             "check",
             "precondition",
             "version",
+            "entry",
+            "args",
+            "input",
+            "entryReturns",
         ] {
             if get(k).is_some() {
                 return Err(format!("an analysis case has the field {k:?}"));
@@ -988,6 +1071,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         returns: returns.and_then(|v| v.as_str()).map(String::from),
         returns_schema,
         load,
+        entry,
+        args,
+        input,
+        entry_returns,
         vars,
         limits,
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),
@@ -1291,6 +1378,10 @@ fn read_expect(v: &Json) -> V<Expect> {
             }
             // F16 11.8: any JSON value, `null` for a refusal.
             "schema" => {}
+            // F16 12.10: expected entry point metadata.
+            "entries" => {
+                read_expect_entries(x)?;
+            }
             "analysis" => {
                 if obj.len() != 1 {
                     return Err("expect has analysis and another field".into());
@@ -1300,6 +1391,10 @@ fn read_expect(v: &Json) -> V<Expect> {
             _ => return Err(format!("expect is a result and has the field {k:?}")),
         }
     }
+    let entries = match v.get("entries") {
+        Some(x) => Some(read_expect_entries(x)?),
+        None => None,
+    };
     Ok(Expect::Result(ExpectResult {
         ty: v.get("type").and_then(|t| t.as_str()).map(String::from),
         sites: v.get("sites").and_then(|s| s.as_arr()).map(|a| {
@@ -1326,7 +1421,124 @@ fn read_expect(v: &Json) -> V<Expect> {
         conform: None,
         json: v.get("json").and_then(|j| j.as_str()).map(String::from),
         schema: v.get("schema").cloned(),
+        entries,
     }))
+}
+
+/// F16 12.10: validate and parse `expect.entries`.
+fn read_expect_entries(v: &Json) -> V<Vec<ExpectEntry>> {
+    let arr = v.as_arr().ok_or("expect.entries is not an array")?;
+    let mut out = Vec::with_capacity(arr.len());
+    for e in arr {
+        let obj = e
+            .as_obj()
+            .ok_or("an entry in expect.entries is not an object")?;
+        let mut name: Option<String> = None;
+        let mut doc: Option<Option<String>> = None;
+        let mut params: Option<Vec<ExpectEntryParam>> = None;
+        let mut input: Option<Option<String>> = None;
+        let mut input_schema: Option<Json> = None;
+        let mut result: Option<String> = None;
+        for (k, x) in obj {
+            match k.as_str() {
+                "name" => {
+                    name = Some(x.as_str().ok_or("entry.name is not a string")?.to_string());
+                }
+                "doc" => {
+                    doc = Some(match x {
+                        Json::Null => None,
+                        Json::Str(s) => Some(s.clone()),
+                        _ => return Err("entry.doc is neither a string nor null".into()),
+                    });
+                }
+                "params" => {
+                    let pa = x.as_arr().ok_or("entry.params is not an array")?;
+                    let mut ps = Vec::with_capacity(pa.len());
+                    for p in pa {
+                        let po = p
+                            .as_obj()
+                            .ok_or("a parameter in entry.params is not an object")?;
+                        let mut pname: Option<Option<String>> = None;
+                        let mut pty: Option<String> = None;
+                        let mut pdoc: Option<Option<String>> = None;
+                        let mut popt: Option<bool> = None;
+                        for (pk, px) in po {
+                            match pk.as_str() {
+                                "name" => {
+                                    pname = Some(match px {
+                                        Json::Null => None,
+                                        Json::Str(s) => Some(s.clone()),
+                                        _ => {
+                                            return Err(
+                                                "param.name is neither a string nor null".into()
+                                            )
+                                        }
+                                    });
+                                }
+                                "type" => {
+                                    pty = Some(
+                                        px.as_str()
+                                            .ok_or("param.type is not a string")?
+                                            .to_string(),
+                                    );
+                                }
+                                "doc" => {
+                                    pdoc = Some(match px {
+                                        Json::Null => None,
+                                        Json::Str(s) => Some(s.clone()),
+                                        _ => {
+                                            return Err(
+                                                "param.doc is neither a string nor null".into()
+                                            )
+                                        }
+                                    });
+                                }
+                                "optional" => match px {
+                                    Json::Bool(b) => popt = Some(*b),
+                                    _ => return Err("param.optional is not a boolean".into()),
+                                },
+                                _ => return Err(format!("entry param has the field {pk:?}")),
+                            }
+                        }
+                        ps.push(ExpectEntryParam {
+                            name: pname.ok_or("entry param has no name")?,
+                            ty: pty.ok_or("entry param has no type")?,
+                            doc: pdoc,
+                            optional: popt.ok_or("entry param has no optional")?,
+                        });
+                    }
+                    params = Some(ps);
+                }
+                "input" => {
+                    input = Some(match x {
+                        Json::Null => None,
+                        Json::Str(s) => Some(s.clone()),
+                        _ => return Err("entry.input is neither a string nor null".into()),
+                    });
+                }
+                "inputSchema" => {
+                    input_schema = Some(x.clone());
+                }
+                "result" => {
+                    result = Some(
+                        x.as_str()
+                            .ok_or("entry.result is not a string")?
+                            .to_string(),
+                    );
+                }
+                _ => return Err(format!("entry in expect.entries has the field {k:?}")),
+            }
+        }
+        out.push(ExpectEntry {
+            name: name.ok_or("an entry in expect.entries has no name")?,
+            doc,
+            params,
+            input,
+            input_schema,
+            result,
+        });
+    }
+    Ok(out)
 }
 
 /// F2 4.3 and 4.5 item 4: the form of an expected `analysis`.
@@ -1649,7 +1861,17 @@ fn render_case(
         }
     }
     for (k, _) in header {
-        if ["source", "file", "conform"].contains(&k.as_str()) {
+        if [
+            "source",
+            "file",
+            "conform",
+            "entry",
+            "args",
+            "input",
+            "entryReturns",
+        ]
+        .contains(&k.as_str())
+        {
             return Err(format!("a render case under a header with {k:?}"));
         }
     }
@@ -1780,6 +2002,10 @@ fn render_case(
         returns: None,
         returns_schema: None,
         load: false,
+        entry: None,
+        args: None,
+        input: None,
+        entry_returns: Vec::new(),
         vars: None,
         limits: Limits::default(),
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),
@@ -1873,7 +2099,19 @@ fn check_field(k: &str, v: &Json) -> V<()> {
         }
     };
     match k {
-        "name" | "source" | "env" | "returns" | "skip" => string(k),
+        "name" | "source" | "env" | "returns" | "skip" | "entry" => string(k),
+        "args" => v
+            .as_arr()
+            .map(|_| ())
+            .ok_or_else(|| "args is not an array".into()),
+        "input" => Ok(()),
+        "entryReturns" => {
+            let m = v.as_obj().ok_or("entryReturns is not an object")?;
+            match m.iter().find(|(_, x)| x.as_str().is_none()) {
+                Some((k, _)) => Err(format!("entryReturns.{k} is not a string")),
+                None => Ok(()),
+            }
+        }
         "format" | "formatTemplate" | "complete" | "hover" => string(k),
         "file" => match v.as_str() {
             Some(s) if !s.is_empty() => Ok(()),
@@ -2255,6 +2493,10 @@ fn runner_case(
         returns: None,
         returns_schema: None,
         load: false,
+        entry: None,
+        args: None,
+        input: None,
+        entry_returns: Vec::new(),
         vars: None,
         limits: Limits::default(),
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),

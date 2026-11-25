@@ -273,7 +273,7 @@ impl<'p> Walker<'p> {
 
     fn visit(&mut self, id: NodeId, lam: bool, out: &mut Vec<Task>) {
         match self.kind(id) {
-            NodeKind::Program { consts, result, .. } | NodeKind::Block { consts, result } => {
+            NodeKind::Program { consts, result, .. } => {
                 out.push(Task::Push);
                 for &c in consts {
                     if let NodeKind::Const { pattern, value, .. } = self.kind(c) {
@@ -287,6 +287,26 @@ impl<'p> Walker<'p> {
                             out.push(Task::Visit(*value, lam));
                         } else {
                             // A name is not in scope in its own value.
+                            out.push(Task::Visit(*value, lam));
+                            out.push(Task::Pattern(*pattern, lam));
+                        }
+                    }
+                }
+                if let Some(r) = result {
+                    out.push(Task::Visit(*r, lam));
+                }
+                out.push(Task::Pop);
+            }
+            NodeKind::Block { consts, result } => {
+                out.push(Task::Push);
+                for &c in consts {
+                    if let NodeKind::Const { pattern, value, .. } = self.kind(c) {
+                        let lambda = matches!(self.kind(*value), NodeKind::Lambda { .. })
+                            && matches!(self.kind(*pattern), NodeKind::NamePat { name: Some(_) });
+                        if lambda {
+                            out.push(Task::Pattern(*pattern, lam));
+                            out.push(Task::Visit(*value, lam));
+                        } else {
                             out.push(Task::Visit(*value, lam));
                             out.push(Task::Pattern(*pattern, lam));
                         }
@@ -527,7 +547,8 @@ fn flat_steps(ast: &crate::syntax::ast::Ast, s: NodeId, out: &mut Vec<NodeId>) {
 }
 
 /// The literal of a program (3.7): no `const` line, and a result that is a
-/// literal expression.
+/// literal expression. A program with no result expression is never a literal
+/// (F16 12.7).
 fn literal_of(p: &Expr) -> Option<Json> {
     let NodeKind::Program { consts, result, .. } = p.ast.kind(p.ast.root) else {
         return None;
@@ -535,7 +556,7 @@ fn literal_of(p: &Expr) -> Option<Json> {
     if !consts.is_empty() {
         return None;
     }
-    literal(p, *result)
+    literal(p, (*result)?)
 }
 
 /// A literal expression's value. Lists and maps open a level each, so the

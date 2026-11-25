@@ -334,7 +334,7 @@ pub(super) fn failure_json(phase: Phase, diags: &[Diagnostic], cols: Option<&[St
     let whole: Vec<String> = whole_columns(phase).iter().map(|c| c.to_string()).collect();
     let cols: Vec<&str> = cols.unwrap_or(&whole).iter().map(|c| c.as_str()).collect();
     let ds: &[Diagnostic] = match phase {
-        Phase::Parse | Phase::Run => &diags[..diags.len().min(1)],
+        Phase::Parse => &diags[..diags.len().min(1)],
         _ => diags,
     };
     Json::Obj(vec![
@@ -982,6 +982,162 @@ fn case_expected(case: &Case, env: &Env) -> Result<crate::check::Want, Diagnosti
     }
 }
 
+/// F16 12.3 items 4 & 5: validate `returns`/`returnsSchema` against a result-less
+/// program (`no-result`), and validate `entryReturns` names (`bad-name`) and
+/// type texts (`bad-type`), in both checked and unchecked runs.
+fn case_validate_expected(
+    case: &Case,
+    env: &Env,
+    parsed: &crate::syntax::Expr,
+) -> Result<(crate::check::Want, BTreeMap<String, crate::check::ty::Ty>), Error> {
+    let want = case_expected(case, env).map_err(Error::one)?;
+    if !parsed.has_result() && !matches!(want, crate::check::Want::Nothing) {
+        return Err(Error::one(Diagnostic::bare(
+            Phase::Declare,
+            code::NO_RESULT,
+            "the program has no result expression",
+        )));
+    }
+    let mut entry_wants = BTreeMap::new();
+    if !case.entry_returns.is_empty() {
+        let valid_names = crate::compile::entry_names(&parsed.ast);
+        for (name, text) in &case.entry_returns {
+            if !valid_names.contains(name) {
+                return Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    code::BAD_NAME,
+                    format!("{name} is not an entry point of the program"),
+                )));
+            }
+            let ty = crate::check::expected_type(env, text).map_err(Error::one)?;
+            entry_wants.insert(name.clone(), ty);
+        }
+    }
+    Ok((want, entry_wants))
+}
+
+/// F16 12.10: compare `expect.entries` against the entries from a check.
+fn entries_difference(
+    want: &[super::case::ExpectEntry],
+    got: &[crate::compile::CompiledEntry],
+    env: &Env,
+) -> Option<Difference> {
+    let type_eq = |want_text: &str, actual: &crate::check::ty::Ty| -> bool {
+        let wt = crate::types::text::parse_type(want_text)
+            .ok()
+            .and_then(|x| crate::check::ty::from_text(&x, &Atoms(&env.data().opaque), None).ok());
+        wt.as_ref() == Some(&atoms(actual))
+    };
+    let ok = want.len() == got.len()
+        && want.iter().zip(got).all(|(w, g)| {
+            if w.name != g.name {
+                return false;
+            }
+            if let Some(wdoc) = &w.doc {
+                if *wdoc != g.doc {
+                    return false;
+                }
+            }
+            if let Some(wparams) = &w.params {
+                if wparams.len() != g.params.len() {
+                    return false;
+                }
+                for (wp, gp) in wparams.iter().zip(&g.params) {
+                    if wp.name != gp.name || wp.optional != gp.optional || !type_eq(&wp.ty, &gp.ty)
+                    {
+                        return false;
+                    }
+                    if let Some(wpd) = &wp.doc {
+                        if *wpd != gp.doc {
+                            return false;
+                        }
+                    }
+                }
+            }
+            if let Some(winput) = &w.input {
+                match (winput, &g.input_type) {
+                    (None, None) => {}
+                    (Some(t), Some(gt)) if type_eq(t, gt) => {}
+                    _ => return false,
+                }
+            }
+            if let Some(ws) = &w.input_schema {
+                match (ws, &g.input_type) {
+                    (Json::Null, None) => {}
+                    (_, None) => return false,
+                    (ws, Some(gt)) => {
+                        if schema_difference(ws, gt).is_some() {
+                            return false;
+                        }
+                    }
+                }
+            }
+            if let Some(wres) = &w.result {
+                if !g.result_type.as_ref().is_some_and(|gr| type_eq(wres, gr)) {
+                    return false;
+                }
+            }
+            true
+        });
+    if ok {
+        return None;
+    }
+    let found_json = Json::Arr(
+        got.iter()
+            .map(|g| {
+                let mut m = vec![
+                    ("name".to_string(), Json::Str(g.name.clone())),
+                    (
+                        "doc".to_string(),
+                        g.doc.clone().map_or(Json::Null, Json::Str),
+                    ),
+                    (
+                        "params".to_string(),
+                        Json::Arr(
+                            g.params
+                                .iter()
+                                .map(|p| {
+                                    Json::Obj(vec![
+                                        (
+                                            "name".into(),
+                                            p.name.clone().map_or(Json::Null, Json::Str),
+                                        ),
+                                        ("type".into(), Json::Str(crate::check::ty::print(&p.ty))),
+                                        ("doc".into(), p.doc.clone().map_or(Json::Null, Json::Str)),
+                                        ("optional".into(), Json::Bool(p.optional)),
+                                    ])
+                                })
+                                .collect(),
+                        ),
+                    ),
+                    (
+                        "input".to_string(),
+                        g.input_type
+                            .as_ref()
+                            .map_or(Json::Null, |t| Json::Str(crate::check::ty::print(t))),
+                    ),
+                    (
+                        "inputSchema".to_string(),
+                        g.input_type
+                            .as_ref()
+                            .and_then(|t| crate::schema::schema_of(t).ok())
+                            .unwrap_or(Json::Null),
+                    ),
+                ];
+                if let Some(rt) = &g.result_type {
+                    m.push(("result".into(), Json::Str(crate::check::ty::print(rt))));
+                }
+                Json::Obj(m)
+            })
+            .collect(),
+    );
+    Some(Difference {
+        name: "entries",
+        expected: format!("{want:?}"),
+        found: form(&found_json),
+    })
+}
+
 /// F10 10.2 item 4, step 5a: the conformance function on a load's value and
 /// its expected type. A failure has no span.
 fn load_step(case: &Case, env: &Env, v: &Value<'_>) -> Option<Diagnostic> {
@@ -1102,8 +1258,11 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
         return run_case_with(case, false, true, ctx);
     }
     let needs_checker = match &case.expect {
-        // F16 11.8 item 1: a case with `schema` runs checked, once.
-        Expect::Result(r) => r.ty.is_some() || r.sites.is_some() || r.schema.is_some(),
+        // F16 11.8 item 1 & 12.10 item 1: a case with `schema` or `entries`
+        // runs checked, once.
+        Expect::Result(r) => {
+            r.ty.is_some() || r.sites.is_some() || r.schema.is_some() || r.entries.is_some()
+        }
         Expect::Failure(f) => {
             f.phase == Phase::Check
                 && f.diagnostics
@@ -1143,6 +1302,7 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
                 "description",
                 "type",
                 "schema",
+                "entries",
                 "sites",
                 "value",
                 "json",
@@ -1195,8 +1355,12 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
     }
     match &case.expect {
         _ if checked || !case.check => {}
-        Expect::Result(r) if r.ty.is_some() || r.sites.is_some() || r.schema.is_some() => {
-            return Verdict::Skip("states type, schema or sites: needs the type checker".into())
+        Expect::Result(r)
+            if r.ty.is_some() || r.sites.is_some() || r.schema.is_some() || r.entries.is_some() =>
+        {
+            return Verdict::Skip(
+                "states type, schema, entries or sites: needs the type checker".into(),
+            )
         }
         Expect::Failure(f)
             if f.phase == Phase::Check
@@ -1245,17 +1409,17 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
             )
         }
     };
-    // Step 4: the check, or the static rules alone.
+    // Step 4: expected-result validation (F16 12.3 items 4 & 5), then the
+    // check or the static rules alone.
+    let (exp, entry_wants) = match case_validate_expected(case, &env, &parsed) {
+        Ok(x) => x,
+        Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
+    };
     let mut sites = None;
     let mut found_ty: Option<String> = None;
+    let mut checked_entries = None;
     if checked {
-        let exp = match case_expected(case, &env) {
-            Ok(x) => x,
-            Err(d) => {
-                return judge_failure(case, Phase::Declare, &[d], None, &unmatched, all_class)
-            }
-        };
-        let r = crate::check::check(&env, &parsed, &exp);
+        let r = crate::check::check_with_entries(&env, &parsed, &exp, &entry_wants);
         if !r.diagnostics.is_empty() {
             return judge_failure(
                 case,
@@ -1285,6 +1449,11 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
             }
             if let Some(ws) = &want.schema {
                 if let Some(d) = schema_difference(ws, &got) {
+                    diffs.push(d);
+                }
+            }
+            if let Some(we) = &want.entries {
+                if let Some(d) = entries_difference(we, &r.entries, &env) {
                     diffs.push(d);
                 }
             }
@@ -1318,21 +1487,35 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
             }
         }
         sites = Some(r.sites);
+        checked_entries = Some(r.entries);
     }
     let mut program = match compile(&env, parsed) {
         Ok(p) => p,
         Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
     };
     program.sites = sites;
+    if let Some(ces) = checked_entries {
+        for (pe, ce) in program.entries.iter_mut().zip(&ces) {
+            pe.result_type = ce.result_type.clone();
+        }
+        program.public_entries = program
+            .entries
+            .iter()
+            .map(crate::compile::CompiledEntry::to_public)
+            .collect();
+    }
     let missing = missing_entries(&program);
     if !missing.is_empty() {
         return Verdict::Skip(format!("needs library entry {}", missing.join(", ")));
     }
-    let needs_run = case.vars.is_some()
+    let needs_run = case.entry.is_some()
+        || case.vars.is_some()
         || case.load
         || match &case.expect {
             Expect::Result(r) => r.needs_run(),
-            Expect::Failure(f) => f.phase == Phase::Run,
+            Expect::Failure(f) => {
+                f.phase == Phase::Run || (f.phase == Phase::Declare && !program.has_result())
+            }
         };
     if !needs_run {
         return match &case.expect {
@@ -1358,40 +1541,57 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
         case: &vars,
         host: ctx.vars,
     };
-    let out = program.outcome(&layered);
-    let usage = out.usage;
-    if let Ok(v) = &out.result {
-        if let Some(d) = load_step(case, &env, v) {
-            return judge_failure(
-                case,
-                Phase::Run,
-                &[d],
-                Some((usage.steps, usage.allocated)),
-                &unmatched,
-                all_class,
-            );
+    let (run_res, usage) = if let Some(entry_name) = &case.entry {
+        if let Some(inp_json) = &case.input {
+            let inp = interner.data(inp_json);
+            let (res, u) = program.call_record_measure(entry_name, &inp, &layered);
+            (res.map(|v| value_to_owned_result(v)), u)
+        } else {
+            let arg_data: Vec<Data> = case
+                .args
+                .iter()
+                .flatten()
+                .map(|a| interner.data(a))
+                .collect();
+            let arg_refs: Vec<&dyn crate::host::Host> = arg_data
+                .iter()
+                .map(|d| d as &dyn crate::host::Host)
+                .collect();
+            let (res, u) = program.call_measure(entry_name, &arg_refs, &layered);
+            (res.map(|v| value_to_owned_result(v)), u)
         }
-    }
-    match out.result {
-        Err(f) => {
-            let d = program.diagnostic(&f);
-            judge_failure(
-                case,
-                Phase::Run,
-                &[d],
-                Some((usage.steps, usage.allocated)),
-                &unmatched,
-                all_class,
-            )
-        }
-        Ok(v) => {
+    } else {
+        let (res, u) = program.measure(&layered);
+        let res = match res {
+            Ok(v) => {
+                if let Some(d) = load_step(case, &env, &v) {
+                    Err(Error::one(d))
+                } else {
+                    Ok(value_to_owned_result(v))
+                }
+            }
+            Err(e) => Err(e),
+        };
+        (res, u)
+    };
+    match run_res {
+        Err(e) => judge_failure(
+            case,
+            e.phase,
+            &e.diagnostics,
+            (e.phase == Phase::Run).then_some((usage.steps, usage.allocated)),
+            &unmatched,
+            all_class,
+        ),
+        Ok(val) => {
+            let v = Value::from_data(&val.data);
             match &case.expect {
                 Expect::Failure(_) => diffs.push(Difference {
                     name: "outcome",
                     expected: expected_text(case),
                     found: form(&result_json(
                         found_ty.as_deref(),
-                        Some((value_to_json(&v), usage.steps, usage.allocated)),
+                        Some((val.json.clone(), usage.steps, usage.allocated)),
                     )),
                 }),
                 Expect::Result(r) => {
@@ -1401,18 +1601,17 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                             diffs.push(Difference {
                                 name: "value",
                                 expected: form(r.value.as_ref().unwrap_or(&Json::Null)),
-                                found: form(&value_to_json(&v)),
+                                found: form(&val.json),
                             });
                         }
                     }
                     // F6 11.2: the binding's JSON text of the value.
                     if let Some(want) = &r.json {
-                        let got = crate::eval::to_json(&v);
-                        if got.as_deref() != Ok(want.as_str()) {
+                        if val.json_text.as_deref() != Ok(want.as_str()) {
                             diffs.push(Difference {
                                 name: "json",
                                 expected: json_text(want),
-                                found: match &got {
+                                found: match &val.json_text {
                                     Ok(t) => json_text(t),
                                     Err(e) => json_text(&format!("{e:?}")),
                                 },
@@ -1420,11 +1619,11 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                         }
                     }
                     if let Some(t) = r.truthy {
-                        if v.truthy() != t {
+                        if val.truthy != t {
                             diffs.push(Difference {
                                 name: "truthy",
                                 expected: t.to_string(),
-                                found: v.truthy().to_string(),
+                                found: val.truthy.to_string(),
                             });
                         }
                     }
@@ -1439,6 +1638,22 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
             functions_diff(&mut diffs, &unmatched);
             verdict(diffs)
         }
+    }
+}
+
+struct OwnedVal {
+    data: Data,
+    json: Json,
+    json_text: Result<String, &'static str>,
+    truthy: bool,
+}
+
+fn value_to_owned_result(v: Value<'_>) -> OwnedVal {
+    OwnedVal {
+        json: value_to_json(&v),
+        json_text: crate::eval::to_json(&v),
+        truthy: v.truthy(),
+        data: v.owned(),
     }
 }
 
@@ -2460,31 +2675,34 @@ fn outcome_core(case: &Case) -> String {
     // written after the name when the program checks.
     let program = match parse_case(case) {
         Err(e) => Err((Phase::Parse, e.diagnostics)),
-        // `suite/README.md` item 3: a case with `"check": false` is compiled without.
-        Ok(p) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
-        Ok(p) => match case_expected(case, &env) {
-            Err(d) => Err((Phase::Declare, vec![d])),
-            Ok(exp) => match crate::check::compile_checked(&env, p, &exp) {
-                Err(e) => Err((e.phase, e.diagnostics)),
-                Ok((prog, r)) => {
-                    let ty = crate::check::ty::print(r.ty.as_ref().unwrap_or(&Default::default()));
-                    out.push_str(",\"type\":");
-                    out.push_str(&json_text(&ty));
-                    out.push_str(",\"sites\":[");
-                    for (i, s) in r.sites.iter().enumerate() {
-                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).arr();
-                        if i > 0 {
-                            out.push(',');
+        Ok(p) => match case_validate_expected(case, &env, &p) {
+            Err(e) => Err((e.phase, e.diagnostics)),
+            // `suite/README.md` item 3: a case with `"check": false` is compiled without.
+            Ok(_) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
+            Ok((exp, entry_wants)) => {
+                match crate::check::compile_checked_with_entries(&env, p, &exp, &entry_wants) {
+                    Err(e) => Err((e.phase, e.diagnostics)),
+                    Ok((prog, r)) => {
+                        let ty =
+                            crate::check::ty::print(r.ty.as_ref().unwrap_or(&Default::default()));
+                        out.push_str(",\"type\":");
+                        out.push_str(&json_text(&ty));
+                        out.push_str(",\"sites\":[");
+                        for (i, s) in r.sites.iter().enumerate() {
+                            let [a, b, c, d] = prog.parsed.source.line_span(s.span).arr();
+                            if i > 0 {
+                                out.push(',');
+                            }
+                            out.push_str(&format!(
+                                "{{\"class\":\"{}\",\"span\":[{a},{b},{c},{d}]}}",
+                                s.class
+                            ));
                         }
-                        out.push_str(&format!(
-                            "{{\"class\":\"{}\",\"span\":[{a},{b},{c},{d}]}}",
-                            s.class
-                        ));
+                        out.push(']');
+                        Ok(prog)
                     }
-                    out.push(']');
-                    Ok(prog)
                 }
-            },
+            }
         },
     };
     let program = match program {
@@ -2501,51 +2719,94 @@ fn outcome_core(case: &Case) -> String {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
-    let run = program.outcome(&vars);
-    let mut result = run.result.map_err(|f| program.diagnostic(&f));
-    // F10 10.4: a load that fails at step 5a.
-    if let Ok(v) = &result {
-        if let Some(d) = load_step(case, &env, v) {
-            result = Err(d);
-        }
-    }
-    let mut text = String::new();
-    if let Ok(v) = &result {
-        if let Err(code) = value_json(v, &mut text, 0) {
-            let msg = crate::messages::build(code, "host", &[]);
-            let mut d = Diagnostic::bare(Phase::Run, code, msg);
-            d.class = Some(if code == "number-range" {
-                "environment"
-            } else {
-                "limit"
+    let (mut result, usage) = if let Some(entry_name) = &case.entry {
+        if let Some(inp_json) = &case.input {
+            let inp = interner.data(inp_json);
+            let (res, u) = program.call_record_measure(entry_name, &inp, &vars);
+            let res = res.and_then(|v| {
+                let mut t = String::new();
+                value_json(&v, &mut t, 0)
+                    .map(|()| t)
+                    .map_err(|c| Error::one(value_json_diag(c)))
             });
-            result = Err(d);
+            (res, u)
+        } else {
+            let arg_data: Vec<Data> = case
+                .args
+                .iter()
+                .flatten()
+                .map(|a| interner.data(a))
+                .collect();
+            let arg_refs: Vec<&dyn crate::host::Host> = arg_data
+                .iter()
+                .map(|d| d as &dyn crate::host::Host)
+                .collect();
+            let (res, u) = program.call_measure(entry_name, &arg_refs, &vars);
+            let res = res.and_then(|v| {
+                let mut t = String::new();
+                value_json(&v, &mut t, 0)
+                    .map(|()| t)
+                    .map_err(|c| Error::one(value_json_diag(c)))
+            });
+            (res, u)
         }
-    }
+    } else {
+        let (res, u) = program.measure(&vars);
+        let res = res.and_then(|v| {
+            // F10 10.4: a load that fails at step 5a.
+            if let Some(d) = load_step(case, &env, &v) {
+                return Err(Error::one(d));
+            }
+            let mut t = String::new();
+            value_json(&v, &mut t, 0)
+                .map(|()| t)
+                .map_err(|c| Error::one(value_json_diag(c)))
+        });
+        (res, u)
+    };
     // `suite/README.md` item 2: a failure of class `limit` has no span and no usage.
-    let limit = match result {
-        Ok(_) => {
+    let no_usage = match &mut result {
+        Ok(text) => {
             out.push_str(",\"phase\":null,\"value\":");
-            out.push_str(&text);
+            out.push_str(text);
             false
         }
-        Err(mut d) => {
-            let limit = d.class == Some("limit");
+        Err(e) if e.phase == Phase::Declare => {
+            fail_line(&mut out, Phase::Declare, &e.diagnostics);
+            true
+        }
+        Err(e) => {
+            let limit = e.diagnostics.iter().any(|d| d.class == Some("limit"));
             if limit {
-                d.span = None;
+                for d in &mut e.diagnostics {
+                    if d.class == Some("limit") {
+                        d.span = None;
+                    }
+                }
             }
-            fail_line(&mut out, Phase::Run, &[d]);
+            fail_line(&mut out, Phase::Run, &e.diagnostics);
             limit
         }
     };
-    if !limit {
+    if !no_usage {
         out.push_str(&format!(
             ",\"steps\":{},\"units\":{}",
-            run.usage.steps, run.usage.allocated
+            usage.steps, usage.allocated
         ));
     }
     out.push('}');
     out
+}
+
+fn value_json_diag(code: &'static str) -> Diagnostic {
+    let msg = crate::messages::build(code, "host", &[]);
+    let mut d = Diagnostic::bare(Phase::Run, code, msg);
+    d.class = Some(if code == "number-range" {
+        "environment"
+    } else {
+        "limit"
+    });
+    d
 }
 
 pub(super) fn json_text(s: &str) -> String {
@@ -2871,14 +3132,14 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         Ok(p) => p,
         Err(e) => return fail(Phase::Parse, e.diagnostics),
     };
+    let (exp, entry_wants) = match case_validate_expected(case, &env, &parsed) {
+        Ok(x) => x,
+        Err(e) => return fail(e.phase, e.diagnostics),
+    };
     let (mut ty, mut sites, mut site_list, mut schema) = (None, None, None, None);
     let mut schema_lawless = false;
     if case.check {
-        let exp = match case_expected(case, &env) {
-            Ok(x) => x,
-            Err(d) => return fail(Phase::Declare, vec![d]),
-        };
-        let r = crate::check::check(&env, &parsed, &exp);
+        let r = crate::check::check_with_entries(&env, &parsed, &exp, &entry_wants);
         if !r.diagnostics.is_empty() {
             return fail(Phase::Check, r.diagnostics);
         }
@@ -2911,11 +3172,14 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
     };
     program.sites = site_list;
     let needs_run = force_run
+        || case.entry.is_some()
         || case.load
         || case.vars.is_some()
         || match &case.expect {
             Expect::Result(r) => r.needs_run(),
-            Expect::Failure(f) => f.phase == Phase::Run,
+            Expect::Failure(f) => {
+                f.phase == Phase::Run || (f.phase == Phase::Declare && !program.has_result())
+            }
         };
     if !needs_run {
         return Captured::Result {
@@ -2933,38 +3197,64 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
-    let out = program.outcome(&vars);
-    let usage = (out.usage.steps, out.usage.allocated);
-    if let Ok(v) = &out.result {
-        if let Some(d) = load_step(case, &env, v) {
-            return Captured::Failure {
-                phase: Phase::Run,
-                diags: vec![d],
-                usage: Some(usage),
-            };
+    let (res, usage) = if let Some(entry_name) = &case.entry {
+        if let Some(inp_json) = &case.input {
+            let inp = interner.data(inp_json);
+            let (r, u) = program.call_record_measure(entry_name, &inp, &vars);
+            (r.map(|v| value_to_ran(&v, (u.steps, u.allocated))), u)
+        } else {
+            let arg_data: Vec<Data> = case
+                .args
+                .iter()
+                .flatten()
+                .map(|a| interner.data(a))
+                .collect();
+            let arg_refs: Vec<&dyn crate::host::Host> = arg_data
+                .iter()
+                .map(|d| d as &dyn crate::host::Host)
+                .collect();
+            let (r, u) = program.call_measure(entry_name, &arg_refs, &vars);
+            (r.map(|v| value_to_ran(&v, (u.steps, u.allocated))), u)
         }
-    }
-    match out.result {
-        Err(f) => Captured::Failure {
-            phase: Phase::Run,
-            diags: vec![program.diagnostic(&f)],
-            usage: Some(usage),
+    } else {
+        let (r, u) = program.measure(&vars);
+        let r = match r {
+            Ok(v) => {
+                if let Some(d) = load_step(case, &env, &v) {
+                    Err(Error::one(d))
+                } else {
+                    Ok(value_to_ran(&v, (u.steps, u.allocated)))
+                }
+            }
+            Err(e) => Err(e),
+        };
+        (r, u)
+    };
+    match res {
+        Err(e) => Captured::Failure {
+            phase: e.phase,
+            diags: e.diagnostics,
+            usage: (e.phase == Phase::Run).then_some((usage.steps, usage.allocated)),
         },
-        Ok(v) => Captured::Result {
+        Ok(ran) => Captured::Result {
             ty,
             sites,
             description,
             schema,
             schema_lawless,
-            ran: Some(Ran {
-                value: value_to_json(&v),
-                opaque_key: has_opaque_key(&v),
-                truthy: v.truthy(),
-                json: crate::eval::to_json(&v).ok(),
-                steps: usage.0,
-                units: usage.1,
-            }),
+            ran: Some(ran),
         },
+    }
+}
+
+fn value_to_ran(v: &Value<'_>, usage: (u64, u64)) -> Ran {
+    Ran {
+        value: value_to_json(v),
+        opaque_key: has_opaque_key(v),
+        truthy: v.truthy(),
+        json: crate::eval::to_json(v).ok(),
+        steps: usage.0,
+        units: usage.1,
     }
 }
 

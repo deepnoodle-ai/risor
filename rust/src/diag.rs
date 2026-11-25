@@ -63,6 +63,12 @@ pub mod code {
     pub const NO_IMPLEMENTATION: &str = "no-implementation";
     /// A limit out of range (`03-host.md` 3.3.4).
     pub const BAD_LIMIT: &str = "bad-limit";
+    /// F16 12.9: `declare` codes for entry points and result-less programs.
+    pub const NO_RESULT: &str = "no-result";
+    pub const NO_INPUT_RECORD: &str = "no-input-record";
+    pub const ARITY: &str = "arity";
+    /// F16 12.3: static check code for invalid exports.
+    pub const BAD_EXPORT: &str = "bad-export";
 
     /// The eleven static codes (`05-types.md` 22.1).
     pub const STATIC: [&str; 12] = [

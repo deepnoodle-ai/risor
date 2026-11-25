@@ -261,6 +261,7 @@ fn run_expr(
     let options = CompileOptions {
         check,
         expected: Expected::None,
+        ..CompileOptions::default()
     };
     let p = env
         .compile(x, options)

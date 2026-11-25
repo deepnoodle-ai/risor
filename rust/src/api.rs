@@ -9,12 +9,13 @@ use crate::compile::Program;
 use crate::diag::{Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::eval::{RunOptions, Usage};
-use crate::host::Vars;
+use crate::host::{Host, Vars};
 use crate::schema::SchemaOptions;
 use crate::source::{Pos, Source, Span};
 use crate::syntax::{Expr, ParseOptions};
 use crate::typ::Type;
 use crate::value::Value;
+use std::collections::BTreeMap;
 
 /// What the host expects of a program's result (`03-host.md` 3.2.3): a
 /// type, a condition, or nothing.
@@ -97,6 +98,51 @@ impl Expected {
             }
         })
     }
+
+    /// The expected type of an entry point (`f16-entry-points.md` 12.3 item 5):
+    /// `condition` is not accepted.
+    pub(crate) fn want_entry(&self, env: &Env) -> Result<Ty, Error> {
+        let bad = |m: &str| {
+            Error::one(Diagnostic::bare(
+                Phase::Declare,
+                crate::diag::code::BAD_TYPE,
+                m,
+            ))
+        };
+        match &self.0 {
+            Exp::Nothing => Err(bad("an entry point expected result must name a type")),
+            Exp::Condition => Err(bad("condition is not a type for an entry point")),
+            Exp::Text(t) => check::expected_type(env, t).map_err(Error::one),
+            Exp::Type(t) => Ok(t.clone()),
+            Exp::Bad(m) => Err(bad(m)),
+        }
+    }
+}
+
+/// One parameter of an exported entry point (`f16-entry-points.md` 12.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntryParam {
+    /// The parameter's name, or `None` for a destructuring pattern or `_`.
+    pub name: Option<String>,
+    /// The parameter's annotated type.
+    pub ty: Type,
+    /// The parameter's description (11.2), or `None`.
+    pub doc: Option<String>,
+    /// `true` when the parameter has a default.
+    pub optional: bool,
+}
+
+/// Metadata for one `export const` entry point (`f16-entry-points.md` 12.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub name: String,
+    pub doc: Option<String>,
+    pub params: Vec<EntryParam>,
+    /// The record type a call by record conforms its input to, or `None` when
+    /// the entry point has no input record (12.5).
+    pub input_type: Option<Type>,
+    /// The entry point's checked result type, or `None` for an unchecked compile.
+    pub result_type: Option<Type>,
 }
 
 /// A place where a checked program can still fail on a value (`05-types.md`
@@ -117,13 +163,15 @@ fn sites(src: &Source, sites: &[check::Site]) -> Vec<Site> {
         .collect()
 }
 
-/// What a check gives (`03-host.md` 3.2.1): the program's type, and the
-/// places where it can still fail on a value, for the classes the
-/// environment does not reject.
+/// What a check gives (`03-host.md` 3.2.1): the program's type, the
+/// places where it can still fail on a value (for the classes the
+/// environment does not reject), and its `export const` entry points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CheckResult {
     pub ty: Type,
     pub sites: Vec<Site>,
+    /// F16 12.6: the program's `export const` entry points in text order.
+    pub entries: Vec<Entry>,
 }
 
 /// The options of a compile.
@@ -133,8 +181,11 @@ pub struct CompileOptions {
     /// Without it, only the static rules apply and a run reports classes by
     /// the column "not checked" (item 4).
     pub check: bool,
-    /// The expected result. Without the check it is not read.
+    /// The expected result of the program. On a result-less program, any
+    /// expected result fails with `declare` `no-result` (F16 12.3 item 4).
     pub expected: Expected,
+    /// Per-entry expected result types (`f16-entry-points.md` 12.3 item 5).
+    pub entry_expected: BTreeMap<String, Expected>,
 }
 
 impl Default for CompileOptions {
@@ -142,16 +193,94 @@ impl Default for CompileOptions {
         CompileOptions {
             check: true,
             expected: Expected::None,
+            entry_expected: BTreeMap::new(),
         }
     }
+}
+
+impl CompileOptions {
+    /// Expect the named entry point to return a value fitting `type_text`
+    /// (`f16-entry-points.md` 12.3 item 5).
+    pub fn expect_entry(mut self, name: impl Into<String>, type_text: &str) -> Self {
+        self.entry_expected
+            .insert(name.into(), Expected::text(type_text));
+        self
+    }
+
+    /// Expect the named entry point to return a value fitting `ty`
+    /// (`f16-entry-points.md` 12.3 item 5).
+    pub fn expect_entry_type(mut self, name: impl Into<String>, ty: &Type) -> Self {
+        self.entry_expected.insert(name.into(), Expected::of(ty));
+        self
+    }
+
+    /// Expect the named entry point to return a value fitting the JSON Schema
+    /// `schema` (`f16-entry-points.md` 12.3 item 5).
+    pub fn expect_entry_schema(
+        mut self,
+        name: impl Into<String>,
+        schema: &str,
+        opts: SchemaOptions,
+    ) -> Result<Self, Error> {
+        let exp = Expected::schema(schema, opts)?;
+        self.entry_expected.insert(name.into(), exp);
+        Ok(self)
+    }
+}
+
+/// Validate `expected` and `entry_expected` for both checked and unchecked
+/// compiles (`f16-entry-points.md` 12.3 items 4 and 5).
+pub(crate) fn validate_expected(
+    env: &Env,
+    x: &Expr,
+    expected: &Expected,
+    entry_expected: &BTreeMap<String, Expected>,
+) -> Result<(Want, BTreeMap<String, Ty>), Error> {
+    let want = expected.want(env)?;
+    if !x.has_result() && !matches!(want, Want::Nothing) {
+        return Err(Error::one(Diagnostic::bare(
+            Phase::Declare,
+            crate::diag::code::NO_RESULT,
+            "the program has no result expression",
+        )));
+    }
+    let mut entry_wants = BTreeMap::new();
+    if !entry_expected.is_empty() {
+        let valid_names = crate::compile::entry_names(&x.ast);
+        for (name, exp) in entry_expected {
+            if !valid_names.contains(name) {
+                return Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    crate::diag::code::BAD_NAME,
+                    format!("{name} is not an entry point of the program"),
+                )));
+            }
+            let ty = exp.want_entry(env)?;
+            entry_wants.insert(name.clone(), ty);
+        }
+    }
+    Ok((want, entry_wants))
 }
 
 impl Env {
     /// Check a program (`03-host.md` 3.2.1). A program that fails the check
     /// gives its diagnostics, ordered by 6.1, as an error of phase `check`.
     pub fn check(&self, x: &Expr, expected: &Expected) -> Result<CheckResult, Error> {
-        let want = expected.want(self)?;
-        let r = check::check(self, x, &want);
+        self.check_with(
+            x,
+            &CompileOptions {
+                expected: expected.clone(),
+                ..CompileOptions::default()
+            },
+        )
+    }
+
+    /// Check a program with options, including per-entry expected results
+    /// (`f16-entry-points.md` 12.3 item 5).
+    pub fn check_with(&self, x: &Expr, options: &CompileOptions) -> Result<CheckResult, Error> {
+        let (want, entry_wants) =
+            validate_expected(self, x, &options.expected, &options.entry_expected)?;
+        let r = check::check_with_entries(self, x, &want, &entry_wants);
         if !r.diagnostics.is_empty() {
             return Err(Error {
                 phase: Phase::Check,
@@ -161,17 +290,23 @@ impl Env {
         Ok(CheckResult {
             ty: Type::from_ty(r.ty.expect("a program that checks has a type")),
             sites: sites(&x.source, &r.sites),
+            entries: r
+                .entries
+                .iter()
+                .map(crate::compile::CompiledEntry::to_public)
+                .collect(),
         })
     }
 
     /// Compile a program. With the check (the default) it fails exactly
-    /// when [`Env::check`] does.
+    /// when [`Env::check_with`] does.
     pub fn compile(&self, x: &Expr, options: CompileOptions) -> Result<Program, Error> {
+        let (want, entry_wants) =
+            validate_expected(self, x, &options.expected, &options.entry_expected)?;
         if !options.check {
             return crate::compile::compile_unchecked(self, x.clone());
         }
-        let want = options.expected.want(self)?;
-        check::compile_checked(self, x.clone(), &want).map(|(p, _)| p)
+        check::compile_checked_with_entries(self, x.clone(), &want, &entry_wants).map(|(p, _)| p)
     }
 
     /// Completion at a position of a program's text, which need not parse
@@ -230,8 +365,20 @@ impl Env {
 }
 
 impl Program {
+    /// Whether the program has a result expression (`f16-entry-points.md` 12.2).
+    pub fn has_result(&self) -> bool {
+        self.parsed.has_result()
+    }
+
+    /// The program's `export const` entry points in text order
+    /// (`f16-entry-points.md` 12.6).
+    pub fn entries(&self) -> &[Entry] {
+        &self.public_entries
+    }
+
     /// Run the program with variables lent for the run: its value, or the
-    /// failure, with one `run` diagnostic.
+    /// failure, with one `run` diagnostic (or `declare` `no-result` if the
+    /// program has no result expression).
     pub fn run<'h>(&'h self, vars: &'h dyn Vars) -> Result<Value<'h>, Error> {
         self.measure(vars).0
     }
@@ -257,9 +404,105 @@ impl Program {
         vars: &'h dyn Vars,
         opts: RunOptions,
     ) -> (Result<Value<'h>, Error>, Usage) {
+        if !self.has_result() {
+            return (
+                Err(Error::one(Diagnostic::bare(
+                    Phase::Declare,
+                    crate::diag::code::NO_RESULT,
+                    "the program has no result expression",
+                ))),
+                Usage::default(),
+            );
+        }
         let out = self.outcome_with(vars, opts);
         let result = out.result.map_err(|f| Error::one(self.diagnostic(&f)));
         (result, out.usage)
+    }
+
+    /// Call an `export const` entry point positionally (`f16-entry-points.md` 12.5).
+    pub fn call<'h>(
+        &'h self,
+        name: &str,
+        args: &[&'h dyn Host],
+        vars: &'h dyn Vars,
+    ) -> Result<Value<'h>, Error> {
+        self.call_measure(name, args, vars).0
+    }
+
+    /// Call an `export const` entry point positionally, with run options.
+    pub fn call_with<'h>(
+        &'h self,
+        name: &str,
+        args: &[&'h dyn Host],
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> Result<Value<'h>, Error> {
+        self.call_measure_with(name, args, vars, opts).0
+    }
+
+    /// Call an `export const` entry point positionally, returning value and usage.
+    pub fn call_measure<'h>(
+        &'h self,
+        name: &str,
+        args: &[&'h dyn Host],
+        vars: &'h dyn Vars,
+    ) -> (Result<Value<'h>, Error>, Usage) {
+        self.call_measure_with(name, args, vars, RunOptions::default())
+    }
+
+    /// Call an `export const` entry point positionally with options, returning
+    /// value and usage.
+    pub fn call_measure_with<'h>(
+        &'h self,
+        name: &str,
+        args: &[&'h dyn Host],
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> (Result<Value<'h>, Error>, Usage) {
+        self.call_outcome_with(name, args, vars, opts)
+    }
+
+    /// Call an `export const` entry point by record (`f16-entry-points.md` 12.5).
+    pub fn call_record<'h>(
+        &'h self,
+        name: &str,
+        input: &'h dyn Host,
+        vars: &'h dyn Vars,
+    ) -> Result<Value<'h>, Error> {
+        self.call_record_measure(name, input, vars).0
+    }
+
+    /// Call an `export const` entry point by record, with run options.
+    pub fn call_record_with<'h>(
+        &'h self,
+        name: &str,
+        input: &'h dyn Host,
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> Result<Value<'h>, Error> {
+        self.call_record_measure_with(name, input, vars, opts).0
+    }
+
+    /// Call an `export const` entry point by record, returning value and usage.
+    pub fn call_record_measure<'h>(
+        &'h self,
+        name: &str,
+        input: &'h dyn Host,
+        vars: &'h dyn Vars,
+    ) -> (Result<Value<'h>, Error>, Usage) {
+        self.call_record_measure_with(name, input, vars, RunOptions::default())
+    }
+
+    /// Call an `export const` entry point by record with options, returning
+    /// value and usage.
+    pub fn call_record_measure_with<'h>(
+        &'h self,
+        name: &str,
+        input: &'h dyn Host,
+        vars: &'h dyn Vars,
+        opts: RunOptions,
+    ) -> (Result<Value<'h>, Error>, Usage) {
+        self.call_record_outcome_with(name, input, vars, opts)
     }
 
     /// The program's check result, when it was compiled with the check.
@@ -267,6 +510,7 @@ impl Program {
         Some(CheckResult {
             ty: Type::from_ty(self.ty.clone()?),
             sites: sites(&self.parsed.source, self.sites.as_ref()?),
+            entries: self.public_entries.clone(),
         })
     }
 }

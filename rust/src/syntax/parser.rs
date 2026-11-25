@@ -41,6 +41,17 @@ impl Expr {
     pub fn analyze(&self) -> crate::analysis::Analysis {
         crate::analysis::analyze(self)
     }
+
+    /// Whether the program has a result expression (`f16-entry-points.md` 12.2).
+    pub fn has_result(&self) -> bool {
+        matches!(
+            self.ast.kind(self.ast.root),
+            NodeKind::Program {
+                result: Some(_),
+                ..
+            }
+        )
+    }
 }
 
 /// The largest source limit, and the default: a source text has at most
@@ -590,24 +601,43 @@ impl<'a> Parser<'a> {
         let first = self.peek().span.start as usize;
         let mut consts = Vec::new();
         let mut types = Vec::new();
+        let mut has_export = false;
         loop {
             if self.at_word("const") {
-                consts.push(self.const_line()?);
+                consts.push(self.const_line(None)?);
+            } else if self.export_const_starts() {
+                has_export = true;
+                let exp = self.bump().clone();
+                consts.push(self.const_line(Some(exp))?);
             } else if self.type_line_starts() {
                 types.push(self.type_line()?);
             } else {
                 break;
             }
         }
-        let result = self.expr()?;
-        let mut end = self.outer(result).end as usize;
-        if self.at_punct(P::Semi) {
-            self.mark[self.pos] = MARK_PROGRAM_SEMI;
-            end = self.bump().span.end as usize;
-        }
-        if !matches!(self.peek().tok, Tok::Eof) {
-            return Err(self.unexpected(self.peek()));
-        }
+        // F16 12.2 item 2: a program may omit its result expression only when
+        // it has at least one `export const` line.
+        let (result, end) = if has_export && matches!(self.peek().tok, Tok::Eof) {
+            let last_end = consts
+                .last()
+                .map(|&c| self.outer(c).end)
+                .into_iter()
+                .chain(types.last().map(|t| t.span.end))
+                .max()
+                .unwrap_or(first as u32) as usize;
+            (None, last_end)
+        } else {
+            let result = self.expr()?;
+            let mut end = self.outer(result).end as usize;
+            if self.at_punct(P::Semi) {
+                self.mark[self.pos] = MARK_PROGRAM_SEMI;
+                end = self.bump().span.end as usize;
+            }
+            if !matches!(self.peek().tok, Tok::Eof) {
+                return Err(self.unexpected(self.peek()));
+            }
+            (Some(result), end)
+        };
         Ok(self.node(
             NodeKind::Program {
                 consts,
@@ -616,6 +646,15 @@ impl<'a> Parser<'a> {
             },
             Range::new(first, end),
         ))
+    }
+
+    /// F16 12.2 item 1: at the start of a top-level line, `export` begins an
+    /// `Export` exactly when the next token is the word `const`.
+    fn export_const_starts(&self) -> bool {
+        self.at_word("export")
+            && self.peek().code.is_none()
+            && self.peek_n(1).is_word("const")
+            && self.peek_n(1).code.is_none()
     }
 
     /// F16 2.2 rule 1: at the start of a top-level line, `type` begins a type
@@ -667,9 +706,15 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn const_line(&mut self) -> R<NodeId> {
+    fn const_line(&mut self, export_kw: Option<Token>) -> R<NodeId> {
         let kw = self.bump();
-        let doc = kw.doc.clone();
+        let exported = export_kw.is_some();
+        // F16 12.2 items 4 and 5: for `export const`, the span starts at
+        // `export` and a doc comment attaches at `export`, not at `const`.
+        let (start_span, doc) = match export_kw {
+            Some(exp) => (exp.span, exp.doc),
+            None => (kw.span, kw.doc.clone()),
+        };
         let pattern = self.pattern()?;
         // F16 2.2 rule 4: an annotated line's value is an `Expr`.
         if self.at_punct(P::Colon) {
@@ -684,8 +729,9 @@ impl<'a> Parser<'a> {
                     value,
                     ty: Some(Box::new(ty)),
                     doc,
+                    exported,
                 },
-                kw.span.to(semi.span),
+                start_span.to(semi.span),
             ));
         }
         self.expect(P::Assign)?;
@@ -703,8 +749,9 @@ impl<'a> Parser<'a> {
                 value,
                 ty: None,
                 doc,
+                exported,
             },
-            kw.span.to(semi.span),
+            start_span.to(semi.span),
         ))
     }
 
@@ -725,7 +772,7 @@ impl<'a> Parser<'a> {
         }
         let mut consts = Vec::new();
         while self.at_word("const") {
-            consts.push(self.const_line()?);
+            consts.push(self.const_line(None)?);
         }
         let e = self.expr()?;
         if self.at_punct(P::Colon) || self.at_punct(P::Comma) {
@@ -748,7 +795,7 @@ impl<'a> Parser<'a> {
         self.open(lb.span)?;
         let mut consts = Vec::new();
         while self.at_word("const") {
-            consts.push(self.const_line()?);
+            consts.push(self.const_line(None)?);
         }
         let result = self.expr()?;
         self.block_end = self.pos;

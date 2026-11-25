@@ -104,7 +104,7 @@ pub use env::{Env, EnvBuilder, LibraryNames, Limits};
 
 // E.4: programs.
 pub use analysis::{Analysis, CallSite, Ref, Step};
-pub use api::{CheckResult, CompileOptions, Expected, Site};
+pub use api::{CheckResult, CompileOptions, Entry, EntryParam, Expected, Site};
 pub use compile::Program;
 pub use eval::{RunOptions, Usage};
 pub use host::{NoVars, Vars};

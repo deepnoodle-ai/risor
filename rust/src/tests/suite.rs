@@ -515,13 +515,14 @@ fn entry_points_package() {
 }
 
 /// Package F16: the cases of `suite/messages-entry-points.json`, each run
-/// once, checked (`f16-entry-points.md` 8 item 3).
+/// once, checked (`f16-entry-points.md` 8 item 3, 12.9).
 #[test]
 fn catalog_entry_points_cases() {
     let mut total = Counts::default();
     let mut failed = Vec::new();
+    let dir = suite_dir().join("entry-points");
     for (entry, cases) in crate::messages::catalog().entry_point_cases.clone() {
-        let cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
+        let cases = load_doc(&cases, &dir).expect("the cases are valid");
         for c in &cases {
             let v = crate::testing::run_case_in(c, true);
             if let Verdict::Fail(diffs) = &v {
@@ -537,7 +538,7 @@ fn catalog_entry_points_cases() {
     println!("suite/messages-entry-points.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
-    assert_eq!(total.pass, 1);
+    assert_eq!(total.pass, 5);
 }
 
 /// Package F17: the cases of `suite/messages-recursion.json`, each run
