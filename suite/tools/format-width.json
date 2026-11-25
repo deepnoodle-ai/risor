@@ -201,5 +201,26 @@
   "expect": {
    "formatted": "const s = \"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\";\ns\n"
   }
+ },
+ {
+  "name": "an exponent after the equals sign is not indented",
+  "format": "const x = 1 ** bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; x",
+  "expect": {
+   "formatted": "const x =\n  1 **\n  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;\nx\n"
+  }
+ },
+ {
+  "name": "an exponent in an if test is not indented",
+  "format": "if (2 ** bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) { 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (\n  2 **\n  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n) {\n  1\n} else {\n  2\n}\n"
+  }
+ },
+ {
+  "name": "an exponent as an operand is indented",
+  "format": "c + 1 ** bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "expect": {
+   "formatted": "c +\n  1 **\n    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+  }
  }
 ]

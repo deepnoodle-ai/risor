@@ -512,6 +512,8 @@ struct B<'a> {
     lead: Vec<Vec<usize>>,
     trail: Vec<Vec<usize>>,
     defer: Vec<bool>,
+    /// The `<` of a `map<...>` type, an opening bracket (2.12 item 4).
+    angle: Vec<bool>,
     docs: Docs,
     /// The pairs for the reader written around the node being built (2.6
     /// item 3).
@@ -645,6 +647,7 @@ impl<'a> B<'a> {
             lead: vec![Vec::new(); n + 1],
             trail: vec![Vec::new(); n + 1],
             defer: vec![false; n + 1],
+            angle: vec![false; n + 1],
             docs: Docs::default(),
             rdepth: 0,
             plain: false,
@@ -807,43 +810,45 @@ impl<'a> B<'a> {
         self.list(v)
     }
 
-    /// The trailing comments of token `i` (2.12 item 4). `opener` is
-    /// `Some(has elements)` for the opening bracket of a sequence.
-    fn trail_doc(&mut self, i: usize, opener: Option<bool>) -> DocId {
+    /// The trailing comments of token `i` (2.12 item 4). `brace` marks the
+    /// opening brace of a block, a branch or a `match`, which is followed by
+    /// a space or a break. After any other opening bracket, a first block
+    /// comment has no space before it, and the comments are followed by a
+    /// space when the closing bracket does not follow them.
+    fn trail_doc(&mut self, i: usize, brace: bool) -> DocId {
         if !self.pass2 || self.trail[i].is_empty() {
             return self.empty();
         }
+        let opening = self.angle[i]
+            || !brace
+                && matches!(
+                    self.t[i].tok,
+                    Tok::Punct(P::LParen | P::LBracket | P::QDotBracket | P::LBrace)
+                );
         let cs = self.trail[i].clone();
         let mut v = Vec::new();
+        let mut last_line = false;
         for (j, &ci) in cs.iter().enumerate() {
             let line = self.cm[ci].line;
             let s = self.comment_text(ci);
-            match opener {
-                Some(has) if !line && j == 0 => {
-                    v.push(self.text(&s));
-                    if has {
-                        v.push(self.sp());
-                    }
-                }
-                _ => {
-                    v.push(self.sp());
-                    v.push(self.text(&s));
-                }
+            if opening && !line && j == 0 {
+                v.push(self.text(&s));
+            } else {
+                v.push(self.sp());
+                v.push(self.text(&s));
             }
             if line {
                 v.push(self.push(D::After));
             }
+            last_line = line;
+        }
+        if opening && !last_line && self.partner[i] != Some(i + 1) {
+            v.push(self.sp());
         }
         self.list(v)
     }
 
-    fn tok_doc(
-        &mut self,
-        i: usize,
-        text: Option<DocId>,
-        lead: bool,
-        opener: Option<bool>,
-    ) -> DocId {
+    fn tok_doc(&mut self, i: usize, text: Option<DocId>, lead: bool, brace: bool) -> DocId {
         if i >= self.t.len() {
             return self.empty();
         }
@@ -864,13 +869,18 @@ impl<'a> B<'a> {
         }
         v.push(txt);
         if !self.defer[i] {
-            v.push(self.trail_doc(i, opener));
+            v.push(self.trail_doc(i, brace));
         }
         self.list(v)
     }
 
     fn tk(&mut self, i: usize) -> DocId {
-        self.tok_doc(i, None, true, None)
+        self.tok_doc(i, None, true, false)
+    }
+
+    /// The opening brace of a block, a branch or a `match` (2.12 item 4).
+    fn tk_brace(&mut self, i: usize) -> DocId {
+        self.tok_doc(i, None, true, true)
     }
 
     fn tk_at(&mut self, pos: u32) -> DocId {
@@ -901,7 +911,7 @@ impl<'a> B<'a> {
         match last {
             Some(l) => {
                 self.defer[l] = false;
-                self.trail_doc(l, None)
+                self.trail_doc(l, false)
             }
             None => self.empty(),
         }
@@ -983,14 +993,14 @@ impl<'a> B<'a> {
     /// `seq(o, xs, c)` (2.9).
     fn seq(&mut self, open: usize, close: usize, elems: Vec<El>) -> DocId {
         if elems.is_empty() {
-            let o = self.tok_doc(open, None, true, Some(false));
+            let o = self.tok_doc(open, None, true, false);
             let c = self.tk(close);
             return self.list(vec![o, c]);
         }
         if !self.pass2 && close < self.close_mark.len() {
             self.close_mark[close] = true;
         }
-        let o = self.tok_doc(open, None, true, Some(true));
+        let o = self.tok_doc(open, None, true, false);
         let n = elems.len();
         let mut inner = Vec::new();
         for (k, e) in elems.iter().enumerate() {
@@ -1016,7 +1026,7 @@ impl<'a> B<'a> {
         let il = self.list(inner);
         let ind = self.indent(il);
         let s = self.soft();
-        let c = self.tok_doc(close, None, false, None);
+        let c = self.tok_doc(close, None, false, false);
         let l = self.list(vec![o, ind, s, c]);
         self.group(l)
     }
@@ -1278,7 +1288,7 @@ impl<'a> B<'a> {
                 let last = self.tb(f.params[i - 1].2.span.end);
                 if self.pass2 && self.defer[last] {
                     self.defer[last] = false;
-                    v.push(self.trail_doc(last, None));
+                    v.push(self.trail_doc(last, false));
                 }
                 v.push(self.sp());
             }
@@ -1403,7 +1413,7 @@ impl<'a> B<'a> {
                 let close = self.tb(span.end);
                 let mut elems = consts.clone();
                 elems.push(*result);
-                let o = self.tk(open);
+                let o = self.tk_brace(open);
                 let h = self.hard();
                 let mut inner = vec![h];
                 inner.extend(self.body(&elems));
@@ -1411,7 +1421,7 @@ impl<'a> B<'a> {
                 let il = self.list(inner);
                 let ind = self.indent(il);
                 let h2 = self.hard();
-                let c = self.tok_doc(close, None, false, None);
+                let c = self.tok_doc(close, None, false, false);
                 self.list(vec![o, ind, h2, c])
             }
             NodeKind::Ident { .. }
@@ -1423,7 +1433,7 @@ impl<'a> B<'a> {
                 if matches!(form, StrForm::TripleDouble | StrForm::RawTriple) {
                     let tb = self.text_block(span, &[]);
                     let d = self.push(D::Block(tb));
-                    self.tok_doc(i, Some(d), true, None)
+                    self.tok_doc(i, Some(d), true, false)
                 } else {
                     self.tk(i)
                 }
@@ -1445,7 +1455,7 @@ impl<'a> B<'a> {
                     let tb = self.text_block(tspan, &exprs);
                     self.push(D::Block(tb))
                 };
-                self.tok_doc(i, Some(d), true, None)
+                self.tok_doc(i, Some(d), true, false)
             }
             NodeKind::List { items } => {
                 let open = self.ti(span.start);
@@ -1648,7 +1658,7 @@ impl<'a> B<'a> {
             }
             _ => vec![content],
         };
-        let o = self.tk(open);
+        let o = self.tk_brace(open);
         let l = self.line();
         let mut inner = vec![l];
         inner.extend(self.body(&elems));
@@ -1656,7 +1666,7 @@ impl<'a> B<'a> {
         let il = self.list(inner);
         let ind = self.indent(il);
         let l2 = self.line();
-        let c = self.tok_doc(close, None, false, None);
+        let c = self.tok_doc(close, None, false, false);
         self.list(vec![o, ind, l2, c])
     }
 
@@ -1938,7 +1948,7 @@ impl<'a> B<'a> {
         let s2 = self.sp();
         let lb = self.ti(self.outer(subject).end);
         let rb = self.partner[lb].unwrap_or(lb);
-        let o = self.tk(lb);
+        let o = self.tk_brace(lb);
         let n = arms.len();
         let mut inner = Vec::new();
         for (k, &a) in arms.iter().enumerate() {
@@ -1964,7 +1974,7 @@ impl<'a> B<'a> {
         let il = self.list(inner);
         let ind = self.indent(il);
         let l = self.line();
-        let c = self.tok_doc(rb, None, false, None);
+        let c = self.tok_doc(rb, None, false, false);
         let gl = self.list(vec![m, s1, sd, s2, o, ind, l, c]);
         self.group(gl)
     }
@@ -2122,7 +2132,7 @@ impl<'a> B<'a> {
         if !self.pass2 && close < self.close_mark.len() {
             self.close_mark[close] = true;
         }
-        let o = self.tok_doc(open, None, true, Some(true));
+        let o = self.tok_doc(open, None, true, false);
         let n = args.len();
         let mut xs = Vec::new();
         let mut ts = Vec::new();
@@ -2135,7 +2145,7 @@ impl<'a> B<'a> {
             ts.push(self.elem_end(last, outer, k > 0));
         }
         let lc = self.lead_doc(close);
-        let c = self.tok_doc(close, None, false, None);
+        let c = self.tok_doc(close, None, false, false);
         let must = xs[..n - 1].iter().any(|x| self.docs.f(*x));
         let comma = self.text(",");
         let one_line = |b: &mut B, last: DocId| {
@@ -2413,7 +2423,7 @@ impl<'a> B<'a> {
                     if let Some(p) = prev {
                         if self.pass2 {
                             self.defer[p] = false;
-                            v.push(self.trail_doc(p, None));
+                            v.push(self.trail_doc(p, false));
                         }
                     }
                     if !next_close {
@@ -2430,6 +2440,11 @@ impl<'a> B<'a> {
                 Tok::Punct(P::Colon) => {
                     v.push(self.tk(k));
                     v.push(self.sp());
+                    prev = Some(k);
+                }
+                Tok::Punct(P::Lt) => {
+                    self.angle[k] = true;
+                    v.push(self.tk(k));
                     prev = Some(k);
                 }
                 _ => {

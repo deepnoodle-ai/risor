@@ -178,5 +178,13 @@
     "declaration": null
    }
   }
+ },
+ {
+  "name": "a text repaired past its end",
+  "hover": "1 + m‸atch { _ => 2 }",
+  "env": "{y: string, m: any, xs: any, c: bool, z: int | null}",
+  "expect": {
+   "hover": null
+  }
  }
 ]
