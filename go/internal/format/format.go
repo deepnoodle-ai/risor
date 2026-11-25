@@ -285,20 +285,28 @@ func (b *builder) note(i int) {
 
 // tok writes a kept unit with its comments.
 func (b *builder) tok(i int) part {
-	eligible := b.elemStart
-	b.elemStart = false
-	out := b.leadDoc(i, eligible, false)
-	out = append(out, b.unitText(i), b.slotOf(i, false, false))
-	b.note(i)
-	return out
+	switch b.us[i].kind {
+	case syntax.LParen, syntax.LBrack, syntax.LBrace, syntax.OptLBrack:
+		return b.unit(i, true)
+	}
+	return b.unit(i, false)
 }
 
-// open writes the opening bracket of a sequence (2.12 item 4).
-func (b *builder) open(i int, hasElems bool) part {
+// brace writes the opening brace of a block, a branch or a match, which is
+// followed by a space or a break, so its trailing comments are written as
+// those of any token (2.12 item 4).
+func (b *builder) brace(i int) part { return b.unit(i, false) }
+
+// angle writes the `<` of a map type, an opening bracket (2.12 item 4).
+func (b *builder) angle(i int) part { return b.unit(i, true) }
+
+// unit writes a kept unit with its comments; opening marks an opening
+// bracket (2.12 item 4).
+func (b *builder) unit(i int, opening bool) part {
 	eligible := b.elemStart
 	b.elemStart = false
 	out := b.leadDoc(i, eligible, false)
-	out = append(out, b.unitText(i), b.slotOf(i, true, hasElems))
+	out = append(out, b.unitText(i), b.slotOf(i, opening))
 	b.note(i)
 	return out
 }
@@ -306,7 +314,7 @@ func (b *builder) open(i int, hasElems bool) part {
 // bare writes a closing bracket whose leading comments closeLead writes.
 func (b *builder) bare(i int) part {
 	b.elemStart = false
-	out := []part{b.unitText(i), b.slotOf(i, false, false)}
+	out := []part{b.unitText(i), b.slotOf(i, false)}
 	b.note(i)
 	return out
 }
@@ -342,26 +350,32 @@ func (b *builder) leadDoc(i int, eligible, closer bool) []part {
 	return out
 }
 
-// slotOf is the slot of a unit's trailing comments (2.12 item 4).
-func (b *builder) slotOf(i int, opening, hasElems bool) *slot {
+// slotOf is the slot of a unit's trailing comments (2.12 item 4). After an
+// opening bracket, a first block comment has no space before it, and the
+// comments are followed by a space when the closing bracket does not follow
+// them.
+func (b *builder) slotOf(i int, opening bool) *slot {
 	s := &slot{}
 	b.slots[i] = s
 	if !b.pass2 {
 		return s
 	}
 	var out []part
-	for k, c := range b.trail[i] {
+	cs := b.trail[i]
+	for k, c := range cs {
 		if k == 0 && opening && !c.line {
 			out = append(out, txt(c.text))
-			if hasElems {
-				out = append(out, pSpace)
-			}
 		} else {
 			out = append(out, pSpace, txt(c.text))
 		}
 		c.written = true
 		if c.line {
 			out = append(out, pAfter)
+		}
+	}
+	if n := len(cs); n > 0 && opening && !cs[n-1].line {
+		if m, ok := b.match[i]; !ok || m != i+1 {
+			out = append(out, pSpace)
 		}
 	}
 	s.d = list(out)
@@ -465,7 +479,7 @@ func seq(open part, els []el, closeLead, close part) part {
 
 // seqOf builds a whole sequence from its units and items.
 func (b *builder) seqOf(open, close int, items []item) part {
-	o := b.open(open, len(items) > 0)
+	o := b.tok(open)
 	els := b.elements(open, items)
 	cl := b.closeLead(close, len(items) > 0)
 	return seq(o, els, cl, b.bare(close))
@@ -599,7 +613,7 @@ func (b *builder) node(n syntax.Node) part {
 		return []part{b.tok(c), pSpace, b.pattern(n.Pattern), pSpace, b.tok(eq), b.assigned(n.Value), b.tok(semi)}
 	case *syntax.Block:
 		lb, rb := b.at(n.Span().Start), b.ending(n.Span().End)
-		o := b.tok(lb)
+		o := b.brace(lb)
 		bd := b.body(n.Consts, n.Result, pHard)
 		cl := b.closeLead(rb, true)
 		return []part{o, &indent{d: append(append([]part{pHard}, bd...), cl)}, pHard, b.bare(rb)}
@@ -749,7 +763,7 @@ func (b *builder) test(x syntax.Node) part {
 
 // branch is the document of a branch whose braces are the units lb and rb.
 func (b *builder) branch(content syntax.Node, lb, rb int) part {
-	o := b.tok(lb)
+	o := b.brace(lb)
 	var bd []part
 	if blk, ok := content.(*syntax.Block); ok {
 		bd = b.body(blk.Consts, blk.Result, pHard)
@@ -857,7 +871,7 @@ func (b *builder) args(args []syntax.Node, lp, rp int) part {
 	if len(args) == 0 || !huggable(args[len(args)-1]) {
 		return b.seqOf(lp, rp, items)
 	}
-	o := b.open(lp, true)
+	o := b.tok(lp)
 	els := b.elements(lp, items)
 	cl := b.closeLead(rp, true)
 	c := b.bare(rp)
@@ -1038,7 +1052,7 @@ func (b *builder) match_(n *syntax.Match) part {
 	out := []part{b.tok(mt), pSpace, b.sub(n, rSubject, n.Subject), pSpace}
 	lb := b.next(n.Subject.Span().End, syntax.LBrace)
 	rb := b.ending(n.Span().End)
-	out = append(out, b.tok(lb))
+	out = append(out, b.brace(lb))
 	var inner []part
 	firstSrc := lb + 1
 	for k, a := range n.Arms {
@@ -1255,7 +1269,7 @@ func (b *builder) pprim(p *syntax.PPrim) part {
 		return b.tok(b.at(p.Span.Start))
 	case syntax.PMap:
 		m := b.at(p.Span.Start)
-		return []part{b.tok(m), b.tok(m + 1), b.ptype(p.Elem), b.tok(b.ending(p.Span.End))}
+		return []part{b.tok(m), b.angle(m + 1), b.ptype(p.Elem), b.tok(b.ending(p.Span.End))}
 	case syntax.PParen:
 		lp := b.at(p.Span.Start)
 		return []part{b.tok(lp), b.ptype(p.Elem), b.tok(b.ending(p.Span.End))}
