@@ -51,6 +51,11 @@ describe("the conformance function counts steps (f04 7.3)", () => {
     assert.equal(conform(1, env.parseType("any"), { steps: 0 }), null);
   });
 
+  test("Standard Schema validation reports the default step limit as an issue with no path", () => {
+    const r = env.parseType("int[]")["~standard"].validate(new Array(1_000_000).fill(1)) as { issues?: { message: string; path?: unknown }[] };
+    assert.deepEqual(r.issues, [{ message: "the run needed more than its limit of 1000000 steps" }]);
+  });
+
   test("the environment's step limit plays no part (R322)", () => {
     const small = createEnv({ limits: { steps: 10 } });
     assert.equal(conform([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], small.parseType("int[]")), null);
