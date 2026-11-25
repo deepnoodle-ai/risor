@@ -124,9 +124,9 @@ pub use config::{load, load_value, LoadError, LoadOptions};
 pub use decode::{decode, Decode, DecodeCx};
 pub use schema::SchemaOptions;
 pub use typ::{
-    conform, conform_all, exact_record_type, join, list_type, literal_type, map_type, nullable,
-    opaque_type_named, record_type, tagged_union_type, type_from_schema, union_type, FieldType,
-    Type, TypeKind,
+    conform, conform_all, conform_all_with, conform_with, exact_record_type, join, list_type,
+    literal_type, map_type, nullable, opaque_type_named, record_type, tagged_union_type,
+    type_from_schema, union_type, ConformOptions, FieldType, Type, TypeKind,
 };
 
 // E.1 row 5: the conveniences for the host's own types.

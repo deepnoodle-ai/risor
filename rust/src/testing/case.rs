@@ -254,6 +254,9 @@ pub struct Case {
     pub conform: Option<(String, Json)>,
     /// F8: the maximum of `ConformAll` in a conform case (`f08-errors.md` 7.5).
     pub conform_max: Option<usize>,
+    /// F4: the step limit of the conformance function in a conform case
+    /// (`f04-conversion.md` 9.2), or `None` for the default.
+    pub conform_limit: Option<u64>,
     /// F8: a case of the third kind (`f08-errors.md` 7.4).
     pub render: Option<RenderCase>,
     /// F9: a runner case (`f09-testing.md` 3).
@@ -618,6 +621,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         .and_then(|c| c.get("max"))
         .and_then(|m| m.as_integer())
         .map(|m| m as usize);
+    let conform_limit = conform
+        .and_then(|c| c.get("limit"))
+        .and_then(|m| m.as_integer())
+        .map(|m| m as u64);
     if let Expect::Result(ExpectResult {
         conform: Some(c), ..
     }) = &expect
@@ -791,8 +798,21 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
                 return Err(format!("a conform case has the field {k:?}"));
             }
         }
+        // Or the function's `steps-exceeded`, which states only its code
+        // and message (9.2 item 3).
+        let steps = |f: &ExpectFailure| {
+            f.phase == Phase::Run
+                && f.diagnostics.len() == 1
+                && f.diagnostics[0].code == "steps-exceeded"
+                && f.diagnostics[0].class.is_none()
+                && f.diagnostics[0].span.is_none()
+                && f.diagnostics[0].path.is_none()
+                && f.diagnostics[0].data.is_none()
+                && f.diagnostics[0].trace.is_none()
+                && !f.diagnostics[0].span_null
+        };
         let ok = conform_result
-            || matches!(&expect, Expect::Failure(f) if f.phase == Phase::Declare)
+            || matches!(&expect, Expect::Failure(f) if f.phase == Phase::Declare || steps(f))
             || (lax && own("expect").is_none());
         if !ok {
             return Err(
@@ -900,6 +920,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         groups: strings(get("groups")),
         conform,
         conform_max,
+        conform_limit,
         render: None,
         runner: None,
         tool: None,
@@ -1666,6 +1687,7 @@ fn render_case(
         groups: Vec::new(),
         conform: None,
         conform_max: None,
+        conform_limit: None,
         runner: None,
         tool: None,
         expect_raw: own("expect").cloned(),
@@ -1899,7 +1921,15 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             if !max_ok {
                 return Err("conform.max is not a whole number of 1 or more".into());
             }
-            let n = 2 + usize::from(v.get("max").is_some());
+            // F4 9.2: and `limit`, a whole number of 0 or more.
+            let limit_ok = match v.get("limit") {
+                None => true,
+                Some(x) => x.as_integer().is_some_and(|n| n >= 0.0),
+            };
+            if !limit_ok {
+                return Err("conform.limit is not a whole number of 0 or more".into());
+            }
+            let n = 2 + usize::from(v.get("max").is_some()) + usize::from(v.get("limit").is_some());
             if m.len() != n
                 || v.get("value").is_none()
                 || !v.get("type").is_some_and(|t| t.as_str().is_some())
@@ -2119,6 +2149,7 @@ fn runner_case(
         groups: Vec::new(),
         conform: None,
         conform_max: None,
+        conform_limit: None,
         render: None,
         runner: Some(rc),
         tool: None,

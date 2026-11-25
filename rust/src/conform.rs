@@ -6,7 +6,9 @@
 //! recurses only where the type and the value both have a level. With a
 //! recursive type (F17 12.7) the type no longer bounds that: a run's walk is
 //! bounded by the run's depth limit, and the conformance function's by the
-//! default depth limit, 200.
+//! default depth limit, 200. The conformance function charges the steps a
+//! run's walk charges, against a step limit of its own (7.3), so host data
+//! that holds one list at many places cannot make it run long.
 
 use crate::check::ty::{print, Num, Strs, Ty};
 use crate::diag::{Diagnostic, PathStep, Phase};
@@ -14,7 +16,7 @@ use crate::messages::json_string;
 use crate::value::{is_whole, size, weight, Kind, Value};
 
 /// What the walk charges and how deep it goes (`02-evaluation.md` 8.4). A
-/// run meters it; the conformance function does not.
+/// run meters it; the conformance function meters it with [`Free`].
 pub trait WalkMeter {
     /// Charge steps; a limit's code when passed.
     fn charge(&mut self, n: u64) -> Result<(), &'static str>;
@@ -27,25 +29,73 @@ pub trait WalkMeter {
 /// conformance function fails (F17 12.7 item 3).
 pub const FREE_DEPTH: u32 = 200;
 
-/// No limit of a run and no count of steps: the conformance function (7.1
-/// item 1). It counts the levels it enters, and fails past 200 (F17 12.7
-/// item 3).
-#[derive(Default)]
-pub struct Free(u32);
+/// The default step limit of the conformance function (7.3,
+/// `03-host.md` 3.6.1).
+pub const FREE_STEPS: u64 = 1_000_000;
+
+/// The conformance function's meter (7.1 item 1, 7.3): no run, but the
+/// steps a run's walk charges, counted against `limit` (`None`: no limit).
+/// It counts the levels it enters, and fails past 200 (F17 12.7 item 3).
+pub struct Free {
+    depth: u32,
+    count: u64,
+    limit: Option<u64>,
+}
+
+impl Free {
+    pub fn new(limit: Option<u64>) -> Free {
+        Free {
+            depth: 0,
+            count: 0,
+            limit,
+        }
+    }
+}
+
+impl Default for Free {
+    fn default() -> Free {
+        Free::new(Some(FREE_STEPS))
+    }
+}
 
 impl WalkMeter for Free {
-    fn charge(&mut self, _: u64) -> Result<(), &'static str> {
+    fn charge(&mut self, n: u64) -> Result<(), &'static str> {
+        if let Some(l) = self.limit {
+            if n > l - self.count {
+                return Err(STEPS);
+            }
+        }
+        self.count = self.count.saturating_add(n);
         Ok(())
     }
     fn enter(&mut self) -> Result<(), &'static str> {
-        self.0 += 1;
-        if self.0 > FREE_DEPTH {
+        self.depth += 1;
+        if self.depth > FREE_DEPTH {
             return Err("depth-exceeded");
         }
         Ok(())
     }
     fn leave(&mut self) {
-        self.0 -= 1;
+        self.depth -= 1;
+    }
+}
+
+/// The failure of the conformance function past its step limit (7.3):
+/// phase `run`, code `steps-exceeded`, class `limit`, no path and no span.
+pub fn too_many_steps(limit: u64) -> Diagnostic {
+    let msg = crate::messages::build("steps-exceeded", "default", &[("limit", limit.to_string())]);
+    let mut d = Diagnostic::bare(Phase::Run, "steps-exceeded", msg);
+    d.class = Some("limit");
+    d
+}
+
+/// The diagnostic of the conformance function at the limit whose code is
+/// `code`, under the step limit `limit`.
+pub fn limit_diagnostic(code: &str, limit: Option<u64>) -> Diagnostic {
+    if code == "depth-exceeded" {
+        too_deep()
+    } else {
+        too_many_steps(limit.unwrap_or(0))
     }
 }
 
@@ -102,6 +152,10 @@ impl Failure {
         if self.template == DEEP {
             return too_deep();
         }
+        if self.template == STEPS {
+            let limit = self.params.first().map_or(0, |p| p.1.parse().unwrap_or(0));
+            return too_many_steps(limit);
+        }
         let mut d = Diagnostic::bare(Phase::Run, "not-conforming", self.message());
         d.class = Some("value");
         d.path = Some(Box::new(self.path.clone()));
@@ -112,6 +166,10 @@ impl Failure {
 /// The template of the last entry of [`all`] when the walk went past the
 /// default depth limit.
 const DEEP: &str = "depth-exceeded";
+
+/// The template of the last entry of [`all`] when the walk went past its
+/// step limit (`f08-errors.md` 6.4 step 3); its parameter is the limit.
+const STEPS: &str = "steps-exceeded";
 
 /// Test(v, T, []) (4.2). `Ok(None)` is pass; `Err` is a limit's code.
 pub fn test<M: WalkMeter>(
@@ -356,24 +414,41 @@ impl<M: WalkMeter> Walk<'_, M> {
     }
 }
 
-/// All(v, T, []) of `f08-errors.md` 6.2: every failure, up to `max`. Past
-/// the default depth limit it ends with a failure whose diagnostic is
-/// [`too_deep`] (F17 12.7 item 3).
-pub fn all(v: &Value<'_>, t: &Ty, max: usize) -> Vec<Failure> {
+/// All(v, T, []) of `f08-errors.md` 6.2: every failure, up to `max`, under
+/// the step limit `limit` (`None`: no limit) by 6.4. First the walk of 4.2:
+/// a limit there is the whole list. Then All, from a new count, charging at
+/// the places that walk charges. Past the default depth limit it ends with
+/// a failure whose diagnostic is [`too_deep`] (F17 12.7 item 3), past the
+/// step limit with one whose diagnostic is [`too_many_steps`].
+pub fn all(v: &Value<'_>, t: &Ty, max: usize, limit: Option<u64>) -> Vec<Failure> {
+    let limit_failure = |template: &'static str| Failure {
+        path: Vec::new(),
+        template,
+        params: if template == STEPS {
+            vec![("limit", limit.unwrap_or(0).to_string())]
+        } else {
+            Vec::new()
+        },
+    };
+    // 6.4 step 1.
+    if let Err(code) = test(v, t, &mut Free::new(limit)) {
+        return vec![limit_failure(if code == DEEP { DEEP } else { STEPS })];
+    }
     let mut a = All {
         path: Vec::new(),
         out: Vec::new(),
         max,
         depth: 0,
         deep: false,
+        count: 0,
+        limit,
+        stopped: false,
     };
-    a.walk(v, t);
+    a.walk(v, t, false);
     if a.deep {
-        a.out.push(Failure {
-            path: Vec::new(),
-            template: DEEP,
-            params: Vec::new(),
-        });
+        a.out.push(limit_failure(DEEP));
+    } else if a.stopped {
+        a.out.push(limit_failure(STEPS));
     }
     a.out
 }
@@ -387,11 +462,32 @@ struct All {
     depth: u32,
     /// The walk went past the default depth limit: it ends.
     deep: bool,
+    /// The steps charged, and the limit (6.4 step 2).
+    count: u64,
+    limit: Option<u64>,
+    /// A charge would have passed the limit: the walk ends (6.4 step 3).
+    stopped: bool,
 }
 
 impl All {
     fn full(&self) -> bool {
-        self.deep || self.out.len() >= self.max
+        self.deep || self.stopped || self.out.len() >= self.max
+    }
+
+    /// Charge n steps; past the limit the charge is not made and the walk
+    /// ends. False when it ended.
+    fn charge(&mut self, n: u64) -> bool {
+        if self.stopped {
+            return false;
+        }
+        if let Some(l) = self.limit {
+            if n > l - self.count {
+                self.stopped = true;
+                return false;
+            }
+        }
+        self.count = self.count.saturating_add(n);
+        true
     }
 
     fn add(&mut self, f: Failure) {
@@ -406,7 +502,9 @@ impl All {
         p
     }
 
-    fn walk(&mut self, v: &Value<'_>, t: &Ty) {
+    /// `looked_up`: the value of a declared field, whose step is the lookup
+    /// already charged (6.4 step 2).
+    fn walk(&mut self, v: &Value<'_>, t: &Ty, looked_up: bool) {
         // 1.
         if self.full() || t.any {
             return;
@@ -424,6 +522,13 @@ impl All {
                 self.depth -= 1;
                 return;
             }
+        }
+        // The step of F4 4.2 step 3, after the depth test.
+        if !looked_up && !self.charge(1) {
+            if enters {
+                self.depth -= 1;
+            }
+            return;
         }
         self.walk_body(v, t, &u);
         if enters {
@@ -444,8 +549,12 @@ impl All {
             },
             Value::Str(s) => match &u.str {
                 Some(Strs::All) => {}
-                Some(Strs::Lits(l)) if l.contains(s.as_str()) => {}
-                _ => self.add(wrong(&self.path, t, v)),
+                Some(Strs::Lits(l)) => {
+                    if self.charge(size(s.as_str())) && !l.contains(s.as_str()) {
+                        self.add(wrong(&self.path, t, v));
+                    }
+                }
+                None => self.add(wrong(&self.path, t, v)),
             },
             Value::Opaque(o) if u.opaque.contains(o.type_name.as_ref()) => {}
             // 5.
@@ -455,7 +564,7 @@ impl All {
                 };
                 for i in 0..v.len().unwrap_or(0) {
                     self.path.push(PathStep::Index(i));
-                    self.walk(&v.elem(i), e);
+                    self.walk(&v.elem(i), e, false);
                     self.path.pop();
                     if self.full() {
                         return;
@@ -481,6 +590,9 @@ impl All {
             return;
         };
         let tag = t.tag().unwrap_or_default();
+        if !self.charge(1 + size(&tag)) {
+            return;
+        }
         let Some(x) = v.field(&tag) else {
             self.add(Failure {
                 path: self.at(&tag),
@@ -495,6 +607,9 @@ impl All {
             .map(|f| f.ty.clone())
             .unwrap_or_default();
         let s = x.as_str().unwrap_or_default();
+        if matches!(x, Value::Str(_)) && !self.charge(size(s)) {
+            return;
+        }
         let vs: &[crate::check::ty::Rec] = t.variants.as_deref().map_or(&[], |v| v.as_slice());
         let var = match &x {
             Value::Str(_) => vs.iter().find(|r| {
@@ -514,6 +629,9 @@ impl All {
             if skip == Some(k.as_str()) {
                 continue;
             }
+            if !self.charge(1 + size(k)) {
+                return;
+            }
             match v.field(k) {
                 None if !f.optional => self.add(Failure {
                     path: self.at(k),
@@ -523,7 +641,7 @@ impl All {
                 None => {}
                 Some(x) => {
                     self.path.push(PathStep::Key(k.clone()));
-                    self.walk(&x, &f.ty);
+                    self.walk(&x, &f.ty, true);
                     self.path.pop();
                 }
             }
@@ -541,6 +659,19 @@ impl All {
             .filter(|k| !r.fields.contains_key(k))
             .collect();
         others.sort();
+        if self.full() {
+            return;
+        }
+        // The other keys, charged as F4 4.3 steps 4 and 5 charge them.
+        let together: u64 = others.iter().map(|k| weight(k)).sum::<u64>() / 64;
+        let m = if r.rest.is_never() {
+            others.len() as u64
+        } else {
+            0
+        };
+        if !self.charge(m + together) {
+            return;
+        }
         for k in &others {
             if r.rest.is_never() {
                 self.add(Failure {
@@ -551,7 +682,7 @@ impl All {
             } else {
                 let x = v.field(k).unwrap_or(Value::Null);
                 self.path.push(PathStep::Key(k.clone()));
-                self.walk(&x, &r.rest);
+                self.walk(&x, &r.rest, false);
                 self.path.pop();
             }
             if self.full() {

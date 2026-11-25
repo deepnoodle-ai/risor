@@ -893,7 +893,10 @@ fn a_hint_parameter_is_one_of_a_const_bound_lambda() {
     for (src, want) in [
         ("{ const g = (x) => x(1); 1 }", hint),
         ("const h = (n) => { const g = (x) => x(n); 1 }; 1", hint),
-        ("const h = (n) => { const g = [1].map(x => x(n)); 1 }; 1", plain),
+        (
+            "const h = (n) => { const g = [1].map(x => x(n)); 1 }; 1",
+            plain,
+        ),
         ("{ const g = (xs) => xs.map(x => x(1)); 1 }", plain),
     ] {
         assert_eq!(messages(src), vec![want.to_string()], "{src}");
