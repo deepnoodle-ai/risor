@@ -18,7 +18,9 @@ use crate::messages::json_string;
 use crate::number::{self, from_text, NumErr};
 use crate::source::Range;
 use crate::types::text::{Bound, ParamType, Type};
-use crate::value::{is_whole, log2_ceil, release, size, weight, Kind, MapVal, Str, Value};
+use crate::value::{
+    is_whole, log2_ceil, release, size, weight, Kind, MapVal, Str, Value, ValueInner,
+};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -361,13 +363,15 @@ fn plan(rec: &Record) -> Plan {
             let (mut allowed, mut whole) = (0u8, 0u8);
             for k in kinds {
                 let probe = match k {
-                    Kind::Null => Value::Null,
-                    Kind::Bool => Value::Bool(false),
-                    Kind::Number => Value::Num(0.5),
-                    Kind::String => Value::Str(Str::Lent("")),
+                    Kind::Null => Value(ValueInner::Null),
+                    Kind::Bool => Value(ValueInner::Bool(false)),
+                    Kind::Number => Value(ValueInner::Num(0.5)),
+                    Kind::String => Value(ValueInner::Str(Str::Lent(""))),
                     Kind::List => Value::list(Vec::new()),
-                    Kind::Map => Value::Map(Rc::new(MapVal(Vec::new()))),
-                    Kind::Opaque => Value::Opaque(Rc::new(crate::host::OpaqueRef::new("", ()))),
+                    Kind::Map => Value(ValueInner::Map(Rc::new(MapVal(Vec::new())))),
+                    Kind::Opaque => Value(ValueInner::Opaque(Rc::new(
+                        crate::host::OpaqueRef::new("", ()),
+                    ))),
                 };
                 let (ok, w) = fits(t, &probe, &sig.bounds);
                 if ok {
@@ -453,8 +457,10 @@ fn ordered<'a, 'h: 'a>(vals: impl Iterator<Item = &'a Value<'h>>) -> Result<(), 
 /// The order of two values of one ordered kind (3.6).
 fn cmp(a: &Value<'_>, b: &Value<'_>) -> Ordering {
     match (a, b) {
-        (Value::Num(x), Value::Num(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
-        (Value::Str(x), Value::Str(y)) => x.as_str().cmp(y.as_str()),
+        (Value(ValueInner::Num(x)), Value(ValueInner::Num(y))) => {
+            x.partial_cmp(y).unwrap_or(Ordering::Equal)
+        }
+        (Value(ValueInner::Str(x)), Value(ValueInner::Str(y))) => x.as_str().cmp(y.as_str()),
         _ => Ordering::Equal,
     }
 }
@@ -607,7 +613,7 @@ impl<'h> Run<'h> {
                         return Err(self.arg_kind(idx, v, span));
                     }
                     if whole & k != 0 {
-                        if let Value::Num(n) = v {
+                        if let Value(ValueInner::Num(n)) = v {
                             if !is_whole(*n) {
                                 return Err(fail(
                                     "wrong-kind",
@@ -630,7 +636,7 @@ impl<'h> Run<'h> {
                 }
                 // F7 6.2: a parameter whose type is a literal set.
                 ArgTest::Literals(set) => {
-                    let ok = matches!(v, Value::Str(x) if set.iter().any(|s| &**s == x.as_str()));
+                    let ok = matches!(v, Value(ValueInner::Str(x)) if set.iter().any(|s| &**s == x.as_str()));
                     if !ok {
                         return Err(fail(
                             "wrong-kind",
@@ -673,24 +679,24 @@ impl<'h> Run<'h> {
         if name == "walk" {
             return self.lib_walk(args, span, measure);
         }
-        let x = self.val(args, 0).unwrap_or(Value::Null);
+        let x = self.val(args, 0).unwrap_or(Value(ValueInner::Null));
         let num = |v: &Value<'h>| match v {
-            Value::Num(n) => *n,
+            Value(ValueInner::Num(n)) => *n,
             _ => 0.0,
         };
         match name {
             "len" => {
                 let n = match &x {
-                    Value::Str(s) => {
+                    Value(ValueInner::Str(s)) => {
                         self.charge(size(s.as_str()))?;
                         s.as_str().chars().count()
                     }
                     _ => x.len().unwrap_or(0),
                 };
-                Ok(Value::Num(n as f64))
+                Ok(Value(ValueInner::Num(n as f64)))
             }
             "string" => {
-                if let Value::Str(_) = x {
+                if let Value(ValueInner::Str(_)) = x {
                     return Ok(x);
                 }
                 let mut out = super::Rendering::new(String::new());
@@ -703,7 +709,7 @@ impl<'h> Run<'h> {
             }
             "int" | "float" => {
                 let n = match &x {
-                    Value::Str(s) => {
+                    Value(ValueInner::Str(s)) => {
                         self.charge(size(s.as_str()))?;
                         let text = s.as_str().trim_matches(is_space);
                         let p = |form: &'static str| {
@@ -723,23 +729,23 @@ impl<'h> Run<'h> {
                     v => num(v),
                 };
                 if name == "float" {
-                    return Ok(Value::Num(n));
+                    return Ok(Value(ValueInner::Num(n)));
                 }
                 let t = n.trunc();
                 if !is_whole(t) {
                     return Err(self.entry_range(name, span));
                 }
-                Ok(Value::Num(if t == 0.0 { 0.0 } else { t }))
+                Ok(Value(ValueInner::Num(if t == 0.0 { 0.0 } else { t })))
             }
-            "bool" => Ok(Value::Bool(x.truthy())),
-            "type" => Ok(Value::Str(Str::Lent(x.kind().name()))),
+            "bool" => Ok(Value(ValueInner::Bool(x.truthy()))),
+            "type" => Ok(Value(ValueInner::Str(Str::Lent(x.kind().name())))),
             "fail" => {
                 let mut f = fail("failed", "default", span, vec![]);
                 f.text = Some(x.as_str().unwrap_or_default().to_string());
-                f.data = Some(self.val(args, 1).unwrap_or(Value::Null));
+                f.data = Some(self.val(args, 1).unwrap_or(Value(ValueInner::Null)));
                 Err(f)
             }
-            "abs" => Ok(Value::Num(number::neg(-num(&x)).abs())),
+            "abs" => Ok(Value(ValueInner::Num(number::neg(-num(&x)).abs()))),
             "floor" | "ceil" | "round" => {
                 let n = num(&x);
                 let r = match name {
@@ -751,7 +757,7 @@ impl<'h> Run<'h> {
                 if !is_whole(r) {
                     return Err(self.entry_range(name, span));
                 }
-                Ok(Value::Num(if r == 0.0 { 0.0 } else { r }))
+                Ok(Value(ValueInner::Num(if r == 0.0 { 0.0 } else { r })))
             }
             "min" | "max" => {
                 let vals: Vec<Value<'h>> =
@@ -780,11 +786,13 @@ impl<'h> Run<'h> {
                 self.charge(k)?;
                 self.alloc(1 + k)?;
                 Ok(Value::list(
-                    (0..k).map(|i| Value::Num(a + i as f64)).collect(),
+                    (0..k)
+                        .map(|i| Value(ValueInner::Num(a + i as f64)))
+                        .collect(),
                 ))
             }
             "fixed" => {
-                let d = num(&self.val(args, 1).unwrap_or(Value::Null));
+                let d = num(&self.val(args, 1).unwrap_or(Value(ValueInner::Null)));
                 if !(0.0..=20.0).contains(&d) {
                     return Err(fail(
                         "invalid-argument",
@@ -823,7 +831,7 @@ impl<'h> Run<'h> {
                 if !r.is_finite() {
                     return Err(self.entry_range(n, span));
                 }
-                Ok(Value::Num(r))
+                Ok(Value(ValueInner::Num(r)))
             }
             // F6: an entry of an opt-in group.
             n if n.contains('.') => self.group_entry(n, x, span),
@@ -881,7 +889,7 @@ impl<'h> Run<'h> {
         let a0 = self.val(args, 0);
         let a1 = self.val(args, 1);
         let num = |v: &Option<Value<'h>>| match v {
-            Some(Value::Num(n)) => Some(*n),
+            Some(Value(ValueInner::Num(n))) => Some(*n),
             _ => None,
         };
         // Steps, units, then the result, for an entry that charges by
@@ -914,7 +922,7 @@ impl<'h> Run<'h> {
                         s.ends_with(p)
                     };
                 self.charge(size(p))?;
-                Ok(Value::Bool(r))
+                Ok(Value(ValueInner::Bool(r)))
             }
             "split" => {
                 let sep = text(&a0);
@@ -968,8 +976,8 @@ impl<'h> Run<'h> {
                 // lengths. `str::find` is linear.
                 let at = if t.len() > s.len() { None } else { s.find(t) };
                 Ok(match at {
-                    Some(b) => Value::Num(s[..b].chars().count() as f64),
-                    None => Value::Null,
+                    Some(b) => Value(ValueInner::Num(s[..b].chars().count() as f64)),
+                    None => Value(ValueInner::Null),
                 })
             }
             "slice" => {
@@ -1079,11 +1087,19 @@ impl<'h> Run<'h> {
         for (i, (k, v)) in es.into_iter().enumerate() {
             self.charge(2)?;
             let v = self.read(v, span)?;
-            let r = self.call2(&f, "mapValues", i, v, Value::Str(k.clone()), measure, span)?;
+            let r = self.call2(
+                &f,
+                "mapValues",
+                i,
+                v,
+                Value(ValueInner::Str(k.clone())),
+                measure,
+                span,
+            )?;
             out.push((k, r));
         }
         self.alloc(1 + 2 * out.len() as u64)?;
-        Ok(Value::Map(Rc::new(MapVal(out))))
+        Ok(Value(ValueInner::Map(Rc::new(MapVal(out)))))
     }
 
     /// The entries of a map in key order, the order charged.
@@ -1116,7 +1132,15 @@ impl<'h> Run<'h> {
         let string_keys = matches!(name, "indexBy" | "countBy");
         for i in 0..n {
             let e = self.next_element(recv, i, span)?;
-            let k = self.call2(&f, name, i, e.dup(), Value::Num(i as f64), measure, span)?;
+            let k = self.call2(
+                &f,
+                name,
+                i,
+                e.dup(),
+                Value(ValueInner::Num(i as f64)),
+                measure,
+                span,
+            )?;
             if string_keys && k.kind() != Kind::String {
                 return Err(self.result_kind(name, &k, span));
             }
@@ -1159,7 +1183,7 @@ impl<'h> Run<'h> {
                         _ => {}
                     }
                 }
-                Ok(best.map_or(Value::Null, |b| elems[b].clone()))
+                Ok(best.map_or(Value(ValueInner::Null), |b| elems[b].clone()))
             }
             "uniqueBy" => {
                 // Numbers are equal by value, strings by code point.
@@ -1168,8 +1192,10 @@ impl<'h> Run<'h> {
                 let mut out = Vec::new();
                 for (e, k) in elems.into_iter().zip(keys.iter()) {
                     let new = match k {
-                        Value::Num(x) => seen_n.insert(if *x == 0.0 { 0 } else { x.to_bits() }),
-                        Value::Str(x) => seen_s.index(x.as_str()).1,
+                        Value(ValueInner::Num(x)) => {
+                            seen_n.insert(if *x == 0.0 { 0 } else { x.to_bits() })
+                        }
+                        Value(ValueInner::Str(x)) => seen_s.index(x.as_str()).1,
                         _ => seen_s.index("").1,
                     };
                     if new {
@@ -1185,18 +1211,18 @@ impl<'h> Run<'h> {
                     .into_iter()
                     .zip(elems)
                     .filter_map(|(k, e)| match k {
-                        Value::Str(s) => Some((s, e)),
+                        Value(ValueInner::Str(s)) => Some((s, e)),
                         _ => None,
                     })
                     .collect();
-                Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+                Ok(Value(ValueInner::Map(Rc::new(MapVal::from_written(es)))))
             }
             _ => {
                 // countBy
                 let mut seen = Distinct::new();
                 let mut counts: Vec<(Str<'h>, u64)> = Vec::new();
                 for k in &keys {
-                    if let Value::Str(s) = k {
+                    if let Value(ValueInner::Str(s)) = k {
                         let (i, new) = seen.index(s.as_str());
                         if new {
                             counts.push((s.clone(), 0));
@@ -1208,9 +1234,9 @@ impl<'h> Run<'h> {
                 self.alloc(1 + 2 * g)?;
                 let es: Vec<(Str<'h>, Value<'h>)> = counts
                     .into_iter()
-                    .map(|(s, c)| (s, Value::Num(c as f64)))
+                    .map(|(s, c)| (s, Value(ValueInner::Num(c as f64))))
                     .collect();
-                Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+                Ok(Value(ValueInner::Map(Rc::new(MapVal::from_written(es)))))
             }
         }
     }
@@ -1225,7 +1251,9 @@ impl<'h> Run<'h> {
             "keys" => {
                 self.alloc(1 + n)?;
                 Ok(Value::list(
-                    es.into_iter().map(|(k, _)| Value::Str(k)).collect(),
+                    es.into_iter()
+                        .map(|(k, _)| Value(ValueInner::Str(k)))
+                        .collect(),
                 ))
             }
             "values" => {
@@ -1237,10 +1265,10 @@ impl<'h> Run<'h> {
                 Ok(Value::list(
                     es.into_iter()
                         .map(|(k, v)| {
-                            Value::Map(Rc::new(MapVal(vec![
-                                (Str::Lent("key"), Value::Str(k)),
+                            Value(ValueInner::Map(Rc::new(MapVal(vec![
+                                (Str::Lent("key"), Value(ValueInner::Str(k))),
                                 (Str::Lent("value"), v),
-                            ])))
+                            ]))))
                         })
                         .collect(),
                 ))
@@ -1264,7 +1292,15 @@ impl<'h> Run<'h> {
         let mut out: Vec<Value<'h>> = Vec::with_capacity(n.min(256));
         for i in 0..n {
             let e = self.next_element(recv, i, span)?;
-            out.push(self.call2(&f, name, i, e, Value::Num(i as f64), measure, span)?);
+            out.push(self.call2(
+                &f,
+                name,
+                i,
+                e,
+                Value(ValueInner::Num(i as f64)),
+                measure,
+                span,
+            )?);
         }
         self.alloc(1 + out.len() as u64)?;
         Ok(Value::list(out))
@@ -1283,7 +1319,7 @@ impl<'h> Run<'h> {
     #[inline(never)]
     fn lib_walk(&mut self, args: &[Arg<'h>], span: Range, measure: u32) -> R<'h, Value<'h>> {
         const NAME: &str = "walk";
-        let root = self.val(args, 0).unwrap_or(Value::Null);
+        let root = self.val(args, 0).unwrap_or(Value(ValueInner::Null));
         let f = self.lam(args, 1, span)?;
         let f = self.callback(f);
         let mut out: Vec<Value<'h>> = Vec::new();
@@ -1325,7 +1361,7 @@ impl<'h> Run<'h> {
                 NAME,
                 index,
                 node,
-                Value::Num(depth as f64),
+                Value(ValueInner::Num(depth as f64)),
                 measure + d,
                 span,
             )?;
@@ -1355,7 +1391,15 @@ impl<'h> Run<'h> {
         let mut out: Vec<Value<'h>> = Vec::new();
         for i in 0..n {
             let e = self.next_element(recv, i, span)?;
-            let r = self.call2(&f, name, i, e.dup(), Value::Num(i as f64), measure, span)?;
+            let r = self.call2(
+                &f,
+                name,
+                i,
+                e.dup(),
+                Value(ValueInner::Num(i as f64)),
+                measure,
+                span,
+            )?;
             keep_if(&mut out, e, r);
         }
         self.alloc(1 + out.len() as u64)?;
@@ -1390,9 +1434,17 @@ impl<'h> Run<'h> {
             let arg = if keep {
                 e.dup()
             } else {
-                std::mem::replace(&mut e, Value::Null)
+                std::mem::replace(&mut e, Value(ValueInner::Null))
             };
-            let r = self.call2(&f, name, i, arg, Value::Num(i as f64), measure, span)?;
+            let r = self.call2(
+                &f,
+                name,
+                i,
+                arg,
+                Value(ValueInner::Num(i as f64)),
+                measure,
+                span,
+            )?;
             if let Some(v) = self.each_result(op, name, r, e, &mut g, span)? {
                 return Ok(v);
             }
@@ -1426,11 +1478,13 @@ impl<'h> Run<'h> {
                     .ok_or_else(|| self.limit(super::ALLOCATION_EXCEEDED, None))?;
                 g.out.push(r);
             }
-            Each::Some if r.truthy() => return Ok(Some(Value::Bool(true))),
-            Each::Every if !r.truthy() => return Ok(Some(Value::Bool(false))),
+            Each::Some if r.truthy() => return Ok(Some(Value(ValueInner::Bool(true)))),
+            Each::Every if !r.truthy() => return Ok(Some(Value(ValueInner::Bool(false)))),
             Each::Find if r.truthy() => return Ok(Some(e)),
             // `counted` is the index of the element: one more for each miss.
-            Each::FindIndex if r.truthy() => return Ok(Some(Value::Num(g.counted as f64))),
+            Each::FindIndex if r.truthy() => {
+                return Ok(Some(Value(ValueInner::Num(g.counted as f64))))
+            }
             Each::FindIndex => {
                 g.counted += 1;
                 release(r);
@@ -1487,10 +1541,10 @@ impl<'h> Run<'h> {
                 }
                 Ok(Value::list(flat))
             }
-            Each::Some => Ok(Value::Bool(false)),
-            Each::Every => Ok(Value::Bool(true)),
-            Each::Find | Each::FindIndex => Ok(Value::Null),
-            Each::Count => Ok(Value::Num(g.counted as f64)),
+            Each::Some => Ok(Value(ValueInner::Bool(false))),
+            Each::Every => Ok(Value(ValueInner::Bool(true))),
+            Each::Find | Each::FindIndex => Ok(Value(ValueInner::Null)),
+            Each::Count => Ok(Value(ValueInner::Num(g.counted as f64))),
             Each::SortBy => self.sorted_by_keys(name, n, g.keys, g.out, args, span),
             Each::GroupBy => self.grouped_by_keys(n, g.keys, g.out),
         }
@@ -1530,7 +1584,8 @@ impl<'h> Run<'h> {
         let mut idx: Vec<usize> = (0..n).collect();
         // F7 6.3: `"desc"` is a stable sort in descending
         // order of the keys.
-        let desc = matches!(self.val(args, 1), Some(Value::Str(d)) if d.as_str() == "desc");
+        let desc =
+            matches!(self.val(args, 1), Some(Value(ValueInner::Str(d))) if d.as_str() == "desc");
         if desc {
             idx.sort_by(|&a, &b| cmp(&keys[b], &keys[a]));
         } else {
@@ -1552,7 +1607,9 @@ impl<'h> Run<'h> {
         let mut seen = Distinct::new();
         let mut groups: Vec<(Str<'h>, Vec<Value<'h>>)> = Vec::new();
         for (k, e) in keys.iter().zip(out.iter()) {
-            let Value::Str(ks) = k else { continue };
+            let Value(ValueInner::Str(ks)) = k else {
+                continue;
+            };
             let (i, new) = seen.index(ks.as_str());
             if new {
                 groups.push((ks.clone(), Vec::new()));
@@ -1565,7 +1622,7 @@ impl<'h> Run<'h> {
             .into_iter()
             .map(|(k, list)| (k, Value::list(list)))
             .collect();
-        Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+        Ok(Value(ValueInner::Map(Rc::new(MapVal::from_written(es)))))
     }
 
     /// `reduce`: for each element, 2 steps, then the call with the
@@ -1582,10 +1639,17 @@ impl<'h> Run<'h> {
         let n = recv.len().unwrap_or(0);
         let f = self.lam(args, 0, span)?;
         let f = self.callback(f);
-        let mut acc = self.val(args, 1).unwrap_or(Value::Null);
+        let mut acc = self.val(args, 1).unwrap_or(Value(ValueInner::Null));
         for i in 0..n {
             let e = self.next_element(recv, i, span)?;
-            acc = self.call3(&f, name, i, [acc, e, Value::Num(i as f64)], measure, span)?;
+            acc = self.call3(
+                &f,
+                name,
+                i,
+                [acc, e, Value(ValueInner::Num(i as f64))],
+                measure,
+                span,
+            )?;
         }
         Ok(acc)
     }
@@ -1606,7 +1670,7 @@ impl<'h> Run<'h> {
                 for i in 0..n {
                     let e = self.read(recv.elem(i), span)?;
                     match e {
-                        Value::Num(x) => xs.push(x),
+                        Value(ValueInner::Num(x)) => xs.push(x),
                         other => {
                             let f = self.element(name, &other, span);
                             return self.scan_failed(i + 1, f);
@@ -1623,7 +1687,7 @@ impl<'h> Run<'h> {
                         }
                     };
                 }
-                Ok(Value::Num(t))
+                Ok(Value(ValueInner::Num(t)))
             }
             "min" | "max" | "sort" | "unique" => {
                 let xs = self.ordered_scan(name, recv, span)?;
@@ -1643,7 +1707,7 @@ impl<'h> Run<'h> {
                                 best = Some(v);
                             }
                         }
-                        Ok(best.unwrap_or(Value::Null))
+                        Ok(best.unwrap_or(Value(ValueInner::Null)))
                     }
                     "sort" => {
                         self.charge(nn + log2_ceil(nn) * (nn + s))?;
@@ -1659,10 +1723,10 @@ impl<'h> Run<'h> {
                         let keep: Vec<bool> = xs
                             .iter()
                             .map(|v| match v {
-                                Value::Num(x) => {
+                                Value(ValueInner::Num(x)) => {
                                     seen_n.insert(if *x == 0.0 { 0 } else { x.to_bits() })
                                 }
-                                Value::Str(t) => seen_s.index(t.as_str()).1,
+                                Value(ValueInner::Str(t)) => seen_s.index(t.as_str()).1,
                                 _ => false,
                             })
                             .collect();
@@ -1697,7 +1761,7 @@ impl<'h> Run<'h> {
                         return self.scan_failed(i + 1, missing("key"));
                     };
                     let k = self.read(k, span)?;
-                    let Value::Str(ks) = k else {
+                    let Value(ValueInner::Str(ks)) = k else {
                         let f = fail("wrong-kind", "key", span, vec![("found", value_p(&k))]);
                         return self.scan_failed(i + 1, f);
                     };
@@ -1709,7 +1773,7 @@ impl<'h> Run<'h> {
                 let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
                 self.charge(n as u64 + s)?;
                 self.alloc(1 + 2 * n as u64)?;
-                Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+                Ok(Value(ValueInner::Map(Rc::new(MapVal::from_written(es)))))
             }
             "flat" => {
                 let mut k = 0usize;
@@ -1734,14 +1798,14 @@ impl<'h> Run<'h> {
             }
             "indexOf" => {
                 // Each comparison charges as `x in xs` does (`e`).
-                let x = self.val(args, 0).unwrap_or(Value::Null);
+                let x = self.val(args, 0).unwrap_or(Value(ValueInner::Null));
                 for i in 0..n {
                     let e = self.read(recv.elem(i), span)?;
                     if self.in_elem(&x, &e, span)? {
-                        return Ok(Value::Num(i as f64));
+                        return Ok(Value(ValueInner::Num(i as f64)));
                     }
                 }
-                Ok(Value::Null)
+                Ok(Value(ValueInner::Null))
             }
             "reverse" => {
                 self.charge(n as u64)?;
@@ -1750,14 +1814,14 @@ impl<'h> Run<'h> {
             }
             "first" | "last" => {
                 if n == 0 {
-                    return Ok(Value::Null);
+                    return Ok(Value(ValueInner::Null));
                 }
                 let i = if name == "first" { 0 } else { n - 1 };
                 self.read(recv.elem(i), span)
             }
             "slice" => {
                 let num = |v: Option<Value<'h>>| match v {
-                    Some(Value::Num(x)) => Some(x),
+                    Some(Value(ValueInner::Num(x))) => Some(x),
                     _ => None,
                 };
                 let (a, b) = positions(
@@ -1779,7 +1843,7 @@ impl<'h> Run<'h> {
                 for i in 0..n {
                     let e = self.read(recv.elem(i), span)?;
                     match e {
-                        Value::Str(s) => parts.push(s),
+                        Value(ValueInner::Str(s)) => parts.push(s),
                         other => {
                             let f = self.element(name, &other, span);
                             return self.scan_failed(i + 1, f);

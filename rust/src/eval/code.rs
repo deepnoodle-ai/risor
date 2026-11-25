@@ -17,7 +17,7 @@ use super::{Arg, Run, R};
 use crate::compile::{Place, Res};
 use crate::source::Range;
 use crate::syntax::ast::{Ast, BinaryOp, NodeId, NodeKind, TemplatePart};
-use crate::value::{release, Str, Value};
+use crate::value::{release, Str, Value, ValueInner};
 use std::sync::Arc;
 
 /// The closure of a node.
@@ -224,15 +224,15 @@ fn node(
     Some(match ast.kind(id) {
         NodeKind::Number { value } => {
             let v = *value;
-            mk(move |_| Ok(Value::Num(v)))
+            mk(move |_| Ok(Value(ValueInner::Num(v))))
         }
         NodeKind::Bool { value } => {
             let v = *value;
-            mk(move |_| Ok(Value::Bool(v)))
+            mk(move |_| Ok(Value(ValueInner::Bool(v))))
         }
-        NodeKind::Null => mk(|_| Ok(Value::Null)),
+        NodeKind::Null => mk(|_| Ok(Value(ValueInner::Null))),
         NodeKind::String { .. } => mk(move |r| match r.ast.kind(id) {
-            NodeKind::String { value, .. } => Ok(Value::Str(Str::Lent(value))),
+            NodeKind::String { value, .. } => Ok(Value(ValueInner::Str(Str::Lent(value)))),
             _ => Err(r.internal(span)),
         }),
         NodeKind::Ident { .. } => match res[id.index()] {
@@ -304,7 +304,7 @@ fn node(
                         let v = x(r)?;
                         let found = r.in_scalars(&v, &items, units);
                         release(v);
-                        Ok(Value::Bool(found? == (op == BinaryOp::In)))
+                        Ok(Value(ValueInner::Bool(found? == (op == BinaryOp::In))))
                     })
                 }
                 op @ (BinaryOp::In | BinaryOp::NotIn) if literal_list(ast, y_id).is_some() => {
@@ -318,7 +318,7 @@ fn node(
                         let found = r.in_literal(&v, &items, span);
                         release(v);
                         let found = found?;
-                        Ok(Value::Bool(found == (op == BinaryOp::In)))
+                        Ok(Value(ValueInner::Bool(found == (op == BinaryOp::In))))
                     })
                 }
                 op => operator(ast, res, place, code, op, x_id, y_id, span),
@@ -343,7 +343,7 @@ fn node(
             let Res::Constant(v) = res[id.index()] else {
                 return None;
             };
-            mk(move |_| Ok(Value::Num(v)))
+            mk(move |_| Ok(Value(ValueInner::Num(v))))
         }
         NodeKind::Member { .. }
         | NodeKind::Index { .. }
@@ -401,7 +401,7 @@ fn node(
                     };
                     match next {
                         Ok(Some(nv)) => v = nv,
-                        Ok(None) => return Ok(Value::Null),
+                        Ok(None) => return Ok(Value(ValueInner::Null)),
                         Err(f) => return Err(f),
                     }
                 }
@@ -591,7 +591,7 @@ fn operator(
         let short = lit.len() < 64;
         return mk(move |r| {
             let v = x(r)?;
-            if let Value::Str(s) = &v {
+            if let Value(ValueInner::Str(s)) = &v {
                 let s = s.as_str();
                 let sz = if short {
                     0
@@ -602,12 +602,12 @@ fn operator(
                 let equal = crate::value::str_eq(s, &lit);
                 release(v);
                 charged?;
-                return Ok(Value::Bool(equal == eq));
+                return Ok(Value(ValueInner::Bool(equal == eq)));
             }
             let NodeKind::String { value, .. } = r.ast.kind(y) else {
                 return Err(r.internal(span));
             };
-            r.operate(op, v, Value::Str(Str::Lent(value)), span)
+            r.operate(op, v, Value(ValueInner::Str(Str::Lent(value))), span)
         });
     }
     macro_rules! num {
@@ -616,17 +616,17 @@ fn operator(
         };
     }
     match op {
-        BinaryOp::Add => num!(|p, q| number::add(p, q).ok().map(Value::Num)),
-        BinaryOp::Sub => num!(|p, q| number::sub(p, q).ok().map(Value::Num)),
-        BinaryOp::Mul => num!(|p, q| number::mul(p, q).ok().map(Value::Num)),
-        BinaryOp::Div => num!(|p, q| number::div(p, q).ok().map(Value::Num)),
-        BinaryOp::Rem => num!(|p, q| number::rem(p, q).ok().map(Value::Num)),
-        BinaryOp::Lt => num!(|p, q| Some(Value::Bool(p < q))),
-        BinaryOp::Le => num!(|p, q| Some(Value::Bool(p <= q))),
-        BinaryOp::Gt => num!(|p, q| Some(Value::Bool(p > q))),
-        BinaryOp::Ge => num!(|p, q| Some(Value::Bool(p >= q))),
-        BinaryOp::Eq => num!(|p, q| Some(Value::Bool(p == q))),
-        BinaryOp::Ne => num!(|p, q| Some(Value::Bool(p != q))),
+        BinaryOp::Add => num!(|p, q| number::add(p, q).ok().map(|x| Value(ValueInner::Num(x)))),
+        BinaryOp::Sub => num!(|p, q| number::sub(p, q).ok().map(|x| Value(ValueInner::Num(x)))),
+        BinaryOp::Mul => num!(|p, q| number::mul(p, q).ok().map(|x| Value(ValueInner::Num(x)))),
+        BinaryOp::Div => num!(|p, q| number::div(p, q).ok().map(|x| Value(ValueInner::Num(x)))),
+        BinaryOp::Rem => num!(|p, q| number::rem(p, q).ok().map(|x| Value(ValueInner::Num(x)))),
+        BinaryOp::Lt => num!(|p, q| Some(Value(ValueInner::Bool(p < q)))),
+        BinaryOp::Le => num!(|p, q| Some(Value(ValueInner::Bool(p <= q)))),
+        BinaryOp::Gt => num!(|p, q| Some(Value(ValueInner::Bool(p > q)))),
+        BinaryOp::Ge => num!(|p, q| Some(Value(ValueInner::Bool(p >= q)))),
+        BinaryOp::Eq => num!(|p, q| Some(Value(ValueInner::Bool(p == q)))),
+        BinaryOp::Ne => num!(|p, q| Some(Value(ValueInner::Bool(p != q)))),
         _ => {
             let (x, y) = (child(code, x), child(code, y));
             mk(move |r| {
@@ -650,7 +650,7 @@ where
             mk(move |$r| {
                 let v = $v;
                 let w = $w;
-                if let (Value::Num(p), Value::Num(q)) = (&v, &w) {
+                if let (Value(ValueInner::Num(p)), Value(ValueInner::Num(q))) = (&v, &w) {
                     if let Some(z) = f(*p, *q) {
                         std::mem::forget(v);
                         std::mem::forget(w);
@@ -663,15 +663,19 @@ where
         };
     }
     match (a, b) {
-        (Operand::Slot(s), Operand::Num(c)) => body!(r, r.slots[r.at(s)].dup(), Value::Num(c)),
+        (Operand::Slot(s), Operand::Num(c)) => {
+            body!(r, r.slots[r.at(s)].dup(), Value(ValueInner::Num(c)))
+        }
         (Operand::Slot(s), Operand::Slot(t)) => {
             body!(r, r.slots[r.at(s)].dup(), r.slots[r.at(t)].dup())
         }
         (Operand::Slot(s), Operand::Code(y)) => body!(r, r.slots[r.at(s)].dup(), y(r)?),
-        (Operand::Code(x), Operand::Num(c)) => body!(r, x(r)?, Value::Num(c)),
+        (Operand::Code(x), Operand::Num(c)) => body!(r, x(r)?, Value(ValueInner::Num(c))),
         (Operand::Code(x), Operand::Slot(t)) => body!(r, x(r)?, r.slots[r.at(t)].dup()),
-        (Operand::Num(c), Operand::Slot(t)) => body!(r, Value::Num(c), r.slots[r.at(t)].dup()),
-        (Operand::Num(c), Operand::Code(y)) => body!(r, Value::Num(c), y(r)?),
+        (Operand::Num(c), Operand::Slot(t)) => {
+            body!(r, Value(ValueInner::Num(c)), r.slots[r.at(t)].dup())
+        }
+        (Operand::Num(c), Operand::Code(y)) => body!(r, Value(ValueInner::Num(c)), y(r)?),
         (a, b) => {
             let x = into_code(a);
             let y = into_code(b);
@@ -682,7 +686,7 @@ where
 
 fn into_code(a: Operand) -> Code {
     match a {
-        Operand::Num(c) => mk(move |_| Ok(Value::Num(c))),
+        Operand::Num(c) => mk(move |_| Ok(Value(ValueInner::Num(c)))),
         Operand::Slot(s) => mk(move |r| Ok(r.slots[r.at(s)].dup())),
         Operand::Code(c) => c,
     }

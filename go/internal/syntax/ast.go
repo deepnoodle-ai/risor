@@ -80,6 +80,7 @@ type Pattern interface {
 
 type base struct {
 	span  Span
+	outer Span // span including outermost parentheses, or zero when none
 	depth int
 }
 
@@ -88,6 +89,30 @@ func (b *base) Span() Span { return b.span }
 
 // Depth returns the levels of nesting open at the node's first token.
 func (b *base) Depth() int { return b.depth }
+
+func (b *base) outerSpan() Span {
+	if b.outer.End > 0 {
+		return b.outer
+	}
+	return b.span
+}
+
+func (b *base) setOuterSpan(s Span) { b.outer = s }
+
+// Outer returns n's span including any outermost parentheses around it, or
+// n.Span() when n is not parenthesized.
+func Outer(n Node) Span {
+	if o, ok := n.(interface{ outerSpan() Span }); ok {
+		return o.outerSpan()
+	}
+	return n.Span()
+}
+
+func setOuter(n Node, s Span) {
+	if o, ok := n.(interface{ setOuterSpan(Span) }); ok {
+		o.setOuterSpan(s)
+	}
+}
 
 // Program is a whole text: const lines, type lines and one expression.
 // Types holds the type lines of package F16 in the order of the text; a type

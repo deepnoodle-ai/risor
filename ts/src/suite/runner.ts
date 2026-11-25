@@ -8,8 +8,31 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { buildEnv, childEnv, conform, conformAll, conformDiagnostic, execute, executeEntry, executeEntryRecord, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
-import type { Analysis, Entry } from "../host/api.ts";
+import {
+  buildEnv,
+  childEnv,
+  conform,
+  conformAll,
+  conformDiagnostic,
+  envClassifier,
+  envDeclaredType,
+  envExpectedType,
+  envOf,
+  envTypeOfText,
+  execute,
+  executeEntry,
+  executeEntryRecord,
+  HostError,
+  jsonText,
+  newExpr,
+  newTemplate,
+  printSignature,
+  programMissing,
+  programSource,
+  RisorError,
+  tryCompile,
+} from "../host/api.ts";
+import type { Analysis, Entry, Expr } from "../host/api.ts";
 import { lineSpanOf } from "../host/error.ts";
 import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedType } from "../host/api.ts";
@@ -430,9 +453,9 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
   // Step 2: declare.
   const unmatched: Unmatched[] = [];
   let env: Env | undefined;
-  const cls = () => env!.classifier;
+  const cls = () => envClassifier(env!);
   const base = ctx.base;
-  const be = base?.environment;
+  const be = base === undefined ? undefined : envOf(base);
   // 03 3.10.4: a stub with no type keeps the base environment's signature.
   const baseSig = (sig: SigNode | undefined) => (sig === undefined || be === undefined ? undefined : printSignature(sig, be.opaque, be.named));
   const opaque: Record<string, OpaqueType> = {};
@@ -471,10 +494,10 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     if (c.template !== undefined) {
       const t = parseTemplateText(c.source, sourceLimit);
       if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
-      input = new Expr(t.template.source, templateProgram(t.template, c.template));
+      input = newExpr(t.template.source, templateProgram(t.template, c.template));
     }
     compiled = tryCompile(env, input, { check: checker, expected, entryExpected: c.entryReturns }, sourceLimit);
-    if (c.load === true) loadType = env.expectedType(expected!);
+    if (c.load === true) loadType = envExpectedType(env, expected!);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return done({ kind: "failure", phase: "declare", diagnostics: declared(x) });
@@ -491,7 +514,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
   };
   // Step 5: run (or Call stage when `entry` is set, f16 12.10 item 4).
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
-  if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
+  if (programMissing(compiled.program).size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...programMissing(compiled.program)].sort(), env };
   // f09 2.2: the fixture test, between steps 4 and 5.
   if (testFixtures) {
     const f = fixtureTest(c, env);
@@ -507,25 +530,25 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     if (o.ok) return { ...done({ kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
     const phase = o.diagnostics[0].phase;
     return {
-      ...done({ kind: "failure", phase, diagnostics: o.diagnostics, source: compiled.program.source, usage: phase === "run" ? o.usage : undefined, ...typeInfo }),
+      ...done({ kind: "failure", phase, diagnostics: o.diagnostics, source: programSource(compiled.program), usage: phase === "run" ? o.usage : undefined, ...typeInfo }),
       fixtureTested: testFixtures,
     };
   }
   const o = execute(compiled.program, varFn);
   // f10 10.2 item 4: step 5a, the conformance function on the value of a load, with a maximum of 1.
   if (o.ok && loadType !== null) {
-    const fs = conformAllWalk(o.value, loadType, env.classifier, 1);
+    const fs = conformAllWalk(o.value, loadType, envClassifier(env), 1);
     if (fs.length > 0) {
       const f = fs[0];
-      const { trace: _, ...d } = conformDiagnostic(f, env.classifier) as Diagnostic & { trace?: unknown };
-      return { ...done({ kind: "failure", phase: "run", diagnostics: [d], source: compiled.program.source, usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
+      const { trace: _, ...d } = conformDiagnostic(f, envClassifier(env)) as Diagnostic & { trace?: unknown };
+      return { ...done({ kind: "failure", phase: "run", diagnostics: [d], source: programSource(compiled.program), usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
     }
   }
   return {
     ...done(
       o.ok
         ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
-        : { kind: "failure", phase: o.diagnostic.phase, diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.diagnostic.phase === "run" ? o.usage : undefined, ...typeInfo },
+        : { kind: "failure", phase: o.diagnostic.phase, diagnostics: [o.diagnostic], source: programSource(compiled.program), usage: o.diagnostic.phase === "run" ? o.usage : undefined, ...typeInfo },
     ),
     fixtureTested: testFixtures,
   };
@@ -533,13 +556,14 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
 
 /** The fixture test (f09 2): vars, then functions, then methods, each in code point order; the first failure. */
 function fixtureTest(c: Case, env: Env): { path: (string | number)[]; message: string } | null {
-  const e = env.environment;
+  const e = envOf(env);
+  const cls = envClassifier(env);
   const test = (value: Json, t: Type, place: (string | number)[]) => {
     // Each value is one call of the conformance function, with its own count (f04 7.3).
-    const f = conformWalk(hostValue(value), t, freeCtx(env.classifier));
+    const f = conformWalk(hostValue(value), t, freeCtx(cls));
     if (f === null) return null;
     // A limit (f04 7.3, f17 12.7) has its own message and no path.
-    return { path: [...place, ...f.path], message: conformDiagnostic(f, env.classifier).message };
+    return { path: [...place, ...f.path], message: conformDiagnostic(f, cls).message };
   };
   for (const k of Object.keys(c.vars ?? {}).sort(compareText)) {
     const t = e.variableTypes.get(k);
@@ -883,11 +907,11 @@ export function analysisOf(c: Case): { ok: true; report: Analysis; source: Sourc
   if (c.template !== undefined) {
     const t = parseTemplateText(c.source, sourceLimit);
     if (!t.ok) return t;
-    return { ok: true, report: new Template(t.template).analyze(c.template), source: t.template.source };
+    return { ok: true, report: newTemplate(t.template).analyze(c.template), source: t.template.source };
   }
   const p = parse(c.source, sourceLimit);
   if (!p.ok) return p;
-  return { ok: true, report: new Expr(p.source, p.program).analyze(), source: p.source };
+  return { ok: true, report: newExpr(p.source, p.program).analyze(), source: p.source };
 }
 
 function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
@@ -942,7 +966,7 @@ function compare(c: Case, o: Outcome): Difference[] {
       try {
         // f17 12.6 item 5: a name that is no opaque type of the case is an atom, compared by its spelling.
         const atoms = new Map<string, Ref>();
-        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOfText(ex.type, atoms), CURRENT_ENV.typeOfText(o.type, atoms));
+        same = o.type != null && CURRENT_ENV !== null && typeEqual(envTypeOfText(CURRENT_ENV, ex.type, atoms), envTypeOfText(CURRENT_ENV, o.type, atoms));
       } catch {
         same = false;
       }
@@ -958,7 +982,7 @@ function compare(c: Case, o: Outcome): Difference[] {
         if (foundType === null || CURRENT_ENV === null) return false;
         try {
           const atoms = new Map<string, Ref>();
-          return typeEqual(CURRENT_ENV.typeOfText(wantText, atoms), CURRENT_ENV.typeOfText(foundType.toString(), atoms));
+          return typeEqual(envTypeOfText(CURRENT_ENV, wantText, atoms), envTypeOfText(CURRENT_ENV, foundType.toString(), atoms));
         } catch {
           return false;
         }
@@ -1627,7 +1651,7 @@ export function programCaseFile(text: string, dir: string): CaseFile {
   const o = execute(compiled.program);
   if (!o.ok) return bad(`the program fails: ${o.diagnostic.code}: ${o.diagnostic.message}`);
   // 5.3: from the value to the JSON. A function cannot be data.
-  const cls = env.classifier;
+  const cls = envClassifier(env);
   let error: string | null = null;
   const walk = (x: unknown, depth: number): Json => {
     x = readHost(x);
@@ -1716,7 +1740,7 @@ export function assistOutcome(c: Case): { ok: true; completion?: CompletionResul
   let env: Env;
   try {
     env = buildEnv({ version: c.version, varRecord: c.env, opaque, opaqueNames: c.opaque ?? [], functions, without: c.removed, groups: c.groups, namedTypes: c.types as NamedType[] | undefined });
-    if (c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
+    if (c.returns !== undefined && c.returns !== "condition") envDeclaredType(env, c.returns);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return { ok: false, diagnostics: declared(x) };

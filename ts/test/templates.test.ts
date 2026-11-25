@@ -5,7 +5,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, parse, parseTemplate, RisorError } from "../src/host/api.ts";
+import { createEnv, exprProgram, parse, parseTemplate, RisorError } from "../src/host/api.ts";
 import { tryCheck } from "./helpers.ts";
 
 const env = createEnv({ varRecord: "{pr: {number: int}, name: string, xs: int[]}" });
@@ -38,7 +38,8 @@ describe("f02 2: templates", () => {
     const t = parseTemplate("a ${{ pr.number + 1 }} b ${{ name }}");
     assert.equal(env.compile(t.part(0)!).run(vars), 43);
     assert.equal(env.compile(t.part(1)!).run(vars), "Ann");
-    assert.deepEqual(t.part(1)!.program.span, { start: 29, end: 33 });
+    assert.deepEqual(exprProgram(t.part(1)!).span, { start: 29, end: 33 });
+    assert.equal(t.part(1)!.text, "name");
     assert.equal(t.part(2), undefined);
   });
   test("a parse error is a RisorError of phase parse", () => {

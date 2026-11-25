@@ -6,7 +6,7 @@
 
 import type * as A from "../syntax/ast.ts";
 import type { Env, Expected } from "../host/api.ts";
-import { printSignature } from "../host/api.ts";
+import { envAssistCheck, envDocOf, envExpectedType, envOf, printSignature } from "../host/api.ts";
 import { ParseError } from "../syntax/diagnostic.ts";
 import { lexCut } from "../syntax/lexer.ts";
 import { parse, parseTokens } from "../syntax/parser.ts";
@@ -499,7 +499,7 @@ export function complete(env: Env, text: string, pos: Position, returns?: Expect
     if (prev !== undefined && prev.kind === "punct" && (prev.text === "." || prev.text === "?.")) return result([]);
     return result(envNames(env, new Set()));
   }
-  const { resolution, check } = env.assistCheck(prog, returns);
+  const { resolution, check } = envAssistCheck(env, prog, returns);
   const ctx = new Context(env, prog, resolution, check, returns);
   if (holeString !== null) ctx.holeQuote = holeString.quote;
   return result(ctx.candidates(hole, holeString !== null));
@@ -527,7 +527,7 @@ function inComment(tail: string): boolean {
 
 /** The names of the environment alone (f12 3.6 items 4 to 6). */
 function envNames(env: Env, taken: Set<string>): Candidate[] {
-  const e = env.environment;
+  const e = envOf(env);
   const out: Candidate[] = [];
   const seen = new Set(taken);
   const add = (c: Candidate) => {
@@ -661,7 +661,7 @@ class Context {
   }
 
   private members(m: A.Member): Candidate[] {
-    const e = this.env.environment;
+    const e = envOf(this.env);
     const recv = m.x;
     // A namespace (f12 3.7 item 4).
     if (recv.kind === "Ident" && !recv.parens && this.res.refs.get(recv) === undefined) {
@@ -701,7 +701,7 @@ class Context {
   }
 
   private types(hole: Token, inLine: boolean): Candidate[] {
-    const e = this.env.environment;
+    const e = envOf(this.env);
     // f16 7.2 item 1: with the names of the type lines that end before the hole. In a type
     // line's type, every line of the repaired program, its own included (f17 12.8 item 3).
     const lines = this.prog.types.filter((l) => (inLine ? l.span.start <= hole.start : l.span.end <= hole.start)).map((l) => l.name);
@@ -832,13 +832,14 @@ class Context {
           break;
         }
         case "Call": {
-          const f = this.env.environment.functions.get(n.namespace === null ? n.name : `${n.namespace}.${n.name}`);
+          const e = envOf(this.env);
+          const f = e.functions.get(n.namespace === null ? n.name : `${n.namespace}.${n.name}`);
           n.args.forEach((a, i) => {
             let pt: Type | null = null;
             if (f !== undefined && f.sig.params[i] !== undefined) {
               // The parameter's type, when it holds no type variable: a name no environment declares.
               try {
-                pt = fromNode(f.sig.params[i].type as import("../types/typetext.ts").TypeNode, { opaque: this.env.environment.opaque, named: this.env.environment.named });
+                pt = fromNode(f.sig.params[i].type as import("../types/typetext.ts").TypeNode, { opaque: e.opaque, named: e.named });
               } catch {
                 pt = null;
               }
@@ -867,7 +868,7 @@ function listElems(t: Type): Type[] {
 
 function safeExpected(env: Env, e: Expected): Type | null {
   try {
-    return env.expectedType(e);
+    return envExpectedType(env, e);
   } catch {
     return null;
   }
@@ -956,13 +957,13 @@ export function hover(env: Env, text: string, pos: Position, returns?: Expected,
     prog = repair(ts, progSrc);
   }
   if (prog === null) return null;
-  const { resolution, check } = env.assistCheck(prog, returns);
+  const { resolution, check } = envAssistCheck(env, prog, returns);
   return hoverRecord(env, prog, resolution, check, { start: ws, end: we }, src);
 }
 
 /** Package F16: a hover on a type name, or on the name of a type line (f16 7.3). */
 function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: Source): HoverResult | null {
-  const e = env.environment;
+  const e = envOf(env);
   const same = (s: Span) => s.start === word.start && s.end === word.end;
   // f17 12.8 item 2: a recursive type is printed by its unfolding.
   // f16 11.7: the doc of a type line is its description; of an opaque type, its Doc; else null.
@@ -978,7 +979,7 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
   const fromEnv = (name: string): HoverResult | null => {
     const n = e.named.get(name);
     if (n !== undefined) return rec(n, null, name);
-    if (e.opaque.has(name)) return rec(opaque(name), null, name, env.docOf("opaque", name));
+    if (e.opaque.has(name)) return rec(opaque(name), null, name, envDocOf(env, "opaque", name));
     return null;
   };
   // f16 7.3 items 1 and 2: the name of a type line stands for what the line declares.
@@ -1025,7 +1026,7 @@ function typeHover(env: Env, prog: A.Program, res: Resolution, word: Span, src: 
 function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResult, word: Span, src: Source): HoverResult | null {
   const th = typeHover(env, prog, res, word, src);
   if (th !== null) return th;
-  const e = env.environment;
+  const e = envOf(env);
   const ls = (s: Span) => src.lineSpan(s);
   const same = (s: Span) => s.start === word.start && s.end === word.end;
   const tp = (x: object) => {
@@ -1111,7 +1112,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         }
         const host = e.functions.get(full);
         if (host !== undefined) {
-          out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), env.docOf("function", full));
+          out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), envDocOf(env, "function", full));
           break;
         }
         const lib = FUNCTIONS.get(full) ?? GROUP_FUNCTIONS.get(full);
@@ -1129,7 +1130,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
         if (target !== undefined) {
           const full = `${(n.x as A.Ident).name}.${n.name}`;
           const host = e.functions.get(full);
-          if (host !== undefined) out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), env.docOf("function", full));
+          if (host !== undefined) out = rec("function", tp(n), printSignature(host.sig, e.opaque, e.named), envDocOf(env, "function", full));
           else {
             const lib = GROUP_FUNCTIONS.get(full);
             out = rec("function", tp(n), lib?.record.signature ?? null, lib === undefined ? null : (GROUP_DOCS.get(full) ?? null));
@@ -1158,7 +1159,7 @@ function hoverRecord(env: Env, prog: A.Program, res: Resolution, chk: CheckResul
               const md = e.methods.get(`${o}.${n.name}`);
               if (md !== undefined) {
                 signature = printSignature(md.sig, e.opaque, e.named);
-                doc = env.docOf("method", `${o}.${n.name}`);
+                doc = envDocOf(env, "method", `${o}.${n.name}`);
                 break;
               }
             }

@@ -29,6 +29,13 @@ import {
   renderJSON,
   renderLine,
   RisorError,
+  SOURCE_LIMIT,
+  STEP_CHECK,
+  STEP_CONFORM,
+  STEP_DECLARE,
+  STEP_DECODE,
+  STEP_PARSE,
+  STEP_RUN,
   taggedUnionType,
   typeAny,
   typeFromSchema,
@@ -57,12 +64,15 @@ function thrown(f: () => unknown): RisorError {
 describe("E.2: the root exports the surface and nothing else", () => {
   test("the value exports", () => {
     assert.deepEqual(Object.keys(risor).sort(), [
-      "Analysis", "Env", "Expr", "HostError", "LoadError", "Program", "RisorError", "Template", "Type",
+      "Analysis", "Env", "Expr", "HostError", "LoadError", "Program", "RisorError", "SOURCE_LIMIT",
+      "STEP_CHECK", "STEP_CONFORM", "STEP_DECLARE", "STEP_DECODE", "STEP_PARSE", "STEP_RUN", "Template", "Type",
       "conform", "conformAll", "createEnv", "decode", "descriptionText", "exactRecordType", "format", "formatTemplate",
       "join", "jsonText", "listType", "literalType", "loadValue", "mapType", "nullable", "opaqueTypeNamed",
       "parse", "parseTemplate", "recordType", "renderDetail", "renderJSON", "renderLine", "schemaOf", "schemaText", "taggedUnionType", "truthy",
       "typeAny", "typeBool", "typeFloat", "typeFromSchema", "typeInt", "typeNever", "typeNull", "typeString", "unionType",
     ]);
+    assert.equal(SOURCE_LIMIT, 1_048_576);
+    assert.deepEqual([STEP_DECLARE, STEP_PARSE, STEP_CHECK, STEP_RUN, STEP_CONFORM, STEP_DECODE], [0, 1, 2, 3, 4, 5]);
   });
 });
 
@@ -131,7 +141,19 @@ describe("E.4: programs", () => {
     assert.equal(x.analyze().json(), '{"names":["x"],"refs":[{"name":"x","path":[],"span":[1,1,1,2]}],"calls":[],"literal":false,"segments":null}');
     assert.equal(thrown(() => parse("1 +")).phase, "parse");
     const [call] = parse("g(x => f(x), 2)").analyze().calls.filter((c) => c.name === "g");
-    assert.deepEqual([call.args[0], call.args[1]?.text, call.argSpans, call.inLambda], [undefined, "g(x => f(x), 2)", [S(1, 3, 1, 12), S(1, 14, 1, 15)], false]);
+    assert.deepEqual([call.args[0], call.args[1]?.text, call.argSpans, call.inLambda], [undefined, "2", [S(1, 3, 1, 12), S(1, 14, 1, 15)], false]);
+    assert.equal(parse("  // note\n x + 1 ").text, "x + 1");
+    assert.equal(parse("1 + 2;").text, "1 + 2");
+    assert.equal(parse("  1 + 2 ; ").text, "1 + 2");
+    assert.equal(parse("(1 + 2);").text, "(1 + 2)");
+    assert.equal(parse("((1 + 2));").text, "((1 + 2))");
+    assert.equal(parse("const a = 1; a;").text, "const a = 1; a");
+    assert.equal(parse("const a = 1; (a + 1);").text, "const a = 1; (a + 1)");
+    assert.equal(parse("type Id = int; const a: Id = 1; a;").text, "type Id = int; const a: Id = 1; a");
+    assert.equal(parse("export const f = (x: int) => x;").text, "export const f = (x: int) => x;");
+    assert.equal(parse("  // note\nexport const f = (x: int) => x;  ").text, "export const f = (x: int) => x;");
+    assert.equal(parse("f((a + 1))").analyze().calls[0]?.args[0]?.text, "(a + 1)");
+    assert.equal(parseTemplate("${{(a + 1)}}").part(0)?.text, "(a + 1)");
     assert.equal(parse("g(x => f(x))").analyze().calls.find((c) => c.name === "f")?.inLambda, true);
   });
   test("check gives a Type and the sites; a failure is thrown with line spans", () => {
@@ -172,8 +194,14 @@ describe("E.5: templates", () => {
       { kind: "part", span: S(1, 14, 1, 22) },
     ]);
     const env = createEnv({});
+    assert.equal(t.part(0)?.text, "1");
+    assert.equal(t.part(1)?.text, "2");
     assert.equal(env.compile(t.part(1)!).run(), 2);
     assert.equal(t.part(2), undefined);
+    // Compiling a part still reports diagnostics at spans in the whole template text.
+    const badPart = parseTemplate("a ${{ 1 }}\nb ${{ missing }}").part(1)!;
+    assert.equal(badPart.text, "missing");
+    assert.deepEqual(thrown(() => env.check(badPart)).diagnostics[0].span, S(2, 7, 2, 14));
     assert.equal(env.compile(t.program("string")).run(), "a 1 b 2");
     assert.equal(formatTemplate("${{1+1}}"), "${{ 1 + 1 }}");
   });
@@ -209,6 +237,11 @@ describe("E.7: the structural type API", () => {
     assert.ok(rec.rest()!.equal(typeAny));
     assert.equal(rec.isExact(), false);
     assert.equal(nullable(rec).isNullable(), true);
+    assert.equal(typeAny.isNullable(), true);
+    assert.equal(typeNull.isNullable(), true);
+    assert.equal(typeInt.isNullable(), false);
+    assert.equal(typeNever.isNullable(), false);
+    assert.equal(literalType().isNullable(), false);
     assert.ok(nullable(rec).nonNull().equal(rec));
     assert.deepEqual(unionType(typeString, typeNull, typeInt).alternatives().map(String), ["null", "int", "string"]);
     assert.deepEqual(literalType("b", "a").literals(), ["a", "b"]);

@@ -3,8 +3,8 @@
 
 use super::case::Case;
 use super::run::{
-    capture, case_lines, failure_entry, failure_json, form, path_json, result_json, run_case,
-    whole_columns, Captured, Difference, Verdict,
+    capture, failure_entry, failure_json, form, path_json, result_json, run_case, whole_columns,
+    Captured, Difference, Verdict,
 };
 use crate::diag::{code, Phase};
 use crate::json::Json;
@@ -589,9 +589,4 @@ pub fn update_text(text: &str, cases: &[Case]) -> (Vec<(String, Verdict)>, Optio
         out.replace_range(a..b, &f);
     }
     (results, Some(out))
-}
-
-/// The report lines of an update (4.8).
-pub fn update_report(results: &[(String, Verdict)]) -> String {
-    results.iter().map(|(n, v)| case_lines(n, v)).collect()
 }

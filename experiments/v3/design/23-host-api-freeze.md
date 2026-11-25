@@ -1,10 +1,10 @@
 # Risor v3 design 23: host API review and freeze (issue #706)
 
-Status: API-freeze review for the owner. No breaking rename, removal or
-behaviour change has been made; this document records the exact public surface
-of the Go, TypeScript and Rust bindings, verifies option defaults against
-`spec/core/03-host.md`, and lists the concrete items proposed for owner
-approval before 3.0.0 freezes.
+Status: **P1–P9 approved by the owner and applied**; P10 kept as-is; P11
+(`~standard` on TypeScript `Type`) tracked with #696. This document records
+the public surface of the Go, TypeScript and Rust bindings, verifies option
+defaults against `spec/core/03-host.md`, and tracks the pre-freeze cleanups
+for 3.0.0.
 
 **Provenance (measured).** Audited on branch `feat/v3-host-api-freeze` based on
 `main` at `3dedfb3b` (which includes #722 F16 slice D2: `Entries`, `Call`,
@@ -74,23 +74,24 @@ approval before 3.0.0 freezes.
    passes with zero warnings, and `RUSTFLAGS="-W missing_docs"` reports zero
    warnings across the entire `risor` root API and `risor-derive`.
 
-## 2. Proposed pre-freeze changes for owner approval
+## 2. Pre-freeze changes (owner decisions)
 
-None of the changes below have been applied yet. Each awaits an owner decision.
+The owner approved P1 through P9; all nine have been implemented across Go,
+TypeScript and Rust. P10 is kept as-is and P11 remains tracked with #696.
 
-| ID | Binding | Finding | Proposed change | Effort |
+| ID | Binding | Finding | Resolution | Status |
 | --- | --- | --- | --- | --- |
-| P1 | Go / TS / Rust | `typeAny.isNullable()` returns `false` in TS (`ts/src/host/type.ts:247`, whose doc comment explicitly says "`any` is not nullable by this test"), while Go (`go/typeapi.go:323`) and Rust (`rust/src/typ.rs:354`) explicitly document and return `true`. Neither `spec/` nor `05-host-api.md` settles the rule for `any`. | Owner decision: settle one rule across all three bindings and document it in `05-host-api.md`. Recommendation: align TS to `true` (matching Go and Rust: `null` is a value of `any`), or align Go and Rust to `false` if `isNullable` means an explicit `null` alternative. | S |
-| P2 | Rust | `Type::equal` returns `true` for two invalid types with the same message (`rust/src/typ.rs:394`), disagreeing with Go (`false`) and TS (`false`). | Return `false` in `Type::equal` whenever either type is invalid (matching Go and TS). | S |
-| P3 | Go / TS / Rust | `Expr.Text()` on `Template.part(i)` and `CallSite.args[i]` returns the part's slice in Go (`go/risor.go:141`), but the whole source text in TS (`ts/src/host/api.ts:1673`) and Rust (`rust/src/syntax/parser.rs:34`). | Settle one rule across all three. Recommendation: keep Go's behaviour (return the part's own slice, matching `go/risor.go` doc) or align Go to whole text if spans-into-`text` matters more. | S |
-| P4 | Rust | `risor::testing` exports 6 `pub mod` submodules (`case`, `helper`, `program`, `run`, `tools`, `update`) and ~35 internal suite-runner functions/types. | Restrict `risor::testing` to the F9 helper surface (`load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError`), moving suite-only items behind `#[doc(hidden)]` or `pub(crate)` (and matching Go `risortest` / TS `risor/testing`). | M |
-| P5 | Rust | `Value<'h>` is a `pub enum` exposing internal variants (`Str(Str<'h>)`, `List(Rc<ListVal<'h>>)`, `Map(Rc<MapVal<'h>>)`, `BadNum`) and internal methods (`owns`, `dup`, `str`, `list`) whose signatures name private types. | Make `Value<'h>` an opaque `pub struct` (keeping `to_data`, `from_data`, `is_null`, `as_str`, `len`, `is_empty`, `elem`, `field`, plus public scalar accessors `as_bool`, `as_f64`, `as_opaque`), or confirm keeping `pub enum Value` with `#[doc(hidden)]` internal variants. | M |
-| P6 | TS | `Env`, `Program`, `Expr` and `Template` expose 20+ public members marked `/** Internal */` (plus public constructors) that appear in `.d.ts` files and autocomplete. | Move internal state to a private `WeakMap` or module-internal symbol accessor (as `type.ts` already does with `static { ... }` closures for `#t` / `#cls`), leaving only the Part E surface in `.d.ts`. | M |
-| P7 | Rust | `load_value`, `load` and `load_with` take no `RunOptions`, so Rust hosts cannot cancel a config load; Go takes `ctx` and TS takes `options.signal`. | Add `cancel: Option<Arc<AtomicBool>>` (or `run: RunOptions`) to `LoadOptions`, and pass it through `load_value` / `load_with`. | S |
-| P8 | Rust | `SchemaOptions::from_names`, `Diagnostic::bare`, `Error::one` and `Expr::has_result` are public in Rust without Go/TS counterparts. | Make `SchemaOptions::from_names`, `Diagnostic::bare` and `Error::one` `pub(crate)` (not needed by hosts). Either add `Expr.HasResult()` / `expr.hasResult` to Go and TS, or make `Expr::has_result` `pub(crate)`. | S |
-| P9 | TS / Rust | Small constant parity gaps: TS does not export `SOURCE_LIMIT` (Go `MaxSource`, Rust `SOURCE_LIMIT`); TS and Rust do not export load-step constants (Go `StepDeclare`..`StepDecode`). | Export `SOURCE_LIMIT` from `@deepnoodle/risor` (or document as Go/Rust-only). Decide whether to add load-step constants to TS/Rust or keep raw `0..5`. | S |
-| P10 | TS | `LoadOptions.expected` is required in TS, whereas Go `LoadValue` allows omitting it (skipping step 4) and Rust `LoadOptions::default()` uses `Expected::None` (`any`). | Keep as-is (F10 config loads normally specify a type) or make `expected?` optional in TS to match Go/Rust. | S |
-| P11 | TS | Standard Schema `~standard` on `Type` (R202, already listed in `22-ratification-brief.md` Part A). | Confirm keeping `~standard` (tracked with #696). | — |
+| P1 | Go / TS / Rust | `typeAny.isNullable()` returned `false` in TS while Go and Rust returned `true`. | Aligned TS `typeAny.isNullable()` to `true` (matching Go and Rust: `null` is a value of `any`, `false` for invalid types) and documented the rule in `05-host-api.md` E.7. | Done |
+| P2 | Rust | `Type::equal` returned `true` for two invalid types with the same message, disagreeing with Go (`false`) and TS (`false`). | Updated Rust `Type::equal` to return `false` whenever either type is invalid, with regression tests. | Done |
+| P3 | Go / TS / Rust | `Expr.Text()` on `Template.part(i)` and `CallSite.args[i]` returned the part's slice in Go, but the whole source text in TS and Rust. | Aligned TS `Expr.text` and Rust `Expr::text()` to Go's part-slice behaviour (the program's own span without surrounding whitespace or comments), keeping full-source spans for diagnostics, and documented the rule in `05-host-api.md` E.5. | Done |
+| P4 | Rust | `risor::testing` exported 6 `pub mod` submodules and ~35 internal suite-runner functions/types. | Narrowed `risor::testing` to the 8 host-facing F9 items (`load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError`), made submodules and internal fields `pub(crate)`, and moved `outcome` binary hooks under `#[doc(hidden)] risor::__private`. | Done |
+| P5 | Rust | `Value<'h>` was a `pub enum` exposing internal representation variants and methods naming private types. | Converted `Value<'h>` into an opaque `pub struct` backed by `pub(crate) enum ValueInner<'h>`, with public accessors (`is_null`, `is_list`, `is_map`, `as_bool`, `as_f64`, `as_i64`, `as_str`, `as_opaque`, `len`, `is_empty`, `elem`, `field`, `for_each_key`, `from_data`, `to_data`) and `pub(crate)` internals. | Done |
+| P6 | TS | `Env`, `Program`, `Expr`, `Template` and `Analysis` exposed public fields, methods and constructors marked `/** Internal */` in `.d.ts` files. | Moved all internal state and constructors to `#` private fields, `private constructor` and `static { ... }` module-internal closures; `.d.ts` files expose zero `/** Internal */` members on those classes. | Done |
+| P7 | Rust | `load_value`, `load` and `load_with` took no `RunOptions`, so Rust hosts could not cancel a config load. | Added `pub run: RunOptions` to `LoadOptions`, updated `load_with` to take `LoadOptions`, and wired `run` through `load_value`, `load` and `load_with`, with cancellation tests. | Done |
+| P8 | Rust | `SchemaOptions::from_names`, `Diagnostic::bare`, `Error::one` and `Expr::has_result` were public in Rust without Go/TS counterparts. | Made all four `pub(crate)` (`Program::has_result` stays public, matching Go and TS). | Done |
+| P9 | TS / Rust | Constant parity gaps: TS did not export `SOURCE_LIMIT`; TS and Rust did not export load-step constants (`StepDeclare`..`StepDecode`). | Exported `SOURCE_LIMIT` and `STEP_DECLARE`..`STEP_DECODE` from `@deepnoodle/risor`, and `STEP_DECLARE`..`STEP_DECODE` from `risor`. | Done |
+| P10 | TS | `LoadOptions.expected` is required in TS, whereas Go `LoadValue` and Rust `LoadOptions::default()` allow omitting it. | Kept as-is: F10 config loads normally specify an expected type. | Kept |
+| P11 | TS | Standard Schema `~standard` on `Type` (R202, already listed in `22-ratification-brief.md` Part A). | Tracked with #696. | Open (#696) |
 
 ## 3. Side-by-side parity matrix
 
@@ -113,8 +114,8 @@ no counterpart (either by E.1 row 5 or flagged in section 2).
 | Description | `env.Describe()` (`[]byte`), `FromDescription(data)` | `env.describe()` (`Description`), `descriptionText(d)`, `Env.fromDescription(d)` | `env.describe()` (`Data`), `env.description_text()`, `Env::from_description(s)` |
 | Parse type text | `env.ParseType(text)` | `env.parseType(text)` | `env.parse_type(text)` |
 | **Programs & Check** | | | |
-| Parse & source limit | `Parse(src, opts...)`, `SourceLimit`, `MaxSource` | `parse(src, opts?)`, `SourceOptions{sourceLimit}` | `parse(src)`, `parse_with(src, opts)`, `ParseOptions`, `SOURCE_LIMIT` |
-| Parsed program | `*Expr`: `Text()`, `Analyze()` | `Expr`: `text`, `analyze()` | `Expr`: `text()`, `analyze()`, `has_result()` |
+| Parse & source limit | `Parse(src, opts...)`, `SourceLimit`, `MaxSource` | `parse(src, opts?)`, `SourceOptions{sourceLimit}`, `SOURCE_LIMIT` | `parse(src)`, `parse_with(src, opts)`, `ParseOptions`, `SOURCE_LIMIT` |
+| Parsed program | `*Expr`: `Text()`, `Analyze()` | `Expr`: `text`, `analyze()` | `Expr`: `text()`, `analyze()` |
 | Analysis | `Analysis` (`Names`, `Refs`, `Calls`, `Literal`, `IsLiteral`, `Segments`, `Template`), `CallsOf(...)`, `JSON()` | `Analysis` (`names`, `refs`, `calls`, `literal`, `segments`), `callsOf(...)`, `json()` | `Analysis` (`names`, `refs`, `calls`, `literal`, `segments`), `calls_of(&[...])`, `json()` |
 | Expected result | `Expect`, `ExpectType`, `ExpectSchema`, `ExpectEntry`, `ExpectEntryType`, `ExpectEntrySchema`, `Condition`, `NoCheck` | `Expected`, `EntryExpected`, `CompileOptions{check, expected, entryExpected}` | `Expected::{None, Condition, text, schema, of}`, `CompileOptions{check, expected, entry_expected}` (`expect_entry*`) |
 | Check & compile | `env.Check(x, opts...)`, `env.Compile(x, opts...)` | `env.check(x, expected?, entryExpected?)`, `env.compile(x, opts?)` | `env.check(&x, &exp)`, `env.check_with(&x, &opts)`, `env.compile(&x, opts)` |
@@ -136,13 +137,13 @@ no counterpart (either by E.1 row 5 or flagged in section 2).
 | Structural `Type` | `Type`, `TypeKind`, `FieldType`, `TypeNever`..`TypeString`, 9 constructors, `Join`, 16 methods | `Type<T>`, `TypeKind`, `FieldType`, `typeNever`..`typeString`, 9 constructors, `join`, 15 methods + `~standard`, `Infer<X>` | `Type`, `TypeKind`, `FieldType`, `Type::NEVER`..`STRING`, 9 constructors, `join`, 15 methods |
 | JSON Schema | `TypeFromSchema(s, opts...)`, `SchemaOption` (`Closed`, `AbsentIsNull`, `DefaultsApplied`), `SchemaOf(t)` | `typeFromSchema(s, opts?)`, `SchemaOption`, `schemaOf(t)`, `schemaText(t)` | `type_from_schema(s, opts)`, `SchemaOptions`, `schema_of(&t)` |
 | Conformance | `Conform(v, t, opts...)`, `ConformAll(v, t, max, opts...)`, `ConformSteps(n)` | `conform(v, t, opts?)`, `conformAll(v, t, max, opts?)`, `ConformOptions` | `conform`, `conform_with`, `conform_all`, `conform_all_with`, `ConformOptions` |
-| Config load & decode | `Load[T]`, `LoadValue`, `Decode`, `LoadOption` (`LoadType`, `LoadSchema`, `LoadTypeOf`, `MaxFailures`), `LoadError`, `StepDeclare`..`StepDecode` | `loadValue`, `decode`, `LoadOptions`, `LoadError` | `load::<T>`, `load_with::<T>`, `load_value`, `decode::<T>`, `Decode`, `DecodeCx`, `LoadOptions`, `LoadError` |
+| Config load & decode | `Load[T]`, `LoadValue`, `Decode`, `LoadOption` (`LoadType`, `LoadSchema`, `LoadTypeOf`, `MaxFailures`), `LoadError`, `StepDeclare`..`StepDecode` | `loadValue`, `decode`, `LoadOptions`, `LoadError`, `STEP_DECLARE`..`STEP_DECODE` | `load::<T>`, `load_with::<T>`, `load_value`, `decode::<T>`, `Decode`, `DecodeCx`, `LoadOptions`, `LoadError`, `STEP_DECLARE`..`STEP_DECODE` |
 | Host-type reflection / derive | `TypeOf[T]`, `Opaque`, `TypedLayer(bool)`, `Func` (`Params`, `Signature`, `Reflective`), `Methods[T]` (`ForMethod`, `Rename`, `Skip`) | `Infer<X>` (compile-time only) | `type_of::<T>`, `#[derive(Host)]`, `Host`, `HostList`, `HostMap`, `View`, `Data`, `OpaqueRef`, `HostType`, `Opaque`, `OpaqueType`, `OptionLike`, `TypeCx`, `RecordType`, `TypeError` |
 | **Diagnostics & Tools** | | | |
 | Errors & diagnostics | `Error`, `Diagnostic`, `Phase` (`PhaseDeclare`..`PhaseRun`), `Pos`, `Span`, `TraceEntry` | `RisorError`, `Diagnostic`, `Phase`, `Pos`, `Span`, `TraceEntry` | `Error`, `Diagnostic`, `Phase`, `Pos`, `Span`, `TraceEntry`, `PathStep` |
 | Renderings | `RenderLine`, `RenderDetail`, `RenderJSON` | `renderLine`, `renderDetail`, `renderJSON` | `render_line`, `render_detail`, `render_json` |
 | Format / Assist | `Format`, `env.Complete`, `env.Hover`, `Completion`, `Candidate`, `Hover` | `format`, `env.complete`, `env.hover`, `Completion`, `Candidate`, `Hover`, plus `@deepnoodle/risor/tokens` | `format`, `format_with`, `env.complete`, `env.complete_with`, `env.hover`, `env.hover_with`, `Completion`, `Candidate`, `Hover` |
-| **Testing (separate entry point)** | `risortest`: `Run`, `Load`, `Parse`, `File`, `Case`, `Verdict`, `Diff`, `Origin`, `Option` (`Base`, `Filter`, `Sources`, `Update`, `Vars`) | `@deepnoodle/risor/testing`: `loadCaseFile`, `caseFile`, `caseFileText`, `defineCases`, `CaseFile`, `Case`, `Verdict`, `Difference`, `CaseOptions` | `risor::testing`: `load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError` (plus internal suite helpers; see P4) |
+| **Testing (separate entry point)** | `risortest`: `Run`, `Load`, `Parse`, `File`, `Case`, `Verdict`, `Diff`, `Origin`, `Option` (`Base`, `Filter`, `Sources`, `Update`, `Vars`) | `@deepnoodle/risor/testing`: `loadCaseFile`, `caseFile`, `caseFileText`, `defineCases`, `CaseFile`, `Case`, `Verdict`, `Difference`, `CaseOptions` | `risor::testing`: `load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError` |
 
 ## 4. Error types and codes
 
@@ -297,18 +298,18 @@ surface `go/cmd/risor` calls:
 Three public subpath entry points in `ts/package.json`: `"."`, `"./tokens"`,
 and `"./testing"`.
 
-#### Entry point `@deepnoodle/risor` (44 value exports, 39 type exports)
+#### Entry point `@deepnoodle/risor` (51 value exports, 39 type exports)
 
 - **Environment:**
   - Values: `createEnv`, `Env` (`static fromDescription`, `with`, `describe`,
-    `libraryNames`, `parseType`, `check`, `compile`, `complete`, `hover`;
-    internal fields flagged in P6), `descriptionText`.
+    `libraryNames`, `parseType`, `check`, `compile`, `complete`, `hover`),
+    `descriptionText`.
   - Types: `EnvOptions`, `WithOptions`, `LibraryNames`, `ChildOpaqueType`,
     `NamedType`, `Limits`, `Description`, `HostFunction`, `OpaqueType`.
 - **Programs & analysis:**
-  - Values: `parse`, `Expr` (`text`, `analyze`), `Analysis` (`names`, `refs`,
-    `calls`, `literal`, `segments`, `callsOf`, `json`), `Program`
-    (`checkResult`, `hasResult`, `entries`, `run`, `measure`, `call`,
+  - Values: `parse`, `SOURCE_LIMIT`, `Expr` (`text`, `analyze`), `Analysis`
+    (`names`, `refs`, `calls`, `literal`, `segments`, `callsOf`, `json`),
+    `Program` (`checkResult`, `hasResult`, `entries`, `run`, `measure`, `call`,
     `callMeasure`, `callRecord`, `callRecordMeasure`).
   - Types: `CallSite`, `Ref`, `Expected`, `EntryExpected`, `Entry`,
     `EntryParam`, `CheckResult`, `Site`, `CompileOptions`, `SourceOptions`,
@@ -328,7 +329,9 @@ and `"./testing"`.
     `typeString`, `listType`, `mapType`, `nullable`, `literalType`,
     `recordType`, `exactRecordType`, `unionType`, `taggedUnionType`,
     `opaqueTypeNamed`, `join`, `typeFromSchema`, `schemaOf`, `schemaText`,
-    `conform`, `conformAll`, `loadValue`, `decode`, `LoadError`.
+    `conform`, `conformAll`, `loadValue`, `decode`, `LoadError`,
+    `STEP_DECLARE`, `STEP_PARSE`, `STEP_CHECK`, `STEP_RUN`, `STEP_CONFORM`,
+    `STEP_DECODE`.
   - Types: `TypeKind`, `FieldType`, `Infer`, `ConformOptions`, `LoadOptions`,
     `SchemaOption`.
 - **Diagnostics & tools:**
@@ -347,11 +350,11 @@ and `"./testing"`.
 
 ### 6.3 Rust (`risor` + `risor-derive`)
 
-Crate root (`rust/src/lib.rs`) exports 97 items (+ `#[derive(Host)]` behind
+Crate root (`rust/src/lib.rs`) exports 103 items (+ `#[derive(Host)]` behind
 feature `derive`), one public module (`testing`), and `#[doc(hidden)] pub mod
 __private`.
 
-#### Crate root `risor` (97 items + `derive::Host`)
+#### Crate root `risor` (103 items + `derive::Host`)
 
 - **Environment (5):** `Env` (`builder`, `default`, `with`, `limits`,
   `parse_type`, `library_names`, `describe`, `description_text`,
@@ -363,23 +366,25 @@ __private`.
   `some_not_null`, `limits`, `build`), `Limits`, `LibraryNames`,
   `DescriptionError`.
 - **Programs & analysis (20):** `parse`, `parse_with`, `Expr` (`text`,
-  `analyze`, `has_result`), `ParseOptions`, `SOURCE_LIMIT`, `Analysis`
-  (`names`, `refs`, `calls`, `literal`, `segments`, `calls_of`, `json`),
-  `CallSite`, `Ref`, `Step`, `Expected` (`None`, `Condition`, `text`, `schema`,
-  `of`), `CompileOptions` (`check`, `expected`, `entry_expected`,
-  `expect_entry`, `expect_entry_type`, `expect_entry_schema`), `CheckResult`,
-  `Site`, `Entry`, `EntryParam`, `Program` (`has_result`, `entries`,
-  `check_result`, `run`, `run_with`, `measure`, `measure_with`, `call`,
-  `call_with`, `call_measure`, `call_measure_with`, `call_record`,
-  `call_record_with`, `call_record_measure`, `call_record_measure_with`),
-  `RunOptions`, `Usage`, `Vars`, `NoVars`.
+  `analyze`), `ParseOptions`, `SOURCE_LIMIT`, `Analysis` (`names`, `refs`,
+  `calls`, `literal`, `segments`, `calls_of`, `json`), `CallSite`, `Ref`,
+  `Step`, `Expected` (`None`, `Condition`, `text`, `schema`, `of`),
+  `CompileOptions` (`check`, `expected`, `entry_expected`, `expect_entry`,
+  `expect_entry_type`, `expect_entry_schema`), `CheckResult`, `Site`, `Entry`,
+  `EntryParam`, `Program` (`has_result`, `entries`, `check_result`, `run`,
+  `run_with`, `measure`, `measure_with`, `call`, `call_with`, `call_measure`,
+  `call_measure_with`, `call_record`, `call_record_with`,
+  `call_record_measure`, `call_record_measure_with`), `RunOptions`, `Usage`,
+  `Vars`, `NoVars`.
 - **Templates (7):** `parse_template`, `parse_template_with`, `Template`
   (`segments`, `is_single`, `part`, `program`, `analyze`), `TemplateMode`,
   `Segment`, `format_template`, `format_template_with`.
 - **Host calls & values (9):** `Call` (`charge`, `allocate`, `remaining`,
   `cancelled`), `Remaining`, `Stop`, `Data`, `HostError`, `OpaqueRef`, `Value`
-  (flagged in P5), `truthy`, `json_text`.
-- **Types, conformance & config (29):** `Type` (`NEVER`, `ANY`, `NULL`, `BOOL`,
+  (opaque `pub struct`: `from_data`, `to_data`, `is_null`, `is_list`,
+  `is_map`, `as_bool`, `as_f64`, `as_i64`, `as_str`, `as_opaque`, `len`,
+  `is_empty`, `elem`, `field`, `for_each_key`), `truthy`, `json_text`.
+- **Types, conformance & config (35):** `Type` (`NEVER`, `ANY`, `NULL`, `BOOL`,
   `INT`, `FLOAT`, `STRING`; `err`, `kind`, `elem`, `fields`, `field`, `rest`,
   `alternatives`, `variants`, `literals`, `tag`, `non_null`, `is_nullable`,
   `is_exact`, `opaque_name`, `fits`, `equal`, `Display`), `TypeKind`,
@@ -388,26 +393,21 @@ __private`.
   `opaque_type_named`, `join`, `type_from_schema`, `schema_of`,
   `SchemaOptions`, `conform`, `conform_with`, `conform_all`,
   `conform_all_with`, `ConformOptions`, `load`, `load_with`, `load_value`,
-  `LoadOptions`, `LoadError`, `decode`, `Decode`, `DecodeCx`.
+  `LoadOptions`, `LoadError`, `STEP_DECLARE`, `STEP_PARSE`, `STEP_CHECK`,
+  `STEP_RUN`, `STEP_CONFORM`, `STEP_DECODE`, `decode`, `Decode`, `DecodeCx`.
 - **Host-type conveniences (12 + derive):** `Host`, `HostList`, `HostMap`,
   `View`, `type_of`, `HostType`, `Opaque`, `OpaqueType`, `OptionLike`,
   `RecordType`, `TypeCx`, `TypeError`, plus `#[cfg(feature = "derive")] Host`
   (from `risor-derive`, supporting `#[risor(rename = "...")]`, `skip`,
   `absent_if_none`, `default`).
-- **Diagnostics & tools (15):** `Error` (`phase`, `diagnostics`, `one`,
-  `first`), `Diagnostic` (`phase`, `code`, `class`, `span`, `message`, `data`,
-  `path`, `trace`, `cause`; `trace()`, `bare()`), `Phase`, `Pos`, `Span`,
-  `TraceEntry`, `PathStep`, `format`, `format_with`, `render_line`,
-  `render_detail`, `render_json`, `Completion`, `Candidate`, `Hover`.
+- **Diagnostics & tools (15):** `Error` (`phase`, `diagnostics`, `first`),
+  `Diagnostic` (`phase`, `code`, `class`, `span`, `message`, `data`, `path`,
+  `trace`, `cause`; `trace()`), `Phase`, `Pos`, `Span`, `TraceEntry`,
+  `PathStep`, `format`, `format_with`, `render_line`, `render_detail`,
+  `render_json`, `Completion`, `Candidate`, `Hover`.
 
-#### Module `risor::testing` (host-facing surface + leaked internals in P4)
+#### Module `risor::testing` (8 items)
 
 - **Host-facing F9 API:** `load`, `from_text`, `CaseFile` (`cases`, `filter`,
-  `run`), `Case` (`run`), `Report` (`verdicts`, `names`, `text`,
+  `run`), `Case` (`name`, `run`), `Report` (`verdicts`, `names`, `text`,
   `updated_text`, `assert_ok`), `Verdict` (`label`), `Difference`, `FileError`.
-- **Leaked internal submodules/re-exports (proposed for removal in P4):**
-  `pub mod case`, `helper`, `program`, `run`, `tools`, `update`, and re-exports
-  `load_doc`, `load_doc_lax`, `load_file`, `load_file_lax`, `Expect`,
-  `case_env`, `case_files`, `check_only_file`, `outcome_line`, `run_case`,
-  `run_case_in`, `run_case_unchecked`, `run_file`, `run_file_with`,
-  `skipped_by_package`, `skipped_files`, `Counts`, `FileReport`.

@@ -4,7 +4,7 @@
 // `diagnostics` or `runner`. It prints `ok`, or it throws.
 
 import assert from "node:assert/strict";
-import { RisorError, createEnv, execute, format, formatTemplate, parse, parseTemplate, renderDetail, renderJSON, renderLine } from "../../src/host/api.ts";
+import { RisorError, createEnv, execute, exprProgram, format, formatTemplate, parse, parseTemplate, renderDetail, renderJSON, renderLine } from "../../src/host/api.ts";
 import { treeEqual } from "../../src/tools/format.ts";
 import { tokens } from "../../src/tools/tokens.ts";
 import { caseFile } from "../../src/testing.ts";
@@ -77,7 +77,7 @@ function run(f: FlatForm, n: number, source: string, check: boolean, what: strin
 function formatLaws(source: string, what: string): string {
   const text = through(what, () => format(source));
   assert.equal(through(`${what}, again`, () => format(text)), text, `${what}: formatted twice`);
-  assert.ok(through(`${what}, the trees`, () => treeEqual(parse(source).program, parse(text).program)), `${what}: the same tree`);
+  assert.ok(through(`${what}, the trees`, () => treeEqual(exprProgram(parse(source)), exprProgram(parse(text)))), `${what}: the same tree`);
   return text;
 }
 

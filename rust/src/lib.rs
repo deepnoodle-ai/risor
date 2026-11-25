@@ -61,6 +61,7 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
+#[cfg(test)]
 pub(crate) const PACKAGES: [u32; 17] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 16, 17, 19, 12];
 
 mod analysis;
@@ -121,7 +122,10 @@ pub use host::{Data, HostError, OpaqueRef};
 pub use value::Value;
 
 // E.7: types, conformance and config files.
-pub use config::{load, load_value, load_with, LoadError, LoadOptions};
+pub use config::{
+    load, load_value, load_with, LoadError, LoadOptions, STEP_CHECK, STEP_CONFORM, STEP_DECLARE,
+    STEP_DECODE, STEP_PARSE, STEP_RUN,
+};
 pub use decode::{decode, Decode, DecodeCx};
 pub use schema::SchemaOptions;
 pub use typ::{
@@ -154,5 +158,7 @@ pub use source::{Pos, Span};
 pub mod __private {
     pub use crate::json::{parse as parse_json, Json};
     pub use crate::math::eval as math_eval;
-    pub use crate::value::{eq_data, Kind};
+    pub use crate::testing::case::load_file_lax;
+    pub use crate::testing::run::outcome_line;
+    pub use crate::value::eq_data;
 }

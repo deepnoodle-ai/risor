@@ -8,7 +8,7 @@ use super::{fail, Run, R};
 use crate::messages::json_string;
 use crate::number;
 use crate::source::Range;
-use crate::value::{release, size, MapVal, Str, Value};
+use crate::value::{release, size, MapVal, Str, Value, ValueInner};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -44,7 +44,7 @@ impl<'h> Run<'h> {
                 let s = x.as_str().unwrap_or_default();
                 self.charge(size(s))?;
                 match parse_time(s) {
-                    Some(t) => Ok(Value::Num(t)),
+                    Some(t) => Ok(Value(ValueInner::Num(t))),
                     None => Err(fail(
                         "invalid-argument",
                         "not-a-time",
@@ -55,7 +55,7 @@ impl<'h> Run<'h> {
             }
             "time.format" => {
                 let t = match x {
-                    Value::Num(n) => n,
+                    Value(ValueInner::Num(n)) => n,
                     _ => 0.0,
                 };
                 let Some(text) = format_time(t) else {
@@ -82,12 +82,12 @@ impl<'h> Run<'h> {
                         vec![("text", json_string(s))],
                     )),
                     Some(None) => Err(self.entry_range(name, span)),
-                    Some(Some(v)) => Ok(Value::Num(v)),
+                    Some(Some(v)) => Ok(Value(ValueInner::Num(v))),
                 }
             }
             "math.sqrt" => {
                 let n = match x {
-                    Value::Num(n) => n,
+                    Value(ValueInner::Num(n)) => n,
                     _ => 0.0,
                 };
                 if n < 0.0 {
@@ -99,7 +99,7 @@ impl<'h> Run<'h> {
                     ));
                 }
                 let r = n.sqrt();
-                Ok(Value::Num(if r == 0.0 { 0.0 } else { r }))
+                Ok(Value(ValueInner::Num(if r == 0.0 { 0.0 } else { r })))
             }
             "base64.encode" => {
                 let s = x.as_str().unwrap_or_default();
@@ -418,9 +418,9 @@ impl<'a> JsonScan<'a> {
                         stack.pop();
                         u += 1;
                         if build {
-                            Value::Map(Rc::new(MapVal(Vec::new())))
+                            Value(ValueInner::Map(Rc::new(MapVal(Vec::new()))))
                         } else {
-                            Value::Null
+                            Value(ValueInner::Null)
                         }
                     } else {
                         if !self.eat(b'"') {
@@ -451,7 +451,7 @@ impl<'a> JsonScan<'a> {
                         if build {
                             Value::list(Vec::new())
                         } else {
-                            Value::Null
+                            Value(ValueInner::Null)
                         }
                     } else {
                         continue 'value;
@@ -466,19 +466,19 @@ impl<'a> JsonScan<'a> {
                     } else {
                         let w = self.string_weight()?;
                         u += 1 + w / 64;
-                        Value::Null
+                        Value(ValueInner::Null)
                     }
                 }
-                b't' if self.word(b"true") => Value::Bool(true),
-                b'f' if self.word(b"false") => Value::Bool(false),
-                b'n' if self.word(b"null") => Value::Null,
+                b't' if self.word(b"true") => Value(ValueInner::Bool(true)),
+                b'f' if self.word(b"false") => Value(ValueInner::Bool(false)),
+                b'n' if self.word(b"null") => Value(ValueInner::Null),
                 b'-' | b'0'..=b'9' => match self.number()? {
-                    Ok(n) => Value::Num(n),
+                    Ok(n) => Value(ValueInner::Num(n)),
                     Err(b) => {
                         if bad_number.is_none() {
                             bad_number = Some(b);
                         }
-                        Value::Null
+                        Value(ValueInner::Null)
                     }
                 },
                 _ => return None,
@@ -510,7 +510,7 @@ impl<'a> JsonScan<'a> {
                         v = if build {
                             Value::list(items)
                         } else {
-                            Value::Null
+                            Value(ValueInner::Null)
                         };
                     }
                     Some(Frame::Object { entries, keys, key }) => {
@@ -552,9 +552,9 @@ impl<'a> JsonScan<'a> {
                         u += 1 + 2 * keys.len() as u64;
                         v = if build {
                             entries.sort_unstable_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-                            Value::Map(Rc::new(MapVal(entries)))
+                            Value(ValueInner::Map(Rc::new(MapVal(entries))))
                         } else {
-                            Value::Null
+                            Value(ValueInner::Null)
                         };
                     }
                 }

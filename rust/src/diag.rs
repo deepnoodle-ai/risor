@@ -203,7 +203,7 @@ impl Diagnostic {
     }
 
     /// A diagnostic with no span, as a `declare` diagnostic is.
-    pub fn bare(phase: Phase, code: &'static str, message: impl Into<String>) -> Diagnostic {
+    pub(crate) fn bare(phase: Phase, code: &'static str, message: impl Into<String>) -> Diagnostic {
         Diagnostic {
             phase,
             code,
@@ -244,7 +244,7 @@ pub struct Error {
 
 impl Error {
     /// Build an error holding a single diagnostic.
-    pub fn one(d: Diagnostic) -> Error {
+    pub(crate) fn one(d: Diagnostic) -> Error {
         Error {
             phase: d.phase,
             diagnostics: vec![d],

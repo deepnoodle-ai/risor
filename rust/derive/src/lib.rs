@@ -594,7 +594,7 @@ impl{g_decl} ::risor::Decode for {name}{g_args} {where_decode} {{
         v: &::risor::Value<'_>,
         cx: &mut ::risor::DecodeCx,
     ) -> ::core::option::Option<Self> {{
-        if v.kind() != ::risor::__private::Kind::Map {{
+        if !v.is_map() {{
             cx.fail("the value is not a map");
             return ::core::option::Option::None;
         }}

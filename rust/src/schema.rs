@@ -33,7 +33,7 @@ pub struct SchemaOptions {
 impl SchemaOptions {
     /// The options named, as a case file writes them. A name that is not one
     /// of the three, or a name given twice, is an error.
-    pub fn from_names<S: AsRef<str>>(names: &[S]) -> Result<SchemaOptions, String> {
+    pub(crate) fn from_names<S: AsRef<str>>(names: &[S]) -> Result<SchemaOptions, String> {
         let mut o = SchemaOptions::default();
         for n in names {
             let flag = match n.as_ref() {

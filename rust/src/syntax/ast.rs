@@ -648,7 +648,7 @@ impl Ast {
                 result: Some(new_id[&top.0]),
                 types: Vec::new(),
             },
-            self.span(top),
+            self.node(top).outer,
             0,
         );
         ast.root = root;

@@ -3,6 +3,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { envOf } from "./host/api.ts";
 import type { Env } from "./host/api.ts";
 import { loadCaseFile as readCaseFile, validateCaseFile } from "./suite/casefile.ts";
 import type { Case as SuiteCase, CaseFile as SuiteFile, ReadOptions } from "./suite/casefile.ts";
@@ -164,7 +165,7 @@ function invalid(f: SuiteFile): asserts f is Extract<SuiteFile, { ok: true }> {
 }
 
 function readOptions(options: CaseOptions, update: boolean, dir: string): ReadOptions {
-  const e = options.base?.environment;
+  const e = options.base === undefined ? undefined : envOf(options.base);
   const declares = (name: string) => e !== undefined && (e.functions.has(name) || e.methods.has(name));
   return { noExpect: update, declares, read: options.read ?? ((ref) => readFileSync(join(dir, ...ref.split("/")), "utf8")) };
 }

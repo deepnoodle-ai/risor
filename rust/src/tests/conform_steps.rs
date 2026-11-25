@@ -98,7 +98,7 @@ fn the_options_give_the_limit() {
     let v16 = crate::value::from_view(View::List(&d16));
     assert!(crate::conform_with(&v16, &t16, &ConformOptions { steps: None }).is_ok());
     // A limit of 0 lets only any pass.
-    let one = crate::Value::Num(1.0);
+    let one = crate::Value::from_data(&crate::Data::Float(1.0));
     assert!(crate::conform_with(&one, &env.parse_type("any").unwrap(), &at(0)).is_ok());
     assert_eq!(
         crate::conform_with(&one, &env.parse_type("int").unwrap(), &at(0))

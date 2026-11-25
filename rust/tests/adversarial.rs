@@ -198,7 +198,7 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
     );
     let t0 = Instant::now();
     let got = p.run(&vars).unwrap();
-    assert!(matches!(got, risor::Value::Num(x) if x == 10_000.0));
+    assert_eq!(got.as_f64(), Some(10_000.0));
     assert!(
         t0.elapsed() < Duration::from_secs(2),
         "time.duration took {:?}",
@@ -227,7 +227,7 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
         Data::Str(format!("1.{}5s", "0".repeat(200_000))),
     );
     let (res, usage) = p_zero.measure(&huge_frac);
-    assert!(matches!(res.unwrap(), risor::Value::Num(x) if x == 1.0));
+    assert_eq!(res.unwrap().as_f64(), Some(1.0));
     assert_eq!(usage.allocated, 0);
 
     // Exact midpoint tiebreaking around 1 + 2^-53 (midpoint between 1.0 and 1.0 + 2^-52).
@@ -241,11 +241,9 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
     let eval_dur = |text: String| -> f64 {
         let mut m = BTreeMap::new();
         m.insert("s".into(), Data::Str(text));
-        let x = match p.run(&m).unwrap() {
-            risor::Value::Num(x) => x,
-            other => panic!("expected number, got {other:?}"),
-        };
-        x
+        let v = p.run(&m).unwrap();
+        v.as_f64()
+            .unwrap_or_else(|| panic!("expected number, got {v:?}"))
     };
     assert_eq!(
         eval_dur(format!("{mid_exact}s0.{}1s", "0".repeat(200_000))),
@@ -522,7 +520,7 @@ fn host_boundary_conformance_and_nested_remaining() {
     let mut neg_zero = BTreeMap::new();
     neg_zero.insert("x".into(), Data::Float(-0.0));
     let v = p.run(&neg_zero).unwrap();
-    assert!(matches!(v, risor::Value::Num(x) if x.to_bits() == 0.0f64.to_bits()));
+    assert!(matches!(v.as_f64(), Some(x) if x.to_bits() == 0.0f64.to_bits()));
 
     // ConformAll caps errors and enforces step limit.
     let big_bad = Data::List(vec![Data::Str("bad".into()); 10_000]);

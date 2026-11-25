@@ -5,7 +5,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createEnv, execute, HostError, jsonText, jsonTextOf, parse, renderJSON, renderLine, RisorError, truthy } from "../src/host/api.ts";
+import { createEnv, envClassifier, execute, HostError, jsonText, jsonTextOf, parse, renderJSON, renderLine, RisorError, truthy } from "../src/host/api.ts";
 import { Rendering } from "../src/eval/ops.ts";
 import { jsonString } from "../src/value/value.ts";
 import { tryCheck } from "./helpers.ts";
@@ -258,7 +258,7 @@ describe("opaque values (03 3.4.6)", () => {
   });
   test("cannot be rendered or written as JSON", () => {
     assert.equal(code(() => env.compile(parse("`${t}`"), { check: false }).run({ t, u: t })), "wrong-kind");
-    assert.equal(code(() => jsonTextOf([t], env.classifier)), "wrong-kind");
+    assert.equal(code(() => jsonTextOf([t], envClassifier(env))), "wrong-kind");
     assert.equal(env.compile(parse("type(t)"), { check: false }).run({ t, u: t }), "opaque");
   });
   test("a class instance that no opaque type declares is opaque", () => {

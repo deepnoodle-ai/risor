@@ -164,8 +164,9 @@ enum Value<'h> {
     `Vec` grew by pushes;
   - map (`1 + 2n` units): `Rc<MapVal>` is 16 bytes of counts, 24 bytes of `Vec`
     header, and `48 * n` bytes of `(Str, Value)` entries (24 bytes per unit);
-  - step: `Value::Num(f64)` is stored inline without heap boxing, so uncharged
-    arithmetic and library steps allocate 0 value bytes on the heap.
+  - step: `ValueInner::Num(f64)` inside the opaque `Value<'h>` struct is
+    stored inline without heap boxing, so uncharged arithmetic and library
+    steps allocate 0 value bytes on the heap.
 
 ### Host data, read in place
 

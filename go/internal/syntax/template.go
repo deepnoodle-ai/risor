@@ -221,8 +221,8 @@ func parsePart(pt part, src []rune, f *File) (e Node, err *Error) {
 	return e, nil
 }
 
-// ProgramOf is the program whose result is n, with n's span: a part of a
+// ProgramOf is the program whose result is n, with n's outer span: a part of a
 // template or an argument of a call, given alone (F2 3.6 item 5).
 func ProgramOf(n Node) *Program {
-	return &Program{base: base{span: n.Span()}, Result: n}
+	return &Program{base: base{span: Outer(n)}, Result: n}
 }
