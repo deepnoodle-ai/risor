@@ -55,6 +55,13 @@ describe("f02 3: analysis", () => {
     assert.equal(r.literal, false);
     assert.equal(r.segments, null);
   });
+  test("callsOf keeps the calls of the names given", () => {
+    const r = parse("geo.distance(a, b) + rate(a) + xs.map(x => rate(x))").analyze();
+    assert.deepEqual(r.callsOf("rate").map((c) => c.inLambda), [false, true]);
+    assert.deepEqual(r.callsOf("geo.distance", "rate").map((c) => c.name), ["geo.distance", "rate", "rate"]);
+    assert.deepEqual(r.callsOf("distance"), []);
+    assert.deepEqual(r.callsOf(), []);
+  });
   test("each argument of a call is a parsed program of its own; a lambda is not", () => {
     const r = parse("rate(order.total * 2, x => x)").analyze();
     const [arg, lam] = r.calls[0].args;

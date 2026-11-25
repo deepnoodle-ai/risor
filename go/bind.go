@@ -41,6 +41,16 @@ func (paramsOption) funcOption() {}
 // are a1, a2, and so on: Go keeps no parameter names at run time.
 func Params(names ...string) FuncOption { return paramsOption(append([]string(nil), names...)) }
 
+type signatureOption string
+
+func (signatureOption) funcOption() {}
+
+// Signature gives the signature as type text in place of the derived one,
+// as assigning Type after Func does: risor.Signature("(options: T[]) => T").
+// fn then supplies only the implementation. It is the way to declare a
+// variadic Go function: the signature's last parameter is rest.
+func Signature(text string) FuncOption { return signatureOption(text) }
+
 type forMethodOption struct {
 	goName string
 	opts   []FuncOption
@@ -83,8 +93,9 @@ type derivation struct {
 	errs, ifaceErrs []bindErr
 	// params is the count of parameters the Go function takes from a
 	// call: the arguments, without a receiver or a first *Call or
-	// context.Context.
+	// context.Context. A variadic last parameter counts as one.
 	params     int
+	variadic   bool
 	reflective bool
 }
 
@@ -110,14 +121,28 @@ func (f Function) Reflective() bool { return f.bind != nil && f.bind.reflective 
 type funcConfig struct {
 	names    []string
 	hasNames bool
+	sig      string
+	hasSig   bool
 }
 
 func (c *funcConfig) apply(opts []FuncOption) {
 	for _, o := range opts {
-		if p, ok := o.(paramsOption); ok {
-			c.names, c.hasNames = p, true
+		switch x := o.(type) {
+		case paramsOption:
+			c.names, c.hasNames = x, true
+		case signatureOption:
+			c.sig, c.hasSig = string(x), true
 		}
 	}
+}
+
+// typeOf is the Type of a Function from Func or Methods: the signature
+// that Signature gives, else the derived one.
+func (c *funcConfig) typeOf(b *derivation) string {
+	if c.hasSig {
+		return c.sig
+	}
+	return b.text
 }
 
 // Func declares a host function whose signature is derived from fn's Go
@@ -136,20 +161,23 @@ func (c *funcConfig) apply(opts []FuncOption) {
 // What cannot be derived is a declaration error, which NewEnv or With
 // reports:
 //
-//   - bad-type: a value that is not a Go function, a variadic function,
-//     other results, a *Call that is not first, a Go type that no row of
-//     F1 6.2 covers, and a Go interface type other than any, at any depth
-//     (error is the failure mark only as the last result);
+//   - bad-type: a value that is not a Go function, other results, a *Call
+//     that is not first, a Go type that no row of F1 6.2 covers, and a Go
+//     interface type other than any, at any depth (error is the failure
+//     mark only as the last result); a variadic function or an interface
+//     type only when the signature is derived;
 //   - bad-signature: a parameter of a Go function type (03-host.md 3.5.1
 //     item 3), and Params with the wrong count or a name that is not a
 //     Name.
 //
 // A Go interface type is refused so that a later declaration of opaque
 // interfaces (design 19-12) can give it a meaning. To use one, write the
-// signature: when the Type of a Function from Func or Methods is not the
-// derived text, that text is the signature, and fn supplies only the
-// implementation. It must have fn's count of parameters, none optional
-// and none rest. The same way narrows a derived signature, such as
+// signature with Signature, or assign Type after Func: when the Type of a
+// Function from Func or Methods is not the derived text, that text is the
+// signature, and fn supplies only the implementation. It must have fn's
+// count of parameters, none optional. Its last parameter is rest exactly
+// when fn is variadic: the rest arguments are passed to fn's ...T, each
+// converted to T. The same way narrows a derived signature, such as
 // Order | null to Order.
 //
 // At a call, each argument is converted to its Go parameter type: a value
@@ -195,7 +223,7 @@ func bindFunc(name string, fn any, opts []FuncOption, fast bool) Function {
 	if len(f.bind.errs) > 0 {
 		return f
 	}
-	f.Type = f.bind.text
+	f.Type = cfg.typeOf(f.bind)
 	if rv.IsNil() {
 		return f // no implementation: compile reports no-implementation
 	}
@@ -363,7 +391,7 @@ func bindMethod(fv reflect.Value, name string, cfg funcConfig, fast func(any, *a
 	if len(f.bind.errs) > 0 {
 		return f
 	}
-	f.Type = f.bind.text
+	f.Type = cfg.typeOf(f.bind)
 	fn := fv.Interface()
 	if impl := fast(fn, a); impl != nil {
 		f.Impl = impl
@@ -451,8 +479,11 @@ const (
 // receiver.
 func derive(b *derivation, a *adapter, ft reflect.Type, cfg funcConfig) {
 	if ft.IsVariadic() {
-		b.fail(diag.CodeBadType, "%v is variadic, and a variadic Go function has no derived signature", ft)
-		return
+		// Only the derived signature fails, like an interface type: a
+		// written signature with a rest parameter declares it.
+		b.variadic, a.variadic = true, true
+		b.ifaceErrs = append(b.ifaceErrs, bindErr{diag.CodeBadType, fmt.Sprintf(
+			"%v is variadic, and a variadic Go function has no derived signature: write one whose last parameter is rest, with risor.Signature", ft)})
 	}
 	n := ft.NumIn()
 	i := a.first
@@ -607,8 +638,9 @@ func deriveIn(d *deriver, t reflect.Type) (text string, err error) {
 // bound applies the derivation of a Function from Func or Methods when it is
 // declared: it reports what the derivation found. For a signature the host
 // wrote, it tests only that the signature has as many parameters as the Go
-// function, and that none is optional or rest; it does not compare the
-// types. It reports whether the declaration goes on.
+// function, that none is optional, and that the last is rest exactly when
+// the Go function is variadic; it does not compare the types. It reports
+// whether the declaration goes on.
 func (e *Env) bound(what string, f Function) bool {
 	b := f.bind
 	if b == nil {
@@ -633,11 +665,23 @@ func (e *Env) bound(what string, f Function) bool {
 	if err != nil {
 		return true // parseSig reports it
 	}
-	for _, p := range sig.Params {
-		if p.Optional || p.Rest {
-			e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: parameter %s is optional or rest, and the Go function takes every parameter", what, p.Name))
+	for i, p := range sig.Params {
+		last := i == len(sig.Params)-1
+		switch {
+		case p.Optional:
+			e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: parameter %s is optional, and the Go function takes every parameter", what, p.Name))
+			return false
+		case p.Rest && !b.variadic:
+			e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: parameter %s is rest, and the Go function is not variadic", what, p.Name))
+			return false
+		case b.variadic && last && !p.Rest:
+			e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: the Go function is variadic, and the last parameter, %s, is not rest", what, p.Name))
 			return false
 		}
+	}
+	if b.variadic && len(sig.Params) == 0 {
+		e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: the Go function is variadic, and the signature has no rest parameter", what))
+		return false
 	}
 	if len(sig.Params) != b.params {
 		e.errf(diag.CodeBadSignature, fmt.Sprintf("%s: the signature has %d parameters, and the Go function takes %d", what, len(sig.Params), b.params))
@@ -659,6 +703,9 @@ type adapter struct {
 	quick []reflect.Kind
 	lead  int
 	res   int
+	// variadic is set when the last Go parameter is ...T: the arguments
+	// from its place on are passed to it.
+	variadic bool
 }
 
 // quickKind gives the kind by which quickly converts to t: a bool, string
@@ -759,12 +806,20 @@ func (a *adapter) conv(args []any, i int, dst reflect.Value) error {
 		return nil
 	}
 	f := d.fails[0]
-	where := fmt.Sprintf("argument %d of %s", i-a.first+1, a.what)
+	n, path := i-a.first+1, f.Path
+	if a.variadic && i == len(a.in)-1 && len(path) > 0 {
+		// The rest arguments were gathered into one list: name the
+		// argument by its place in the call, not in that list.
+		if k, ok := path[0].(float64); ok {
+			n, path = n+int(k), path[1:]
+		}
+	}
+	where := fmt.Sprintf("argument %d of %s", n, a.what)
 	if i < a.first {
 		where = "the receiver of " + a.what
 	}
-	if len(f.Path) > 0 {
-		where += ", at " + strings.TrimPrefix(render.Path(f.Path), ".")
+	if len(path) > 0 {
+		where += ", at " + strings.TrimPrefix(render.Path(path), ".")
 	}
 	return &argError{msg: where + ": " + f.Message}
 }
@@ -831,6 +886,15 @@ func floatResult(f float64) any { return value.Num(f) }
 func (a *adapter) reflective(fv reflect.Value) Native {
 	nIn := len(a.in) + boolInt(a.lead != leadNone)
 	return func(c *Call, args []any) (any, error) {
+		if a.variadic {
+			// The rest arguments become one list, converted to the Go
+			// parameter's []T as any list argument is.
+			fixed := len(a.in) - 1
+			if len(args) < fixed {
+				return nil, fmt.Errorf("%s takes at least %d arguments, found %d", a.what, fixed-a.first, len(args)-a.first)
+			}
+			args = append(args[:fixed:fixed], append([]any{}, args[fixed:]...))
+		}
 		if len(args) != len(a.in) {
 			return nil, fmt.Errorf("%s takes %d arguments, found %d", a.what, len(a.in)-a.first, len(args)-a.first)
 		}
@@ -856,7 +920,12 @@ func (a *adapter) reflective(fv reflect.Value) Native {
 		if j < nIn {
 			in[j] = leadValue(a.lead, c)
 		}
-		out := fv.Call(in)
+		var out []reflect.Value
+		if a.variadic {
+			out = fv.CallSlice(in)
+		} else {
+			out = fv.Call(in)
+		}
 		switch a.res {
 		case resErr:
 			return nil, errorOf(out[0])

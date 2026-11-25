@@ -58,6 +58,39 @@
   }
  },
  {
+  "name": "failures, then the limit: the list ends with the limit's diagnostic, stated by its code",
+  "conform": {
+   "type": "int[]",
+   "value": [
+    1,
+    "a",
+    "b"
+   ],
+   "max": 3,
+   "limit": 3
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1
+   ],
+   "message": "expected int, found \"a\"",
+   "steps": 3,
+   "failures": [
+    {
+     "path": [
+      1
+     ],
+     "message": "expected int, found \"a\""
+    },
+    {
+     "code": "steps-exceeded",
+     "message": "the run needed more than its limit of 3 steps"
+    }
+   ]
+  }
+ },
+ {
   "name": "a value that conforms at the limit gives an empty list",
   "conform": {
    "type": "{a: int, b: string[]}",

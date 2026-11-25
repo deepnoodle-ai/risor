@@ -20,9 +20,12 @@ type Render struct {
 	Diagnostics []diag.Diagnostic
 }
 
-// Failure is one entry of failures in a conform result (F8 7.5).
+// Failure is one entry of failures in a conform result (F8 7.5): a
+// failure at Path, or, when Code is not empty, the limit diagnostic that
+// ends the list.
 type Failure struct {
 	Path    []any
+	Code    string
 	Message *string
 }
 
@@ -32,7 +35,7 @@ var (
 	renderDiagFields = set("phase", "code", "message", "class", "span", "path", "data", "trace")
 	renderingFields  = set("line", "detail", "json")
 	traceFields      = set("span", "name", "index")
-	failureEntry     = set("path", "message")
+	failureEntry     = set("path", "code", "message")
 )
 
 // renderings reads an object of F8 7.3.
@@ -246,7 +249,7 @@ func (v *validator) failures(x any, where string) ([]Failure, error) {
 		return nil, v.invalid("%s: failures is not a list", where)
 	}
 	out := []Failure{}
-	for _, e := range a {
+	for i, e := range a {
 		m, ok := e.(map[string]any)
 		if !ok {
 			return nil, v.invalid("%s: a failure is not an object", where)
@@ -254,15 +257,28 @@ func (v *validator) failures(x any, where string) ([]Failure, error) {
 		if err := v.checkFields(m, failureEntry, where+": failure"); err != nil {
 			return nil, err
 		}
-		p, ok := m["path"]
-		if !ok {
-			return nil, v.invalid("%s: a failure has no path", where)
+		p, hasPath := m["path"]
+		c, hasCode := m["code"]
+		var f Failure
+		switch {
+		case hasPath == hasCode:
+			return nil, v.invalid("%s: a failure has neither or both of path and code", where)
+		case hasCode:
+			s, ok := c.(string)
+			if !ok || !diag.LimitCodes[s] {
+				return nil, v.invalid("%s: a failure's code is not a limit code", where)
+			}
+			if i != len(a)-1 {
+				return nil, v.invalid("%s: a failure with a code is not the last", where)
+			}
+			f.Code = s
+		default:
+			ed, err := v.diagnostic(map[string]any{"code": "not-conforming", "path": p}, where)
+			if err != nil {
+				return nil, err
+			}
+			f.Path = ed.Path
 		}
-		ed, err := v.diagnostic(map[string]any{"code": "not-conforming", "path": p}, where)
-		if err != nil {
-			return nil, err
-		}
-		f := Failure{Path: ed.Path}
 		if x, ok := m["message"]; ok {
 			s, ok := x.(string)
 			if !ok {

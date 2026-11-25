@@ -231,6 +231,7 @@ no specification text, no suite case, nothing in TypeScript or Rust.
 | Helper | Gives |
 | --- | --- |
 | `risor.Func(name string, fn any, opts ...FuncOption) Function` | A `Function` whose signature is derived from `fn`'s Go type |
+| `risor.Signature(text)`, an option of `risor.Func` | The written signature in place of the derived one (R346) |
 | `risor.Methods[T](name string, opts ...MethodOption) OpaqueType` | An opaque type from `T`'s exported method set |
 | `cmd/risor-bind` (`go generate`), an optional follow-up | Go source that declares the same `Function` and `OpaqueType` values, with adapters that use no reflection |
 
@@ -240,7 +241,7 @@ no specification text, no suite case, nothing in TypeScript or Rust.
 | --- | --- |
 | A first parameter `*risor.Call` or `context.Context` | Not a parameter. It receives the call handle, or its context |
 | Each other parameter | A parameter, its type by F1 6.2 |
-| A variadic `...T` | `bad-type` |
+| A variadic `...T` | `bad-type` for the derived signature. A written signature whose last parameter is rest declares it, and the rest arguments reach `...T` (R346) |
 | Results `()`, `(R)` | `=> null`, `=> R` |
 | Results `(error)`, `(R, error)` | `=> null !`, `=> R !` |
 | Any other results | `bad-type` |

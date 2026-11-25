@@ -1375,6 +1375,14 @@ export class Analysis {
     this.segments = r.segments === null ? null : r.segments.map((g) => (g.kind === "text" ? { text: g.value, span: sp(g.span) } : { part: sp(g.expr.span), span: sp(g.span) }));
   }
 
+  /**
+   * The calls whose name is one of `names`, in source order: a function by its
+   * name, `upper`, or in a namespace, `geo.distance`. With no names, none.
+   */
+  callsOf(...names: string[]): CallSite[] {
+    return this.calls.filter((c) => names.includes(c.name));
+  }
+
   /** The JSON form of the report (f02 3.3, 4.3, 4.8): spans as [line, column, line, column], fields in order. */
   json(): string {
     const sp = (s: Span) => JSON.stringify(lineSpanOf(s));

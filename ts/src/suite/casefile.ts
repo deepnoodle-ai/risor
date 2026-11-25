@@ -89,7 +89,7 @@ export type Expect =
       message?: string;
       steps?: number;
       /** Package F8: the failures of ConformAll (f08 7.5). */
-      failures?: { path: (string | number)[]; message?: string }[];
+      failures?: { path?: (string | number)[]; code?: string; message?: string }[];
     }
   | ({ kind: "render" } & Renderings)
   | {
@@ -889,10 +889,18 @@ function buildExpect(v: Json, where: string, render = false): Expect {
       // f08 7.5.
       const fs = v.failures;
       if (!Array.isArray(fs)) fail(`${where}: failures is not a list`);
-      out.failures = fs.map((x) => {
-        if (!isObject(x) || !Array.isArray(x.path) || !Object.keys(x).every((k) => k === "path" || k === "message")) fail(`${where}: a failure is not of its form`);
+      // An entry has a path, or the code of the limit diagnostic that ends the list.
+      out.failures = fs.map((x, i) => {
+        if (!isObject(x) || !Object.keys(x).every((k) => k === "path" || k === "code" || k === "message")) fail(`${where}: a failure is not of its form`);
+        if ("path" in x === "code" in x) fail(`${where}: a failure has neither or both of path and code`);
+        if ("path" in x && !Array.isArray(x.path)) fail(`${where}: a failure's path is not a list`);
+        if ("code" in x && (typeof x.code !== "string" || !LIMIT_CODES.has(x.code))) fail(`${where}: a failure's code is not a limit code`);
+        if ("code" in x && i !== fs.length - 1) fail(`${where}: a failure with a code is not the last`);
         if ("message" in x && typeof x.message !== "string") fail(`${where}: a failure's message`);
-        return { path: x.path as (string | number)[], ...(typeof x.message === "string" ? { message: x.message } : {}) };
+        return {
+          ...("path" in x ? { path: x.path as (string | number)[] } : { code: x.code as string }),
+          ...(typeof x.message === "string" ? { message: x.message } : {}),
+        };
       });
     }
     return out;

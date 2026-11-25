@@ -121,6 +121,23 @@ fn analysis_of_a_program() {
 }
 
 #[test]
+fn calls_of_keeps_the_calls_of_the_names_given() {
+    let r = parse("geo.distance(a, b) + rate(a) + xs.map(x => rate(x))")
+        .unwrap()
+        .analyze();
+    let rates: Vec<bool> = r.calls_of(&["rate"]).iter().map(|c| c.in_lambda).collect();
+    assert_eq!(rates, [false, true]);
+    let names: Vec<&str> = r
+        .calls_of(&["geo.distance", "rate"])
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(names, ["geo.distance", "rate", "rate"]);
+    assert!(r.calls_of(&["distance"]).is_empty());
+    assert!(r.calls_of(&[]).is_empty());
+}
+
+#[test]
 fn analysis_of_a_template() {
     let t = parse_template("Hi ${{ user.name }}, ${{ geo.distance(a, 1 + 2) }}").unwrap();
     let r = t.analyze(TemplateMode::String);

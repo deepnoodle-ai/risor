@@ -79,9 +79,18 @@ pub struct ConformExpect {
     pub path: Option<Vec<Json>>,
     pub message: Option<String>,
     pub steps: Option<u64>,
-    /// F8: the failures of `ConformAll`, each a path and maybe a message
-    /// (`f08-errors.md` 7.5).
-    pub failures: Option<Vec<(Vec<Json>, Option<String>)>>,
+    /// F8: the failures of `ConformAll` (`f08-errors.md` 7.5).
+    pub failures: Option<Vec<ConformFailure>>,
+}
+
+/// An entry of `failures` (`f08-errors.md` 7.5): a failure at `path`, or
+/// the limit diagnostic that ends the list, by its `code`. Exactly one of
+/// the two is set.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConformFailure {
+    pub path: Option<Vec<Json>>,
+    pub code: Option<String>,
+    pub message: Option<String>,
 }
 
 /// F8: the three renderings a case expects, each when given
@@ -1149,26 +1158,42 @@ fn read_expect(v: &Json) -> V<Expect> {
                 "failures" => {
                     let a = x.as_arr().ok_or("expect.failures is not an array")?;
                     let mut out = Vec::new();
-                    for f in a {
+                    for (i, f) in a.iter().enumerate() {
                         let m = f.as_obj().ok_or("a failure is not an object")?;
                         for (fk, _) in m {
-                            if fk != "path" && fk != "message" {
+                            if fk != "path" && fk != "code" && fk != "message" {
                                 return Err(format!("a failure has the field {fk:?}"));
                             }
                         }
-                        let p = f
-                            .get("path")
-                            .and_then(|p| p.as_arr())
-                            .ok_or("a failure has no path that is an array")?;
-                        for st in p {
-                            let ok = matches!(st, Json::Str(_))
-                                || st.as_integer().is_some_and(|n| n >= 0.0);
-                            if !ok {
-                                return Err(
-                                    "a step of a path is neither a string nor an index".into()
-                                );
+                        let (path, code) = match (f.get("path"), f.get("code")) {
+                            (Some(p), None) => {
+                                let p = p.as_arr().ok_or("a failure's path is not an array")?;
+                                for st in p {
+                                    let ok = matches!(st, Json::Str(_))
+                                        || st.as_integer().is_some_and(|n| n >= 0.0);
+                                    if !ok {
+                                        return Err(
+                                            "a step of a path is neither a string nor an index"
+                                                .into(),
+                                        );
+                                    }
+                                }
+                                (Some(p.to_vec()), None)
                             }
-                        }
+                            (None, Some(c)) => {
+                                let c = c
+                                    .as_str()
+                                    .filter(|c| crate::diag::code::LIMIT.contains(c))
+                                    .ok_or("a failure's code is not a limit code")?;
+                                if i != a.len() - 1 {
+                                    return Err("a failure with a code is not the last".into());
+                                }
+                                (None, Some(c.to_string()))
+                            }
+                            _ => {
+                                return Err("a failure has neither or both of path and code".into())
+                            }
+                        };
                         let msg = match f.get("message") {
                             None => None,
                             Some(m) => Some(
@@ -1177,7 +1202,11 @@ fn read_expect(v: &Json) -> V<Expect> {
                                     .to_string(),
                             ),
                         };
-                        out.push((p.to_vec(), msg));
+                        out.push(ConformFailure {
+                            path,
+                            code,
+                            message: msg,
+                        });
                     }
                     c.failures = Some(out);
                 }

@@ -3,8 +3,8 @@
 
 use super::case::Case;
 use super::run::{
-    capture, case_lines, failure_json, form, path_json, result_json, run_case, whole_columns,
-    Captured, Difference, Verdict,
+    capture, case_lines, failure_entry, failure_json, form, path_json, result_json, run_case,
+    whole_columns, Captured, Difference, Verdict,
 };
 use crate::diag::{code, Phase};
 use crate::json::Json;
@@ -161,37 +161,16 @@ fn new_expect(case: &Case, cap: &Captured) -> Option<Json> {
             if !c.agree() {
                 return None;
             }
-            // A limit's diagnostic has no path, and an entry of `failures`
-            // needs one (F8 7.5): nothing is written.
-            if c.all
-                .as_ref()
-                .is_some_and(|all| all.iter().any(|d| d.path.is_none()))
-            {
-                return None;
-            }
             let conforms = c.function.is_none();
             let path = c
                 .function
                 .as_ref()
                 .map(|d| path_json(d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[])));
             let message = c.function.as_ref().map(|d| Json::Str(d.message.clone()));
-            let failures = c.all.as_ref().map(|all| {
-                Json::Arr(
-                    all.iter()
-                        .map(|d| {
-                            obj(vec![
-                                (
-                                    "path",
-                                    path_json(
-                                        d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
-                                    ),
-                                ),
-                                ("message", Json::Str(d.message.clone())),
-                            ])
-                        })
-                        .collect(),
-                )
-            });
+            let failures = c
+                .all
+                .as_ref()
+                .map(|all| Json::Arr(all.iter().map(failure_entry).collect()));
             let steps = Json::Num(c.as_steps as f64);
             let mut m = vec![("conforms", Json::Bool(conforms))];
             if !same(Shape::Conform) {

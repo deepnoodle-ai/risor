@@ -276,8 +276,12 @@ func conformLine(c *casefile.Case) string {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			b.WriteString(`{"path":`)
-			writeJSON(&b, f.Path)
+			if f.Path == nil { // the limit diagnostic (F8 8)
+				b.WriteString(`{"code":` + value.QuoteJSON(f.Code))
+			} else {
+				b.WriteString(`{"path":`)
+				writeJSON(&b, f.Path)
+			}
 			b.WriteString(`,"message":` + value.QuoteJSON(f.Message) + `}`)
 		}
 		b.WriteByte(']')

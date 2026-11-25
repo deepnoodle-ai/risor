@@ -597,6 +597,16 @@ fn literal(p: &Expr, id: NodeId) -> Option<Json> {
 }
 
 impl Analysis {
+    /// The calls whose name is one of `names`, in source order: a function
+    /// by its name, `upper`, or in a namespace, `geo.distance`. With no
+    /// names, none.
+    pub fn calls_of(&self, names: &[&str]) -> Vec<&CallSite> {
+        self.calls
+            .iter()
+            .filter(|c| names.contains(&c.name.as_str()))
+            .collect()
+    }
+
     /// The report as JSON text, in the field order of 3.3 and 4.3, with
     /// spans as `[line, column, end line, end column]`.
     pub fn json(&self) -> String {

@@ -1120,7 +1120,7 @@ limit: the default, 1,000,000, or the one the host gives.
    since both visit the same places. A failure makes All visit more.
 3. The list holds at most the maximum: All charges only while it has room.
 4. The function's limit diagnostic has no path, so a list that ends with it
-   has an entry with no path.
+   has an entry with no path. A case states that entry by its code (7.5).
 
 ## 7. Additions to the case format
 
@@ -1187,11 +1187,14 @@ diagnostics and a source text, and expects their renderings.
 | Field | Holds |
 | --- | --- |
 | `max` in `conform` | A whole number of 1 or more. With it the case also runs `ConformAll` (6) with that maximum |
-| `failures` in a conform result | A list in the order of 6.2, each an object with `path` and, optionally, `message`. Allowed only when `conform` has `max` |
+| `failures` in a conform result | A list in the order of 6.2, each an object with `path` or `code`, not both, and, optionally, `message`. Allowed only when `conform` has `max` |
 
 1. With `max`, step 3 of F4 9.3 also runs `ConformAll`. Its list is compared
-   with `failures`, when given: the same length, and each entry's `path` and
-   `message`, when given, equal.
+   with `failures`, when given: the same length, and each entry the same as
+   the diagnostic at its position. An entry with `path` is the same as a
+   diagnostic with that path. An entry with `code` is the limit diagnostic
+   that ends the list (6.4 step 3): it is the same as a diagnostic with no
+   path and that code. Either way `message`, when given, is equal.
 2. With `max`, whatever `failures` says, the runner also tests the agreement of
    6.1: the list is empty exactly when the value conforms, and its first entry
    has the path and the message of the function of F4 7. A disagreement is the
@@ -1213,7 +1216,9 @@ These join the list of `03-host.md` 3.10.10.
    `declare` or of a limit code.
 4. A case with `render` that breaks 7.4.
 5. `max` that is not a whole number of 1 or more; `failures` without `max`;
-   `failures` that is not a list of objects of 7.5.
+   `failures` that is not a list of objects of 7.5; an entry with both `path`
+   and `code`, or neither; an entry with `code` that is not the last, or
+   whose code is not of class `limit` (`03-host.md` 3.7.4).
 
 ### 7.7 The JSON Schema of the additions
 
@@ -1271,9 +1276,10 @@ These are added to the schema of `03-host.md` 3.10.11: `trace` in
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path"],
+        "oneOf": [{"required": ["path"]}, {"required": ["code"]}],
         "properties": {
           "path": {"$ref": "#/$defs/diagnostic/properties/path"},
+          "code": {"type": "string"},
           "message": {"type": "string"}},
         "additionalProperties": false}}}}
 }
@@ -1308,7 +1314,7 @@ implementation that offers F8.
 | A failure of phase `check` | Each diagnostic has `code`, `span` and `message` |
 | A failure of phase `run` | The diagnostic has `code`, `span`, `class`, `message` and, after them, `trace`, a list of `{"span", "name", "index"}`. For a failure of class `limit` there is no `trace`, as there is no span |
 | A render case | `name`, then `line`, `detail` and `json`, the three forms |
-| A conform case with `max` | After the fields of F4 9.5, `failures`: a list of `{"path", "message"}` from `ConformAll` |
+| A conform case with `max` | After the fields of F4 9.5, `failures`: a list of `{"path", "message"}` from `ConformAll`, and for the limit diagnostic that ends it, `{"code", "message"}` |
 
 The fuzzer compares `message` and `trace` among the implementations that write
 them.

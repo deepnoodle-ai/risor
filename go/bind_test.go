@@ -205,7 +205,7 @@ func TestFuncDeclareErrors(t *testing.T) {
 	}{
 		{risor.Func("f", 42), "bad-type", "f: int is not a Go function"},
 		{risor.Func("f", nil), "bad-type", "f: nil is not a Go function"},
-		{risor.Func("f", fmt.Sprintf), "bad-type", "f: func(string, ...interface {}) string is variadic, and a variadic Go function has no derived signature"},
+		{risor.Func("f", fmt.Sprintf), "bad-type", "f: func(string, ...interface {}) string is variadic, and a variadic Go function has no derived signature: write one whose last parameter is rest, with risor.Signature"},
 		{risor.Func("f", func() (int, int, error) { return 0, 0, nil }), "bad-type", "f: func() (int, int, error) has more than two results"},
 		{risor.Func("f", func() (int, int) { return 0, 0 }), "bad-type", "f: func() (int, int) has two results, and the second is not error"},
 		{risor.Func("f", func(ch chan int) {}), "bad-type", "f: parameter 1: chan int: no rule of the binding covers chan int"},
@@ -273,11 +273,84 @@ func TestFuncHostSignature(t *testing.T) {
 	bad.Type = "(a: int, b?: int) => int"
 	d = declareErr(t, bad)
 	assert.Equal(t, d.Code, "bad-signature")
-	assert.Equal(t, d.Message, "f: parameter b is optional or rest, and the Go function takes every parameter")
+	assert.Equal(t, d.Message, "f: parameter b is optional, and the Go function takes every parameter")
+	bad.Type = "(a: int, ...b: int[]) => int"
+	d = declareErr(t, bad)
+	assert.Equal(t, d.Code, "bad-signature")
+	assert.Equal(t, d.Message, "f: parameter b is rest, and the Go function is not variadic")
 	// A shape error is reported whatever Type says.
 	bad = risor.Func("f", func() (int, int) { return 0, 0 })
 	bad.Type = "() => int"
 	assert.Equal(t, declareErr(t, bad).Code, "bad-type")
+}
+
+// Signature gives the written signature in the call of Func, so a var
+// initializer needs no second statement.
+func TestFuncSignatureOption(t *testing.T) {
+	choose := risor.Func("choose", func(options []any) any { return options[0] },
+		risor.Signature("(options: T[]) => T"))
+	assert.Equal(t, choose.Type, "(options: T[]) => T")
+	describe := risor.Func("describe", func(s fmt.Stringer) string { return "[" + s.String() + "]" },
+		risor.Signature("(m: Money) => string"))
+	env := newEnv(t, risor.Methods[purse]("Money"), choose, describe, risor.Var("m", "Money"))
+	vars := risor.Map{"m": purse{250}}
+	assert.Equal(t, bindOutcome(t, env, `choose([1, 2]) + 1`, vars, false), `2 {2 3}`)
+	assert.Equal(t, bindOutcome(t, env, `describe(m)`, vars, false), `"[$2.50]" {1 0}`)
+	// It also reaches a method through ForMethod.
+	o := risor.Methods[purse]("Money", risor.ForMethod("Cents", risor.Signature("() => number")))
+	assert.Equal(t, o.Methods["cents"].Type, "() => number")
+	// The written signature is tested as one assigned to Type.
+	d := declareErr(t, risor.Func("f", func(a, b int) int { return a }, risor.Signature("(a: int) => int")))
+	assert.Equal(t, d.Message, "f: the signature has 1 parameters, and the Go function takes 2")
+}
+
+// A variadic Go function is declared with a written signature whose last
+// parameter is rest. The rest arguments reach its ...T, each converted.
+func TestFuncVariadic(t *testing.T) {
+	concat := risor.Func("concat", func(lists ...[]any) []any {
+		out := []any{}
+		for _, l := range lists {
+			out = append(out, l...)
+		}
+		return out
+	}, risor.Signature("(...lists: T[][]) => T[]"))
+	join := risor.Func("join", func(sep string, parts ...string) string { return strings.Join(parts, sep) },
+		risor.Signature("(sep: string, ...parts: string[]) => string"))
+	count := risor.Func("count", func(xs ...any) int { return len(xs) },
+		risor.Signature("(...xs: any[]) => int"))
+	assert.True(t, concat.Reflective())
+	env := newEnv(t, concat, join, count, risor.Var("blob", "any"))
+	vars := risor.Map{"blob": 5.0}
+	expectAll(t, map[string]string{
+		`concat([1], [], [2, 3])`:  `[1,2,3] {1 6}`,
+		`concat()`:                 `[] {1 0}`,
+		`join("-", "a", "b", "c")`: `"a-b-c" {1 0}`,
+		`join("-")`:                `"" {1 0}`,
+		`count(1, "a", null)`:      `3 {1 0}`,
+		`count()`:                  `0 {1 0}`,
+	}, func(src string) string { return bindOutcome(t, env, src, vars, false) })
+	// A program not checked reaches the adapter with any argument: a rest
+	// argument that does not convert is named by its place in the call.
+	assert.Equal(t, bindOutcome(t, env, `join("-", "a", 5)`, vars, true),
+		`function-error host: argument 3 of join: expected string, found 5 {1 0}`)
+	assert.Equal(t, bindOutcome(t, env, `concat([1], [2], "x")`, vars, true),
+		`function-error host: argument 3 of concat: expected any[], found "x" {1 4}`)
+
+	// Derived, the signature is refused; written, its last parameter must be
+	// rest.
+	f := risor.Func("f", func(xs ...int) int { return len(xs) })
+	assert.Equal(t, f.Type, "")
+	assert.Equal(t, declareErr(t, f).Code, "bad-type")
+	for sig, msg := range map[string]string{
+		"(xs: int[]) => int":            "f: the Go function is variadic, and the last parameter, xs, is not rest",
+		"() => int":                     "f: the Go function is variadic, and the signature has no rest parameter",
+		"(a: int, ...xs: int[]) => int": "f: the signature has 2 parameters, and the Go function takes 1",
+	} {
+		f.Type = sig
+		d := declareErr(t, f)
+		assert.Equal(t, d.Code, "bad-signature", sig)
+		assert.Equal(t, d.Message, msg)
+	}
 }
 
 // The fast adapters and the adapters by reflection give the same outcome:
