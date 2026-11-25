@@ -1,0 +1,360 @@
+{
+ "cases": [
+  {
+   "name": "a list of five at a limit of 6: the walk charges exactly 6",
+   "conform": {
+    "type": "int[]",
+    "value": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "limit": 6
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 6
+   }
+  },
+  {
+   "name": "a list of five at a limit of 5: the last element passes it",
+   "conform": {
+    "type": "int[]",
+    "value": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "limit": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded",
+      "message": "the run needed more than its limit of 5 steps"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a limit of 0: any charges nothing and passes",
+   "conform": {
+    "type": "any",
+    "value": [
+     1,
+     [
+      2,
+      [
+       3
+      ]
+     ]
+    ],
+    "limit": 0
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 0
+   }
+  },
+  {
+   "name": "a limit of 0: any other test charges its first step",
+   "conform": {
+    "type": "int",
+    "value": 1,
+    "limit": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded",
+      "message": "the run needed more than its limit of 0 steps"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a failure within the limit is not-conforming",
+   "conform": {
+    "type": "int[]",
+    "value": [
+     1,
+     "a",
+     3,
+     4,
+     5
+    ],
+    "limit": 3
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     1
+    ],
+    "message": "expected int, found \"a\"",
+    "steps": 3
+   }
+  },
+  {
+   "name": "the step of the failing place passes the limit first",
+   "conform": {
+    "type": "int[]",
+    "value": [
+     1,
+     "a",
+     3,
+     4,
+     5
+    ],
+    "limit": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a declared field charges 1 + the size of its key: at the count",
+   "conform": {
+    "type": "{kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk: int, b: string}",
+    "value": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1,
+     "b": "x"
+    },
+    "limit": 4
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 4
+   }
+  },
+  {
+   "name": "a declared field charges 1 + the size of its key: one under",
+   "conform": {
+    "type": "{kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk: int, b: string}",
+    "value": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1,
+     "b": "x"
+    },
+    "limit": 3
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an absent optional field still charges its lookup: at the count",
+   "conform": {
+    "type": "{kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk?: int}",
+    "value": {},
+    "limit": 3
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "an absent optional field still charges its lookup: one under",
+   "conform": {
+    "type": "{kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk?: int}",
+    "value": {},
+    "limit": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a literal set charges the size of the string: at the count",
+   "conform": {
+    "type": "(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" | \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\")[]",
+    "value": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "limit": 7
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 7
+   }
+  },
+  {
+   "name": "a literal set charges the size of the string: one under",
+   "conform": {
+    "type": "(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" | \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\")[]",
+    "value": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "limit": 6
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exact record charges its other keys and their size together: at the count",
+   "conform": {
+    "type": "{a: int}",
+    "value": {
+     "a": 1,
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1,
+     "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy": 2
+    },
+    "limit": 5
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "message": "the type does not allow key \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+    "steps": 5
+   }
+  },
+  {
+   "name": "an exact record charges its other keys and their size together: one under",
+   "conform": {
+    "type": "{a: int}",
+    "value": {
+     "a": 1,
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1,
+     "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy": 2
+    },
+    "limit": 4
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest charges the size of the other keys together, then each: at the count",
+   "conform": {
+    "type": "{a: int, ...int}",
+    "value": {
+     "a": 1,
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1,
+     "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy": 2
+    },
+    "limit": 5
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 5
+   }
+  },
+  {
+   "name": "a rest charges the size of the other keys together, then each: one under",
+   "conform": {
+    "type": "{a: int, ...int}",
+    "value": {
+     "a": 1,
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1,
+     "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy": 2
+    },
+    "limit": 4
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest tests every other key after a failure, and the limit is reached there",
+   "conform": {
+    "type": "{id: string, ...int}",
+    "value": {
+     "id": "a",
+     "p": "x",
+     "q": 1,
+     "r": 2
+    },
+    "limit": 4
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest that tests every other key within the limit reports the least failing key",
+   "conform": {
+    "type": "{id: string, ...int}",
+    "value": {
+     "id": "a",
+     "p": "x",
+     "q": 1,
+     "r": 2
+    },
+    "limit": 5
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "p"
+    ],
+    "message": "expected int, found \"x\"",
+    "steps": 5
+   }
+  },
+  {
+   "name": "with no limit given the default applies, and a small value is far under it",
+   "conform": {
+    "type": "int[][]",
+    "value": [
+     [
+      1,
+      2
+     ],
+     [
+      3,
+      4
+     ]
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 7
+   }
+  }
+ ]
+}

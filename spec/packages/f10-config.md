@@ -338,12 +338,14 @@ its diagnostics.
 | 1. Parse | Parse (`03-host.md` 3.2.1) | Phase `parse` |
 | 2. Check and compile | Compile with the check, T as the expected result. A load never compiles without the check | Phase `check`: every diagnostic, `result-mismatch` among them at the places of 2.3 |
 | 3. Run | Run, with the variables and the signal | Phase `run`: one diagnostic, with its span |
-| 4. Conform | The function that reports every failure (F8 6) on v and T, with a maximum the host gives | Phase `run`: one or more diagnostics, each with code `not-conforming`, class `value`, the path and message of F4 4.4, and no span |
+| 4. Conform | The function that reports every failure (F8 6) on v and T, with a maximum the host gives | Phase `run`: one or more diagnostics, each with code `not-conforming`, class `value`, the path and message of F4 4.4, and no span; the list ends with `steps-exceeded` or `depth-exceeded` when the function reaches a limit (F8 6.4) |
 | 5. Decode | The decode of v into H (6), when H is given | Phase `run`: the codes of 6.1, each with a path and no span |
 
-1. **Step 4 is always made.** It charges nothing and takes no limit but the
-   maximum (F4 7.1, F8 6.1). It reports up to the maximum failures, in the
-   order of F8 6.2. A maximum below 1 is read as 1. Its first diagnostic is
+1. **Step 4 is always made.** It is not part of the run's usage. It counts
+   steps against the default step limit of F4 7.3, 1,000,000, whatever the
+   environment's limits are, and takes the maximum (F8 6.1, 6.4). It reports
+   up to the maximum failures, in the order of F8 6.2. A maximum below 1 is
+   read as 1. Its first diagnostic is
    the one the conformance function of F4 7 gives, so a load with a maximum of
    1 reports what `v as T` would report.
 2. A failure of step 4 is not a run failure: `catch` in the program cannot
@@ -356,7 +358,8 @@ its diagnostics.
    value; and the usage. On failure: the diagnostics of the step that failed,
    the number of that step, and the usage when step 3 was reached.
 5. Steps 3, 4 and 5 all give phase `run`. A binding tells the host which step
-   failed. A failure of step 4 or 5 has no span and has a path.
+   failed. A failure of step 4 or 5 has no span and has a path, but for the
+   diagnostic of a limit, which has none.
 
 ### 5.3 When step 4 fails
 

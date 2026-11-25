@@ -1044,17 +1044,17 @@ Every binding gives a second conformance function beside the one of F4 7.
 
 | Binding | Form |
 | --- | --- |
-| Go | `risor.ConformAll(v, t, max)`, with `t` from `env.ParseType(text)`, which returns a `[]Diagnostic` |
-| TypeScript | `conformAll(value, t, max)`, with `t` from `env.parseType(text)`, which returns a list of diagnostics |
-| Rust | `risor::conform_all(&value, &t, max)`, with `t` from `env.parse_type(text)?`, which returns a `Vec<Diagnostic>` |
+| Go | `risor.ConformAll(v, t, max)`, with `t` from `env.ParseType(text)`, which returns a `[]Diagnostic`. It takes the option of F4 7.2: `risor.ConformAll(v, t, max, risor.ConformSteps(n))` |
+| TypeScript | `conformAll(value, t, max)`, with `t` from `env.parseType(text)`, which returns a list of diagnostics. It takes the options of F4 7.2: `conformAll(value, t, max, {steps: n})` |
+| Rust | `risor::conform_all(&value, &t, max)`, with `t` from `env.parse_type(text)?`, which returns a `Vec<Diagnostic>`. With a step limit: `risor::conform_all_with(&value, &t, max, &options)`, the options of F4 7.2 |
 
 | Matter | Rule |
 | --- | --- |
 | Takes | A value, a type resolved as F4 7.1 says, and a maximum, a whole number. A maximum less than 1 is read as 1 |
-| Gives | A list of `not-conforming` diagnostics, at most the maximum, in the order of 6.2. Each is as the function of F4 7 gives one: class `value`, a path, a message by F4 4.4, no span and an empty trace. The list is empty exactly when the value conforms |
+| Gives | A list of `not-conforming` diagnostics, at most the maximum, in the order of 6.2. Each is as the function of F4 7 gives one: class `value`, a path, a message by F4 4.4, no span and an empty trace. The list is empty exactly when the value conforms. A limit ends it with that limit's diagnostic (6.4) |
 | Agrees with | Its first diagnostic, when there is one, is the diagnostic that the function of F4 7, `x as T` and `x is T` give: the same path and the same message, for every value and type |
 | Changes | Nothing. The value is not copied, filled in or trimmed |
-| Cost | None. It is not a run: it has no program, no usage, no limits and no cancellation |
+| Cost | Steps, by 6.4. It is not a run: it has no program, no usage, no allocation limit, no deadline and no cancellation |
 
 ### 6.2 The walk of every failure
 
@@ -1080,8 +1080,9 @@ in this order. The walk stops at once when the list holds the maximum.
 2. **The other keys** are reached by All even after a declared field failed.
    With an exact record, each key it does not list is a failure of its own, not
    only the least.
-3. **Its work** is bounded by the value, as F4 7.1 item 2 says, and what it
-   builds by the maximum. **Its depth** is bounded by the type, at most 64.
+3. **Its work** is bounded by the step limit (6.4), and what it builds by the
+   maximum. **Its depth** is bounded by the type, at most 64, or with package
+   F17 by the default depth limit.
 4. A host that must say "and more" asks for one more than it shows.
 
 ### 6.3 Example
@@ -1092,6 +1093,28 @@ and the value `{"id": 7, "lines": [{"sku": "x", "qty": 1}, {"sku": "y", "qty":
 string, found 7`, `["lines", 1, "qty"]` `expected int, found "2"`, and
 `["note"]` `the type does not allow key "note"`. With a maximum of 2, the first
 two. The function of F4 7 gives the first.
+
+### 6.4 Steps
+
+`ConformAll` counts steps as the function of F4 7.3 does, against the same
+limit: the default, 1,000,000, or the one the host gives.
+
+| Step | Rule |
+| --- | --- |
+| 1. The first failure | The walk of F4 4.2 is made, with the count and the limit of F4 7.3. When it ends at a limit, `steps-exceeded` or `depth-exceeded`, the list is that one diagnostic, and nothing more is made |
+| 2. Every failure | Otherwise All is made, with a new count from 0 and the same limit. All charges what the walk of F4 4.2 charges, at the same places (F4 5.3 item 1): 1 for each value it tests against a type other than `any`, which for the value of a declared field is the field's lookup; the size of a string tested against a literal set; 1 + the size of the key for each declared field and each tag it looks up; for a record with rest `never` and m other keys, m + their size taken together; for another rest, the size of the other keys taken together. It charges nothing once the list holds the maximum |
+| 3. Passed | A charge that would make the count more than the limit is not made. All ends, and the list is the failures it found, then the diagnostic of F4 7.3 |
+
+1. **Step 1 keeps the agreement of 6.1.** The walk of F4 4.2 tests every
+   other key of a record with a rest, also after one fails, so it can pass
+   the limit after its first failure. It then gives `steps-exceeded`, where
+   All alone would give that failure first. With step 1 the first diagnostic
+   of the list is the function's in every case.
+2. When the value conforms within the limit, All charges what step 1 charged,
+   since both visit the same places. A failure makes All visit more.
+3. The list holds at most the maximum: All charges only while it has room.
+4. The function's limit diagnostic has no path, so a list that ends with it
+   has an entry with no path.
 
 ## 7. Additions to the case format
 
@@ -1169,6 +1192,9 @@ diagnostics and a source text, and expects their renderings.
    difference `conforms`.
 3. The differences of a conform case are named `outcome`, `conforms`, `path`,
    `message`, `steps` and `failures`, in that order.
+4. A case whose function ends with `steps-exceeded` (F4 9.3 item 6) and has
+   `max` also tests that `ConformAll` gives that one diagnostic (6.4 step 1).
+   Another list is the difference `outcome`.
 
 ### 7.6 When a file is invalid
 

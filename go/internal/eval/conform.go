@@ -22,6 +22,47 @@ type cfail struct {
 	found    any
 	number   bool // found is a host number that cannot enter
 	key      string
+	limit    int64 // the step limit, for steps-exceeded
+}
+
+func stepsMessage(limit int64) string {
+	return messages.Build("steps-exceeded", "", messages.Word("limit", strconv.FormatInt(limit, 10)))
+}
+
+// meter is the step count of the conformance function and of ConformAll
+// outside a run (F4 7.3, F8 6.4): the steps a run's walk charges, against a
+// limit. Past the limit it panics with stepStop, which the function
+// recovers.
+type meter struct {
+	limit int64 // NoLimit for none
+	count int64
+}
+
+// stepStop is the panic of a meter whose limit is passed.
+type stepStop struct{}
+
+func (m *meter) charge(n int64) {
+	if n <= 0 {
+		return
+	}
+	if m.limit >= 0 && n > m.limit-m.count {
+		panic(stepStop{})
+	}
+	m.count += n
+}
+
+// metered runs f, and reports whether it passed the meter's limit.
+func metered(f func()) (stopped bool) {
+	defer func() {
+		if x := recover(); x != nil {
+			if _, ok := x.(stepStop); !ok {
+				panic(x)
+			}
+			stopped = true
+		}
+	}()
+	f()
+	return false
 }
 
 func (f *cfail) params() []messages.Param {
@@ -37,17 +78,21 @@ func (f *cfail) params() []messages.Param {
 }
 
 func (f *cfail) message() string {
-	if f.template == "depth" {
+	switch f.template {
+	case "depth":
 		return messages.Build("depth-exceeded", "", messages.Word("limit", strconv.Itoa(DefaultLimits.Depth)))
+	case "steps":
+		return stepsMessage(f.limit)
 	}
 	return messages.Build("not-conforming", f.template, f.params()...)
 }
 
 // walker tests values against a type. With a run it charges steps and
 // tests the depth limit (5.3, 5.4); without one it is the conformance
-// function of 7, which charges nothing.
+// function of 7, which charges the same steps to its meter (7.3).
 type walker struct {
 	r *run
+	m *meter
 	// noPath is set for is, which builds no path (5.2 item 3).
 	noPath bool
 	// level counts the levels the conformance function has entered: past
@@ -62,6 +107,10 @@ var errDepth = &cfail{template: "depth"}
 func (w *walker) step(n int64) {
 	if w.r != nil && n > 0 {
 		w.r.step(n)
+		return
+	}
+	if w.m != nil {
+		w.m.charge(n)
 	}
 }
 
@@ -263,22 +312,25 @@ func (w *walker) union(v any, u *types.Union, path []any) *cfail {
 	return w.record(v, types.VariantOf(u, s.(string)), path, u.Tag, true)
 }
 
-// Conform is the conformance function of F4 7: nil when v conforms to t,
-// else the failure's path and message. It charges nothing and is bounded by
-// the value and the type.
+// Conform is the conformance function of F4 7 with the default step
+// limit: nil when v conforms to t, else the failure's path and message.
 //
 // Its depth is bounded by the default depth limit: a value it would enter
-// past it is the failure depth-exceeded, with no path (F17 12.7).
+// past it is the failure depth-exceeded, with no path (F17 12.7). Its work
+// is bounded by the step limit (7.3): past it, steps-exceeded.
 func Conform(v any, t *types.Type) (path []any, msg string, ok bool) {
-	path, _, msg, ok = ConformCode(v, t)
+	path, _, msg, ok = ConformCode(v, t, DefaultLimits.Steps)
 	return path, msg, ok
 }
 
-// ConformCode is Conform with the failure's code: not-conforming, or
-// depth-exceeded.
-func ConformCode(v any, t *types.Type) (path []any, code, msg string, ok bool) {
-	w := &walker{}
-	f := w.test(v, t, []any{}, false)
+// ConformCode is Conform with a step limit (NoLimit for none) and the
+// failure's code: not-conforming, depth-exceeded or steps-exceeded.
+func ConformCode(v any, t *types.Type, limit int64) (path []any, code, msg string, ok bool) {
+	w := &walker{m: &meter{limit: limit}}
+	var f *cfail
+	if metered(func() { f = w.test(v, t, []any{}, false) }) {
+		return nil, "steps-exceeded", stepsMessage(limit), false
+	}
 	if f == nil {
 		return nil, "", "", true
 	}

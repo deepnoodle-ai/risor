@@ -55,7 +55,8 @@ for its feature, and a decision of a plan is cited by its own number, as
 12. **Untyped data is tested, by the program or by the host** (`07`). An
     environment declares named types, which a program writes after `as` and
     `is` (A.2). Every binding gives the host the same test as a function of a
-    value and a type (A.13). It is not a run, so it takes no limits. A failure
+    value and a type (A.13). It is not a run, but it counts steps against a
+    step limit (D64, F4 7.3). A failure
     is `not-conforming`, and the place of the first failure is a field of the
     diagnostic, not text in its message (A.6). A second function goes on after
     a failure and reports every one, up to a maximum (`10-8`).
@@ -1088,6 +1089,7 @@ reports every failure.
 | Rule | "A value conforms to a type" of `03`, 2.14, walked in the order of `07`, 2.3. No coercion. An exact record refuses other keys. Absent is not null. Nothing under `any` is looked at. Against a tagged union the walk reads the tag, then tests one variant (`09:2.7`) |
 | Agrees with | `x is T` for every value and type, and `x as T` with its path. The conformance cases hold the three together (A.11) |
 | Changes | Nothing. The value is not copied, filled in or trimmed |
+| Cost | Steps, as a run's walk charges them, against the default step limit or one the host gives; past it, `steps-exceeded` (D64; `spec/packages/f04-conversion.md` 7.3 is the authority) |
 
 - **It is the checker's precondition, made testable.** The promise of `03`
   assumes that every variable conforms to its declared type, and that every
@@ -1383,13 +1385,15 @@ func Truthy(v any) bool
 // Conform tests v against t by the rule of 03 2.14 (A.13). It returns nil
 // when v conforms. Otherwise it returns an *Error of PhaseRun that holds one
 // diagnostic: not-conforming with its Path. It is not a run: it takes no
-// context and no Limits, and reports no Usage.
-func Conform(v any, t Type) error
+// context and reports no Usage. It counts steps against the default step
+// limit, or the one ConformSteps gives, and fails with steps-exceeded past
+// it (D64).
+func Conform(v any, t Type, opts ...ConformOption) error
 
 // ConformAll goes on after a failure (A.13). It returns at most max
 // diagnostics, in the walk's order, and none when v conforms. The first is
 // the one Conform reports. max must be 1 or more.
-func ConformAll(v any, t Type, max int) []Diagnostic
+func ConformAll(v any, t Type, max int, opts ...ConformOption) []Diagnostic
 
 // JSON gives the JSON text of a result (A.3): the JSON form of 02 2.13, which
 // is not what encoding/json writes. It fails on an opaque value.
@@ -2043,7 +2047,7 @@ export interface Env {
   check(expr: Expr, expected?: Expected):
     { type: TypeText; diagnostics: Diagnostic[]; sites: { class: CheckClass; span: Span }[] };
   compile(expr: Expr, expected?: Expected): Program;
-  /** The conformance function of A.13. Not a run: no limits, no usage.
+  /** The conformance function of A.13. Not a run: no usage; a step limit (D64).
    *  null when the value conforms. Throws only for a type text that is bad. */
   conform(value: unknown, type: TypeText): Diagnostic | null;
   /** Every failure, in the walk's order, at most max. [] when it conforms. */
@@ -2308,7 +2312,7 @@ impl Env  {
         -> Result<Type, Error>;
 }
 impl Type {
-    /// The conformance function of A.13. Not a run: no limits, no usage.
+    /// The conformance function of A.13. Not a run: no usage; a step limit (D64).
     /// The diagnostic is not-conforming with its path.
     pub fn conform(&self, value: &dyn Host) -> Result<(), Diagnostic>;
     /// Every failure, in the walk's order, at most max. Empty when it conforms.
