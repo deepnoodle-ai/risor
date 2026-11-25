@@ -334,6 +334,9 @@ diagnostic has no span.
    suite has one.
 3. A type name and a variable, function or namespace name never clash
    (`03-host.md` 3.3.4 item 1).
+4. The name is tested first. A named type whose name is `bad-name` gets that
+   one diagnostic: its text or schema is not read. So `X = X[]`, where `X` is
+   a type variable, is `bad-name` alone.
 
 ### 3.3 Where a type name may stand
 
@@ -910,6 +913,9 @@ This row is added to the table of `03-host.md` 3.10.3.
    whole.
 4. A `schema` is not a host value: a JSON object with the key `$opaque` in it
    is data of the schema. Its numbers are read by `03-host.md` 3.10.3 item 5.
+5. An empty list declares no named type, as an absent `types` does, but it is
+   still the case's `types`: it replaces the header's (item 3), and the case
+   has `types` for the `outcome` command (9.5), which writes its description.
 
 These make the file invalid: `types` that is not an array; an entry that is not
 an object; an entry with no `name`, or a `name` that is not a string; an entry
@@ -999,7 +1005,7 @@ The line of the `outcome` command (`suite/README.md`) changes so:
 
 | Case | Line |
 | --- | --- |
-| A case with `types`, whose environment was built | The field `description` of F1 7.4 |
+| A case with `types`, an empty list included (9.1 item 5), whose environment was built | The field `description` of F1 7.4 |
 | A conform case | `name`; then `phase`, null, `"declare"` with `diagnostics` as for any `declare` failure, or `"run"` with the function's `steps-exceeded` diagnostic in `diagnostics`; then, when `phase` is null, `conforms`, `path` and `message` from the conformance function (absent when it conforms), `steps` from the run of `v as T`, and `agree`, `true` when the three ways of 9.3 agree in answer, path, message and steps |
 
 ### 9.6 The JSON Schema of the additions

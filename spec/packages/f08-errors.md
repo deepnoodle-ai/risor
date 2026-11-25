@@ -112,7 +112,7 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
 
 | Term | Meaning |
 | --- | --- |
-| **A complete operand has been read** | The parser reads an `Expr` and the tokens before the failing token form a whole operand, after which a binary operator, `?`, a step or the end of the expression could stand |
+| **A complete operand has been read** | The parser reads an `Expr` and the tokens before the failing token form a whole operand, after which a binary operator, `?`, a step or the end of the expression could stand. With F4, an `as` or `is` test ending in its type is one, so the `=` of `1 as string = 1` is E7 |
 | **Where an operand must begin** | The parser needs the start of an `Expr`, an operand or a `Lambda` there. The start of an entry of a map literal, or of a field of a map pattern, is not such a place: it needs a word, a string, `[`, `...` or a name |
 | **The index step** | The production `"[" Expr "]"` or `"?.[" Expr "]"` of a `Chain` (`01-language.md` 3.1) |
 | **The pattern of a `Const`** | The `Pattern` between `const` and `=` |

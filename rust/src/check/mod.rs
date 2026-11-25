@@ -3638,7 +3638,7 @@ impl<'a> Checker<'a> {
                     Some(used) => !(self.strict && used),
                     None => false,
                 };
-                if mode == Fit::Arg && at.nullable() && but_null {
+                if mode == Fit::Arg && at.nullable() && !at.nonnull().is_never() && but_null {
                     self.null_at(span, at);
                 } else {
                     let template = match mode {

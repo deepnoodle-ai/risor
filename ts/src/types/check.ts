@@ -1824,7 +1824,7 @@ class Checker {
     }
     // 5. Fit, through the form.
     const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => sol.get(v) ?? NEVER });
-    const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) !== 0 ? "maybe-null" : "arg-mismatch");
+    const argCode = (place: Type, want: Type) => (hasNull(place) && !isNever(nonnull(place)) && fits(nonnull(place), want) !== 0 ? "maybe-null" : "arg-mismatch");
     // The receiver is fitted with its type as the chain gave it, after `?.` and nonnull (9.1).
     if (sig.recv !== null && recv !== null && recvType !== null) {
       if (fits(recvType, inst(sig.recv)) !== 1 || this.types.get(recv) === undefined) this.fitForm(recv, inst(sig.recv), argCode, recvSpan, [span], recvType);
@@ -2184,7 +2184,7 @@ class Checker {
       this.plainArgs(args, f);
       return NEVER;
     }
-    const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
+    const argCode = (place: Type, want: Type) => (hasNull(place) && !isNever(nonnull(place)) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
     args.forEach((a, i) => {
       // A lambda argument there is not-a-value, a static rule (f17 13.2 rule 7): not checked.
       if (this.lambdaArg(a) !== null) return;
@@ -2282,7 +2282,7 @@ class Checker {
     const given = args.map((a) => (this.lambdaArg(a) !== null ? { given: true, type: NEVER } : { given: true, type: this.synth(a as A.Expr, f) }));
     // f16 3.3: each plain argument at an annotated parameter is fitted to it; with a default, to T | null.
     const name = this.res.lambdaNames?.get(id) ?? "";
-    const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
+    const argCode = (place: Type, want: Type) => (hasNull(place) && !isNever(nonnull(place)) && fits(nonnull(place), want) === 1 ? "maybe-null" : "arg-mismatch");
     args.forEach((a, i) => {
       const p = l.params[i];
       if (p === undefined) return;

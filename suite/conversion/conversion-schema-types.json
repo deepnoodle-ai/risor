@@ -644,5 +644,25 @@
     "variables": {}
    }
   }
+ },
+ {
+  "name": "a one-letter name is tested before its schema: bad-name alone",
+  "source": "1",
+  "types": [
+   {
+    "name": "X",
+    "schema": {
+     "type": "nope"
+    }
+   }
+  ],
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-name"
+    }
+   ]
+  }
  }
 ]
