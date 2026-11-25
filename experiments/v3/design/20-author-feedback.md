@@ -1,6 +1,6 @@
 # Risor v3 design: feedback to authors
 
-Status: plan, D56 in `00-overview.md`. The owner settled its direction on
+Status: built, D56 in `00-overview.md`. The owner settled its direction on
 2026-11-14, from the evidence of issues #640 and #641, and trimmed it on
 2026-11-19: the brief rendering (20-8) and layouts for `time.format` (20-10)
 are dropped (section 6). Decisions are numbered `20-1` to `20-11`. Each is
@@ -8,11 +8,13 @@ marked **settled** where the owner chose it, and **recommended** where this
 plan chose a detail the owner has not seen. Built in all three
 implementations, in track B: 20-1 and 20-2 (`15` R212, R215, R216, R260), and
 the settled part of 20-9, the inner message with the inner diagnostic kept as
-the cause (`15` R217). The recommended part of 20-9 is not built: `data`
-stays null, and no rendering writes the cause. Nothing of package F19 is
-built. Counts
-marked *ran* were taken from the suite files at `main` `aeaaf1f` with a short
-script.
+the cause (`15` R217). The rest is built in all three implementations, as
+package F19, in track F: `spec/packages/f19-author-feedback.md`, with the
+recommended details of 20-4, 20-5, 20-9 and 20-11 as recommended (`15` R351
+to R359). Where the chapter differs from this plan, the chapter is right:
+the row `indexOf` of 3.3 is left out (R355), and E28 also takes a `Branch`
+(R356). Counts marked *ran* were taken from the suite files at `main`
+`aeaaf1f` with a short script.
 
 **Where it lands.** 20-1 and 20-2 (absence under `??`) and 20-9 (a nested
 Risor error's message) change outcomes of Core, so they are Core amendments,

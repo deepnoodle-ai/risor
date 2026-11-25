@@ -357,6 +357,8 @@ are, when its `code` is `failed`.
    `message`, no span, no class and an empty trace. When `code` is `failed`,
    its `data` is the object's `data`, or null when the object has none.
 2. `data` with another code makes the file invalid.
+3. In the JSON Schema of `03-host.md` 3.10.11, the object of `error` gains
+   the property `"data": {"$ref": "#/$defs/hostValue"}`.
 
 ## 6. The cases
 
@@ -397,18 +399,34 @@ entries for `undefined-name`, `undefined-function`, `no-method`, `kind` and
 
 ## 8. Earlier cases
 
-Each changed in place, with no file named `until-`: the package lands in
-every implementation in one change (`15-build-rulings.md` R251).
+The package lands in every implementation in one change, so each case of a
+package's file changed in place, with no file named `until-`
+(`15-build-rulings.md` R251).
 
-1. **`maybe-absent`.** The cases that state a message of `field` or `index`
-   carry the new texts of 2. The cases whose span is a field of a map pattern
-   carry the text of `pattern`.
-2. **Hints.** The cases that state the message of a diagnostic to which 3.4
-   now gives a fix carry the hint template.
-3. **Parse codes.** The cases that expected `unexpected-token` for a text of
-   E26 to E28 expect the new code, and, for E26 and E27, the span of 4.2.
-4. **The JSON form.** The case "rendered: a host error that is a Risor
-   diagnostic repeats no prefix" of `suite/errors/rendered.json` expects the
-   key `cause` of 5.2.
-
-`15-build-rulings.md` R351 to R356 list them by file.
+1. **Core cases.** Two cases of `suite/core-run/parse-errors.json` expected
+   `unexpected-token` for a text of E27 and E28: "two semicolons after the
+   result" (`1;;`) and "a semicolon after a block's result" (`{ const a = 1;
+   a; }`). By `03-host.md` 3.11 items 4 and 5 they would stand in a file named
+   `until-f19-`, deleted when every implementation offers F19, which was in
+   the change that added it; so they were removed. `suite/feedback/parse.json`
+   holds the same texts with this package's outcome, named after the file and
+   the case they stand for.
+2. **`maybe-absent`.** The cases that state a message of `field` or `index`
+   carry the texts of 2: the three cases of the entry in
+   `suite/messages-check.json`, "R7-2: maybe-absent on a union prints flat(U)"
+   of `suite/errors/fuzz-round-7.json`, "maybe-absent names the type" of
+   `suite/recursion/e2-check.json`, and "under _ beside a guarded tag arm the
+   union is not narrowed" of `suite/recursion/guards-check.json`.
+3. **A type line after the result.** "a type line after the result" of
+   `suite/entry-points/d1-syntax.json`, `1; type Foo = int;`, is E27: it
+   expects `statement-sequence` at the `;`.
+4. **The JSON form.** "rendered: a host error that is a Risor diagnostic
+   repeats no prefix" of `suite/errors/rendered.json` expects the key `cause`
+   of 5.2.
+5. **A stub's diagnostic object.** "10: an error object with a third key" of
+   `suite/testing/testing-invalid.json` gave its object the key `data`, which
+   5.3 allows. It is now "10: an error object with a key other than data",
+   with the key `class`, and two cases beside it test 5.3.
+6. No other earlier case changes. No earlier case states the message of a
+   diagnostic to which 3.4 gives a fix, and no other case writes `await` or
+   `async` before an operand, or `;` after an expression.
