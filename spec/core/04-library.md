@@ -614,9 +614,10 @@ Every call goes through these steps first (`02-evaluation.md`):
 
 Then the entry charges and works by one of the four rules below: `string` and
 the list method `indexOf` each by its own rule, an entry that takes a callback
-by the second, and every other entry by the first. Each entry's record repeats its order under "Order".
-Where the order puts the units before the build, an entry may build first
-where `02-evaluation.md` 6.2 item 3 allows it. The steps, the units, the
+by the second, and every other entry by the first. Each entry's record
+repeats its order under "Order". Where the order puts the units before the
+build, an entry may build first where `02-evaluation.md` 6.2 item 3 allows
+it. The steps, the units, the
 failure and the order of callbacks do not change.
 
 **An entry with no callback.**
