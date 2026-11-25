@@ -863,6 +863,13 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 	for _, pa := range plains {
 		c.fitForm(pa.node, pa.t, types.Subst(pa.p, sol), formArg)
 	}
+	// 13.11: list.indexOf compares its argument as by == with the receiver's
+	// element type, reporting never-equal as in does on a list (8.4).
+	if isMethod && entry != nil && entry.Name == "indexOf" && recv != nil && recv.Elem() != nil && len(plains) == 1 {
+		if neverEqual(plains[0].t, recv.Elem()) {
+			c.m("in", ty("left", plains[0].t), ty("right", recv)).diag("never-equal", sp)
+		}
+	}
 	res := types.Subst(sig.Result, sol)
 	if narrowed != nil {
 		if entry.Name == "filter" {

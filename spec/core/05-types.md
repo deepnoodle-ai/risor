@@ -1031,7 +1031,7 @@ method.
 | 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda argument (for a const-bound lambda named as the argument, as `xs.map(f)`, on the `Ident` `f`), and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` still unbound in the Q of a parameter that the lambda declares is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters; a `Var` unbound only in a Q for which the lambda declares no parameter is no error, and the body is checked. So `[1].reduce((a, x) => a, y => y)` is `cannot-infer` on the first lambda (it declares `a`, whose Q is the unbound `A`), and `[].reduce(() => {} - 0, () => 0)` checks the first lambda's body, which reports `kind` on `{}`. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B); then, unless the seed rule fires (3a), B must fit R with every `Var` replaced by its solution, an unbound `Var` by `never` (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body, 1.3). So `[1].flatMap(x => x)` is `arg-mismatch` on the body `x`: `int` does not fit `never[]`. For `map`, R is `U`: U gains B, and the fit holds. |
 | 3a. The seed rule | In step 3, when a `Var` X in R also occurs in a Q and already had a solution A0 before the body was checked, and B does not fit A0, or fits A0 only by a fit that used any: discard the diagnostics and sites of that check of the body, set the solution of X to Join(A0, B), and check the body once more under that solution. The second check binds nothing. Its body's type must fit the solution of R as it stands after the seed (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body). When B fits A0 without using any, the rule does not fire, and step 3 goes on with its fit. So `xs.reduce((a, x) => [a], 0)` is `arg-mismatch` on `[a]`, and in `xs.reduce((a, x) => c ? blob : a + x, 0)` the second check gives `a` the type `any`, so `a + x` records its `dynamic` site. |
 | 4. Bounds | For each `where V: B`, the solution of V must fit `float` or `string` for `ordered`, and must fit `float` for `number`. An unbound V has solution `never`. A failure is `arg-mismatch` on the whole call. A bound that holds only by a fit that used any records a `dynamic` site on the call. |
-| 5. Fit | Each plain argument, argument zero included, must fit its parameter type, with every `Var` replaced by its solution (an unbound `Var` by `never`), **through its form** (15.1). At each place of failure the code is `maybe-null` if the type there has null and something else, and fits once null is removed, else `arg-mismatch`. A type of exactly `null` is `arg-mismatch`, so `rate(null)` is `expected string, found null`. |
+| 5. Fit | Each plain argument, argument zero included, must fit its parameter type, with every `Var` replaced by its solution (an unbound `Var` by `never`), **through its form** (15.1). At each place of failure the code is `maybe-null` if the type there has null and something else, and fits once null is removed, else `arg-mismatch`. A type of exactly `null` is `arg-mismatch`, so `rate(null)` is `expected string, found null`. For the list method `indexOf`, 13.11 tests the argument against the receiver's element type. |
 | 6. Result | The result type, with each `Var` replaced by its solution, and an unbound `Var` by `never`. If the signature has `!`: a `value` site on the call for a library entry, a `host` site on the call for a host function or method. After `arg-mismatch` the call keeps this type. |
 
 ### 13.6 Bounds
@@ -1122,6 +1122,46 @@ is a rendered expression (7.3). In Core the one such entry is the function
 `kind` on `started`; `string(blob)` records a `dynamic` site on `blob`; and
 `string(5)` records nothing. The argument is also fitted to its parameter, of
 type `any`, by 13.5, which reports nothing.
+
+### 13.11 `indexOf` on a list
+
+This rule applies to a call of the Core library's list method `indexOf`
+(`T[].indexOf: (x: T) => int | null`, `04-library.md` 5.4.24). It does not
+apply to the string method `indexOf`, to a method of an opaque type of the same
+name, to a receiver of type `any` or `never`, or when the environment removed
+`list.indexOf`.
+
+Let the receiver's type after steps 2 to 4 of 9.1 be `E[]` (so null has been
+removed after `?.` or after `maybe-null`). After step 1 (count), step 2 (the
+plain argument is synthesized to `A`, and the solution of `T` passes the limit
+of 20.7), and step 5 of 13.5:
+
+- If the argument is a plain argument, it is compared as by `==` with `E`, by
+  the condition of 8.2 and 8.4: report `never-equal` on the whole `MethodCall`
+  node when `overlap(A, E)` is false, neither `A` nor `E` is `never`, and
+  neither is exactly the type `null`.
+- A lambda argument is `not-a-value` (13.2) and is not a plain argument, so
+  this rule does not report on it.
+- The call keeps its result type `int | null` (step 6, and `int | null` after
+  `?.`). No site is recorded for the argument (18.3).
+
+So with `xs: int[]`, `xn: int[] | null`, `fl: float`, `ni: int | null`,
+`ns: string | null`, `blob: any`:
+
+- `xs.indexOf("a")` and `xs.indexOf(ns)` are `never-equal` on the whole call.
+- `xs.indexOf(fl)`, `xs.indexOf(ni)` and `xs.indexOf(null)` check clean.
+- `[].indexOf("a")` and `xs.indexOf(fail("x"))` check clean (`E` or `A` is
+  `never`).
+- `xs.indexOf(blob)` and `[blob].indexOf("a")` check clean with no `dynamic`
+  site.
+- `xn?.indexOf("a")` is `never-equal` on the whole call, and `xn.indexOf("a")`
+  is `maybe-null` on `xn` and `never-equal` on the whole call; in both, the
+  list type is `int[]`.
+- `[1, "x"].indexOf("y")` is `never-equal`, because the literal set `"x"` does
+  not overlap `"y"`; `[1, "x"].indexOf("x")` and `[1, s].indexOf("y")` check
+  clean.
+- `[[1]].indexOf(["a"])` checks clean, because `overlap` looks at kinds only
+  and does not recurse (4.5).
 
 ## 14. `try` and `catch`
 
@@ -1273,7 +1313,7 @@ by name; the code stays a type rule everywhere else
 | `maybe-absent` | A plain read of an optional or unlisted field, or an index read of a record (9.2, 12.2). Not the last step of a coalesced read under `??` (9.2) | The field's name, the key, or the index expression | | The field's type (9.2) |
 | `maybe-null` | An operand that may be null where null is not accepted (1.3) | The operand; for a read, the receiver; for a pattern, the value bound; for an argument, each place of failure (15.1) | | nonnull of the operand's type |
 | `kind` | An operand of the wrong kind (7, 8, 9, 12); a rendered expression whose type has an opaque type (7.3) | The operand; for two operands that do not go together, the whole `Binary` (8.3); for a read or a method call, the receiver; for a computed index of a record, the index expression (9.2); for a rendered expression, that expression | | `bool` for `<`, `<=`, `>`, `>=`, `in` and `not in`; else `never` |
-| `never-equal` | An equality or a `match` literal that can never hold, neither side being `never` nor exactly `null`, and the literal not being a duplicate (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal, its `-` included | | `bool`; the literal is ignored |
+| `never-equal` | An equality, a list `indexOf` or a `match` literal that can never hold, neither side being `never` nor exactly `null`, and the literal not being a duplicate (8.2, 8.4, 11.2, 13.11) | The whole `Binary` or `MethodCall`; in a `match`, the literal, its `-` included | | `bool`; `int \| null` for `indexOf`; the literal is ignored |
 | `always-truthy` | A tested expression that can never be falsy (10.2) | The tested expression; for a predicate, the lambda's body; for an expected `condition`, the result expression | `constant-condition` | Unchanged |
 | `always-falsy` | A tested expression that can never be truthy (10.2) | The same | `constant-condition` | Unchanged |
 | `zero-divisor` | `/` with a `Number` node 0 as divisor (8.2) | The divisor | | `float` |
@@ -1400,7 +1440,7 @@ expression (7.3). The class of a failure (18.5) uses this definition.
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
 | A site | The receiver of a read or a method call; an operand of `-`, arithmetic, order or `+`; the right operand of `in`, or the left when the right is a string or a record; a spread's operand; a computed key; a destructured value; a map pattern's field unlisted in a record whose rest is `any`; a rendered expression whose type has `any` at any depth (7.3); an index expression; an argument, a result or a part of one whose fit used any (15.1); a bound that held by any (13.5). |
-| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter that is not rendered, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right; read with `?.` at an unlisted key of an open record, by a field step or by a computed key; read at an unlisted key of an open record by the last step of a coalesced read under `??` (9.2). |
+| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter that is not rendered, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right, or the argument of the list method `indexOf`; read with `?.` at an unlisted key of an open record, by a field step or by a computed key; read at an unlisted key of an open record by the last step of a coalesced read under `??` (9.2). |
 
 Sites inside the body of a `try` are dropped. Sites of the check of an unused
 const-bound lambda are dropped (13.9). A dropped site is never a diagnostic
