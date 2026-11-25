@@ -28,9 +28,6 @@ type Session struct {
 	// internal maps each name shadow gave a held binding to the name its
 	// author wrote, so that no internal name reaches the user.
 	internal map[string]string
-	// undo takes a span of the last entry's renamed program back to the
-	// text the author wrote; nil when shadow renamed nothing.
-	undo func(risor.Span) risor.Span
 }
 
 // EntryResult is the outcome of evaluating one REPL entry.
@@ -55,7 +52,6 @@ func (s *Session) Reset() {
 	s.held = ""
 	s.heldVals = replrun.Held{}
 	s.internal = nil
-	s.undo = nil
 }
 
 // Eval evaluates one entry in the session.
@@ -68,7 +64,7 @@ func (s *Session) Eval(entry string) EntryResult {
 		return EntryResult{More: true}
 	}
 	if !ok {
-		ds, err2 := s.adjustError(err, 0)
+		ds, err2 := s.adjustError(err, 0, nil)
 		return EntryResult{Diagnostics: ds, Err: err2}
 	}
 	text := entry
@@ -78,9 +74,9 @@ func (s *Session) Eval(entry string) EntryResult {
 	full, k := s.program(text)
 	authoredFull := full
 	full, renamed, passes := shadow(full, k)
-	s.undo = nil
+	var undo func(risor.Span) risor.Span
 	if len(passes) > 0 {
-		s.undo = spanBack(full, authoredFull, passes)
+		undo = spanBack(full, authoredFull, passes)
 	}
 	if s.internal == nil {
 		s.internal = map[string]string{}
@@ -90,12 +86,12 @@ func (s *Session) Eval(entry string) EntryResult {
 	}
 	x, err := risor.Parse(full)
 	if err != nil {
-		ds, err2 := s.adjustError(err, k)
+		ds, err2 := s.adjustError(err, k, undo)
 		return EntryResult{Diagnostics: ds, Err: err2}
 	}
 	v, nextHeld, err := replrun.RunEntry(context.Background(), s.env, x, s.vars, s.heldVals)
 	if err != nil {
-		ds, err2 := s.adjustError(err, k)
+		ds, err2 := s.adjustError(err, k, undo)
 		return EntryResult{Diagnostics: ds, Err: err2}
 	}
 	s.held = heldLines(full)
@@ -108,7 +104,7 @@ func (s *Session) Eval(entry string) EntryResult {
 		if ds, ok := diagnosticsOf(err); ok && len(ds) > 0 && ds[0].Code == "wrong-kind" {
 			return EntryResult{Value: "an opaque value, which cannot be shown\n"}
 		}
-		ds, err2 := s.adjustError(err, k)
+		ds, err2 := s.adjustError(err, k, undo)
 		return EntryResult{Diagnostics: ds, Err: err2}
 	}
 	return EntryResult{Value: js + "\n"}
@@ -123,7 +119,7 @@ func (s *Session) EOFError(pending string) ([]risor.Diagnostic, error) {
 	if err == nil {
 		return nil, nil
 	}
-	return s.adjustError(err, 0)
+	return s.adjustError(err, 0, nil)
 }
 
 func diagnosticsOf(err error) ([]risor.Diagnostic, bool) {
@@ -209,7 +205,8 @@ func heldLines(text string) string {
 
 // adjustError maps diagnostic spans back to the entry's text (dropping spans
 // in held lines and shifting lines up by k) and restores authored names.
-func (s *Session) adjustError(err error, k int) ([]risor.Diagnostic, error) {
+// Pass undo only when err came from a shadow-rewritten program.
+func (s *Session) adjustError(err error, k int, undo func(risor.Span) risor.Span) ([]risor.Diagnostic, error) {
 	ds, ok := diagnosticsOf(err)
 	if !ok {
 		return nil, err
@@ -225,10 +222,10 @@ func (s *Session) adjustError(err error, k int) ([]risor.Diagnostic, error) {
 	}
 	out := make([]risor.Diagnostic, len(ds))
 	back := func(sp *risor.Span) *risor.Span {
-		if sp == nil || s.undo == nil {
+		if sp == nil || undo == nil {
 			return sp
 		}
-		m := s.undo(*sp)
+		m := undo(*sp)
 		return &m
 	}
 	for i, d := range ds {
