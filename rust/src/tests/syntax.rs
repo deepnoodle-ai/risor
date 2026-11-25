@@ -667,7 +667,10 @@ fn levels_of_13_2() {
 
 #[test]
 fn what_opens_no_level_costs_no_stack() {
+    // 100,000 links, or 40,000 where 100,000 would be longer than a source
+    // text may be (2.1 item 4). 13.2 item 6 names 10,000.
     let n = 100_000;
+    let m = 40_000;
     ok(&vec!["1"; n].join(" + "));
     ok(&format!("x{}", ".f()".repeat(n)));
     ok(&format!("x{}", ".a[0]?.b".repeat(n)));
@@ -678,13 +681,13 @@ fn what_opens_no_level_costs_no_stack() {
     t.push('2');
     ok(&t);
     let mut t = String::from("if (c) { 0 }");
-    for _ in 0..n {
+    for _ in 0..m {
         t.push_str(" else if (c) { 1 }");
     }
     t.push_str(" else { 2 }");
     ok(&t);
     let mut t = String::from("{ ");
-    for i in 0..n {
+    for i in 0..m {
         t.push_str(&format!("const a{i} = {i}; "));
     }
     t.push_str("a0 }");
@@ -695,7 +698,9 @@ fn what_opens_no_level_costs_no_stack() {
 
 #[test]
 fn deep_text_ends_at_the_limit() {
-    let n = 1_000_000;
+    // The deepest text of 5 code points a level that is within the size of
+    // a source text (2.1 item 4): 1,000,001 code points.
+    let n = 200_000;
     check(&wrap(n, "1"), "nesting-exceeded", l1(101, 102));
     check(
         &format!("{}1", "-".repeat(n)),
@@ -755,7 +760,9 @@ fn a_long_text_block_reads_in_linear_time() {
         }
         best
     }
-    let n = 200_000;
+    // 17 code points a line: 816,000 lines is within the size of a source
+    // text (2.1 item 4).
+    let n = 48_000;
     let small = time_of(n / 8);
     let large = time_of(n);
     assert!(
@@ -774,7 +781,8 @@ fn a_long_text_block_reads_in_linear_time() {
 /// the lexer's own stack.
 #[test]
 fn blocks_nest_without_recursion() {
-    let depth = 200_000;
+    // 11 code points a level, within the size of a source text (2.1 item 4).
+    let depth = 80_000;
     let mut src = String::new();
     for _ in 0..depth {
         src.push_str("\"\"\"\n${");

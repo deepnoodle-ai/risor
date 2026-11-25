@@ -13,7 +13,7 @@
 
 import type { Diagnostic as InnerDiagnostic } from "../syntax/diagnostic.ts";
 import { parse as parseSource } from "../syntax/parser.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT, validSourceLimit } from "../syntax/source.ts";
 import type { Position } from "../syntax/source.ts";
 import { arity, parseSignature } from "../types/typetext.ts";
 import { compileProgram, HostError } from "../eval/compile.ts";
@@ -383,6 +383,28 @@ export type CompileResult = { ok: true; program: Program } | { ok: false; diagno
  */
 export type Expected = string | { schema: unknown; options?: SchemaOption[] } | { type: Type };
 
+/**
+ * The option of each call that takes source text (03 3.6.1 item 5): parse,
+ * template parse, the formatter, completion, hover and the load.
+ */
+export interface SourceOptions {
+  /**
+   * The most code points the text may have, a whole number from 0 to
+   * 1,048,576, the default. A longer text is `source-too-large`, of phase
+   * `parse`. A value out of range is `bad-limit`, of phase `declare`;
+   * completion and hover give their empty result for it instead.
+   */
+  sourceLimit?: number;
+}
+
+/** Internal: the source limit of a call's options. Throws RisorError `bad-limit`. */
+export function sourceLimitOf(options: SourceOptions | undefined): number {
+  const v = options?.sourceLimit;
+  if (v === undefined) return SOURCE_LIMIT;
+  if (!validSourceLimit(v)) throw declareError("bad-limit", `the source limit must be a whole number from 0 to ${SOURCE_LIMIT}`);
+  return v;
+}
+
 export interface CompileOptions {
   /** Apply the type rules (05-types.md). Default true. The static rules always apply. */
   check?: boolean;
@@ -391,7 +413,7 @@ export interface CompileOptions {
 }
 
 /** What a load takes besides the environment and the text (package F10, f10 5.1). */
-export interface LoadOptions {
+export interface LoadOptions extends SourceOptions {
   /** The type the value must have: type text, a JSON Schema, or a `Type`. */
   expected: string | { schema: unknown } | { type: Type };
   /** The variables of the run (03 3.4.1). */
@@ -866,14 +888,16 @@ export class Env<V = any, N = any> {
   }
 
   /** Completion at a position of a text that need not parse (package F12, f12 3.1). */
-  complete(text: string, pos: Pos, expected?: Expected): Completion {
-    const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, expected);
+  complete(text: string, pos: Pos, expected?: Expected, options: SourceOptions = {}): Completion {
+    const limit = options.sourceLimit === undefined ? SOURCE_LIMIT : options.sourceLimit;
+    const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, expected, limit);
     return { span: spanFromLine(c.span), items: c.items };
   }
 
   /** The hover record at a position of a text that need not parse (package F12, f12 3.13), or null. */
-  hover(text: string, pos: Pos, expected?: Expected): Hover | null {
-    const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, expected);
+  hover(text: string, pos: Pos, expected?: Expected, options: SourceOptions = {}): Hover | null {
+    const limit = options.sourceLimit === undefined ? SOURCE_LIMIT : options.sourceLimit;
+    const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, expected, limit);
     if (h === null) return null;
     return { ...h, span: spanFromLine(h.span), declaration: h.declaration === null ? null : spanFromLine(h.declaration) };
   }
@@ -935,7 +959,7 @@ export function childEnv(parent: Env, options: InternalWithOptions = {}): Env {
 }
 
 /** Internal: parse when given text, then apply the static rules and compile. Problems are data. */
-export function tryCompile(env: Env, input: string | Expr, options: CompileOptions = {}): CompileResult {
+export function tryCompile(env: Env, input: string | Expr, options: CompileOptions = {}, sourceLimit: number = SOURCE_LIMIT): CompileResult {
   if (env.noImplementation && (env.environment.functions.size > 0 || env.environment.methods.size > 0)) {
     throw declareError("no-implementation", "the environment declares a function with no implementation");
   }
@@ -945,7 +969,7 @@ export function tryCompile(env: Env, input: string | Expr, options: CompileOptio
   const exp = checked ? env.expected(options.expected) : { kind: "none" as const };
   let x: Expr;
   if (typeof input === "string") {
-    const p = parseSource(input);
+    const p = parseSource(input, sourceLimit);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     x = new Expr(p.source, p.program);
   } else x = input;
@@ -1179,9 +1203,11 @@ export function tryLoad<T = unknown>(env: Env, text: string, options: LoadOption
   const exp: Expected = typeof expected === "string" || "type" in expected ? expected : { schema: expected.schema, options: ["closed"] };
   // Step 0: declare.
   let type: InnerType;
+  let sourceLimit: number;
   try {
     if (expected === "condition") throw declareError("bad-type", "the expected result of a load is a type");
     type = env.expectedType(exp);
+    sourceLimit = sourceLimitOf(options);
   } catch (e) {
     if (e instanceof RisorError) return { ok: false, step: 0, diagnostics: e.diagnostics.map((d) => ({ phase: d.phase, code: d.code, message: d.message })) };
     throw e;
@@ -1189,7 +1215,7 @@ export function tryLoad<T = unknown>(env: Env, text: string, options: LoadOption
   // Steps 1 and 2: parse, then check and compile. A load never compiles without the check.
   let compiled: CompileResult;
   try {
-    compiled = tryCompile(env, text, { expected: exp });
+    compiled = tryCompile(env, text, { expected: exp }, sourceLimit);
   } catch (e) {
     if (e instanceof RisorError) return { ok: false, step: 0, diagnostics: e.diagnostics.map((d) => ({ phase: d.phase, code: d.code, message: d.message })) };
     throw e;
@@ -1245,9 +1271,9 @@ export class Expr {
   }
 }
 
-/** Parse a program. Throws RisorError of phase `parse`. */
-export function parse(text: string): Expr {
-  const p = parseSource(text);
+/** Parse a program. Throws RisorError of phase `parse`, or `bad-limit` for a source limit out of range. */
+export function parse(text: string, options?: SourceOptions): Expr {
+  const p = parseSource(text, sourceLimitOf(options));
   if (!p.ok) throw failure(p.diagnostics, p.source);
   return new Expr(p.source, p.program);
 }
@@ -1289,9 +1315,9 @@ export class Template {
   }
 }
 
-/** Template parse (f02 2.1). Throws RisorError of phase `parse`. */
-export function parseTemplate(text: string): Template {
-  const r = parseTemplateText(text);
+/** Template parse (f02 2.1). Throws RisorError of phase `parse`, or `bad-limit` for a source limit out of range. */
+export function parseTemplate(text: string, options?: SourceOptions): Template {
+  const r = parseTemplateText(text, sourceLimitOf(options));
   if (!r.ok) throw failure(r.diagnostics, r.source);
   return new Template(r.template);
 }
@@ -1367,18 +1393,23 @@ export class Analysis {
 
 // ---- Package F12: the formatter (f12 2) ------------------------------------------------
 
-/** The canonical text of a program (f12 2.1). Throws RisorError of phase `parse`. */
-export function format(text: string): string {
-  const r = formatProgramResult(text);
-  if (!r.ok) throw failure(r.diagnostics, new Source(text));
+/** The canonical text of a program (f12 2.1). Throws RisorError of phase `parse`, or `bad-limit` for a source limit out of range. */
+export function format(text: string, options?: SourceOptions): string {
+  const r = formatProgramResult(text, sourceLimitOf(options));
+  if (!r.ok) throw failure(r.diagnostics, sourceOfFailure(r.diagnostics, text, false));
   return r.text;
 }
 
-/** The canonical text of a template (f12 2.14). Throws RisorError of phase `parse`. */
-export function formatTemplate(text: string): string {
-  const r = formatTemplateResult(text);
-  if (!r.ok) throw failure(r.diagnostics, new Source(text, { keepBom: true }));
+/** The canonical text of a template (f12 2.14). Throws RisorError of phase `parse`, or `bad-limit` for a source limit out of range. */
+export function formatTemplate(text: string, options?: SourceOptions): string {
+  const r = formatTemplateResult(text, sourceLimitOf(options));
+  if (!r.ok) throw failure(r.diagnostics, sourceOfFailure(r.diagnostics, text, true));
   return r.text;
+}
+
+/** The source a formatter's diagnostics point into; none is decoded for a diagnostic with no span, as `source-too-large` is. */
+function sourceOfFailure(ds: InnerDiagnostic[], text: string, keepBom: boolean): Source | null {
+  return ds.every((d) => d.span === undefined) ? null : new Source(text, { keepBom });
 }
 
 // ---- Package F8: the renderings of diagnostics (f08 5) ---------------------------------

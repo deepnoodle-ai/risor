@@ -29,13 +29,14 @@ text and the checker).
 
 | Stage | Takes | Gives | Fails with a list of diagnostics of phase |
 | --- | --- | --- | --- |
-| Parse | The source text of a program | A parsed program | `parse` |
+| Parse | The source text of a program, and a source limit (3.6.1) | A parsed program | `parse` |
 | Check | A parsed program, an environment, and an expected result (3.2.3) | The result type, the sites, and the diagnostics found | `check` |
 | Compile | A parsed program, an environment, and an expected result | A runnable program | `check`, or `declare` for `no-implementation` |
 | Run | A runnable program, a supply of variables (3.4.1), and a cancellation signal | A value, or exactly one diagnostic; and the usage (3.6.3) in both cases | `run` |
 
 1. Parse needs no environment. A text gives the same parsed program, or the
-   same `parse` diagnostics, in every environment.
+   same `parse` diagnostics, in every environment, given the same source
+   limit.
 2. Check is specified by `05-types.md`. Check gives a result type, a list of
    sites, and a list of diagnostics. The program checks when the list of
    diagnostics is empty.
@@ -149,14 +150,15 @@ An environment is a set of declarations. Core has these kinds.
 
 1. An environment with no version declaration has the newest version the
    implementation offers.
-2. Every implementation parses the type text of every declaration, by the
-   grammar of `05-types.md`, whether or not it has a type checker. It needs the
-   names of the variables and the count of parameters of each function. Text
-   that the grammar does not accept is `bad-type`, or `bad-signature` for a
-   signature, in every implementation. The rules of `05-types.md` beyond the
-   grammar (two record alternatives, an undeclared type name, type depth
-   (`05-types.md` 2.5), a key
-   written twice) need the type checker.
+2. Every implementation parses the type text of every declaration whose name
+   it accepts, by the grammar of `05-types.md`, whether or not it has a type
+   checker. An implementation needs the names of the variables and the count
+   of parameters of each function. Text that the grammar does not accept is
+   `bad-type`, or `bad-signature` for a signature, in every implementation.
+   The rules of `05-types.md` beyond the grammar (two record alternatives, an
+   undeclared type name, type depth (`05-types.md` 2.5), a key written twice)
+   need the type checker. For a declaration whose name is refused, 3.3.4 item
+   4 applies.
 3. Check uses the types of variables. A run uses only their names.
 4. An environment with no rejected-classes declaration rejects the default
    set, which is `constant-condition` alone. A name that is not one of the six
@@ -236,7 +238,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A removed entry whose name names no entry of the library, in the version the environment has: `lenn`, `repeat` (a method is named with its kind), `string.map`, `list`, `number.abs`. Removing one entry twice, in one environment or in a child, is no error | `bad-name` |
 | A rejected class that is not a check class | `bad-class` |
-| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 400 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
+| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 400, or a source limit that is not a whole number from 0 to 1,048,576 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
@@ -256,7 +258,18 @@ in declared type text.
 3. A method of an opaque type may be named with a reserved word
    (`Time.if`): after `.` it is a word like any other.
 4. An implementation reports every `declare` error it finds, in no specified
-   order.
+   order, with one exception. A declaration may have a refused name
+   (`reserved-namespace`, `bad-name` or `name-clash`) and bad type text
+   (`bad-type` or `bad-signature`). Whether the implementation parses that
+   text and reports its error is then unspecified:
+
+   | The name error | What is reported |
+   | --- | --- |
+   | `reserved-namespace` or `bad-name` | The name error. The error in the type text may be reported too |
+   | `name-clash` | At least one of the two errors |
+
+   The environment is refused either way. A case pins only what every
+   implementation reports (3.10.7, item 6).
 5. A `declare` diagnostic has a code, a phase and a message. It has no span.
 
 ## 3.4 Variables and values
@@ -345,7 +358,8 @@ with `==`, use them as keys and render them, as any text.
 3. **Source text.** A host passes the source text of a program as text of its
    own language, or as bytes in UTF-8. A binding that takes bytes decodes them
    by item 1. A binding that takes UTF-16 text decodes it by item 2. Positions
-   are counted in the decoded text (3.7.7).
+   are counted in the decoded text (3.7.7), and so is its size
+   (`01-language.md` 2.1 item 4).
 
 ### 3.4.6 Opaque values
 
@@ -498,6 +512,7 @@ host sets the limits as a declaration of the environment.
 | Deadline | Off | Give it as a duration of wall-clock time, measured from the start of the run, or turn it off | `deadline-exceeded` |
 | Depth | 200 | Set a whole number from 1 to 400. It cannot be turned off | `depth-exceeded` |
 | Source nesting | 100 levels | Nothing. It is fixed | `nesting-exceeded`, of phase `parse` |
+| Source size | 1,048,576 code points | Set a whole number from 0 to 1,048,576. It cannot be raised past the default or turned off | `source-too-large`, of phase `parse` |
 
 1. A host cancels a run through the cancellation signal it passed to the run.
    A cancelled run fails with `cancelled`.
@@ -508,6 +523,17 @@ host sets the limits as a declaration of the environment.
    of steps that `02-evaluation.md` gives.
 4. The position of a limit error is not specified. Its span is not compared
    by a case.
+5. **The source limit is not a declaration of the environment.** Parse needs
+   no environment (3.2.1 item 1). The source limit is an option of each call
+   that takes source text: parse, the parse of a template, and the formatter,
+   completion, hover and the load of the packages. A call given no source
+   limit uses the default. A source limit outside 0 to 1,048,576 is the error
+   `bad-limit`, of phase `declare`; completion and hover, which never fail,
+   give their empty result for it. An environment's description (package F1)
+   does not hold the source limit. Type text that a host declares takes no
+   source limit (`01-language.md` 2.1 item 6).
+6. `source-too-large` is not a run code. It has no class, and no program can
+   catch it.
 
 ### 3.6.2 Determinism
 
@@ -557,7 +583,7 @@ the list has the same phase. A run fails with exactly one diagnostic.
 | `phase` | `declare`, `parse`, `check` or `run` | Always | Yes |
 | `code` | The kind of problem, from 3.7.3 | Always | Yes |
 | `class` | For a `run` diagnostic: its class (3.7.6). For a `check` diagnostic that exists because its check class is rejected: that class | When the rule gives one | Yes |
-| `span` | Where the problem is in the source text (3.7.7) | For `parse`, `check` and `run`, except where 3.2.4 says otherwise | Yes. For a limit code it is present and not specified |
+| `span` | Where the problem is in the source text (3.7.7) | For `parse`, `check` and `run`, except where 3.2.4 says otherwise, and for `source-too-large`, which has none (`01-language.md` 2.1) | Yes. For a limit code it is present and not specified |
 | `message` | One sentence (3.8) | Always | Yes |
 | `path` | For `not-conforming`: the place of the failure in the tested value (3.7.8) | For `not-conforming` only | Yes |
 | `data` | For `failed`: the second argument of `fail`, or null when it had none | For `failed` only | Yes |
@@ -596,7 +622,7 @@ codes.
 | Phase | Number | Codes |
 | --- | ---: | --- |
 | `declare` | 9 | `name-clash`, `reserved-namespace`, `bad-name`, `bad-signature`, `bad-type`, `bad-class`, `bad-limit`, `unsupported-version`, `no-implementation` |
-| `parse` | 14 | `unexpected-token`, `unexpected-character`, `unterminated-string`, `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number`, `literal-range`, `text-block-open`, `text-block-close`, `text-block-indent`, `nesting-exceeded`, `bad-type-text`, `reserved-word` |
+| `parse` | 15 | `source-too-large`, `unexpected-token`, `unexpected-character`, `unterminated-string`, `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number`, `literal-range`, `text-block-open`, `text-block-close`, `text-block-indent`, `nesting-exceeded`, `bad-type-text`, `reserved-word` |
 | `check` | — | The codes of `05-types.md` |
 | `run` | 19 | 3.7.4 |
 
@@ -784,7 +810,7 @@ else.
 | No mutation | The run never writes to a value it did not create | That a host function does not change its arguments. A result may share memory with host data |
 | Determinism | The same program, version, values, host function results and charges, and limits give the same reads and calls of the host, in the same order (3.6.2), and the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
 | Steps | The work of the language and its library is proportional to the steps charged. The run stops at the same point in every implementation and version | The time one step takes. Work in a host function beyond what it charges |
-| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken | Live memory. Host data. What a host function builds without charging |
+| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken, except where `02-evaluation.md` 6.2 item 3 allows a library entry to build first | Live memory. Host data. What a host function builds without charging |
 | Deadline | A run that passes its deadline, or that is cancelled, stops within one test interval of steps | That a blocked host function returns |
 | Depth | The implementation's own stack does not overflow on any program or any data | — |
 | No crash | A run does not crash or hang on any program or any values. A crash in host code is `function-panic`. A failure inside the implementation is `internal-error` | — |
@@ -872,7 +898,7 @@ the one contract for all runners.
 | `reject` | The whole set of rejected check classes, as a list of names | The base environment's set |
 | `returns` | The expected result (3.2.3): a type text, or the word `condition` | Nothing is expected |
 | `vars` | An object: the value of each variable the case supplies | No variable is supplied |
-| `limits` | An object with any of `steps`, `allocation` and `depth`, each a whole number. Each one given replaces the base environment's limit | The base environment's limits |
+| `limits` | An object with any of `steps`, `allocation`, `depth` and `source`, each a whole number. Each of the first three given replaces the base environment's limit. `source` is the source limit of the parse (3.6.1 item 5), from 0 to 1,048,576 | The base environment's limits, and the default source limit |
 | `check` | `true` or `false`. `false` says that the case's program is one the type rules reject, on purpose. Every runner then compiles it with the static rules alone (3.2.1, item 4), never with the type rules. Such a case has no `type` or `sites` in `expect`, and a `check` failure it expects has static codes only (3.10.13) | `true` |
 | `precondition` | `false`, or `true`. `false` says that the case breaks the precondition on purpose (`05-types.md` 18.4): a value in `vars` or a stub's `result` that breaks its declared type, or a stub with `error` whose signature has no `!` | `true` |
 | `skip` | A reason, as a string. The case is not run | The case is run |
@@ -882,7 +908,8 @@ the one contract for all runners.
 2. A case cannot give a deadline.
 3. The case's environment is a child of the base environment (3.10.9). Its
    declarations are those of `version`, `env`, `opaque`, `methods`,
-   `functions`, `removed`, `reject` and `limits`.
+   `functions`, `removed`, `reject` and `limits`, except `limits.source`,
+   which the runner passes to the parse (3.6.1 item 5).
 4. A runner supplies each value of `vars` as a host value: a JSON object as a
    map, an array as a list, and a string, a number, `true`, `false` and `null`
    as the language value of that kind. A key of `vars` whose value is `null`
@@ -988,7 +1015,7 @@ a function name to a stub.
 | --- | --- | --- |
 | 1. Read | The file is read and checked against 3.10.3 and 3.10.11. Each case is laid over the header | The verdict `invalid` for every case of the file |
 | 2. Declare | The case's environment is built, as a child of the base environment | The outcome: a failure of phase `declare` |
-| 3. Parse | The program is parsed | The outcome: a failure of phase `parse` |
+| 3. Parse | The program is parsed, with the source limit of `limits` | The outcome: a failure of phase `parse` |
 | 4. Check | The program is checked against the case's environment, with `returns` as the expected result. With `"check": false`, the static rules alone are applied (3.2.1, item 4), and the type rules are not | The outcome: a failure of phase `check`. Otherwise the check gives a type and sites; the static rules alone give no type and no sites |
 | 5. Run | Only when the case has `vars`, or `expect` has `value`, `truthy`, `steps` or `allocated`, or `expect` is a failure of phase `run`. The program is compiled and run, with the values of `vars` | The outcome: a value and its usage, or a failure of phase `run` and its usage |
 | 6. Compare | The outcome is compared with `expect` (3.10.7) | The verdict `fail` |
@@ -1059,8 +1086,12 @@ Each element of `diagnostics` is an object with these fields.
    16). It is compared with the first diagnostic the parser reported. Further
    reported diagnostics are not compared.
 6. `diagnostics` for phase `declare` has exactly one element (3.10.10, item
-   16). The environment then has exactly one error, and the expected
-   diagnostic is compared with the one reported.
+   16). When its code is `reserved-namespace`, `bad-name` or `name-clash`, it
+   is compared with each diagnostic reported, in any order, and one of them
+   must match it. Further reported diagnostics are not compared, because a
+   refused name may come with errors in type text that are not specified
+   (3.3.4, item 4). For any other code, the environment has exactly one
+   error, and the expected diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
 8. `class` is compared for every code, with one exception. A case states the
    class of the checked program. In a run with the static rules alone
@@ -1155,8 +1186,8 @@ verdict `invalid`.
 15. JSON nested deeper than 1,024 levels (3.10.1, item 4).
 16. An `expect` of phase `parse` or `declare` whose `diagnostics` has more than
     one element. Only the first `parse` diagnostic is specified, and the order
-    of `declare` diagnostics is not. A case that expects phase `declare` has an
-    environment with exactly one error.
+    of `declare` diagnostics is not. A case that expects phase `declare` pins
+    one error of its environment (3.10.7, item 6).
 17. A case with `"check": false` whose `expect` has `type` or `sites`, or
     expects a failure of phase `check` with a code that is not static
     (3.10.13).
@@ -1239,7 +1270,8 @@ the static codes.
       "properties": {
         "steps": {"type": "integer", "minimum": 0},
         "allocation": {"type": "integer", "minimum": 0},
-        "depth": {"type": "integer", "minimum": 1, "maximum": 400}
+        "depth": {"type": "integer", "minimum": 1, "maximum": 400},
+        "source": {"type": "integer", "minimum": 0, "maximum": 1048576}
       },
       "additionalProperties": false
     },

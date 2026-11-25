@@ -65,8 +65,8 @@ type HoverExpect struct {
 
 var (
 	toolKinds         = []string{"format", "formatTemplate", "complete", "hover"}
-	formatCaseFields  = set("name", "format", "formatTemplate", "env", "vars", "skip", "expect")
-	assistCaseFields  = set("name", "complete", "hover", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "skip", "expect")
+	formatCaseFields  = set("name", "format", "formatTemplate", "env", "vars", "limits", "skip", "expect")
+	assistCaseFields  = set("name", "complete", "hover", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "limits", "skip", "expect")
 	candidateFields   = set("label", "kind", "detail", "insert")
 	completionFields  = set("span", "items")
 	hoverRecordFields = set("kind", "span", "type", "signature", "doc", "declaration")

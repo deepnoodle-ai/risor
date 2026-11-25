@@ -9,4 +9,4 @@ pub mod token;
 
 #[cfg(test)]
 pub(crate) use parser::parse_core;
-pub use parser::{parse, Expr};
+pub use parser::{parse, parse_with, Expr, ParseOptions, SOURCE_LIMIT};

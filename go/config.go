@@ -156,7 +156,11 @@ func load(ctx context.Context, env *Env, source string, vars Vars, t *Type, opts
 		return nil, Usage{}, &LoadError{Step: StepDeclare, Diagnostics: []Diagnostic{{Phase: PhaseDeclare,
 			Code: diag.CodeBadType, Message: "the expected result: " + t.problem()}}}
 	}
-	x, err := Parse(source)
+	limit, err := sourceLimit(opts)
+	if err != nil {
+		return nil, Usage{}, &LoadError{Step: StepDeclare, Diagnostics: err.(*Error).Diagnostics}
+	}
+	x, err := Parse(source, SourceLimit(limit))
 	if err != nil {
 		return nil, Usage{}, &LoadError{Step: StepParse, Diagnostics: err.(*Error).Diagnostics}
 	}

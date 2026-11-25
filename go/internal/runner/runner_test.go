@@ -55,6 +55,29 @@ func TestVerdicts(t *testing.T) {
 	assert.Equal(t, rs[0].Verdict, Invalid)
 }
 
+// 03-host 3.10.7 item 6: a declare case that expects a name error does not
+// compare further reported errors; one that expects any other code does.
+func TestDeclareExtraDiagnostics(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cases.json")
+	assert.NoError(t, os.WriteFile(path, []byte(`[
+		{"name": "a name error beside another error", "source": "1", "env": "{if: int}", "functions": {"f": "(x: Nope) => int"},
+		 "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+		{"name": "a type error beside another error", "source": "1", "env": "{a: Nope}", "functions": {"f": "(x: Nope) => int"},
+		 "expect": {"phase": "declare", "diagnostics": [{"code": "bad-type"}]}},
+		{"name": "one type error", "source": "1", "env": "{a: number}",
+		 "expect": {"phase": "declare", "diagnostics": [{"code": "bad-type"}]}}
+	]`), 0o644))
+	got := map[string]Verdict{}
+	for _, r := range RunFile(path) {
+		got[r.Case] = r.Verdict
+	}
+	assert.Equal(t, got, map[string]Verdict{
+		"a name error beside another error": Pass,
+		"a type error beside another error": Fail,
+		"one type error":                    Pass,
+	})
+}
+
 func TestOutcomeDescriptionWithEmptyFacts(t *testing.T) {
 	// F14 10.4: a case with facts, even an empty list, in the case or in
 	// the header, writes description after name; a case without does not.

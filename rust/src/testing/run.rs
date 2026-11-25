@@ -16,7 +16,7 @@ use crate::json::Json;
 use crate::library;
 use crate::render::View;
 use crate::syntax::ast::NodeKind;
-use crate::syntax::parse;
+use crate::syntax::{parse, parse_with, ParseOptions};
 use crate::value::{eq_data, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -1601,10 +1601,23 @@ fn compare_failure(
                     .zip(diags)
                     .all(|(e, a)| diag_matches(e, a, checked))
         }
-        // Without regard to order (item 6).
+        // Without regard to order (item 6). A name error may come with
+        // errors in type text that are not specified, so further reported
+        // ones are not compared for it.
         Phase::Declare => {
             let mut used = vec![false; diags.len()];
-            f.diagnostics.len() == diags.len()
+            let name_error = f.diagnostics.first().is_some_and(|e| {
+                matches!(
+                    e.code.as_str(),
+                    "reserved-namespace" | "bad-name" | "name-clash"
+                )
+            });
+            let count_ok = if name_error {
+                f.diagnostics.len() <= diags.len()
+            } else {
+                f.diagnostics.len() == diags.len()
+            };
+            count_ok
                 && f.diagnostics.iter().all(|e| {
                     match (0..diags.len())
                         .find(|&i| !used[i] && diag_matches(e, &diags[i], checked))
@@ -1657,22 +1670,37 @@ fn compare_failure(
 /// The case's program (3.10.5 step 3): its text parsed as a program, or,
 /// with F2's `template`, as a template taken in its mode.
 pub(super) fn parse_case(case: &Case) -> Result<crate::syntax::Expr, Error> {
+    let opts = parse_options(case);
     match case.template {
-        Some(mode) => crate::template::parse_template(&case.source).map(|t| t.program(mode)),
-        None => parse(&case.source),
+        Some(mode) => {
+            crate::template::parse_template_with(&case.source, opts).map(|t| t.program(mode))
+        }
+        None => parse_with(&case.source, opts),
+    }
+}
+
+/// The parse options of a case: its `limits.source`, or the default
+/// (`03-host.md` 3.10.3). The file's schema holds it from 0 to 1,048,576.
+pub(super) fn parse_options(case: &Case) -> ParseOptions {
+    ParseOptions {
+        source_limit: case
+            .limits
+            .source
+            .map_or(crate::syntax::SOURCE_LIMIT, |n| n as usize),
     }
 }
 
 /// The analysis report of the case's text as JSON text (F2 3), when it
 /// parses.
 pub(super) fn analysis_text(case: &Case) -> Option<String> {
+    let opts = parse_options(case);
     match case.template {
         Some(mode) => {
-            let t = crate::template::parse_template(&case.source).ok()?;
+            let t = crate::template::parse_template_with(&case.source, opts).ok()?;
             Some(t.analyze(mode).json())
         }
         None => {
-            let p = parse(&case.source).ok()?;
+            let p = parse_with(&case.source, opts).ok()?;
             Some(p.analyze().json())
         }
     }
@@ -1979,11 +2007,12 @@ pub fn outcome_line(case: &Case) -> String {
             Err(e) => {
                 out.push_str(",\"phase\":\"parse\",\"diagnostics\":[");
                 if let Some(d) = e.diagnostics.first() {
-                    let [a, b, c, f] = d.span.map(|s| s.arr()).unwrap_or([0; 4]);
-                    out.push_str(&format!(
-                        "{{\"code\":\"{}\",\"span\":[{a},{b},{c},{f}]}}",
-                        d.code
-                    ));
+                    // `source-too-large` has no span: the line writes null.
+                    let span = match d.span.map(|s| s.arr()) {
+                        Some([a, b, c, f]) => format!("[{a},{b},{c},{f}]"),
+                        None => "null".to_string(),
+                    };
+                    out.push_str(&format!("{{\"code\":\"{}\",\"span\":{span}}}", d.code));
                 }
                 out.push(']');
             }

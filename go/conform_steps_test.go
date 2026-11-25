@@ -93,7 +93,7 @@ func TestConformStepsOption(t *testing.T) {
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Message, "the run needed more than its limit of 0 steps")
 	assert.NoError(t, risor.Conform(1, risor.TypeAny, risor.ConformSteps(0)))
-	// The environment's step limit plays no part (R320).
+	// The environment's step limit plays no part (R321).
 	env, err := risor.NewEnv(risor.Limits{Steps: 10})
 	assert.NoError(t, err)
 	big, err := env.ParseType("int[]")

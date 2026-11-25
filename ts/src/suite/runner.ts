@@ -28,7 +28,7 @@ import { visibleText } from "../syntax/messages.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { parseTemplateText, templateProgram } from "../syntax/template.ts";
 import { parse } from "../syntax/parser.ts";
-import { Source } from "../syntax/source.ts";
+import { Source, SOURCE_LIMIT } from "../syntax/source.ts";
 import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
 import { complete, hover } from "../tools/assist.ts";
 import type { CompletionResult, HoverResult } from "../tools/assist.ts";
@@ -313,16 +313,19 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
   const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
   let compiled: ReturnType<typeof tryCompile>;
   let loadType: Type | null = null;
+  // 03 3.10.3: limits.source is the source limit of the parse, not a limit of the environment.
+  const { source: sourceLimit = SOURCE_LIMIT, ...envLimits } = c.limits ?? {};
+  const limits = c.limits === undefined ? undefined : envLimits;
   try {
     const options = {
-      version: c.version, varRecord: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], without: c.removed,
+      version: c.version, varRecord: c.env, opaque, functions, reject: c.reject, limits, opaqueNames: c.opaque ?? [], without: c.removed,
       namedTypes: c.types as NamedType[] | undefined,
       groups: c.groups,
       varSchemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
       someNotNull: c.facts,
     };
     // 03 3.10.9: every case runs in a child of the base environment; each limit given replaces the base's.
-    env = base === undefined ? buildEnv(options) : childEnv(base, { ...options, opaqueNames: c.opaque ?? [], limits: c.limits === undefined ? undefined : { ...be!.limits, ...c.limits } });
+    env = base === undefined ? buildEnv(options) : childEnv(base, { ...options, opaqueNames: c.opaque ?? [], limits: limits === undefined ? undefined : { ...be!.limits, ...limits } });
     // The expected result is declared type text, resolved in every compile (03 3.3.1).
     if (!checker && c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
     // f10 10.1: the expected result by schema.
@@ -330,11 +333,11 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
     let input: string | Expr = c.source;
     if (c.template !== undefined) {
-      const t = parseTemplateText(c.source);
+      const t = parseTemplateText(c.source, sourceLimit);
       if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
       input = new Expr(t.template.source, templateProgram(t.template, c.template));
     }
-    compiled = tryCompile(env, input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined });
+    compiled = tryCompile(env, input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined }, sourceLimit);
     if (c.load === true) loadType = env.expectedType(expected!);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
@@ -809,7 +812,10 @@ function compare(c: Case, o: Outcome): Difference[] {
   if (ex.phase === "parse") {
     ok = ex.diagnostics.length <= found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   } else if (ex.phase === "declare") {
-    ok = ex.diagnostics.length === found.length && matchUnordered(ex.diagnostics, found);
+    // 03-host 3.10.7 item 6: a name error may come with errors in type text
+    // that are not specified, so further reported ones are not compared for it.
+    const nameError = ex.diagnostics.length > 0 && DECLARE_NAME_CODES.has(ex.diagnostics[0].code);
+    ok = (nameError ? ex.diagnostics.length <= found.length : ex.diagnostics.length === found.length) && matchUnordered(ex.diagnostics, found);
   } else {
     ok = ex.diagnostics.length === found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   }
@@ -938,6 +944,9 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   }
   return true;
 }
+
+/** The declare codes of a refused name (03-host 3.3.4 item 4). */
+const DECLARE_NAME_CODES = new Set(["reserved-namespace", "bad-name", "name-clash"]);
 
 function matchUnordered(es: ExpectDiagnostic[], fs: FoundDiag[]): boolean {
   const used = new Array<boolean>(fs.length).fill(false);
@@ -1476,16 +1485,19 @@ export function assistOutcome(c: Case): { ok: true; completion?: CompletionResul
   const text = [...t.text].filter((ch) => ch !== "\u2038").join("");
   const src = new Source(text);
   const pos = src.position(Math.min(caret, src.length));
-  if (t.kind === "complete") return { ok: true, completion: complete(env, text, pos, c.returns) };
-  return { ok: true, hover: hover(env, text, pos, c.returns) };
+  // f12 7.2: of limits, completion and hover use source alone.
+  const limit = c.limits?.source ?? SOURCE_LIMIT;
+  if (t.kind === "complete") return { ok: true, completion: complete(env, text, pos, c.returns, limit) };
+  return { ok: true, hover: hover(env, text, pos, c.returns, limit) };
 }
 
 /** The differences of a format case (f12 7.1 items 3 to 5). */
 function formatDifferences(c: Case): Difference[] {
   const t = c.tool!;
   const isT = t.kind === "formatTemplate";
-  const fmt = (s: string) => (isT ? formatTemplate(s) : formatProgram(s));
-  const r = fmt(t.text);
+  const fmt = (s: string, limit = SOURCE_LIMIT) => (isT ? formatTemplate(s, limit) : formatProgram(s, limit));
+  // f12 7.1: of limits, the formatter uses source alone. The laws read the formatted text at the default.
+  const r = fmt(t.text, c.limits?.source);
   const ex = c.expect;
   const d: Difference[] = [];
   if (!r.ok) {

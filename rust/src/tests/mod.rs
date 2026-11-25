@@ -11,6 +11,7 @@ mod format;
 mod host;
 mod recursive;
 mod runner;
+mod source;
 mod suite;
 mod syntax;
 mod unions;

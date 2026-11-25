@@ -3,6 +3,7 @@
 use crate::assist::{complete, hover};
 use crate::check::Want as Expected;
 use crate::Env;
+use crate::ParseOptions;
 
 fn env() -> Env {
     Env::builder()
@@ -14,11 +15,17 @@ fn env() -> Env {
 fn labels(text: &str) -> Vec<String> {
     let at = text.chars().position(|c| c == '‸').unwrap();
     let src = text.replace('‸', "");
-    complete(&env(), &src, &Expected::Nothing, at)
-        .items
-        .into_iter()
-        .map(|c| c.label)
-        .collect()
+    complete(
+        &env(),
+        &src,
+        &Expected::Nothing,
+        at,
+        ParseOptions::default(),
+    )
+    .items
+    .into_iter()
+    .map(|c| c.label)
+    .collect()
 }
 
 #[test]
@@ -66,15 +73,21 @@ fn a_lambda_own_name_is_in_the_scope_of_its_line() {
 
 #[test]
 fn positions_outside_the_text() {
-    let c = complete(&env(), "us", &Expected::Nothing, 9);
+    let c = complete(&env(), "us", &Expected::Nothing, 9, ParseOptions::default());
     assert!(c.items.is_empty());
-    assert!(hover(&env(), "us", &Expected::Nothing, 9).is_none());
+    assert!(hover(&env(), "us", &Expected::Nothing, 9, ParseOptions::default()).is_none());
 }
 
 #[test]
 fn a_long_text_is_helped() {
     let text = format!("{}us", "n + ".repeat(2000));
-    let c = complete(&env(), &text, &Expected::Nothing, text.chars().count());
+    let c = complete(
+        &env(),
+        &text,
+        &Expected::Nothing,
+        text.chars().count(),
+        ParseOptions::default(),
+    );
     assert_eq!(c.items.len(), 1);
 }
 
@@ -119,7 +132,7 @@ fn the_strings_of_a_match_arm() {
     let labels = |text: &str| -> Vec<String> {
         let at = text.chars().position(|c| c == '‸').unwrap();
         let src = text.replace('‸', "");
-        complete(&env, &src, &Expected::Nothing, at)
+        complete(&env, &src, &Expected::Nothing, at, ParseOptions::default())
             .items
             .into_iter()
             .map(|c| c.label)

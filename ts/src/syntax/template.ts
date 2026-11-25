@@ -5,7 +5,8 @@ import { ParseError } from "./diagnostic.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { lexPart } from "./lexer.ts";
 import { parsePartTokens } from "./parser.ts";
-import { Source, fromCodePoints } from "./source.ts";
+import { Source, SOURCE_LIMIT, fromCodePoints, withinSourceLimit } from "./source.ts";
+import { sourceTooLarge } from "./messages.ts";
 import type { Span } from "./source.ts";
 import type { Token } from "./token.ts";
 
@@ -29,8 +30,9 @@ const DOLLAR = 0x24;
 const LBRACE = 0x7b;
 const RBRACE = 0x7d;
 
-/** Template parse (f02 2.1 to 2.3). Never throws for any text. */
-export function parseTemplateText(text: string): TemplateResult {
+/** Template parse (f02 2.1 to 2.3). Never throws for any text. The whole text is held to the source limit first (f02 2.1 item 2). */
+export function parseTemplateText(text: string, limit: number = SOURCE_LIMIT): TemplateResult {
+  if (!withinSourceLimit(text, limit)) return { ok: false, diagnostics: [sourceTooLarge(limit)], source: new Source("") };
   const source = new Source(text, { keepBom: true });
   try {
     return { ok: true, template: scan(source) };

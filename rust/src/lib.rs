@@ -107,11 +107,11 @@ pub use api::{CheckResult, CompileOptions, Expected, Site};
 pub use compile::Program;
 pub use eval::{RunOptions, Usage};
 pub use host::{NoVars, Vars};
-pub use syntax::{parse, Expr};
+pub use syntax::{parse, parse_with, Expr, ParseOptions, SOURCE_LIMIT};
 
 // E.5: templates.
-pub use format::format_template;
-pub use template::{parse_template, Segment, Template, TemplateMode};
+pub use format::{format_template, format_template_with};
+pub use template::{parse_template, parse_template_with, Segment, Template, TemplateMode};
 
 // E.6: host functions and values.
 pub use api::{json_text, truthy};
@@ -120,7 +120,7 @@ pub use host::{Data, HostError, OpaqueRef};
 pub use value::Value;
 
 // E.7: types, conformance and config files.
-pub use config::{load, load_value, LoadError, LoadOptions};
+pub use config::{load, load_value, load_with, LoadError, LoadOptions};
 pub use decode::{decode, Decode, DecodeCx};
 pub use schema::SchemaOptions;
 pub use typ::{
@@ -142,7 +142,7 @@ pub use risor_derive::Host;
 // E.8: diagnostics and tools.
 pub use assist::{Candidate, Completion, Hover};
 pub use diag::{Diagnostic, Error, PathStep, Phase, TraceEntry};
-pub use format::format;
+pub use format::{format, format_with};
 pub use render::{render_detail, render_json, render_line};
 pub use source::{Pos, Span};
 

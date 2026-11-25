@@ -133,9 +133,11 @@ type SchemaVar struct {
 
 var schemaOptions = set("closed", "absent-is-null", "defaults-applied")
 
-// Limits is the field limits of a case.
+// Limits is the field limits of a case. Source is the source limit of
+// the parse (03-host.md 3.6.1 item 5), not a declaration of the
+// environment.
 type Limits struct {
-	Steps, Allocation, Depth *int64
+	Steps, Allocation, Depth, Source *int64
 }
 
 // Stub is a host function given as a table of rows (3.10.4).
@@ -316,7 +318,7 @@ var (
 	stubFields         = set("type", "calls")
 	rowFields          = set("args", "result", "error", "charge", "allocate")
 	stubDiagFields     = set("code", "message")
-	limitFields        = set("steps", "allocation", "depth")
+	limitFields        = set("steps", "allocation", "depth", "source")
 	siteFields         = set("class", "span")
 	phases             = set("declare", "parse", "check", "run")
 	siteClasses        = set("dynamic", "index", "divide", "value", "host")
@@ -552,7 +554,7 @@ func (v *validator) fields(m map[string]any, where string) error {
 		}
 		for k, val := range lm {
 			n, ok := isWhole(val)
-			if !ok || n < 0 || (k == "depth" && (n < 1 || n > diag.MaxDepth)) {
+			if !ok || n < 0 || (k == "depth" && (n < 1 || n > diag.MaxDepth)) || (k == "source" && n > diag.MaxSource) {
 				return v.invalid("%s: limits.%s is out of range", where, k)
 			}
 		}
@@ -813,6 +815,8 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 				c.Limits.Allocation = &n
 			case "depth":
 				c.Limits.Depth = &n
+			case "source":
+				c.Limits.Source = &n
 			}
 		}
 	}

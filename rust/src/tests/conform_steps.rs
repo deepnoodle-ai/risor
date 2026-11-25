@@ -114,7 +114,7 @@ fn the_options_give_the_limit() {
     );
 }
 
-/// The environment's step limit plays no part (R320).
+/// The environment's step limit plays no part (R321).
 #[test]
 fn the_environment_limit_plays_no_part() {
     let env = Env::builder()

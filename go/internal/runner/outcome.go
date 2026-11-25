@@ -32,8 +32,7 @@ func Outcome(c *casefile.Case) string {
 		b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
 		if perr != nil {
 			d := perr.(*risor.Error).Diagnostics[0]
-			a := d.Span.Array()
-			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d],"message":%s}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3], value.QuoteJSON(d.Message))
+			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":%s,"message":%s}]}`, value.QuoteJSON(d.Code), spanOrNull(d.Span), value.QuoteJSON(d.Message))
 			return b.String()
 		}
 		b.WriteString(`,"phase":null,"analysis":` + x.Analyze().JSON() + "}")
@@ -59,6 +58,16 @@ func Outcome(c *casefile.Case) string {
 		line = line[:len(line)-1] + `,"analysis":` + x.Analyze().JSON() + "}"
 	}
 	return line
+}
+
+// spanOrNull writes a span as a JSON array, or null when there is none, as
+// for source-too-large (01-language.md 2.1).
+func spanOrNull(s *risor.Span) string {
+	if s == nil {
+		return "null"
+	}
+	a := s.Array()
+	return fmt.Sprintf("[%d,%d,%d,%d]", a[0], a[1], a[2], a[3])
 }
 
 func outcome(c *casefile.Case) string {
