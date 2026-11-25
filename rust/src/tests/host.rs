@@ -893,7 +893,10 @@ fn a_hint_parameter_is_one_of_a_const_bound_lambda() {
     for (src, want) in [
         ("{ const g = (x) => x(1); 1 }", hint),
         ("const h = (n) => { const g = (x) => x(n); 1 }; 1", hint),
-        ("const h = (n) => { const g = [1].map(x => x(n)); 1 }; 1", plain),
+        (
+            "const h = (n) => { const g = [1].map(x => x(n)); 1 }; 1",
+            plain,
+        ),
         ("{ const g = (xs) => xs.map(x => x(1)); 1 }", plain),
     ] {
         assert_eq!(messages(src), vec![want.to_string()], "{src}");
@@ -901,38 +904,41 @@ fn a_hint_parameter_is_one_of_a_const_bound_lambda() {
 }
 
 /// What opens no level costs no stack at run time either (13.2 rule 6).
+/// Each form is 100,000 links long, or 40,000 where 100,000 would be longer
+/// than a source text may be (2.1 item 4).
 #[test]
 fn flat_programs_run() {
     let env = Env::default();
     let none = BTreeMap::new();
     let n = 100_000;
+    let m = 40_000;
     let run = |src: String| outcome(&program(&env, &src), &none);
     assert_eq!(run(vec!["1"; n].join(" + ")), Ok(n.to_string()));
     let mut t = String::new();
-    for _ in 0..n {
+    for _ in 0..m {
         t.push_str("false ? 1 : ");
     }
     t.push('2');
     assert_eq!(run(t), Ok("2".into()));
     let mut t = String::from("if (false) { 0 }");
-    for _ in 0..n {
+    for _ in 0..m {
         t.push_str(" else if (false) { 1 }");
     }
     t.push_str(" else { 2 }");
     assert_eq!(run(t), Ok("2".into()));
     let mut t = String::from("{ ");
-    for i in 0..n {
+    for i in 0..m {
         t.push_str(&format!("const a{i} = {i}; "));
     }
-    t.push_str("a99999 }");
-    assert_eq!(run(t), Ok("99999".into()));
+    t.push_str("a39999 }");
+    assert_eq!(run(t), Ok("39999".into()));
     assert_eq!(run(format!("\"a\"{}", "[0]".repeat(n))), Ok("\"a\"".into()));
     assert_eq!(
         run(format!("[{}].map(x => x)[0]", vec!["1"; n].join(","))),
         Ok("1".into())
     );
     assert_eq!(
-        run(format!("[1]{}", ".map(x => x)".repeat(n))),
+        run(format!("[1]{}", ".map(x => x)".repeat(m))),
         Ok("[1]".into())
     );
 }

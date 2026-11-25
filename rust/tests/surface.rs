@@ -162,7 +162,11 @@ fn a_config_file_loads() {
         },
     )
     .unwrap();
-    let opts = |expected| LoadOptions { expected, max: 3 };
+    let opts = |expected| LoadOptions {
+        expected,
+        max: 3,
+        ..LoadOptions::default()
+    };
     let got = load_value(
         &Env::default(),
         "{port: 80}",

@@ -17,7 +17,8 @@ use crate::syntax::ast::{
 };
 use crate::syntax::lexer::{lex_comments, lex_part_comments};
 use crate::syntax::token::{StrForm, Tok, Token, P};
-use crate::template::{parse_template, Seg, Segment};
+use crate::syntax::ParseOptions;
+use crate::template::{parse_template_with, Seg, Segment};
 
 const WIDTH: i64 = 80;
 
@@ -2457,7 +2458,13 @@ fn run(
 
 /// The formatted text of a program (2.1), or its `parse` diagnostics.
 pub fn format(text: &str) -> Result<String, Error> {
-    let parsed = crate::syntax::parse(text)?;
+    format_with(text, ParseOptions::default())
+}
+
+/// Format with options: a lower source limit. A limit out of range is the
+/// `declare` error `bad-limit`.
+pub fn format_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
+    let parsed = crate::syntax::parse_with(text, opts)?;
     let src = &parsed.source;
     let (toks, comments) = lex_comments(src).map_err(Error::one)?;
     let mut s = run(
@@ -2475,7 +2482,13 @@ pub fn format(text: &str) -> Result<String, Error> {
 
 /// The formatted text of a template (2.14), or its `parse` diagnostics.
 pub fn format_template(text: &str) -> Result<String, Error> {
-    let t = parse_template(text)?;
+    format_template_with(text, ParseOptions::default())
+}
+
+/// Format a template with options: a lower source limit. A limit out of
+/// range is the `declare` error `bad-limit`.
+pub fn format_template_with(text: &str, opts: ParseOptions) -> Result<String, Error> {
+    let t = parse_template_with(text, opts)?;
     let src: &Source = t.source();
     let ch = src.chars();
     let before = line_ends_before(ch);

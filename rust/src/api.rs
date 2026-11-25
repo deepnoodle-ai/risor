@@ -12,7 +12,7 @@ use crate::eval::{RunOptions, Usage};
 use crate::host::Vars;
 use crate::schema::SchemaOptions;
 use crate::source::{Pos, Source, Span};
-use crate::syntax::Expr;
+use crate::syntax::{Expr, ParseOptions};
 use crate::typ::Type;
 use crate::value::Value;
 
@@ -178,17 +178,54 @@ impl Env {
     /// (F12 3.5). A position past the end of its line is read as the end of
     /// the line.
     pub fn complete(&self, text: &str, pos: Pos, expected: &Expected) -> Completion {
+        self.complete_with(text, pos, expected, ParseOptions::default())
+    }
+
+    /// Completion with parse options: a lower source limit. A text longer
+    /// than the limit, or a limit out of range, gives an empty list whose
+    /// span is empty at `pos` (F12 3.1 item 5); completion never fails.
+    pub fn complete_with(
+        &self,
+        text: &str,
+        pos: Pos,
+        expected: &Expected,
+        opts: ParseOptions,
+    ) -> Completion {
+        if !opts.admits(text) {
+            return Completion {
+                span: Span {
+                    start: pos,
+                    end: pos,
+                },
+                items: Vec::new(),
+            };
+        }
         let want = expected.want(self).unwrap_or(Want::Nothing);
         let src = Source::new(text);
-        crate::assist::complete(self, text, &want, src.offset(pos)).public(&src)
+        crate::assist::complete(self, text, &want, src.offset(pos), opts).public(&src)
     }
 
     /// Hover at a position of a program's text (F12 3.13); `None` where
     /// there is nothing to say.
     pub fn hover(&self, text: &str, pos: Pos, expected: &Expected) -> Option<Hover> {
+        self.hover_with(text, pos, expected, ParseOptions::default())
+    }
+
+    /// Hover with parse options: a lower source limit. A text longer than
+    /// the limit, or a limit out of range, gives no hover (F12 3.1 item 5).
+    pub fn hover_with(
+        &self,
+        text: &str,
+        pos: Pos,
+        expected: &Expected,
+        opts: ParseOptions,
+    ) -> Option<Hover> {
+        if !opts.admits(text) {
+            return None;
+        }
         let want = expected.want(self).unwrap_or(Want::Nothing);
         let src = Source::new(text);
-        crate::assist::hover(self, text, &want, src.offset(pos)).map(|h| h.public(&src))
+        crate::assist::hover(self, text, &want, src.offset(pos), opts).map(|h| h.public(&src))
     }
 }
 

@@ -1,10 +1,13 @@
 //! Package F12: format, completion and hover cases (`f12-tools.md` 7).
 
 use super::case::{Case, Expect};
-use super::run::{case_env, compare_failure_pub, form, outcome_line, Difference, Verdict};
+use super::run::{
+    case_env, compare_failure_pub, form, outcome_line, parse_options, Difference, Verdict,
+};
 use crate::diag::{Diagnostic, Phase};
 use crate::json::{self, Json};
 use crate::source::{Range, Source};
+use crate::syntax::ParseOptions;
 
 /// The kind of a case of F12.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,6 +73,7 @@ pub(super) fn read(
             "formatTemplate",
             "env",
             "vars",
+            "limits",
             "skip",
             "expect",
         ],
@@ -86,6 +90,7 @@ pub(super) fn read(
             "groups",
             "types",
             "returns",
+            "limits",
             "skip",
             "expect",
         ],
@@ -326,7 +331,8 @@ fn assist_result(case: &Case, tc: &ToolCase) -> Result<Json, crate::diag::Error>
     let src = Source::new(&tc.text);
     Ok(match tc.kind {
         ToolKind::Complete => {
-            let c = crate::assist::complete(&env, &tc.text, &expected, tc.offset);
+            let c =
+                crate::assist::complete(&env, &tc.text, &expected, tc.offset, parse_options(case));
             let items = c
                 .items
                 .iter()
@@ -344,29 +350,37 @@ fn assist_result(case: &Case, tc: &ToolCase) -> Result<Json, crate::diag::Error>
                 ("items".into(), Json::Arr(items)),
             ])
         }
-        _ => match crate::assist::hover(&env, &tc.text, &expected, tc.offset) {
-            None => Json::Null,
-            Some(h) => Json::Obj(vec![
-                ("kind".into(), Json::Str(h.kind.into())),
-                ("span".into(), span_json(&src, h.span)),
-                ("type".into(), opt(&h.ty)),
-                ("signature".into(), opt(&h.signature)),
-                ("doc".into(), opt(&h.doc)),
-                (
-                    "declaration".into(),
-                    h.declaration
-                        .map(|d| span_json(&src, d))
-                        .unwrap_or(Json::Null),
-                ),
-            ]),
-        },
+        _ => {
+            match crate::assist::hover(&env, &tc.text, &expected, tc.offset, parse_options(case)) {
+                None => Json::Null,
+                Some(h) => Json::Obj(vec![
+                    ("kind".into(), Json::Str(h.kind.into())),
+                    ("span".into(), span_json(&src, h.span)),
+                    ("type".into(), opt(&h.ty)),
+                    ("signature".into(), opt(&h.signature)),
+                    ("doc".into(), opt(&h.doc)),
+                    (
+                        "declaration".into(),
+                        h.declaration
+                            .map(|d| span_json(&src, d))
+                            .unwrap_or(Json::Null),
+                    ),
+                ]),
+            }
+        }
     })
 }
 
-fn format_text(tc: &ToolCase, text: &str) -> Result<String, crate::diag::Error> {
+/// Format a text with the options: the case's source limit for its own
+/// text, the default for the laws (7.1 item 4).
+fn format_text(
+    tc: &ToolCase,
+    text: &str,
+    opts: ParseOptions,
+) -> Result<String, crate::diag::Error> {
     match tc.kind {
-        ToolKind::FormatTemplate => crate::format::format_template(text),
-        _ => crate::format::format(text),
+        ToolKind::FormatTemplate => crate::format::format_template_with(text, opts),
+        _ => crate::format::format_with(text, opts),
     }
 }
 
@@ -388,7 +402,7 @@ fn outcome_diff(case: &Case, found: String) -> Difference {
 
 fn run_format(case: &Case, tc: &ToolCase) -> Verdict {
     let mut diffs = Vec::new();
-    match (format_text(tc, &tc.text), &case.expect) {
+    match (format_text(tc, &tc.text, parse_options(case)), &case.expect) {
         (Err(e), Expect::Failure(f)) => {
             diffs.extend(compare_failure_pub(case, f, e.phase, &e.diagnostics));
         }
@@ -404,7 +418,7 @@ fn run_format(case: &Case, tc: &ToolCase) -> Verdict {
                     });
                 }
             }
-            match format_text(tc, &s) {
+            match format_text(tc, &s, ParseOptions::default()) {
                 Ok(again) if again == s => {}
                 other => diffs.push(Difference {
                     name: "idempotent",
@@ -447,7 +461,7 @@ fn failure_text(phase: Phase, diags: &[Diagnostic]) -> String {
     let span = d
         .and_then(|d| d.span)
         .map(|s| format!("{:?}", s.arr()))
-        .unwrap_or_default();
+        .unwrap_or_else(|| "null".into());
     format!(
         "{{\"phase\":\"{phase}\",\"code\":\"{}\",\"span\":{span}}}",
         d.map(|d| d.code).unwrap_or("")
@@ -485,6 +499,8 @@ fn tree_law(tc: &ToolCase, s: &str) -> Option<String> {
 /// `vars`, with every span taken out.
 fn run_outcome(case: &Case, text: &str) -> String {
     let mut c = case.clone();
+    // 7.1 item 4: the laws read with the default source limit.
+    c.limits.source = None;
     c.tool = None;
     c.source = text.to_string();
     let line = outcome_line(&c);
@@ -609,10 +625,12 @@ pub(super) fn outcome(case: &Case, tc: &ToolCase) -> String {
         m.push(("diagnostics".into(), Json::Arr(items)));
     };
     match tc.kind {
-        ToolKind::Format | ToolKind::FormatTemplate => match format_text(tc, &tc.text) {
-            Ok(s) => m.push(("formatted".into(), Json::Str(s))),
-            Err(e) => fail(&mut m, e.phase, &e.diagnostics),
-        },
+        ToolKind::Format | ToolKind::FormatTemplate => {
+            match format_text(tc, &tc.text, parse_options(case)) {
+                Ok(s) => m.push(("formatted".into(), Json::Str(s))),
+                Err(e) => fail(&mut m, e.phase, &e.diagnostics),
+            }
+        }
         _ => match assist_result(case, tc) {
             Ok(j) => m.push((
                 if tc.kind == ToolKind::Complete {
