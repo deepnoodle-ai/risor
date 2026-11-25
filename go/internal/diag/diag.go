@@ -135,6 +135,7 @@ func (e *Error) Phase() Phase {
 
 // The parse codes of Core (01-language.md 14.2).
 const (
+	CodeSourceTooLarge      = "source-too-large"
 	CodeUnexpectedToken     = "unexpected-token"
 	CodeUnexpectedCharacter = "unexpected-character"
 	CodeUnterminatedString  = "unterminated-string"
@@ -167,6 +168,10 @@ const (
 // MaxDepth is the largest depth limit a host may set (03-host.md 3.6.1). A
 // larger one is the declare error bad-limit.
 const MaxDepth = 400
+
+// MaxSource is the most code points a source text may have, and the
+// largest source limit a host may set (01-language.md 2.1 item 4).
+const MaxSource = 1 << 20
 
 // LimitCodes are the run codes of class limit (03-host.md 3.7.4).
 var LimitCodes = map[string]bool{

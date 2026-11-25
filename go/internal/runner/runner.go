@@ -901,13 +901,22 @@ func formatGot(ss []risor.Site) string {
 	return "[" + strings.Join(parts, "; ") + "]"
 }
 
+// sourceOpts gives the case's source limit as a parse option, when the
+// case's limits give one (03-host.md 3.10.3).
+func sourceOpts(c *casefile.Case) []risor.ParseOption {
+	if c.Limits == nil || c.Limits.Source == nil {
+		return nil
+	}
+	return []risor.ParseOption{risor.SourceLimit(*c.Limits.Source)}
+}
+
 // parseCase is step 3 of 3.10.5: the text as a program, or as a template in
 // the case's mode (F2 4.1).
 func parseCase(c *casefile.Case) (*risor.Expr, error) {
 	if c.Template == "" {
-		return risor.Parse(c.Source)
+		return risor.Parse(c.Source, sourceOpts(c)...)
 	}
-	t, err := risor.ParseTemplate(c.Source)
+	t, err := risor.ParseTemplate(c.Source, sourceOpts(c)...)
 	if err != nil {
 		return nil, err
 	}

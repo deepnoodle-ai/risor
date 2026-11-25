@@ -30,12 +30,14 @@ func runTools(c *casefile.Case) Result {
 	return runHover(c)
 }
 
-// formatText formats the text of a format case.
-func formatText(c *casefile.Case, text string) (string, error) {
+// formatText formats the text of a format case, with the given options.
+// The case's own text takes its source limit; the laws re-format with the
+// default, since a formatted text may be longer than its source (7.1).
+func formatText(c *casefile.Case, text string, opts ...risor.ParseOption) (string, error) {
 	if c.Tools.Kind == "formatTemplate" {
-		return risor.FormatTemplate(text)
+		return risor.FormatTemplate(text, opts...)
 	}
-	return risor.Format(text)
+	return risor.Format(text, opts...)
 }
 
 // runFormat runs a format case (7.1). The differences are outcome,
@@ -43,7 +45,7 @@ func formatText(c *casefile.Case, text string) (string, error) {
 func runFormat(c *casefile.Case) Result {
 	t := c.Tools
 	e := c.Expect
-	out, err := formatText(c, t.Text)
+	out, err := formatText(c, t.Text, sourceOpts(c)...)
 	if err != nil {
 		rerr := err.(*risor.Error)
 		if !e.IsFailure() || e.Phase != "parse" {
@@ -177,11 +179,10 @@ func toolsLine(c *casefile.Case) string {
 	t := c.Tools
 	switch t.Kind {
 	case "format", "formatTemplate":
-		out, err := formatText(c, t.Text)
+		out, err := formatText(c, t.Text, sourceOpts(c)...)
 		if err != nil {
 			d := err.(*risor.Error).Diagnostics[0]
-			a := d.Span.Array()
-			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d],"message":%s}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3], value.QuoteJSON(d.Message))
+			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":%s,"message":%s}]}`, value.QuoteJSON(d.Code), spanOrNull(d.Span), value.QuoteJSON(d.Message))
 			return b.String()
 		}
 		b.WriteString(`,"formatted":` + value.QuoteJSON(out) + "}")
@@ -219,13 +220,17 @@ func writeDeclare(b *strings.Builder, err error) {
 
 // assistOpts is the expected result of a completion or hover case.
 func assistOpts(c *casefile.Case) []risor.CheckOption {
+	var opts []risor.CheckOption
+	if c.Limits != nil && c.Limits.Source != nil {
+		opts = append(opts, risor.SourceLimit(*c.Limits.Source))
+	}
 	if c.Returns == nil {
-		return nil
+		return opts
 	}
 	if *c.Returns == "condition" {
-		return []risor.CheckOption{risor.Condition}
+		return append(opts, risor.Condition)
 	}
-	return []risor.CheckOption{risor.Expect(*c.Returns)}
+	return append(opts, risor.Expect(*c.Returns))
 }
 
 func spanJSON(s risor.Span) string {

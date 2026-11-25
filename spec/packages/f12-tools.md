@@ -1088,7 +1088,10 @@ with its meaning unchanged.
    - **run**: when the case has `vars`, the source and the formatted text are
      each checked against `env` and run with the `vars`, and the two outcomes
      agree in phase, type, value, code, class, message, steps and units.
-   A law that does not hold is a difference, whatever `expect` says.
+   A law that does not hold is a difference, whatever `expect` says. The case's
+   source limit applies to its own text only. The laws read the formatted text
+   with the default source limit, since a formatted text may be longer than
+   its source.
 5. The differences are named `outcome`, `diagnostics`, `formatted`,
    `idempotent`, `tree` and `run`, in that order.
 6. A format case is run once. It has no fixture test (F9 2).

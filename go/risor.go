@@ -90,8 +90,13 @@ type Expr struct {
 // Parse parses the source text of a program. A text gives the same Expr,
 // or the same diagnostics, in every environment. On failure the error is an
 // *Error with one diagnostic of phase parse: the first one of
-// spec/core/01-language.md 14.1.
-func Parse(source string) (*Expr, error) {
+// spec/core/01-language.md 14.1. A text longer than the source limit,
+// MaxSource or a lower SourceLimit, fails with source-too-large before it
+// is read.
+func Parse(source string, opts ...ParseOption) (*Expr, error) {
+	if err := checkSource(source, opts); err != nil {
+		return nil, err
+	}
 	if !utf8.ValidString(source) {
 		// Each maximal subpart of ill-formed UTF-8 is one U+FFFD (03-host.md 3.4.5).
 		source = value.ReplaceInvalid(source)
