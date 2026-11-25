@@ -210,7 +210,7 @@ func Diff(a, b *Line) string {
 	if a.HasType != b.HasType || a.Type != b.Type {
 		return "type"
 	}
-	if a.HasSites != b.HasSites || !Equal(a.Sites, b.Sites) {
+	if a.HasSites != b.HasSites || !sameField(a.Fields, b.Fields, "sites") {
 		return "sites"
 	}
 	if a.HasPhase != b.HasPhase || a.Phase != b.Phase {
@@ -219,9 +219,9 @@ func Diff(a, b *Line) string {
 	if a.HasValue != b.HasValue || !Equal(a.Value, b.Value) {
 		return "value"
 	}
-	_, hasDiagsA := a.Fields["diagnostics"]
-	_, hasDiagsB := b.Fields["diagnostics"]
-	if hasDiagsA != hasDiagsB || len(a.Diags) != len(b.Diags) {
+	diagA, hasDiagsA := a.Fields["diagnostics"]
+	diagB, hasDiagsB := b.Fields["diagnostics"]
+	if hasDiagsA != hasDiagsB || (diagA == nil) != (diagB == nil) || len(a.Diags) != len(b.Diags) {
 		return "diagnostics.count"
 	}
 	limit := a.IsLimit() || b.IsLimit()

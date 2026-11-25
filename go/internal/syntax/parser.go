@@ -347,12 +347,22 @@ func (p *parser) constLine() *Const {
 	return &Const{base: p.base(m), Pattern: pat, Type: ann, Value: val, Doc: doc}
 }
 
+// beginsExpr reports whether reserved word w begins an Expr or operand
+// (01-language.md 14.2 rule 2).
+func beginsExpr(w string) bool {
+	return w == "true" || w == "false" || w == "null" || w == "match" || w == "if" || w == "try"
+}
+
 // argOrExpr parses the place of an Arg or of a const value (3.2 rule 5).
 // allowLambda is false where a lambda is an error at its "=>" (3.4 rule 9).
 func (p *parser) argOrExpr(allowLambda bool) Node {
 	t := p.tok
 	if t.Kind == Word && (IsName(t.Text) || t.Text == "_") && p.peek(1).Kind == Arrow {
 		return p.lambda(allowLambda)
+	}
+	if t.Kind == Word && reserved[t.Text] && !beginsExpr(t.Text) && p.peek(1).Kind == Arrow {
+		p.rule = "14.2.1" // F8 2.4 item 1: a parameter
+		p.reservedWord(t)
 	}
 	if t.Kind == LParen && p.parenLambda() {
 		return p.lambda(allowLambda)
@@ -1194,11 +1204,7 @@ func (p *parser) primary() Node {
 			p.raise("3.4.5")
 		}
 		if reserved[t.Text] {
-			if p.peek(1).Kind == Arrow {
-				p.rule = "14.2.1" // a parameter
-			} else {
-				p.rule = "14.2.2"
-			}
+			p.rule = "14.2.2"
 			p.reservedWord(t)
 		}
 		if t.Text == "_" {

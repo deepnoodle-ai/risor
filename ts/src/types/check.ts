@@ -2094,6 +2094,7 @@ class Checker {
     const missing = [...r.fields].filter(([k, fl]) => !fl.optional && !items.some((it) => gives(it, k)?.sure === true)).map(([k]) => k).sort(compareText);
     if (missing.length > 0) this.say(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place, "missing", { key: missing[0] });
     const reported = new Set<A.Spread>();
+    const dynSpreads = new Set<A.Spread>();
     for (const k of [...[...keys].sort(compareText), null]) {
       const gs = items.map((it) => gives(it, k));
       let first = 0;
@@ -2133,8 +2134,11 @@ class Checker {
           } else {
             this.fitFail(code(g.type, rt), it.spread.value.span, g.type, rt);
           }
-        } else if (fit === 2 && it.m !== "any") this.site("dynamic", it.spread.value.span, ...owners);
+        } else if (fit === 2 && it.m !== "any") dynSpreads.add(it.spread);
       }
+    }
+    for (const sp of dynSpreads) {
+      if (!reported.has(sp)) this.site("dynamic", sp.value.span, ...owners);
     }
   }
 

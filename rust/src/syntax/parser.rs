@@ -1678,14 +1678,7 @@ impl<'a> Parser<'a> {
                 // 3.4 rule 5.
                 "if" | "try" => Err(self.perr(code::UNEXPECTED_TOKEN, t.span, Rule::OperandIf)),
                 "_" => Err(self.unexpected(t)),
-                w if is_reserved(w) => Err(self.reserved(
-                    t,
-                    if self.peek_n(1).is_punct(P::Arrow) {
-                        Rule::Name
-                    } else {
-                        Rule::Value
-                    },
-                )),
+                w if is_reserved(w) => Err(self.reserved(t, Rule::Value)),
                 _ => {
                     let wi = self.pos;
                     let nt = self.bump_word()?;

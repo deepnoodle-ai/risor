@@ -504,6 +504,7 @@ class Parser {
     }
     this.expect("=");
     let value: A.Expr | A.Lambda;
+    if (type === null) this.reservedParam();
     if (type === null && this.lambdaStartsHere()) {
       value = this.lambda((arrow) => {
         // 01 3.4 rule 9: only a Name may bind a lambda.
@@ -1174,8 +1175,7 @@ class Parser {
         // 01 3.4 rule 5: an if or a try is not an operand (f08 2.6 D5).
         this.fail("needs-parentheses", t, "operand");
     }
-    // f08 2.4 item 1: a word before `=>` is a parameter, a Name.
-    if (isReserved(t.text)) this.reservedWord(t, this.isP(this.peek(1), "=>") ? "name" : "operand");
+    if (isReserved(t.text)) this.reservedWord(t, "operand");
     if (t.text === "_") this.unexpected(t);
     const level = this.level;
     this.advance();
@@ -1225,6 +1225,7 @@ class Parser {
     const args: A.Arg[] = [];
     for (;;) {
       if (this.isP(this.cur, ")")) break;
+      this.reservedParam();
       args.push(this.lambdaStartsHere() ? this.lambda(null) : this.expr());
       if (this.isP(this.cur, ",")) {
         this.advance();
@@ -1413,6 +1414,24 @@ class Parser {
   }
 
   // ---- lambdas and patterns ----------------------------------------------
+
+  /**
+   * f08 2.4 item 1: a reserved word followed by `=>`, where an Arg or an
+   * unannotated Const value may stand, is a parameter (a Name) unless the
+   * word begins an Expr (`true`, `false`, `null`, `match`, `if`, `try`).
+   */
+  private reservedParam(): void {
+    const t = this.cur;
+    if (
+      t.kind === "word" &&
+      isReserved(t.text) &&
+      t.text !== "true" && t.text !== "false" && t.text !== "null" &&
+      t.text !== "match" && t.text !== "if" && t.text !== "try" &&
+      this.isP(this.peek(1), "=>")
+    ) {
+      this.reservedWord(t, "name");
+    }
+  }
 
   /** 01 3.2 rules 5 and 6; with package F16, a `)` followed by `:` too (f16 2.2 rule 2). */
   private lambdaStartsHere(): boolean {

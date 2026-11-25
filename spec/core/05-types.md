@@ -1241,8 +1241,8 @@ the record of T. The entries are taken in written order.
 | The contributors of a key k | The last entry that surely gives k, and every entry after it that may give k. With no entry that surely gives k, every entry that may give k. |
 
 The keys taken are those R lists, those written, and those any spread's record
-lists; and one **other key**, standing for every key none of these name, whose
-contributors are the spreads that may give every key.
+lists, in code point order; and then one **other key**, standing for every key
+none of these name, whose contributors are the spreads that may give every key.
 
 | Check | Place of a failure |
 | --- | --- |
@@ -1250,11 +1250,16 @@ contributors are the spreads that may give every key.
 | A spread that is a contributor of a key: the type it gives for that key fits R's type for that key. For the other key, R's type is R's rest. | The spread's operand, once for each spread. |
 | Each required field of R is surely given by some entry. | The whole of e, once. |
 
-With no spread this is the row of a `Map` above, and gives the same results. A
-spread's fit that used any records a `dynamic` site on its operand; for an
-operand of type `any`, 7.7 has recorded it already. So in `{...base, prot:
-8080}` against an exact record, the misspelled key is reported at `prot`, and a
-field of `base` whose type does not fit is reported on `base`.
+With no spread this is the row of a `Map` above, and gives the same results.
+When a spread fails on more than one key, the first failing key in that order
+decides the failure reported on its operand (including a fit that uses `any`
+when fitting an annotation, F16 3.3); if that key is a named key R does not
+list and R's rest is `never`, the message takes the `extra` template (F8 3.5).
+A spread's fit that used any records a `dynamic` site on its operand only when
+the spread has no failure; for an operand of type `any`, 7.7 has recorded it
+already. So in `{...base, prot: 8080}` against an exact record, the misspelled
+key is reported at `prot`, and a field of `base` whose type does not fit is
+reported on `base`.
 
 ### 15.2 The code at a place of failure
 

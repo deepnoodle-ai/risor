@@ -160,7 +160,6 @@ func (c *checker) fitMapRecord(e *syntax.Map, gs []giver, r *types.Record, want 
 				}
 			case used && !spreadDyn[i]:
 				spreadDyn[i] = true
-				c.dyn(sp)
 			}
 		}
 	}
@@ -168,6 +167,11 @@ func (c *checker) fitMapRecord(e *syntax.Map, gs []giver, r *types.Record, want 
 		check(key, false)
 	}
 	check("", true)
+	for i, dyn := range spreadDyn {
+		if dyn && !spreadDone[i] && gs[i].m != nil && !gs[i].m.IsAny() {
+			c.dyn(gs[i].spread.Value.Span())
+		}
+	}
 	for _, f := range r.Fields {
 		if f.Optional {
 			continue

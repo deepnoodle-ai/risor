@@ -4124,9 +4124,6 @@ impl<'a> Checker<'a> {
         keys.dedup();
         let mut failed: Vec<Option<(Ty, Ty, Why)>> = vec![None; ents.len()];
         let mut used_any: Vec<usize> = Vec::new();
-        // F16 3.3: a spread whose fit used `any`, with the first key's types,
-        // by entry index.
-        let mut strict_failed: Vec<Option<(Ty, Ty)>> = vec![None; ents.len()];
         let mut written: Vec<usize> = Vec::new();
         let mut surely: Vec<String> = Vec::new();
         let extra_shown = || {
@@ -4168,26 +4165,24 @@ impl<'a> Checker<'a> {
                 let Some((ty, _)) = x else { continue };
                 match &ents[i] {
                     Ent::Written { .. } => written.push(i),
-                    Ent::Spread { .. } => match fits(ty, &want) {
-                        None => {
+                    Ent::Spread { .. } => {
+                        let fit = fits(ty, &want);
+                        if fit.is_none() || (fit == Some(true) && self.strict) {
                             if failed[i].is_none() {
                                 let why = match k {
-                                    Some(key) if !r.fields.contains_key(key) && r.rest.is_never() => {
+                                    Some(key)
+                                        if !r.fields.contains_key(key) && r.rest.is_never() =>
+                                    {
                                         Why::Extra(key.to_string(), extra_shown())
                                     }
                                     _ => Why::Fit,
                                 };
                                 failed[i] = Some((ty.clone(), want.clone(), why));
                             }
+                        } else if fit == Some(true) {
+                            used_any.push(i);
                         }
-                        Some(true) if self.strict => {
-                            if strict_failed[i].is_none() {
-                                strict_failed[i] = Some((ty.clone(), want.clone()));
-                            }
-                        }
-                        Some(true) => used_any.push(i),
-                        _ => {}
-                    },
+                    }
                     Ent::Nothing => {}
                 }
             }
@@ -4220,17 +4215,6 @@ impl<'a> Checker<'a> {
             if let Ent::Spread { operand, .. } = &ents[i] {
                 let vs = self.span(*operand);
                 self.report(vs, &ty, &want, mode, why);
-            }
-        }
-        for (i, s) in strict_failed.into_iter().enumerate() {
-            // A definite failure takes priority for the same operand.
-            let Some((ty, want)) = s else { continue };
-            if has_failed[i] {
-                continue;
-            }
-            if let Ent::Spread { operand, .. } = &ents[i] {
-                let vs = self.span(*operand);
-                self.report(vs, &ty, &want, mode, Why::Fit);
             }
         }
         for i in used_any {
