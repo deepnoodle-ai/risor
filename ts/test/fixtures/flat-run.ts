@@ -140,17 +140,11 @@ function everyEntryPoint(f: FlatForm): void {
 
   // The formatter.
   if (f.format === "text") formatLaws(source, "format");
-  else if (f.format === "nested") {
+  else {
     // f12 2.6 writes parentheses for the reader around each left operand here: the text of
     // more than 100 of them nests too deep to parse, so the laws are tested at 40 repeats.
     assert.equal(typeof through("format", () => format(source)), "string");
     formatLaws(f.source(40), "format, 40 repeats");
-  } else {
-    // f12 2.8 indents each `else` branch two more than the one before, so the text grows
-    // with the square of the length. 500 branches are about 500,000 code points, within the
-    // size of a source text (01 2.1 item 4), which the second format reads; 10,000 would be
-    // 200 million.
-    formatLaws(f.source(500), "format, 500 repeats");
   }
 
   // A template whose one part is the program. A part holds no `const` line and no type line.
@@ -163,7 +157,7 @@ function everyEntryPoint(f: FlatForm): void {
       assert.ok(o.ok && f.gives(o.value, vars, n), "run a template: the value");
     }
     JSON.parse(through("analyze a template", () => t.analyze("value").json()));
-    if (f.format !== "quadratic") assert.equal(typeof through("format a template", () => formatTemplate(text)), "string");
+    assert.equal(typeof through("format a template", () => formatTemplate(text)), "string");
   }
 }
 
@@ -174,6 +168,8 @@ function formattedText(): void {
   assert.equal(format("y" + " as any".repeat(n)), "y" + " as any".repeat(n) + "\n");
   // A chain of calls that does not fit breaks before each call (f12 2.11).
   assert.equal(format("y" + ".trim()".repeat(n)), "y" + "\n  .trim()".repeat(n) + "\n");
+  // A broken chain of `? :` puts each link on a line at one indentation (f12 2.8 item 5).
+  assert.equal(format("c ? 1 : ".repeat(n) + "2"), "c ? 1\n" + ": c ? 1\n".repeat(n - 1) + ": 2\n");
   // A projection is a plain step: it stays with the call before it.
   assert.equal(format("[[y]]" + "[*].map(x => x)".repeat(n)), "[[y]][*]" + "\n  .map(x => x)[*]".repeat(n - 1) + "\n  .map(x => x)\n");
   // A run of one level breaks before each operand, and a comment stays with its token.
