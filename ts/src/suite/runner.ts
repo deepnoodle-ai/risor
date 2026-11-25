@@ -793,7 +793,10 @@ function compare(c: Case, o: Outcome): Difference[] {
   if (ex.phase === "parse") {
     ok = ex.diagnostics.length <= found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   } else if (ex.phase === "declare") {
-    ok = ex.diagnostics.length === found.length && matchUnordered(ex.diagnostics, found);
+    // 03-host 3.10.7 item 6: a name error may come with errors in type text
+    // that are not specified, so further reported ones are not compared for it.
+    const nameError = ex.diagnostics.length > 0 && DECLARE_NAME_CODES.has(ex.diagnostics[0].code);
+    ok = (nameError ? ex.diagnostics.length <= found.length : ex.diagnostics.length === found.length) && matchUnordered(ex.diagnostics, found);
   } else {
     ok = ex.diagnostics.length === found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   }
@@ -922,6 +925,9 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   }
   return true;
 }
+
+/** The declare codes of a refused name (03-host 3.3.4 item 4). */
+const DECLARE_NAME_CODES = new Set(["reserved-namespace", "bad-name", "name-clash"]);
 
 function matchUnordered(es: ExpectDiagnostic[], fs: FoundDiag[]): boolean {
   const used = new Array<boolean>(fs.length).fill(false);

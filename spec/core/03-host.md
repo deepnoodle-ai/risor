@@ -149,14 +149,15 @@ An environment is a set of declarations. Core has these kinds.
 
 1. An environment with no version declaration has the newest version the
    implementation offers.
-2. Every implementation parses the type text of every declaration, by the
-   grammar of `05-types.md`, whether or not it has a type checker. It needs the
-   names of the variables and the count of parameters of each function. Text
-   that the grammar does not accept is `bad-type`, or `bad-signature` for a
-   signature, in every implementation. The rules of `05-types.md` beyond the
-   grammar (two record alternatives, an undeclared type name, type depth
-   (`05-types.md` 2.5), a key
-   written twice) need the type checker.
+2. Every implementation parses the type text of every declaration whose name
+   it accepts, by the grammar of `05-types.md`, whether or not it has a type
+   checker. An implementation needs the names of the variables and the count
+   of parameters of each function. Text that the grammar does not accept is
+   `bad-type`, or `bad-signature` for a signature, in every implementation.
+   The rules of `05-types.md` beyond the grammar (two record alternatives, an
+   undeclared type name, type depth (`05-types.md` 2.5), a key written twice)
+   need the type checker. For a declaration whose name is refused, 3.3.4 item
+   4 applies.
 3. Check uses the types of variables. A run uses only their names.
 4. An environment with no rejected-classes declaration rejects the default
    set, which is `constant-condition` alone. A name that is not one of the six
@@ -256,7 +257,18 @@ in declared type text.
 3. A method of an opaque type may be named with a reserved word
    (`Time.if`): after `.` it is a word like any other.
 4. An implementation reports every `declare` error it finds, in no specified
-   order.
+   order, with one exception. A declaration may have a refused name
+   (`reserved-namespace`, `bad-name` or `name-clash`) and bad type text
+   (`bad-type` or `bad-signature`). Whether the implementation parses that
+   text and reports its error is then unspecified:
+
+   | The name error | What is reported |
+   | --- | --- |
+   | `reserved-namespace` or `bad-name` | The name error. The error in the type text may be reported too |
+   | `name-clash` | At least one of the two errors |
+
+   The environment is refused either way. A case pins only what every
+   implementation reports (3.10.7, item 6).
 5. A `declare` diagnostic has a code, a phase and a message. It has no span.
 
 ## 3.4 Variables and values
@@ -784,7 +796,7 @@ else.
 | No mutation | The run never writes to a value it did not create | That a host function does not change its arguments. A result may share memory with host data |
 | Determinism | The same program, version, values, host function results and charges, and limits give the same reads and calls of the host, in the same order (3.6.2), and the same value, or the same failure with its code, span and message, and the same usage | A run stopped by its deadline or by cancellation. The span of a limit error |
 | Steps | The work of the language and its library is proportional to the steps charged. The run stops at the same point in every implementation and version | The time one step takes. Work in a host function beyond what it charges |
-| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken | Live memory. Host data. What a host function builds without charging |
+| Allocation | The units of every value the language and its library create in a run never pass the budget. The charge comes before the memory is taken, except where `02-evaluation.md` 6.2 item 3 allows a library entry to build first | Live memory. Host data. What a host function builds without charging |
 | Deadline | A run that passes its deadline, or that is cancelled, stops within one test interval of steps | That a blocked host function returns |
 | Depth | The implementation's own stack does not overflow on any program or any data | — |
 | No crash | A run does not crash or hang on any program or any values. A crash in host code is `function-panic`. A failure inside the implementation is `internal-error` | — |
@@ -1059,8 +1071,12 @@ Each element of `diagnostics` is an object with these fields.
    16). It is compared with the first diagnostic the parser reported. Further
    reported diagnostics are not compared.
 6. `diagnostics` for phase `declare` has exactly one element (3.10.10, item
-   16). The environment then has exactly one error, and the expected
-   diagnostic is compared with the one reported.
+   16). When its code is `reserved-namespace`, `bad-name` or `name-clash`, it
+   is compared with each diagnostic reported, in any order, and one of them
+   must match it. Further reported diagnostics are not compared, because a
+   refused name may come with errors in type text that are not specified
+   (3.3.4, item 4). For any other code, the environment has exactly one
+   error, and the expected diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
 8. `class` is compared for every code, with one exception. A case states the
    class of the checked program. In a run with the static rules alone
@@ -1155,8 +1171,8 @@ verdict `invalid`.
 15. JSON nested deeper than 1,024 levels (3.10.1, item 4).
 16. An `expect` of phase `parse` or `declare` whose `diagnostics` has more than
     one element. Only the first `parse` diagnostic is specified, and the order
-    of `declare` diagnostics is not. A case that expects phase `declare` has an
-    environment with exactly one error.
+    of `declare` diagnostics is not. A case that expects phase `declare` pins
+    one error of its environment (3.10.7, item 6).
 17. A case with `"check": false` whose `expect` has `type` or `sites`, or
     expects a failure of phase `check` with a code that is not static
     (3.10.13).
