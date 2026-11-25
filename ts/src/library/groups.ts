@@ -429,69 +429,265 @@ implement(null, "time.format", (c) => {
   return out;
 });
 
-const DURATION = /^-?(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h|d))+$/;
-const TERM = /([0-9]+)(?:\.([0-9]+))?(ms|s|m|h|d)/g;
-/** Each unit in seconds, as a decimal scale and shift: ms is 1e-3, s is 1, m is 60, h is 3600, d is 86400. */
-const UNIT_SCALE: Record<string, { mul: number; shift: number }> = {
-  ms: { mul: 1, shift: -3 },
-  s: { mul: 1, shift: 0 },
-  m: { mul: 60, shift: 0 },
-  h: { mul: 3600, shift: 0 },
-  d: { mul: 86400, shift: 0 },
-};
+// Fixed-width decimal accumulator for `time.duration` (f06 7.4): every binary64
+// value and midpoint terminates by 10^-1075 (half of 2^-1074) and overflows
+// below 10^309. Keeping 1,120 fractional columns (45 guard digits) and 320
+// integer columns bounds scratch memory to O(1) while preserving exact
+// round-to-nearest-even and handling carries of any magnitude up to overflow.
+const DUR_FRAC_COLS = 1120;
+const DUR_INT_COLS = 320;
+const DUR_TOTAL_COLS = DUR_FRAC_COLS + DUR_INT_COLS;
+const DUR_GUARD_COLS = DUR_FRAC_COLS - 1075;
+const DUR_TAIL_WIN = 1024;
+
+function isAsciiDigit(ch: number): boolean {
+  return ch >= 0x30 && ch <= 0x39;
+}
+
+function colsToDouble(cols: Float64Array): number {
+  let top = cols.length - 1;
+  while (top > DUR_FRAC_COLS && cols[top] === 0) top--;
+  let lo = 0;
+  while (lo < DUR_FRAC_COLS && cols[lo] === 0) lo++;
+  if (top === DUR_FRAC_COLS && cols[DUR_FRAC_COLS] === 0 && lo === DUR_FRAC_COLS) return 0;
+  const chars: string[] = [];
+  for (let i = top; i >= DUR_FRAC_COLS; i--) chars.push(String(cols[i]));
+  if (lo < DUR_FRAC_COLS) {
+    chars.push(".");
+    for (let i = DUR_FRAC_COLS - 1; i >= lo; i--) chars.push(String(cols[i]));
+  }
+  return parseDecimal(chars.join(""))!;
+}
+
+/** Compare the sum of all fractional digits strictly below 10^-DUR_FRAC_COLS against deficit * 10^-DUR_FRAC_COLS. */
+function compareDurationTail(s: string, deficit: number, eps: number): -1 | 0 | 1 {
+  const n = s.length;
+  let i = s.charCodeAt(0) === 0x2d ? 1 : 0;
+  const longTerms: { fpStart: number; fpTrim: number; mul: number; shift: number }[] = [];
+  while (i < n) {
+    while (i < n && isAsciiDigit(s.charCodeAt(i))) i++;
+    let fpStart = i;
+    let fpEnd = i;
+    if (i < n && s.charCodeAt(i) === 0x2e) {
+      i++;
+      fpStart = i;
+      while (i < n && isAsciiDigit(s.charCodeAt(i))) i++;
+      fpEnd = i;
+    }
+    let mul = 1;
+    let shift = 0;
+    const ch = s.charCodeAt(i);
+    if (ch === 0x6d && i + 1 < n && s.charCodeAt(i + 1) === 0x73) {
+      i += 2;
+      mul = 1;
+      shift = 3;
+    } else if (ch === 0x73) {
+      i += 1;
+      mul = 1;
+    } else if (ch === 0x6d) {
+      i += 1;
+      mul = 60;
+    } else if (ch === 0x68) {
+      i += 1;
+      mul = 3600;
+    } else if (ch === 0x64) {
+      i += 1;
+      mul = 86400;
+    } else {
+      break;
+    }
+    const cutoff = DUR_FRAC_COLS - shift;
+    if (fpEnd - fpStart > cutoff) {
+      let trim = fpEnd;
+      while (trim > fpStart + cutoff && s.charCodeAt(trim - 1) === 0x30) trim--;
+      if (trim > fpStart + cutoff) longTerms.push({ fpStart, fpTrim: trim, mul, shift });
+    }
+  }
+
+  let lo = DUR_FRAC_COLS;
+  let rem = deficit;
+  const win = new Float64Array(DUR_TAIL_WIN);
+  for (;;) {
+    win.fill(0);
+    const hi = lo + DUR_TAIL_WIN;
+    let write = 0;
+    for (let tIdx = 0; tIdx < longTerms.length; tIdx++) {
+      const t = longTerms[tIdx];
+      const fpLen = t.fpTrim - t.fpStart;
+      const kStart = lo - t.shift;
+      const kEnd = Math.min(hi - t.shift, fpLen);
+      for (let k = kStart; k < kEnd; k++) {
+        const d = s.charCodeAt(t.fpStart + k) - 0x30;
+        if (d !== 0) win[DUR_TAIL_WIN - 1 - (k - kStart)] += d * t.mul;
+      }
+      if (fpLen > hi - t.shift) longTerms[write++] = t;
+    }
+    longTerms.length = write;
+    const anyBelowHi = longTerms.length > 0;
+
+    let carry = 0;
+    for (let j = 0; j < DUR_TAIL_WIN; j++) {
+      const sum = win[j] + carry;
+      carry = Math.floor(sum / 10);
+      win[j] = sum - carry * 10;
+    }
+    if (carry > rem) return 1;
+    rem -= carry;
+    for (let j = DUR_TAIL_WIN - 1; j >= 0; j--) {
+      if (rem > eps) return -1;
+      const r10 = rem * 10;
+      if (win[j] > r10) return 1;
+      rem = r10 - win[j];
+    }
+    if (rem === 0) return anyBelowHi ? 1 : 0;
+    if (!anyBelowHi) return -1;
+    lo = hi;
+  }
+}
 
 implement(null, "time.duration", (c) => {
   const s = c.args[0] as string;
   c.run.charge(size(s));
-  if (!DURATION.test(s)) throw new RunFailure("invalid-argument", c.span, "not-a-duration", { text: s });
-  // f06 7.4 item 3: exact sum in O(len(s)) column addition, rounded once.
-  const terms: { ip: string; fp: string; mul: number; shift: number }[] = [];
-  let maxFrac = 0;
-  let maxInt = 1;
-  for (const m of s.matchAll(TERM)) {
-    const ip = m[1];
-    const fp = m[2] ?? "";
-    const { mul, shift } = UNIT_SCALE[m[3]];
-    terms.push({ ip, fp, mul, shift });
-    const frac = Math.max(0, fp.length - shift);
-    if (frac > maxFrac) maxFrac = frac;
-    const intLen = ip.length + Math.max(0, shift);
-    if (intLen > maxInt) maxInt = intLen;
-  }
-  const cols = new Float64Array(maxFrac + maxInt + 12);
-  for (const t of terms) {
-    for (let i = 0; i < t.ip.length; i++) {
-      const d = t.ip.charCodeAt(t.ip.length - 1 - i) - 0x30;
-      if (d !== 0) cols[maxFrac + t.shift + i] += d * t.mul;
+  const bad = () => new RunFailure("invalid-argument", c.span, "not-a-duration", { text: s });
+  const range = () => new RunFailure("number-range", c.span, "entry", { name: "time.duration" });
+  const n = s.length;
+  const neg = n > 0 && s.charCodeAt(0) === 0x2d;
+  let i = neg ? 1 : 0;
+  if (i === n) throw bad();
+
+  const cols = new Float64Array(DUR_TOTAL_COLS);
+  let overflow = false;
+  let tailTerms = 0;
+
+  while (i < n) {
+    const ipStart = i;
+    while (i < n && isAsciiDigit(s.charCodeAt(i))) i++;
+    const ipEnd = i;
+    if (ipEnd === ipStart) throw bad();
+    let fpStart = i;
+    let fpEnd = i;
+    if (i < n && s.charCodeAt(i) === 0x2e) {
+      i++;
+      fpStart = i;
+      while (i < n && isAsciiDigit(s.charCodeAt(i))) i++;
+      fpEnd = i;
+      if (fpEnd === fpStart) throw bad();
     }
-    for (let i = 0; i < t.fp.length; i++) {
-      const d = t.fp.charCodeAt(i) - 0x30;
-      if (d !== 0) cols[maxFrac + t.shift - 1 - i] += d * t.mul;
+    let mul = 1;
+    let shift = 0;
+    if (i >= n) throw bad();
+    const ch = s.charCodeAt(i);
+    if (ch === 0x6d && i + 1 < n && s.charCodeAt(i + 1) === 0x73) {
+      i += 2;
+      mul = 1;
+      shift = 3;
+    } else if (ch === 0x73) {
+      i += 1;
+      mul = 1;
+    } else if (ch === 0x6d) {
+      i += 1;
+      mul = 60;
+    } else if (ch === 0x68) {
+      i += 1;
+      mul = 3600;
+    } else if (ch === 0x64) {
+      i += 1;
+      mul = 86400;
+    } else {
+      throw bad();
+    }
+    if (!overflow) {
+      let ipNz = ipStart;
+      while (ipNz < ipEnd && s.charCodeAt(ipNz) === 0x30) ipNz++;
+      if (ipEnd - ipNz > DUR_INT_COLS + shift) {
+        overflow = true;
+      } else {
+        for (let p = 0; p < ipEnd - ipNz; p++) {
+          const d = s.charCodeAt(ipEnd - 1 - p) - 0x30;
+          if (d !== 0) {
+            const col = DUR_FRAC_COLS + p - shift;
+            if (col >= DUR_TOTAL_COLS) {
+              overflow = true;
+              break;
+            }
+            cols[col] += d * mul;
+          }
+        }
+      }
+      if (!overflow) {
+        const cutoff = DUR_FRAC_COLS - shift;
+        const fpLen = fpEnd - fpStart;
+        const keep = Math.min(fpLen, cutoff);
+        for (let k = 0; k < keep; k++) {
+          const d = s.charCodeAt(fpStart + k) - 0x30;
+          if (d !== 0) cols[DUR_FRAC_COLS - 1 - shift - k] += d * mul;
+        }
+        for (let k = cutoff; k < fpLen; k++) {
+          if (s.charCodeAt(fpStart + k) !== 0x30) {
+            tailTerms++;
+            break;
+          }
+        }
+      }
     }
   }
-  // Propagate carries in base 10. Each column sum is at most 9 * 86400 * len(s) < 2^45, exact in float64.
+
+  if (overflow) throw range();
   let carry = 0;
-  for (let i = 0; i < cols.length; i++) {
-    const sum = cols[i] + carry;
+  for (let idx = 0; idx < DUR_TOTAL_COLS; idx++) {
+    const sum = cols[idx] + carry;
     carry = Math.floor(sum / 10);
-    cols[i] = sum - carry * 10;
+    cols[idx] = sum - carry * 10;
   }
-  let top = cols.length - 1;
-  while (top > maxFrac && cols[top] === 0) top--;
-  const chars: string[] = [];
-  if (s.startsWith("-")) chars.push("-");
-  for (let i = top; i >= maxFrac; i--) chars.push(String(cols[i]));
-  if (maxFrac > 0) {
-    let lo = 0;
-    while (lo < maxFrac && cols[lo] === 0) lo++;
-    if (lo < maxFrac) {
-      chars.push(".");
-      for (let i = maxFrac - 1; i >= lo; i--) chars.push(String(cols[i]));
+  if (carry > 0) throw range();
+
+  const finish = (v: number): number => {
+    if (!Number.isFinite(v)) throw range();
+    return norm(neg && v !== 0 ? -v : v);
+  };
+  const fA = colsToDouble(cols);
+  if (!Number.isFinite(fA)) throw range();
+  if (tailTerms === 0) return finish(fA);
+
+  const eps = tailTerms * 86400;
+  const colsB = new Float64Array(cols);
+  let remCarry = eps;
+  for (let idx = 0; idx < DUR_TOTAL_COLS && remCarry > 0; idx++) {
+    const sum = colsB[idx] + remCarry;
+    remCarry = Math.floor(sum / 10);
+    colsB[idx] = sum - remCarry * 10;
+  }
+  const fB = colsToDouble(colsB);
+  let guardZero = true;
+  for (let idx = 0; idx < DUR_GUARD_COLS; idx++) {
+    if (cols[idx] !== 0) {
+      guardZero = false;
+      break;
     }
   }
-  const x = parseDecimal(chars.join(""))!;
-  if (!Number.isFinite(x)) throw new RunFailure("number-range", c.span, "entry", { name: "time.duration" });
-  return norm(x);
+  if (guardZero) return finish(fB);
+  if (Number.isFinite(fB) && fA === fB) return finish(fA);
+
+  const colsM = new Float64Array(colsB);
+  colsM.fill(0, 0, DUR_GUARD_COLS);
+  const fM = colsToDouble(colsM);
+  let deficit = 0;
+  let place = 1;
+  let borrow = 0;
+  for (let idx = 0; idx < DUR_GUARD_COLS; idx++) {
+    const d = cols[idx] + borrow;
+    let out = 0;
+    if (d === 0) {
+      borrow = 0;
+    } else {
+      borrow = 1;
+      out = 10 - d;
+    }
+    if (out !== 0) deficit += out * place;
+    if (place <= eps) place *= 10;
+  }
+  const cmp = compareDurationTail(s, deficit, eps);
+  return finish(cmp < 0 ? fA : cmp === 0 ? fM : fB);
 });
 
 // ---- math (f06 8) ---------------------------------------------------------------

@@ -457,9 +457,6 @@ impl<'h> Value<'h> {
                 let n = self.len().unwrap_or(0);
                 let mut out = Vec::with_capacity(n.min(256));
                 for i in 0..n {
-                    if budget.as_deref().is_some_and(|&b| b == 0) {
-                        break;
-                    }
                     out.push(self.elem(i).to_data_at(depth + 1, budget.as_deref_mut()));
                 }
                 Data::List(out)
@@ -467,9 +464,6 @@ impl<'h> Value<'h> {
             Value::Map(_) | Value::HMap(_) => {
                 let mut out = std::collections::BTreeMap::new();
                 for (k, v) in self.entries() {
-                    if budget.as_deref().is_some_and(|&b| b == 0) {
-                        break;
-                    }
                     out.insert(
                         k.as_str().to_string(),
                         v.to_data_at(depth + 1, budget.as_deref_mut()),

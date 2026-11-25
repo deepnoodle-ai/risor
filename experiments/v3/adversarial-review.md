@@ -61,8 +61,11 @@ Regression tests added by this review live in:
      `10n ** BigInt(k - t.k)` per term) and **872.0 ms** in Rust (repeated
      `format!("{ip}{fp}{}", "0".repeat(f - fp.len()))` per term). Go's column
      addition handled the same input in **0.3 ms**.
-   - *Fix:* Replaced both TS and Rust `time.duration` summation loops with O(N)
-     column addition and a single base-10 carry pass before rounding once.
+   - *Fix:* Replaced both TS and Rust `time.duration` summation loops with a
+     single-pass, fixed-width O(N) column accumulator (1,120 fractional columns
+     plus 320 integer columns, with a fixed-window exact midpoint tiebreaker).
+     This bounds scratch memory to O(1) even on multi-megabyte fractions while
+     preserving exact IEEE 754 round-to-nearest-even and normative `units = 0`.
    - *After (`ran`):* 10,000 terms dropped from 1,633.5 ms to **5.2 ms** in TS
      (50,000 terms: 23.6 ms) and from 872.0 ms to **<5 ms** in Rust. Verified by
      `time.duration and time.parse stay linear on pathological inputs` (TS) and
@@ -290,6 +293,11 @@ Regression tests added by this review live in:
       O(N^2) retry loop). In `tokens.ts`, tracked cumulative recovery scan work
       and switched to line-by-line lexing once recovery exceeds `max(4096,
       4 * cps.length)` code points, bounding total work to O(N).
+    - *Choice made:* Once the scan budget trips, single-line tokens keep exact
+      colour, but multi-line constructs (`/* ... */`, multi-line templates, text
+      blocks) after that point are lexed one line at a time and lose multi-line
+      colour (their opener line is marked `invalid`). This trade-off is pinned
+      by `tokens() pins colours after the line-by-line recovery fallback trips`.
     - *After (`ran`, Node v22.22.3):*
       - `"/*\n".repeat(10000)` (30 KB): **75.6 ms**
       - `` "`${\n".repeat(10000) `` (40 KB): **102.8 ms**

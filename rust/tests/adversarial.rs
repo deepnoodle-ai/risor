@@ -133,11 +133,72 @@ fn time_duration_is_linear_on_many_terms_with_long_fraction() {
         "time.duration took {:?}",
         t0.elapsed()
     );
+
+    // Huge fraction uses O(1) scratch memory and charges 0 allocation units.
+    let zero_alloc = env
+        .with()
+        .limits(Limits {
+            steps: Some(1_000_000),
+            allocation: Some(0),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    let p_zero = zero_alloc
+        .compile(
+            &parse("time.duration(s)").unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let mut huge_frac = BTreeMap::new();
+    huge_frac.insert(
+        "s".into(),
+        Data::Str(format!("1.{}5s", "0".repeat(200_000))),
+    );
+    let (res, usage) = p_zero.measure(&huge_frac);
+    assert!(matches!(res.unwrap(), risor::Value::Num(x) if x == 1.0));
+    assert_eq!(usage.allocated, 0);
+
+    // Exact midpoint tiebreaking around 1 + 2^-53 (midpoint between 1.0 and 1.0 + 2^-52).
+    let next_up = f64::from_bits(1.0f64.to_bits() + 1);
+    let mid_exact = "1.00000000000000011102230246251565404236316680908203125";
+    let below_mid = format!(
+        "1.00000000000000011102230246251565404236316680908203124{}s",
+        "9".repeat(1120 - 53)
+    );
+    let tiny = format!("0.{}1s", "0".repeat(1120));
+    let eval_dur = |text: String| -> f64 {
+        let mut m = BTreeMap::new();
+        m.insert("s".into(), Data::Str(text));
+        let x = match p.run(&m).unwrap() {
+            risor::Value::Num(x) => x,
+            other => panic!("expected number, got {other:?}"),
+        };
+        x
+    };
+    assert_eq!(
+        eval_dur(format!("{mid_exact}s0.{}1s", "0".repeat(200_000))),
+        next_up
+    );
+    assert_eq!(eval_dur(format!("{below_mid}{}", tiny.repeat(9))), 1.0);
+    assert_eq!(eval_dur(format!("{below_mid}{}", tiny.repeat(10))), 1.0);
+    assert_eq!(eval_dur(format!("{below_mid}{}", tiny.repeat(11))), next_up);
+    // Multi-window tiebreaker past column 2144.
+    let nines_win = format!("0.{}{}s", "0".repeat(1120), "9".repeat(1024));
+    let tiny2 = format!("0.{}1s", "0".repeat(2144));
+    assert_eq!(
+        eval_dur(format!("{below_mid}{nines_win}{}", tiny2.repeat(10))),
+        1.0
+    );
+    assert_eq!(
+        eval_dur(format!("{below_mid}{nines_win}{}", tiny2.repeat(11))),
+        next_up
+    );
 }
 
 #[test]
 fn fail_with_shared_dag_is_bounded_inside_program_run() {
-    let env = Env::builder().build().unwrap();
+    let env = Env::builder().var("xs", "any[]").build().unwrap();
     let mut src = String::from("const a0 = [1, 1];\n");
     for i in 1..=30 {
         src.push_str(&format!("const a{i} = [a{}, a{}];\n", i - 1, i - 1));
@@ -146,7 +207,8 @@ fn fail_with_shared_dag_is_bounded_inside_program_run() {
     let p = env
         .compile(&parse(&src).unwrap(), CompileOptions::default())
         .unwrap();
-    let empty: BTreeMap<String, Data> = BTreeMap::new();
+    let mut empty: BTreeMap<String, Data> = BTreeMap::new();
+    empty.insert("xs".into(), Data::List(vec![]));
     let t0 = Instant::now();
     let err = p.run(&empty).expect_err("expected fail error");
     assert_eq!(err.first().code, "failed");
@@ -155,6 +217,52 @@ fn fail_with_shared_dag_is_bounded_inside_program_run() {
         "fail(DAG) took {:?}",
         t0.elapsed()
     );
+    match err.first().data.as_deref() {
+        Some(Data::List(top)) => assert_eq!(top.len(), 2),
+        other => panic!("expected 2-element top list, got {other:?}"),
+    }
+
+    // Excess subtrees past the 100,000-node budget become Data::Null without
+    // truncating list length or dropping map keys.
+    let p_big = env
+        .compile(
+            &parse(r#"fail("big", xs)"#).unwrap(),
+            CompileOptions::default(),
+        )
+        .unwrap();
+    let mut vars = BTreeMap::new();
+    vars.insert("xs".into(), Data::List(vec![Data::Int(1); 100_005]));
+    let err_big = p_big.run(&vars).expect_err("expected fail error");
+    assert_eq!(err_big.first().code, "failed");
+    match err_big.first().data.as_deref() {
+        Some(Data::List(list)) => {
+            assert_eq!(list.len(), 100_005);
+            assert_eq!(list[0], Data::Float(1.0));
+            assert_eq!(list[99_998], Data::Float(1.0));
+            assert_eq!(list[99_999], Data::Null);
+            assert_eq!(list[100_004], Data::Null);
+        }
+        other => panic!("expected Data::List, got {other:?}"),
+    }
+
+    let mut map_src = String::from("const a0 = [1, 1];\n");
+    for i in 1..=17 {
+        map_src.push_str(&format!("const a{i} = [a{}, a{}];\n", i - 1, i - 1));
+    }
+    map_src.push_str(r#"fail("bigm", {a: a17, b: 2})"#);
+    let p_map = env
+        .compile(&parse(&map_src).unwrap(), CompileOptions::default())
+        .unwrap();
+    let err_map = p_map.run(&empty).expect_err("expected fail error");
+    assert_eq!(err_map.first().code, "failed");
+    match err_map.first().data.as_deref() {
+        Some(Data::Map(m)) => {
+            assert_eq!(m.len(), 2);
+            assert!(m.contains_key("a"));
+            assert_eq!(m.get("b"), Some(&Data::Null));
+        }
+        other => panic!("expected Data::Map, got {other:?}"),
+    }
 }
 
 #[test]

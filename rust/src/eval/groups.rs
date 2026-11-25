@@ -811,87 +811,256 @@ fn format_time(t: f64) -> Option<String> {
     Some(out)
 }
 
+// Fixed-width decimal accumulator for `time.duration`: every binary64 value
+// and midpoint between adjacent binary64 values terminates by 10^-1075 (half of
+// the smallest subnormal 2^-1074) and overflows below 10^309. Keeping 1,120
+// fractional columns (45 guard digits below 10^-1075) and 320 integer columns
+// bounds scratch memory to O(1) while rounding every valid duration to the
+// exact nearest binary64, ties to even.
+const DUR_FRAC_COLS: usize = 1120;
+const DUR_INT_COLS: usize = 320;
+const DUR_TOTAL_COLS: usize = DUR_FRAC_COLS + DUR_INT_COLS;
+const DUR_GUARD_COLS: usize = DUR_FRAC_COLS - 1075;
+const DUR_TAIL_WIN: usize = 1024;
+
+/// Convert a non-negative base-10 column array (column `c` = 10^(c - DUR_FRAC_COLS))
+/// to the nearest `f64`, ties to even.
+fn cols_to_f64(cols: &[u128]) -> f64 {
+    let mut top = cols.len() - 1;
+    while top > DUR_FRAC_COLS && cols[top] == 0 {
+        top -= 1;
+    }
+    let mut lo = 0usize;
+    while lo < DUR_FRAC_COLS && cols[lo] == 0 {
+        lo += 1;
+    }
+    if top == DUR_FRAC_COLS && cols[DUR_FRAC_COLS] == 0 && lo == DUR_FRAC_COLS {
+        return 0.0;
+    }
+    let mut text = String::with_capacity(top - lo + 2);
+    for i in (DUR_FRAC_COLS..=top).rev() {
+        text.push((b'0' + cols[i] as u8) as char);
+    }
+    if lo < DUR_FRAC_COLS {
+        text.push('.');
+        for i in (lo..DUR_FRAC_COLS).rev() {
+            text.push((b'0' + cols[i] as u8) as char);
+        }
+    }
+    let v: f64 = text.parse().unwrap_or(f64::INFINITY);
+    if v == 0.0 {
+        0.0
+    } else {
+        v
+    }
+}
+
+/// Compare the sum of all fractional digits strictly below `10^-DUR_FRAC_COLS`
+/// against `deficit * 10^-DUR_FRAC_COLS`, in fixed-width streaming windows.
+fn compare_duration_tail(b: &[u8], deficit: u128, eps: u128) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut i = usize::from(b.first() == Some(&b'-'));
+    let mut long_terms: Vec<(usize, usize, u128, usize)> = Vec::new();
+    while i < b.len() {
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        let (fp_start, fp_end) = if b.get(i) == Some(&b'.') {
+            i += 1;
+            let start = i;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            (start, i)
+        } else {
+            (i, i)
+        };
+        let (mul, shift): (u128, usize) = match (b.get(i), b.get(i + 1)) {
+            (Some(b'm'), Some(b's')) => {
+                i += 2;
+                (1, 3)
+            }
+            (Some(b's'), _) => {
+                i += 1;
+                (1, 0)
+            }
+            (Some(b'm'), _) => {
+                i += 1;
+                (60, 0)
+            }
+            (Some(b'h'), _) => {
+                i += 1;
+                (3600, 0)
+            }
+            (Some(b'd'), _) => {
+                i += 1;
+                (86_400, 0)
+            }
+            _ => break,
+        };
+        let cutoff = DUR_FRAC_COLS - shift;
+        if fp_end - fp_start > cutoff {
+            let mut trim = fp_end;
+            while trim > fp_start + cutoff && b[trim - 1] == b'0' {
+                trim -= 1;
+            }
+            if trim > fp_start + cutoff {
+                long_terms.push((fp_start, trim, mul, shift));
+            }
+        }
+    }
+
+    let mut lo = DUR_FRAC_COLS;
+    let mut rem = deficit;
+    let mut win = vec![0u128; DUR_TAIL_WIN];
+    loop {
+        win.fill(0);
+        let hi = lo + DUR_TAIL_WIN;
+        for &(fp_start, fp_trim, mul, shift) in &long_terms {
+            let fp_len = fp_trim - fp_start;
+            let k_start = lo - shift;
+            let k_end = (hi - shift).min(fp_len);
+            for k in k_start..k_end {
+                let d = (b[fp_start + k] - b'0') as u128;
+                if d != 0 {
+                    win[DUR_TAIL_WIN - 1 - (k - k_start)] += d * mul;
+                }
+            }
+        }
+        long_terms.retain(|&(fp_start, fp_trim, _, shift)| fp_trim - fp_start > hi - shift);
+        let any_below_hi = !long_terms.is_empty();
+
+        let mut carry = 0u128;
+        for cell in &mut win {
+            let sum = *cell + carry;
+            *cell = sum % 10;
+            carry = sum / 10;
+        }
+        if carry > rem {
+            return Ordering::Greater;
+        }
+        rem -= carry;
+        for j in (0..DUR_TAIL_WIN).rev() {
+            if rem > eps {
+                return Ordering::Less;
+            }
+            let r10 = rem * 10;
+            if win[j] > r10 {
+                return Ordering::Greater;
+            }
+            rem = r10 - win[j];
+        }
+        if rem == 0 {
+            return if any_below_hi {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            };
+        }
+        if !any_below_hi {
+            return Ordering::Less;
+        }
+        lo = hi;
+    }
+}
+
 /// `time.duration` (7.4): `None` for a text that is no duration, `Some(None)`
 /// when the sum is too large for a number.
 fn parse_duration(s: &str) -> Option<Option<f64>> {
-    let b: Vec<char> = s.chars().collect();
-    let mut i = 0;
-    let neg = b.first() == Some(&'-');
-    if neg {
-        i = 1;
+    let b = s.as_bytes();
+    let neg = b.first() == Some(&b'-');
+    let mut i = usize::from(neg);
+    if i == b.len() {
+        return None;
     }
-    // Terms as (integer digits, fraction digits, scale of the unit in
-    // thousandths of a second).
-    let mut terms: Vec<(String, String, u64)> = Vec::new();
+    let mut cols: Vec<u128> = vec![0; DUR_TOTAL_COLS];
+    let mut overflow = false;
+    let mut tail_terms: u128 = 0;
+
     while i < b.len() {
-        let mut ip = String::new();
+        let ip_start = i;
         while i < b.len() && b[i].is_ascii_digit() {
-            ip.push(b[i]);
             i += 1;
         }
-        if ip.is_empty() {
+        let ip_end = i;
+        if ip_end == ip_start {
             return None;
         }
-        let mut fp = String::new();
-        if b.get(i) == Some(&'.') {
+        let (fp_start, fp_end) = if b.get(i) == Some(&b'.') {
             i += 1;
+            let start = i;
             while i < b.len() && b[i].is_ascii_digit() {
-                fp.push(b[i]);
                 i += 1;
             }
-            if fp.is_empty() {
+            if i == start {
                 return None;
             }
-        }
-        let unit = match (b.get(i), b.get(i + 1)) {
-            (Some('m'), Some('s')) => {
+            (start, i)
+        } else {
+            (i, i)
+        };
+        let (mul, shift): (u128, usize) = match (b.get(i), b.get(i + 1)) {
+            (Some(b'm'), Some(b's')) => {
                 i += 2;
-                1
+                (1, 3)
             }
-            (Some('s'), _) => {
+            (Some(b's'), _) => {
                 i += 1;
-                1000
+                (1, 0)
             }
-            (Some('m'), _) => {
+            (Some(b'm'), _) => {
                 i += 1;
-                60_000
+                (60, 0)
             }
-            (Some('h'), _) => {
+            (Some(b'h'), _) => {
                 i += 1;
-                3_600_000
+                (3600, 0)
             }
-            (Some('d'), _) => {
+            (Some(b'd'), _) => {
                 i += 1;
-                86_400_000
+                (86_400, 0)
             }
             _ => return None,
         };
-        terms.push((ip, fp, unit));
-    }
-    if terms.is_empty() {
-        return None;
-    }
-    // The exact sum in thousandths of a second, over 10^f, where f is the
-    // longest fraction, computed by O(len(s)) column addition so many terms
-    // with one long fraction cannot trigger quadratic work.
-    let f = terms.iter().map(|t| t.1.len()).max().unwrap_or(0);
-    let max_int = terms.iter().map(|t| t.0.len()).max().unwrap_or(1);
-    let mut cols: Vec<u128> = vec![0; f + max_int + 12];
-    for (ip, fp, unit) in &terms {
-        let u = *unit as u128;
-        let ipb = ip.as_bytes();
-        for (k, &ch) in ipb.iter().rev().enumerate() {
-            let d = (ch - b'0') as u128;
-            if d != 0 {
-                cols[f + k] += d * u;
+        if !overflow {
+            let mut ip_nz = ip_start;
+            while ip_nz < ip_end && b[ip_nz] == b'0' {
+                ip_nz += 1;
+            }
+            if ip_end - ip_nz > DUR_INT_COLS + shift {
+                overflow = true;
+            } else {
+                for (p, &ch) in b[ip_nz..ip_end].iter().rev().enumerate() {
+                    let d = (ch - b'0') as u128;
+                    if d != 0 {
+                        let col = DUR_FRAC_COLS + p - shift;
+                        if col >= DUR_TOTAL_COLS {
+                            overflow = true;
+                            break;
+                        }
+                        cols[col] += d * mul;
+                    }
+                }
+            }
+            if !overflow {
+                let cutoff = DUR_FRAC_COLS - shift;
+                let fp_len = fp_end - fp_start;
+                let keep = fp_len.min(cutoff);
+                for k in 0..keep {
+                    let d = (b[fp_start + k] - b'0') as u128;
+                    if d != 0 {
+                        cols[DUR_FRAC_COLS - 1 - shift - k] += d * mul;
+                    }
+                }
+                if fp_len > cutoff && b[fp_start + cutoff..fp_end].iter().any(|&c| c != b'0') {
+                    tail_terms += 1;
+                }
             }
         }
-        for (k, &ch) in fp.as_bytes().iter().enumerate() {
-            let d = (ch - b'0') as u128;
-            if d != 0 {
-                cols[f - 1 - k] += d * u;
-            }
-        }
+    }
+
+    if overflow {
+        return Some(None);
     }
     let mut carry = 0u128;
     for col in &mut cols {
@@ -899,23 +1068,74 @@ fn parse_duration(s: &str) -> Option<Option<f64>> {
         *col = sum % 10;
         carry = sum / 10;
     }
-    while carry > 0 {
-        cols.push(carry % 10);
-        carry /= 10;
-    }
-    let mut top = cols.len() - 1;
-    while top > 0 && cols[top] == 0 {
-        top -= 1;
-    }
-    let mut digits = String::with_capacity(top + 1);
-    for i in (0..=top).rev() {
-        digits.push((b'0' + cols[i] as u8) as char);
-    }
-    let v = nearest(neg, &digits, f + 3);
-    if !v.is_finite() {
+    if carry > 0 {
         return Some(None);
     }
-    Some(Some(v))
+    let finish = |v: f64| -> Option<Option<f64>> {
+        if !v.is_finite() {
+            Some(None)
+        } else if neg && v != 0.0 {
+            Some(Some(-v))
+        } else {
+            Some(Some(if v == 0.0 { 0.0 } else { v }))
+        }
+    };
+    let f_a = cols_to_f64(&cols);
+    if !f_a.is_finite() {
+        return Some(None);
+    }
+    if tail_terms == 0 {
+        return finish(f_a);
+    }
+
+    // Exact sum lies strictly in (A, B), where B = A + eps * 10^-DUR_FRAC_COLS.
+    let eps = tail_terms * 86_400;
+    let mut cols_b = cols.clone();
+    let mut c = eps;
+    for col in &mut cols_b {
+        if c == 0 {
+            break;
+        }
+        let sum = *col + c;
+        *col = sum % 10;
+        c = sum / 10;
+    }
+    let f_b = cols_to_f64(&cols_b);
+    if cols[..DUR_GUARD_COLS].iter().all(|&d| d == 0) {
+        return finish(f_b);
+    }
+    if f_b.is_finite() && f_a.to_bits() == f_b.to_bits() {
+        return finish(f_a);
+    }
+    let mut cols_m = cols_b;
+    for col in &mut cols_m[..DUR_GUARD_COLS] {
+        *col = 0;
+    }
+    let f_m = cols_to_f64(&cols_m);
+    let mut deficit: u128 = 0;
+    let mut place: u128 = 1;
+    let mut borrow: u128 = 0;
+    for &digit in &cols[..DUR_GUARD_COLS] {
+        let d = digit + borrow;
+        let out = if d == 0 {
+            borrow = 0;
+            0
+        } else {
+            borrow = 1;
+            10 - d
+        };
+        if out != 0 {
+            deficit += out * place;
+        }
+        if place <= eps {
+            place *= 10;
+        }
+    }
+    match compare_duration_tail(b, deficit, eps) {
+        std::cmp::Ordering::Less => finish(f_a),
+        std::cmp::Ordering::Equal => finish(f_m),
+        std::cmp::Ordering::Greater => finish(f_b),
+    }
 }
 
 // ---- base64 (9) -----------------------------------------------------------------

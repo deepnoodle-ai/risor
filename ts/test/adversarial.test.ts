@@ -102,6 +102,34 @@ describe("adversarial: limits and OOM-before-charge", () => {
     assert.equal(got, 10_000);
     assert.ok(performance.now() - t0 < 2_000, "time.duration took too long");
 
+    // Huge fraction uses O(1) scratch memory and charges 0 allocation units.
+    const zeroAlloc = env.with({ limits: { steps: 1_000_000, allocation: 0 } });
+    const hugeFrac = "1." + "0".repeat(200_000) + "5s";
+    const measured = zeroAlloc.compile(parse("time.duration(s)")).measure({ s: hugeFrac, xs: [], m: {}, x: null });
+    assert.equal(measured.value, 1);
+    assert.equal(measured.usage.allocated, 0);
+
+    // Large carry sums propagate without dropping high digits.
+    const prog = env.compile(parse("time.duration(s)"));
+    const evalDur = (s: string) => prog.run({ s, xs: [], m: {}, x: null }) as number;
+    assert.equal(evalDur("1d".repeat(200_000)), 17_280_000_000);
+    assert.equal(evalDur("100000000d".repeat(2_000)), 1.728e16);
+    assert.equal(errorCode(() => evalDur("1" + "0".repeat(308) + "s" + "1" + "0".repeat(308) + "s")), "number-range");
+
+    // Exact midpoint tiebreaking around 1 + 2^-53 (midpoint between 1 and 1 + 2^-52).
+    const nextUp = 1 + Number.EPSILON;
+    const midExact = "1.00000000000000011102230246251565404236316680908203125";
+    const belowMid = "1.00000000000000011102230246251565404236316680908203124" + "9".repeat(1120 - 53) + "s";
+    const tiny = "0." + "0".repeat(1120) + "1s";
+    assert.equal(evalDur(`${midExact}s0.${"0".repeat(200_000)}1s`), nextUp);
+    assert.equal(evalDur(belowMid + tiny.repeat(9)), 1);
+    assert.equal(evalDur(belowMid + tiny.repeat(10)), 1);
+    assert.equal(evalDur(belowMid + tiny.repeat(11)), nextUp);
+    const ninesWin = `0.${"0".repeat(1120)}${"9".repeat(1024)}s`;
+    const tiny2 = `0.${"0".repeat(2144)}1s`;
+    assert.equal(evalDur(belowMid + ninesWin + tiny2.repeat(10)), 1);
+    assert.equal(evalDur(belowMid + ninesWin + tiny2.repeat(11)), nextUp);
+
     const ts = "2020-01-01T00:00:00." + "1".repeat(50_000) + "Z";
     const t1 = performance.now();
     const parsed = env.compile(parse("time.parse(s)")).run({ s: ts, xs: [], m: {}, x: null }) as number;
@@ -320,6 +348,34 @@ describe("adversarial: editor tools on hostile text", () => {
       assert.ok(out.length > 0);
       assert.ok(performance.now() - t0 < 2_000, `tokens() took too long on ${JSON.stringify(text.slice(0, 20))}`);
     }
+  });
+
+  test("tokens() pins colours after the line-by-line recovery fallback trips", () => {
+    // 200 unclosed `${\n` lines burn past max(4096, 4 * length), switching the
+    // remainder to line-by-line lexing: single-line tokens keep exact colour,
+    // while multi-line constructs lose multi-line colour (opener line is invalid).
+    const prefix = "`${\n".repeat(200);
+    const tail = "const ok = 1 + 2;\n/* multi\nline */\n`hello\nworld`";
+    const text = prefix + tail;
+    const tailTokens = tokens(text)
+      .filter((t) => t.start >= prefix.length)
+      .map((t) => [t.class, text.slice(t.start, t.end)]);
+
+    assert.deepEqual(tailTokens, [
+      ["keyword", "const"],
+      ["name", "ok"],
+      ["operator", "="],
+      ["number", "1"],
+      ["operator", "+"],
+      ["number", "2"],
+      ["punctuation", ";"],
+      ["invalid", "/* multi"],
+      ["name", "line"],
+      ["operator", "*"],
+      ["operator", "/"],
+      ["invalid", "`hello"],
+      ["invalid", "world`"],
+    ]);
   });
 
   test("format, complete, and hover handle truncated and pathological inputs without hanging", () => {
