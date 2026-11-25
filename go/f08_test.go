@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Package F8: the trace, the renderings, ConformAll and the messages of the

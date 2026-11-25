@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // parse parses src and returns the tree, or fails the test.
@@ -268,7 +268,7 @@ func TestFollowOnText(t *testing.T) {
 		{`x satisfies T`, "unexpected-token", [4]int{1, 3, 1, 12}},
 		{`interface X {}`, "unexpected-token", [4]int{1, 11, 1, 12}},
 		{`enum E { A }`, "unexpected-token", [4]int{1, 6, 1, 7}},
-		{`type Name = T`, "bad-type-text", [4]int{1, 13, 1, 14}}, // F16: a type line whose type is one letter
+		{`type Name = T`, "bad-type-text", [4]int{1, 13, 1, 14}},      // F16: a type line whose type is one letter
 		{`export default 1`, "unexpected-token", [4]int{1, 8, 1, 15}}, // F16 D2: export const is valid at top level
 		{`{ export const x = 1; x }`, "unexpected-token", [4]int{1, 10, 1, 15}},
 		{`f(x => { x + 1 })`, "unexpected-token", [4]int{1, 12, 1, 13}},

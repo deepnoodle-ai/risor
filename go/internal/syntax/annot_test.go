@@ -3,7 +3,7 @@ package syntax
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Package F16, slice D1: type lines and annotations (f16-entry-points.md 2).

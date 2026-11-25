@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/runner"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // TestReusedRunState runs each case of suite/core-run that needs no host

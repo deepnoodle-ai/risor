@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 func checkErr(t *testing.T, env *risor.Env, src string, opts ...risor.CheckOption) []risor.Diagnostic {

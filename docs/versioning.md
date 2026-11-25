@@ -101,7 +101,8 @@ the three implementations and companion web packages.
 | Artifact | Identifier | Tag / registry |
 | --- | --- | --- |
 | Specification (`spec/`, `suite/`) | `major.minor` (e.g., `3.0`, `3.1`) | Recorded in `spec/` and `suite/` |
-| Go module & CLI | `github.com/deepnoodle-ai/risor/go/v3` | Git tag `go/v3.x.y` (never bare `v3.*`; see R200) |
+| Go module | `github.com/deepnoodle-ai/risor/go/v3` | Git tag `go/v3.x.y` (never bare `v3.*`; see R200) |
+| Go CLI | `github.com/deepnoodle-ai/risor/go/cmd/risor` | Git tag `go/cmd/risor/vX.Y.Z` |
 | TypeScript & web packages | `@deepnoodle/risor`, `@deepnoodle/risor-service`, `@deepnoodle/risor-codemirror`, `@deepnoodle/risor-react`, `@deepnoodle/risor-mantine` | Git tag `npm-v3.x.y`, staged in lockstep via `web/scripts/version.ts` and `.github/workflows/release-npm.yml` (a maintainer approves each staged package with 2FA on npmjs.com before publication) |
 | Rust crates | `risor`, `risor-derive` | crates.io `3.x.y` (currently `0.1.0`, `publish = false` until 3.0 GA) |
 

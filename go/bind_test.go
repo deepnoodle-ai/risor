@@ -13,7 +13,7 @@ import (
 	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Func and Methods (bind.go): signatures derived from Go types.

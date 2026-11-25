@@ -347,7 +347,7 @@ further revision of the documents named.
 **Settled by the owner since the second revision:** D1, D2 (which
 implementations), D3, D5, D6, D7 and D9 as recommended, and D4 against the
 recommendation. The owner was shown those and agreed with all but D4.
-D10 to D26 were not put to the owner one by one and are still recommendations.
+D10 to D22 and D24 to D26 were not put to the owner one by one and are still recommendations.
 D28 to D34, except D31, were put one by one and are settled as recommended.
 D27 and D31 were not asked. D35 and D36 were put and are settled as recommended. D37 and D38 are
 new details of `if`, ruled here and not asked. D39 to D45 were put and are
@@ -358,7 +358,7 @@ D52 to D56 are five plans from the review of issues #640 and #641; the owner
 settled the direction of each on 2026-11-14, then withdrew D52 and trimmed D54
 to D56 on 2026-11-19. D57 and D58 were put and settled the same day. D59 is a
 recommendation the owner has not confirmed, and D60 is open. D62 and D63 were
-put and settled on 2026-11-24.
+put and settled on 2026-11-24. D23 was settled on 2026-11-25.
 
 ### 4.1 Strategy
 
@@ -517,7 +517,7 @@ others' text:
 | D20 | A JSON Schema property outside `required` is an optional field unless the host says it fills absent properties | Yes |
 | D21 | The Go implementation returns errors and does not panic | Returns: never slower on the success path, 38 ns against 184 ns on failure, about 600 more lines |
 | D22 | The typed layer ships in 3.0 | Yes, built after the reference layer. Without it a host that passes Go structs pays one allocation per scalar field read |
-| D23 | The core module's tests stop using wonton's `assert`, so the module has no dependencies | Yes. This changes a rule in `AGENTS.md` |
+| D23 | The core module's tests stop using wonton's `assert`, so the module has no dependencies | **Settled by the owner, 2026-11-25:** yes. `go/` tests drop `wonton/assert`, `go/cmd/risor` splits into its own module (`go/cmd/risor/go.mod`), `go/go.mod` has no dependencies, and `AGENTS.md` is updated (#708) |
 | D24 | The language server is dropped and the core gains completion, hover and describe calls | Yes |
 | D25 | Case mapping comes from a table the specification owns, pinned to one Unicode version | Yes. The alternative is ASCII only |
 | D26 | Times are seconds since the epoch as a number | Yes. Nanoseconds do not survive either way |

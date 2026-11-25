@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/bridge"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // Package F11: the typed layer changes no result. Each test runs one

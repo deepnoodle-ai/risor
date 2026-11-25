@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Package F17, step E0 (spec/packages/f17-recursion.md): what the suite does

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // F4 7.3 and F8 6.4: the conformance function and ConformAll count steps

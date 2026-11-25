@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // The generated copy must be the file of the suite: run go generate.

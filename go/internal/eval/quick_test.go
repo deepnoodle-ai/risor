@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
-	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // A quick formula gives the value the formula tree gives, for every entry,

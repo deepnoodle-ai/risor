@@ -8,7 +8,7 @@ import (
 
 	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 func TestVerdicts(t *testing.T) {

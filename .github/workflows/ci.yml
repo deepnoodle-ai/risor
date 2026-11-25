@@ -55,7 +55,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: go/cmd/risor/go.sum
+
+      - name: Verify zero dependencies in go/go.mod
+        run: |
+          if grep -q '^require' go.mod; then
+            echo "go/go.mod must have no require directives (D23)"
+            cat go.mod
+            exit 1
+          fi
+          if [ -e go.sum ]; then
+            echo "go/go.sum must not exist when go/go.mod has zero dependencies (D23)"
+            exit 1
+          fi
 
       - name: Build
         run: go build ./...
@@ -68,6 +80,18 @@ jobs:
 
       - name: Test with the race detector
         run: go test -count=1 -race ./...
+
+      - name: Build CLI (go/cmd/risor)
+        working-directory: go/cmd/risor
+        run: go build ./...
+
+      - name: Vet CLI (go/cmd/risor)
+        working-directory: go/cmd/risor
+        run: go vet ./...
+
+      - name: Test CLI (go/cmd/risor)
+        working-directory: go/cmd/risor
+        run: go test -count=1 ./...
 
   typescript:
     runs-on: ubuntu-latest

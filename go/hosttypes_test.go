@@ -8,7 +8,7 @@ import (
 	"time"
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // Package F1 6.2: types from Go types and Go values presented to a run.

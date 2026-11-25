@@ -3,7 +3,7 @@ package casefile
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/assert"
 )
 
 // The case fields of package F12 7.
