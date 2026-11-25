@@ -715,26 +715,32 @@ func (b *builder) branch(content syntax.Node, lb, rb int) part {
 }
 
 // condChain is a `? :` and the `? :` in its else branch, and in that one's,
-// as one chain (2.8 item 5). Every link stands at one indentation, so the
-// output grows with the chain's length, not with its square.
+// as one chain (2.8 item 5). The chain is one group; each link, a test with
+// its `?` and branch, is a group of its own. A broken chain starts each link
+// on a line at the chain's indentation, so the output grows with the chain's
+// length, not with its square.
 func (b *builder) condChain(n *syntax.Cond) part {
-	out := []part{b.sub(n, rTest, n.Test)}
-	var links []part
+	var out []part
 	cur := n
 	for {
+		test := b.sub(cur, rTest, cur.Test)
 		q := b.next(cur.Test.Span().End, syntax.Question)
-		links = append(links, pLine, b.tok(q), pSpace, b.node(cur.Then))
+		qd := b.tok(q)
+		then := b.node(cur.Then)
+		if c2, ok := cur.Then.(*syntax.Cond); ok && c2.Form == "?:" {
+			then = ind(then) // its `:` lines stand inside the `?`
+		}
+		out = append(out, grp(test, ind(pLine, qd, pSpace, then)))
 		c := b.next(cur.Then.Span().End, syntax.Colon)
-		links = append(links, pLine, b.tok(c), pSpace)
+		out = append(out, pLine, b.tok(c), pSpace)
 		if c2, ok := cur.Else.(*syntax.Cond); ok && c2.Form == "?:" {
-			links = append(links, b.sub(c2, rTest, c2.Test))
 			cur = c2
 			continue
 		}
-		links = append(links, b.node(cur.Else))
+		out = append(out, b.node(cur.Else))
 		break
 	}
-	return grp(append(out, ind(links...))...)
+	return grp(out...)
 }
 
 func (b *builder) ifChain(n *syntax.Cond) part {

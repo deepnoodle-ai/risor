@@ -1641,11 +1641,12 @@ impl<'a> B<'a> {
     }
 
     /// A `? :` and the `? :` down its `else` branches, as one chain (2.8
-    /// item 5): one group and one indent, so a broken chain stands at one
-    /// indentation and its text grows linearly with its length.
+    /// item 5). The chain is one group, and each link, a test with its `?`
+    /// and branch, is a group of its own: a broken chain starts each link on
+    /// a line at the chain's indentation, so its text grows linearly with
+    /// its length.
     fn ternary(&mut self, id: NodeId) -> DocId {
-        let mut first = None;
-        let mut links = Vec::new();
+        let mut out = Vec::new();
         let mut n = id;
         while let NodeKind::Cond {
             form: CondForm::Ternary,
@@ -1657,29 +1658,37 @@ impl<'a> B<'a> {
             let (test, then, else_) = (*test, *then, *else_);
             let tp = self.level(test) == 1;
             let td = self.sub(test, tp);
-            if first.is_none() {
-                first = Some(td);
-            } else {
-                links.push(td);
-            }
             let q = self.tb(self.outer(then).start);
             let qd = self.tk(q);
-            let thd = self.sub(then, false);
+            let mut thd = self.sub(then, false);
+            // A `? :` in the branch writes its `:` lines one level inside
+            // the `?`.
+            if matches!(
+                self.kind(then),
+                NodeKind::Cond {
+                    form: CondForm::Ternary,
+                    ..
+                }
+            ) {
+                thd = self.indent(thd);
+            }
             let c = self.tb(self.outer(else_).start);
             let cd = self.tk(c);
             let l1 = self.line();
             let s1 = self.sp();
+            let il = self.list(vec![l1, qd, s1, thd]);
+            let i = self.indent(il);
+            let link = self.list(vec![td, i]);
+            let link = self.group(link);
             let l2 = self.line();
             let s2 = self.sp();
-            links.extend([l1, qd, s1, thd, l2, cd, s2]);
+            out.extend([link, l2, cd, s2]);
             n = else_;
         }
         let last = self.sub(n, false);
-        links.push(last);
-        let il = self.list(links);
-        let i = self.indent(il);
-        let gl = self.list(vec![first.expect("a ternary"), i]);
-        self.group(gl)
+        out.push(last);
+        let l = self.list(out);
+        self.group(l)
     }
 
     /// Parentheses around the value of an `as` or `is` (F4 7).

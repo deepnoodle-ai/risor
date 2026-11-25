@@ -163,8 +163,6 @@ func TestFormatLongConditionalChain(t *testing.T) {
 	src := strings.Repeat("true ? 1 : ", n) + "2"
 	out, err := risor.Format(src)
 	assert.NoError(t, err)
-	// Each link is the 15 bytes "  ? 1\n  : true\n".
-	assert.True(t, len(out) <= 16*n, "%d bytes", len(out))
-	assert.True(t, strings.HasPrefix(out, "true\n  ? 1\n  : true\n  ? 1\n"))
-	assert.True(t, strings.HasSuffix(out, "  ? 1\n  : 2\n"))
+	// Each link is a line: "true ? 1\n", then ": true ? 1\n".
+	assert.Equal(t, out, "true ? 1\n"+strings.Repeat(": true ? 1\n", n-1)+": 2\n")
 }

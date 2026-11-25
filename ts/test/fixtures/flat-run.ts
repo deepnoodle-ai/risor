@@ -168,8 +168,8 @@ function formattedText(): void {
   assert.equal(format("y" + " as any".repeat(n)), "y" + " as any".repeat(n) + "\n");
   // A chain of calls that does not fit breaks before each call (f12 2.11).
   assert.equal(format("y" + ".trim()".repeat(n)), "y" + "\n  .trim()".repeat(n) + "\n");
-  // A broken chain of `? :` stands at one indentation (f12 2.8 item 5).
-  assert.equal(format("c ? 1 : ".repeat(n) + "2"), "c" + "\n  ? 1\n  : c".repeat(n - 1) + "\n  ? 1\n  : 2\n");
+  // A broken chain of `? :` puts each link on a line at one indentation (f12 2.8 item 5).
+  assert.equal(format("c ? 1 : ".repeat(n) + "2"), "c ? 1\n" + ": c ? 1\n".repeat(n - 1) + ": 2\n");
   // A projection is a plain step: it stays with the call before it.
   assert.equal(format("[[y]]" + "[*].map(x => x)".repeat(n)), "[[y]][*]" + "\n  .map(x => x)[*]".repeat(n - 1) + "\n  .map(x => x)\n");
   // A run of one level breaks before each operand, and a comment stays with its token.

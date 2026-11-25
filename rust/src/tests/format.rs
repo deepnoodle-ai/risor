@@ -150,8 +150,8 @@ fn long_chains() {
     let f = format(&sum).unwrap();
     assert!(f.starts_with("a +\n  a +\n"));
     let cond = format!("{}0", "a ? 1 : ".repeat(n));
-    // A broken `? :` chain stands at one indentation (2.8 item 5).
-    let want = format!("a{}\n  ? 1\n  : 0\n", "\n  ? 1\n  : a".repeat(n - 1));
+    // A broken `? :` chain puts each link on a line (2.8 item 5).
+    let want = format!("a ? 1\n{}: 0\n", ": a ? 1\n".repeat(n - 1));
     assert_eq!(format(&cond).unwrap(), want);
     let ifs = format!("{}{{ 0 }}", "if (a) { 1 } else ".repeat(n));
     format(&ifs).unwrap();
