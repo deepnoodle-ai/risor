@@ -56,6 +56,11 @@ func (cr *caseRun) update() Result {
 		if !o.agree {
 			return notWritten()
 		}
+		if o.limit != nil { // F4 9.3 item 6: the function's steps-exceeded
+			d := o.limit.Diagnostics[0]
+			return written(r, map[string]any{"phase": "run",
+				"diagnostics": []any{map[string]any{"code": d.Code, "message": d.Message}}})
+		}
 		var m map[string]any
 		if !c.NoExpect && e.Conform != nil {
 			m = map[string]any{"conforms": o.conforms}
@@ -74,6 +79,9 @@ func (cr *caseRun) update() Result {
 			if old.Failures != nil && c.Conform.Max != nil {
 				fs := make([]any, len(o.all))
 				for i, f := range o.all {
+					if f.Path == nil { // a limit's diagnostic: failures cannot state it (F8 7.5)
+						return notWritten()
+					}
 					fs[i] = map[string]any{"path": f.Path, "message": f.Message}
 				}
 				m["failures"] = fs

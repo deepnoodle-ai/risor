@@ -147,8 +147,10 @@ fn run_steps(
     let v = out
         .result
         .map_err(|f| fail(3, vec![program.diagnostic(&f)], Some(usage)))?;
-    // Step 4: every failure, up to the maximum; not catchable, no charge.
-    let all = crate::conform::all(&v, &ty, max.max(1));
+    // Step 4: every failure, up to the maximum; not catchable, not part of
+    // the run's usage. It counts steps against the default limit (F10 5.2
+    // item 1, F8 6.4).
+    let all = crate::conform::all(&v, &ty, max.max(1), Some(crate::conform::FREE_STEPS));
     if !all.is_empty() {
         return Err(fail(
             4,

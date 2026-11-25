@@ -34,7 +34,7 @@ import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected as CheckExpected, Site as InnerSite } from "../types/check.ts";
 import { depth, fromNode, printType, printUnfolded, opaque as opaqueType, SIZE_LIMIT, soleRef, typeSize } from "../types/type.ts";
 import type { Ref as InnerRef, Type as InnerType } from "../types/type.ts";
-import { conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
+import { CONFORM_STEPS, conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { compareText } from "../value/value.ts";
@@ -1131,37 +1131,61 @@ export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>, n
 export function conformDiagnostic(f: { template: string; params: Record<string, unknown>; path: (string | number)[] }, cls: Classifier): Diagnostic {
   // f17 12.7 item 3: past the default depth limit, as the JSON text of 03 3.2 fails. No path and no span.
   if (f.template === "depth") return { phase: "run", code: "depth-exceeded", class: "limit", message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls), trace: [] };
+  // f04 7.3: past the step limit, steps-exceeded with no path and no span.
+  if (f.template === "steps") return { phase: "run", code: "steps-exceeded", class: "limit", message: messageOf(new RunFailure("steps-exceeded", undefined, "default", f.params as never), cls), trace: [] };
   const failure = new RunFailure("not-conforming", undefined, f.template, f.params as never);
   return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, cls), trace: [] };
 }
 
+/** Options of `conform` and `conformAll` (f04 7.2). */
+export interface ConformOptions {
+  /**
+   * The step limit (f04 7.3): a whole number, or null for none. Absent, the
+   * default step limit, 1,000,000, whatever the limits of the environment the
+   * type was read in. A number below 0 is read as 0.
+   */
+  steps?: number | null;
+}
+
+/** The step limit of the options (f04 7.3). */
+function conformSteps(options: ConformOptions | undefined): number | null {
+  const n = options?.steps;
+  if (n === null) return null;
+  if (n === undefined) return CONFORM_STEPS;
+  return n >= 0 ? Math.floor(n) : 0;
+}
+
 /**
  * The conformance function (package F4, f04 7): null when the value conforms
- * to the type, else the diagnostic, with no span. Not a run: nothing is
- * charged and no limit applies. An opaque value is told by the tests of the
- * environment the type was read in (`env.parseType`). On an invalid type, its
- * `bad-type` diagnostic (phase `declare`).
+ * to the type, else the diagnostic, with no span. Not a run, but it charges
+ * the steps a run's walk charges, against the default step limit or
+ * `options.steps`: past it, `steps-exceeded` with no path (f04 7.3). Host data
+ * that holds one list at many places is charged at each. An opaque value is
+ * told by the tests of the environment the type was read in
+ * (`env.parseType`). On an invalid type, its `bad-type` diagnostic (phase
+ * `declare`).
  */
-export function conform(value: unknown, t: Type): Diagnostic | null {
+export function conform(value: unknown, t: Type, options?: ConformOptions): Diagnostic | null {
   const bad = t.err();
   if (bad !== undefined) return bad.diagnostics[0];
   const cls = typeClassifier(t);
-  const f = conformWalk(value, innerType(t), freeCtx(cls));
+  const f = conformWalk(value, innerType(t), freeCtx(cls, conformSteps(options)));
   return f === null ? null : conformDiagnostic(f as never, cls);
 }
 
 /**
  * The conformance function that reports every failure, up to `max` (package
- * F8, f08 6.1). A maximum below 1 is read as 1. Nothing is charged. On an
- * invalid type, its `bad-type` diagnostic (phase `declare`).
+ * F8, f08 6.1). A maximum below 1 is read as 1. It counts steps as `conform`
+ * does (f08 6.4): a limit ends the list with its diagnostic. On an invalid
+ * type, its `bad-type` diagnostic (phase `declare`).
  */
-export function conformAll(value: unknown, t: Type, max: number): Diagnostic[] {
+export function conformAll(value: unknown, t: Type, max: number, options?: ConformOptions): Diagnostic[] {
   const bad = t.err();
   if (bad !== undefined) return [bad.diagnostics[0]];
   const cls = typeClassifier(t);
   // F8 6.1: a maximum below 1 (or not a number) is read as 1.
   const n = max >= 1 ? Math.floor(max) : 1;
-  return conformAllWalk(value, innerType(t), cls, n).map((f) => conformDiagnostic(f as never, cls));
+  return conformAllWalk(value, innerType(t), cls, n, conformSteps(options)).map((f) => conformDiagnostic(f as never, cls));
 }
 
 // ---- Loading a config file (package F10, f10 5) ----------------------------------------

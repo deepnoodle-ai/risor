@@ -380,11 +380,12 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
 /** The fixture test (f09 2): vars, then functions, then methods, each in code point order; the first failure. */
 function fixtureTest(c: Case, env: Env): { path: (string | number)[]; message: string } | null {
   const e = env.environment;
-  const free = freeCtx(env.classifier);
   const test = (value: Json, t: Type, place: (string | number)[]) => {
-    const f = conformWalk(hostValue(value), t, free);
+    // Each value is one call of the conformance function, with its own count (f04 7.3).
+    const f = conformWalk(hostValue(value), t, freeCtx(env.classifier));
     if (f === null) return null;
-    return { path: [...place, ...f.path], message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) };
+    // A limit (f04 7.3, f17 12.7) has its own message and no path.
+    return { path: [...place, ...f.path], message: conformDiagnostic(f, env.classifier).message };
   };
   for (const k of Object.keys(c.vars ?? {}).sort(compareText)) {
     const t = e.variableTypes.get(k);
@@ -610,6 +611,8 @@ export function reportLines(v: Verdict, status: string = v.verdict): string {
 /** The three answers of a conform case (f04 9.3), or its declare failure. */
 export type ConformRun =
   | { ok: false; diagnostics: Diagnostic[] }
+  /** f04 9.3 item 6: the function ended with steps-exceeded; no run is made. */
+  | { ok: "limit"; diagnostic: Diagnostic; all: Diagnostic[] | null }
   | {
       ok: true;
       fn: Diagnostic | null;
@@ -629,8 +632,12 @@ export function runConform(c: Case): ConformRun {
     const env = buildEnv({ version: c.version, opaque, opaqueNames: c.opaque ?? [], namedTypes: c.types as NamedType[] | undefined });
     const type = env.parseType(cf.type);
     const value = hostValue(cf.value);
-    // Step 3: the function.
-    const fn = conform(value, type) as Diagnostic | null;
+    // Step 3: the function, with the case's step limit (f04 9.2 `limit`).
+    const options = cf.limit === undefined ? undefined : { steps: cf.limit };
+    const fn = conform(value, type, options) as Diagnostic | null;
+    if (fn !== null && fn.code === "steps-exceeded") {
+      return { ok: "limit", diagnostic: fn, all: cf.max === undefined ? null : (conformAll(value, type, cf.max, options) as Diagnostic[]) };
+    }
     // Step 4: two runs in a child that declares `v: any`, with the static rules alone.
     const child = env.with({ vars: { v: "any" } });
     const runOf = (form: string) => {
@@ -639,7 +646,7 @@ export function runConform(c: Case): ConformRun {
       const o = execute(r.program, { v: value });
       return o.ok ? { ok: true as const, value: o.value, steps: o.usage.steps } : { ok: false as const, diagnostic: o.diagnostic, steps: o.usage.steps };
     };
-    const all = cf.max === undefined ? null : (conformAll(value, type, cf.max) as Diagnostic[]);
+    const all = cf.max === undefined ? null : (conformAll(value, type, cf.max, options) as Diagnostic[]);
     return { ok: true, fn, asRun: runOf("as"), isRun: runOf("is"), value, all };
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
@@ -653,6 +660,15 @@ function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>
   if (update) {
     const verdict = conformCase(c, v);
     return { ...verdict, newExpect: verdict.verdict === "pass" ? null : conformExpect(c, r) };
+  }
+  if (r.ok === "limit") {
+    // f04 9.3 item 6: the outcome alone; with max, ConformAll gives that one diagnostic (f08 7.5 item 4).
+    const o: Outcome = { kind: "failure", phase: "run", diagnostics: [r.diagnostic] };
+    if (r.all !== null && (r.all.length !== 1 || r.all[0].code !== "steps-exceeded")) {
+      return v("fail", { differences: [{ field: "outcome", expected: "ConformAll gives steps-exceeded alone", found: r.all.map((x) => x.code) }] });
+    }
+    if (ex.kind === "failure") return finish(c, o, [], v);
+    return v("fail", { differences: [{ field: "outcome", expected: "a conform result", found: describeFailure(o) }] });
   }
   if (!r.ok) {
     if (ex.kind === "failure") return finish(c, { kind: "failure", phase: "declare", diagnostics: r.diagnostics }, [], v);
@@ -1132,7 +1148,13 @@ function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): 
 
 /** The `expect` update mode writes for a conform case, or null when its three ways disagree (f09 4.3, 4.4). */
 function conformExpect(c: Case, r: ConformRun): Json | null {
-  if (!r.ok) return null;
+  if (r.ok === "limit") {
+    // f04 9.3 item 6: the function's steps-exceeded, written as the failure a conform case may expect.
+    // With max, ConformAll must give that one diagnostic; otherwise the ways disagree.
+    if (r.all !== null && (r.all.length !== 1 || r.all[0].code !== "steps-exceeded")) return null;
+    return { phase: "run", diagnostics: [{ code: r.diagnostic.code, message: r.diagnostic.message }] };
+  }
+  if (r.ok !== true) return null;
   const asOk = r.asRun.ok && plainEqual(r.asRun.value, r.value, CLASSIFIER);
   const isOk = r.isRun.ok && r.isRun.value === true;
   const fnOk = r.fn === null;
@@ -1147,7 +1169,11 @@ function conformExpect(c: Case, r: ConformRun): Json | null {
   if (!fnOk && has("path")) out.path = r.fn!.path as Json;
   if (!fnOk && has("message")) out.message = r.fn!.message;
   if (has("steps")) out.steps = r.asRun.steps;
-  if (same && "failures" in raw && r.all !== null) out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+  if (same && "failures" in raw && r.all !== null) {
+    // A limit's diagnostic has no path, and an entry of failures needs one (f08 7.5): nothing is written.
+    if (r.all.some((x) => x.path === undefined)) return null;
+    out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+  }
   return out;
 }
 

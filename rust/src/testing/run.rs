@@ -1706,7 +1706,8 @@ pub(super) fn analysis_text(case: &Case) -> Option<String> {
     }
 }
 
-/// What a conform case found (F4 9.3): `Err` is the `declare` failure.
+/// What a conform case found (F4 9.3): `Err` is the `declare` failure, or
+/// the function's `steps-exceeded` (9.3 item 6).
 pub(super) struct Conformed {
     /// The conformance function's diagnostic, or none.
     pub(super) function: Option<Diagnostic>,
@@ -1729,10 +1730,30 @@ pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
     let pt = env.parse_type(text)?;
     let data = interner.data(value);
     let dv = crate::value::Value::from_data(&data);
-    let function = crate::typ::conform(&dv, &pt).err();
+    // F4 9.2: the case's step limit, or the default.
+    let options = match case.conform_limit {
+        Some(n) => crate::typ::ConformOptions { steps: Some(n) },
+        None => crate::typ::ConformOptions::default(),
+    };
+    let function = crate::typ::conform_with(&dv, &pt, &options).err();
     let all = case
         .conform_max
-        .map(|m| crate::typ::conform_all(&dv, &pt, m));
+        .map(|m| crate::typ::conform_all_with(&dv, &pt, m, &options));
+    if let Some(d) = function.as_ref().filter(|d| d.code == "steps-exceeded") {
+        // F4 9.3 item 6: no run is made; the outcome is the failure. With
+        // `max`, `ConformAll` gives that one diagnostic (F8 7.5 item 4); any
+        // other list is added, so the outcome differs.
+        let mut diagnostics = vec![d.clone()];
+        if let Some(all) = all {
+            if all.len() != 1 || all[0].code != "steps-exceeded" {
+                diagnostics.extend(all);
+            }
+        }
+        return Err(Error {
+            phase: Phase::Run,
+            diagnostics,
+        });
+    }
     let child = env.with().var("v", "any").build()?;
     let mut vars = BTreeMap::new();
     vars.insert("v".to_string(), data.clone());
@@ -2083,6 +2104,15 @@ pub fn outcome_line(case: &Case) -> String {
         let mut out = String::from("{\"name\":");
         out.push_str(&json_text(&case.name));
         match conform_case(case) {
+            Err(e) if e.phase == Phase::Run => {
+                // F4 9.5: the function's steps-exceeded.
+                let d = &e.diagnostics[0];
+                out.push_str(",\"phase\":\"run\",\"diagnostics\":[{\"code\":");
+                out.push_str(&json_text(d.code));
+                out.push_str(",\"span\":null,\"class\":\"limit\",\"message\":");
+                out.push_str(&json_text(&d.message));
+                out.push_str("}]");
+            }
             Err(e) => {
                 out.push_str(",\"phase\":\"declare\",\"diagnostics\":[");
                 let mut codes: Vec<&str> = e.diagnostics.iter().map(|d| d.code).collect();

@@ -153,7 +153,7 @@ export interface Case {
   /** Package F4: named types, in order (f04 9.1). */
   types?: ({ name: string; type: string } | { name: string; schema: Json; options?: string[] })[];
   /** Package F4: a case of the second kind (f04 9.2); `max` of package F8 (f08 7.5). */
-  conform?: { type: string; value: Json; max?: number };
+  conform?: { type: string; value: Json; max?: number; limit?: number };
   /** Package F8: a case of the third kind (f08 7.4). */
   render?: { diagnostics: JsonObject[]; source?: string };
   /** Package F9: a runner case, its inner file as data or text (f09 3.1). */
@@ -395,8 +395,10 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("conform" in o) {
     const cf = o.conform;
-    if (!isObject(cf) || typeof cf.type !== "string" || !("value" in cf) || !Object.keys(cf).every((k) => k === "type" || k === "value" || k === "max")) fail(`${where}: conform is not an object of type and value`);
+    if (!isObject(cf) || typeof cf.type !== "string" || !("value" in cf) || !Object.keys(cf).every((k) => k === "type" || k === "value" || k === "max" || k === "limit")) fail(`${where}: conform is not an object of type and value`);
     if ("max" in cf && !isInt(cf.max, 1)) fail(`${where}: conform.max is not a whole number of 1 or more`);
+    // f04 9.2: the function's step limit.
+    if ("limit" in cf && !isInt(cf.limit, 0)) fail(`${where}: conform.limit is not a whole number of 0 or more`);
   }
   if ("removed" in o && !(Array.isArray(o.removed) && o.removed.every((x) => typeof x === "string"))) fail(`${where}: removed is not a list of strings`);
   if ("template" in o && o.template !== "string" && o.template !== "value") fail(`${where}: template is not "string" or "value"`);
@@ -582,14 +584,18 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("template" in merged) c.template = merged.template as "string" | "value";
   if ("types" in merged) c.types = merged.types as Case["types"];
   if ("groups" in merged) c.groups = merged.groups as string[];
-  if (hasConform) c.conform = merged.conform as { type: string; value: Json; max?: number };
+  if (hasConform) c.conform = merged.conform as { type: string; value: Json; max?: number; limit?: number };
   if (hasRender) c.render = merged.render as { diagnostics: JsonObject[]; source?: string };
   if (c.expect.kind === "render" && !hasRender) fail(`${where}: a render result in a case without render`);
   if (hasRender && "expect" in raw && c.expect.kind !== "render") fail(`${where}: a render case expects no renderings`);
   if (c.expect.kind === "conform" && c.expect.failures !== undefined && c.conform?.max === undefined) fail(`${where}: failures without max`);
   // f04 9.2 item 5: a conform result only in a conform case; a conform case expects one or a declare failure.
   if (c.expect.kind === "conform" && !hasConform) fail(`${where}: a conform result in a case without conform`);
-  if (hasConform && "expect" in raw && c.expect.kind !== "conform" && !(c.expect.kind === "failure" && c.expect.phase === "declare")) {
+  // f04 9.2 item 3: or the function's steps-exceeded, which states only its code and message.
+  const stepsFailure = (e: Expect) =>
+    e.kind === "failure" && e.phase === "run" && e.diagnostics.length === 1 && e.diagnostics[0].code === "steps-exceeded" &&
+    Object.keys(e.diagnostics[0]).every((k) => k === "code" || k === "message" || (e.diagnostics[0] as unknown as Record<string, unknown>)[k] === undefined);
+  if (hasConform && "expect" in raw && c.expect.kind !== "conform" && !(c.expect.kind === "failure" && c.expect.phase === "declare") && !stepsFailure(c.expect)) {
     fail(`${where}: a conform case expects neither a conform result nor a declare failure`);
   }
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.

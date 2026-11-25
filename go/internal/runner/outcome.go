@@ -257,6 +257,12 @@ func conformLine(c *casefile.Case) string {
 		b.WriteString("]}")
 		return b.String()
 	}
+	if o.limit != nil { // F4 9.5: the function's steps-exceeded
+		d := o.limit.Diagnostics[0]
+		fmt.Fprintf(&b, `,"phase":"run","diagnostics":[{"code":%s,"span":null,"class":%s,"message":%s}]}`,
+			value.QuoteJSON(d.Code), value.QuoteJSON(d.Class), value.QuoteJSON(d.Message))
+		return b.String()
+	}
 	fmt.Fprintf(&b, `,"phase":null,"conforms":%t`, o.conforms)
 	if !o.conforms {
 		b.WriteString(`,"path":`)

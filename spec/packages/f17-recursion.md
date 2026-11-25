@@ -597,8 +597,8 @@ guard is a place of the last row of its table.
    `suite/messages-recursion.json` checked, as it runs
    `suite/messages-entry-points.json`.
 6. Go's `TypeOf` (12.4) and the conformance function's depth (12.7 item 3)
-   have no case: a case holds no Go type, and the conformance function's
-   failure is not a conform result. Each implementation tests them in its own
+   have no case: a case holds no Go type, and a conform case expects no
+   `depth-exceeded` (F4 9.2 item 3). Each implementation tests them in its own
    tests.
 
 ## 9. Messages
@@ -1288,6 +1288,8 @@ Equal, Join and disjoint (F4 6.2) follow references by the rules below.
    JSON text of `03-host.md` 3.2 does: phase `run`, code `depth-exceeded`,
    class `limit`, no path and no span. Item 2 of F4 7.1 changes: its depth is
    bounded by the type, or by 200. `ConformAll` (F8) ends with that diagnostic.
+   Its work is bounded by its step limit (F4 7.3), which this package does not
+   change: data as deep as 200 still charges a step for each place it holds.
 4. Nothing else changes in a run. A reference is a type; no value holds one.
 
 ### 12.8 Tools

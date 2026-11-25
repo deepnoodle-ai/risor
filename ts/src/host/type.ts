@@ -306,9 +306,12 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
         return {
           issues: fs.map((f) => ({
             // f17 12.7 item 3: past the default depth limit, depth-exceeded with no path.
+            // f04 7.3: past the step limit, steps-exceeded with no path.
             ...(f.template === "depth"
               ? { message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls) }
-              : { message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls), path: f.path }),
+              : f.template === "steps"
+                ? { message: messageOf(new RunFailure("steps-exceeded", undefined, "default", f.params as never), cls) }
+                : { message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls), path: f.path }),
           })),
         };
       },

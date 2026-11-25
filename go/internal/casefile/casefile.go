@@ -101,6 +101,9 @@ type Conform struct {
 	Value any
 	// Max is the maximum of ConformAll (package F8 7.5), or nil.
 	Max *int64
+	// Limit is the step limit of the conformance function (F4 9.2), or
+	// nil for the default.
+	Limit *int64
 }
 
 // ConformResult is the expect of a conform case (F4 9.2).
@@ -117,7 +120,7 @@ type ConformResult struct {
 
 var (
 	namedTypeFields     = set("name", "type", "schema", "options")
-	conformFields       = set("type", "value", "max")
+	conformFields       = set("type", "value", "max", "limit")
 	conformCaseFields   = set("name", "version", "opaque", "types", "conform", "skip", "expect")
 	conformResultFields = set("conforms", "path", "message", "steps", "failures")
 )
@@ -1487,6 +1490,13 @@ func (v *validator) buildConform(c *Case, m, cf map[string]any, where string) (*
 	if c.Conform.Max, err = v.conformMax(cf, where+": conform"); err != nil {
 		return nil, err
 	}
+	if x, ok := cf["limit"]; ok {
+		n, ok := isWhole(x)
+		if !ok || n < 0 {
+			return nil, v.invalid("%s: conform: limit is not a whole number of 0 or more", where)
+		}
+		c.Conform.Limit = &n
+	}
 	em, ok := m["expect"].(map[string]any)
 	if !ok {
 		return nil, v.invalid("%s: expect is not an object", where)
@@ -1496,8 +1506,13 @@ func (v *validator) buildConform(c *Case, m, cf map[string]any, where string) (*
 		if err != nil {
 			return nil, err
 		}
-		if e.Phase != "declare" {
-			return nil, v.invalid("%s: a conform case expects a conform result or a declare failure", where)
+		// F4 9.2 item 3: a declare failure, or the function's
+		// steps-exceeded, which states only its code and message.
+		stepsOK := e.Phase == "run" && len(e.Diagnostics) == 1 && e.Diagnostics[0].Code == "steps-exceeded" &&
+			e.Diagnostics[0].Class == nil && e.Diagnostics[0].Span == nil && !e.Diagnostics[0].SpanNull && !e.Diagnostics[0].HasPath &&
+			!e.Diagnostics[0].HasData && e.Diagnostics[0].Trace == nil
+		if e.Phase != "declare" && !stepsOK {
+			return nil, v.invalid("%s: a conform case expects a conform result, a declare failure or steps-exceeded", where)
 		}
 		c.Expect = e
 		return c, nil
