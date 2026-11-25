@@ -80,14 +80,19 @@ interface SpineStep {
  * host declares, so a nested run takes it as `env.with({ limits: h.remaining() })`.
  */
 export interface Remaining {
+  /** Remaining evaluation steps, or `null` when the step limit is off. */
   steps: number | null;
+  /** Remaining allocation units, or `null` when the allocation limit is off. */
   allocation: number | null;
 }
 
 /** What a host function's implementation is given (03 3.5.2). */
 export interface CallHandle {
+  /** Optional cancellation signal passed to `run` or `measure`. */
   readonly signal?: AbortSignal;
+  /** Charge `steps` evaluation steps to the run; throws internally if the step limit is exceeded. */
   charge(steps: number): void;
+  /** Charge `units` allocation units to the run; throws internally if the allocation limit is exceeded. */
   allocate(units: number): void;
   /**
    * The steps and units left in the run, counting the call's own step and

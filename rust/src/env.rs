@@ -45,11 +45,14 @@ pub struct HostMethod {
 /// The limits of a run (`03-host.md` 3.6.1). `None` turns a limit off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
+    /// Maximum evaluation steps (default `Some(1_000_000)`); `None` turns it off.
     pub steps: Option<u64>,
+    /// Maximum allocation units (default `Some(1_000_000)`); `None` turns it off.
     pub allocation: Option<u64>,
     /// From 1 to 400 (`03-host.md` 3.6.1). The stack a run needs grows
     /// with it: the crate's documentation (Stack) gives the figures.
     pub depth: u32,
+    /// Wall-clock deadline measured from the start of a run (default `None`).
     pub deadline: Option<Duration>,
 }
 
@@ -105,6 +108,7 @@ impl Default for Env {
 }
 
 impl Env {
+    /// Start building a new environment (`03-host.md` 3.3).
     pub fn builder() -> EnvBuilder {
         EnvBuilder::default()
     }
@@ -339,6 +343,8 @@ enum VarDecl {
     Host(Result<Ty, String>),
 }
 
+/// Builder for an immutable [`Env`] (`03-host.md` 3.3). Start from
+/// [`Env::builder`] or [`Env::with`] and finish with [`EnvBuilder::build`].
 #[derive(Default)]
 pub struct EnvBuilder {
     version: Option<String>,
@@ -395,6 +401,8 @@ impl EnvBuilder {
         self
     }
 
+    /// The specification version the environment wants (`03-host.md` 3.9).
+    /// Only `"3.0"` is offered; any other version fails with `unsupported-version`.
     pub fn version(mut self, v: &str) -> Self {
         self.version = Some(v.to_string());
         self
@@ -515,6 +523,8 @@ impl EnvBuilder {
         self
     }
 
+    /// Declare an opaque host type by name (`03-host.md` 3.4.6): an upper-case
+    /// letter followed by one or more ASCII letters, digits or underscores.
     pub fn opaque(mut self, name: &str) -> Self {
         self.opaque.push(name.to_string());
         self
@@ -572,16 +582,23 @@ impl EnvBuilder {
         self
     }
 
+    /// Set the whole set of rejected check classes (`05-types.md` 17),
+    /// replacing the default (`["constant-condition"]`) or the parent's set.
+    /// Pass `&[]` to reject none.
     pub fn reject(mut self, classes: &[&str]) -> Self {
         self.reject = Some(classes.iter().map(|c| c.to_string()).collect());
         self
     }
 
+    /// Set the execution limits for runs compiled in this environment
+    /// (`03-host.md` 3.6.1).
     pub fn limits(mut self, l: Limits) -> Self {
         self.limits = Some(l);
         self
     }
 
+    /// Validate all declarations and build the immutable [`Env`]. Any
+    /// declaration problem returns an [`Error`] of phase `declare`.
     pub fn build(self) -> Result<Env, Error> {
         let mut errs: Vec<Diagnostic> = Vec::new();
         let mut bad =

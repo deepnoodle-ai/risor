@@ -38,9 +38,11 @@ type Limits struct {
 // DefaultLimits are the limits of 03-host.md 3.6.1.
 var DefaultLimits = Limits{Steps: 1_000_000, Alloc: 1_000_000, Depth: 200}
 
-// Usage is what a run charged.
+// Usage is what a run charged: steps and allocation units (03-host.md 3.6.3).
 type Usage struct {
-	Steps     int64
+	// Steps is the total number of evaluation steps charged.
+	Steps int64
+	// Allocated is the total number of allocation units charged.
 	Allocated int64
 }
 

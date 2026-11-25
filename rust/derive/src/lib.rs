@@ -105,6 +105,8 @@
 
 use proc_macro::{Delimiter, Spacing, TokenStream, TokenTree};
 
+/// Derives `risor::HostType`, `risor::Host`, `risor::HostMap` and (for owned
+/// structs) `risor::Decode` for a struct with named fields.
 #[proc_macro_derive(Host, attributes(risor))]
 pub fn derive_host(input: TokenStream) -> TokenStream {
     match derive(input) {

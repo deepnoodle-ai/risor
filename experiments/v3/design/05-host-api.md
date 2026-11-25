@@ -2526,21 +2526,27 @@ A binding may differ from the others only in these five ways.
 | 2 | How an environment is declared | Option values: `NewEnv(decls...)` | One options object: `createEnv({...})` | A builder: `Env::builder()...build()` |
 | 3 | How a failure reaches the host | A returned `error` | A thrown `RisorError` | A returned `Result` |
 | 4 | How a run is cancelled | `context.Context` | `AbortSignal` | `RunOptions` |
-| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero` (Go's zero value) | `Infer<X>`, the parameters of `Type<T>`, `Env<V>` and `Program<V>`, and `Type` as a Standard Schema (open) (E.7, R202) | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
+| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero`, `Budget` / `ZeroLimit`, `Func` (`Params`, `Signature`, `Reflective`), `Methods[T]` (`ForMethod`, `Rename`, `Skip`), `ErrCallEnded` | `Infer<X>`, the parameters of `Type<T>`, `Env<V>` and `Program<V>`, `Type` as a Standard Schema (open, R202), `@deepnoodle/risor/tokens` | `type_of::<T>()`, `#[derive(Host)]`, `Host` / `HostList` / `HostMap` / `HostType` / `Opaque` / `OpaqueType` / `OptionLike` / `TypeCx` / `RecordType` / `TypeError`, `var_host::<T>()`, `load::<T>()` / `load_with::<T>()`, `Decode` / `DecodeCx`, `Env::limits()`, `Expr::has_result()` |
 
 Everything else is the same: the concepts, their names, which object a
 function belongs to, what it takes, and what it gives. A name in the tables
 below is the canonical name. Each binding writes it in its own case (row 1).
+`23-host-api-freeze.md` records the full measured API listing of all three
+bindings and the small parity and boundary items awaiting owner approval
+before 3.0 freezes (issue #706).
 
 ### E.2 The boundary
 
 1. The root of each package exports exactly the surface of E.3 to E.8 and
    the conveniences of E.1 row 5, and nothing else.
 2. The case-file runner is a separate entry point: Go `risortest`, TypeScript
-   `risor/testing`, Rust `risor::testing`.
+   `@deepnoodle/risor/testing`, Rust `risor::testing`. TypeScript also exports
+   `@deepnoodle/risor/tokens` for editor syntax colouring.
 3. Everything else is private: Go `go/internal/`; TypeScript not exported from
    `index.ts`; Rust `pub(crate)`, or `#[doc(hidden)]` where a binary or an
-   integration test of the crate needs it.
+   integration test of the crate needs it. (Pending owner review in
+   `23-host-api-freeze.md`: narrowing `risor::testing` submodules and hiding
+   internal TypeScript class fields.)
 4. One concept has one way to reach it. An alias or a second spelling of the
    same step is removed.
 5. The options, field types, constants and result records of a concept listed
@@ -2548,9 +2554,9 @@ below is the canonical name. Each binding writes it in its own case (row 1).
    one: for example the load options, the steps of a load, a `Site`, a
    `Ref`, a `CallSite`, a `Segment` and a trace entry. They take the same
    names in all three bindings, cased per E.1 row 1.
-6. A limit turned off is written in each binding's own form: Go `NoLimit`,
-   TypeScript `null` (so `steps` and `allocation` are `number | null`), Rust
-   `None`.
+6. A limit turned off is written in each binding's own form: Go `NoLimit`
+   (with `ZeroLimit` for an explicit 0 in `Limits`), TypeScript `null` (so
+   `steps` and `allocation` are `number | null`), Rust `None`.
 7. The record of a call in an analysis is a `CallSite`: `name`, `namespace`,
    `span`, `args` (each argument as an `Expr`, or absent for a lambda),
    `argSpans`, and `inLambda`.
@@ -2570,30 +2576,38 @@ below is the canonical name. Each binding writes it in its own case (row 1).
 | All variables, as one record type | `varRecord` | `VarRecord(text)` | `varRecord: text` | `.var_record(text)` |
 | One variable, by JSON Schema | `varSchema` | `VarSchema(name, schema, opts...)` | `varSchemas: {name: {schema, options}}` | `.var_schema(name, schema, opts)` |
 | One variable, by a `Type` | `varType` | `VarType(name, t)` | `varTypes: {name: t}` | `.var_type(name, t)` |
-| Host function | `function` | `Function{Name, Type, Impl}` | `functions: {name: {type, call}}` | `.function(name, sig, impl)` |
-| Opaque type | `opaque` | `OpaqueType{...}` | `opaque: {Name: {test, methods}}` | `.opaque(name)` |
-| Method of an opaque type | `method` | `Method(type, name, f)` | `opaque.Name.methods` | `.method(type, name, sig, impl)` |
+| Host function | `function` | `Function{Name, Type, Impl, Doc}` or `Func(name, fn, opts...)` | `functions: {name: {type, call, doc}}` | `.function(name, sig, impl)` + `.function_doc(name, doc)` |
+| Opaque type | `opaque` | `OpaqueType{Name, Methods, Doc}` or `Methods[T](name, opts...)` | `opaque: {Name: {test, methods, doc}}` | `.opaque(name)` + `.opaque_doc(name, doc)` |
+| Method of an opaque type | `method` | `Method(type, name, f)` or `OpaqueType.Methods` | `opaque.Name.methods` | `.method(type, name, sig, impl)` + `.method_doc(type, name, doc)` |
 | Named type, by type text | `namedType` | `NamedType(name, text)` | `namedTypes: [{name, type}]` | `.named_type(name, text)` |
 | Named type, by JSON Schema | `namedTypeSchema` | `NamedTypeSchema(name, schema, opts...)` | `namedTypes: [{name, schema, options}]` | `.named_type_schema(name, schema, opts)` |
 | Named type, by a `Type` | `namedTypeOf` | `NamedTypeOf(name, t)` | `namedTypes: [{name, typeOf: t}]` | `.named_type_of(name, t)` |
 | Opt-in groups | `groups` | `Groups(names...)` | `groups: [...]` | `.groups(&[...])` |
 | Library entries removed | `without` | `Without(names...)` | `without: [...]` | `.without(&[...])` |
-| Check classes rejected | `reject` | `Reject(classes...)` | `reject: [...]` | `.reject(&[...])` |
+| Check classes rejected (whole set) | `reject` | `Reject(classes...)` | `reject: [...]` | `.reject(&[...])` |
 | Host fact (F14) | `someNotNull` | `SomeNotNull(names...)` | `someNotNull: [[...]]` | `.some_not_null(&[...])` |
-| Limits | `limits` | `Limits{Steps, Allocation, Deadline, Depth}` | `limits: {steps, allocation, deadlineMs, depth}` | `.limits(Limits{steps, allocation, deadline, depth})` |
-| The description (`spec/packages/f01-host-types.md` 5) | `describe` | `env.Describe()` | `env.describe()` | `env.describe()` |
-| The description as text | `descriptionText` | (`Describe` gives bytes) | `descriptionText(d)` | `env.description_text()` |
-| An environment from a description | `fromDescription` | `FromDescription(data)`, a declaration | `Env.fromDescription(json)` | `Env::from_description(json)` |
+| Limits | `limits` | `Limits{Steps, Allocation, Deadline, Depth}`, `Budget(steps, units)` | `limits: {steps, allocation, deadlineMs, depth}` | `.limits(Limits{steps, allocation, deadline, depth})`, `env.limits()` |
+| The description (`spec/packages/f01-host-types.md` 5) | `describe` | `env.Describe()` (returns JSON bytes) | `env.describe()` (returns `Description`) | `env.describe()` (returns `Data`) |
+| The description as text | `descriptionText` | (`env.Describe()` gives bytes) | `descriptionText(d)` | `env.description_text()` |
+| An environment from a description | `fromDescription` | `FromDescription(data)`, a declaration | `Env.fromDescription(description)` | `Env::from_description(json)` |
 | A type from type text | `parseType` | `env.ParseType(text)` | `env.parseType(text)` | `env.parse_type(text)` |
 | The library's names | `libraryNames` | `env.LibraryNames()` | `env.libraryNames()` | `env.library_names()` |
 
 `Function` in Go keeps its struct form, which is the Go idiom for a declaration
-with three parts. `Method(type, name, f)` takes a `Function` too: its `Type`
-is the signature, as the `sig` argument is in Rust, and its `Name` is not
-read. A host declares a function with its implementation. A
-function with no implementation, for a check-only environment, comes from a
-description (`fromDescription`); there is no second name for it. Go's zero
-`Impl` is not part of the surface.
+with four parts (`Name`, `Type`, `Impl`, `Doc`). `Method(type, name, f)` takes
+a `Function` too: its `Type` is the signature, as the `sig` argument is in
+Rust, its `Doc` documents the method, and its `Name` is not read. Go also
+offers `Func(name, fn, opts...)` (with `Params`, `Signature` and
+`Function.Reflective`) and `Methods[T](name, opts...)` (with `ForMethod`,
+`Rename` and `Skip`) to adapt ordinary Go functions and methods by E.1 row 5.
+A host declares a function with its implementation. A function with no
+implementation, for a check-only environment, comes from a description
+(`fromDescription`); there is no second name for it. Go's zero `Impl` is not
+part of the surface.
+
+`reject` sets the whole set of rejected check classes in all three bindings,
+replacing the default (`["constant-condition"]`) or the parent's set; pass an
+empty list to reject none. There is no separate `Allow` declaration.
 
 `fromDescription` reports an error of a declaration (`bad-type`, `name-clash`
 and the rest of F1 5.4 item 2) as an `Error` (`RisorError`), like `build`.
@@ -2607,26 +2621,27 @@ code for it.
 | Concept | Canonical name | Go | TypeScript | Rust |
 | --- | --- | --- | --- | --- |
 | A parsed program | `Expr` | `*Expr` | `Expr` | `Expr` |
-| Parse | `parse` | `Parse(text)` | `parse(text)` | `parse(text)` |
+| Parse | `parse` | `Parse(text, opts...)` | `parse(text, options?)` | `parse(text)`, `parse_with(text, opts)` |
+| Source size limit (03 3.6.1) | `sourceLimit` | `SourceLimit`, `MaxSource` | `SourceOptions{sourceLimit}` | `ParseOptions{source_limit}`, `SOURCE_LIMIT` |
 | Its text | `text` | `x.Text()` | `x.text` | `x.text()` |
 | Analyze (F2) | `analyze` | `x.Analyze()` | `x.analyze()` | `x.analyze()` |
 | The report of an analysis | `Analysis` | `Analysis` | `Analysis` | `Analysis` |
 | An analysis as JSON text | `json` | `a.JSON()` | `a.json()` | `a.json()` |
 | The calls of some names (R347) | `callsOf` | `a.CallsOf(names...)` | `a.callsOf(...names)` | `a.calls_of(&names)` |
-| What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `ExpectEntry(name, text)`, `ExpectEntryType(name, t)`, `ExpectEntrySchema(name, schema, opts...)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `entryExpected`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, `entry_expected`, and `check: false` in `CompileOptions` |
-| Check | `check` | `env.Check(x, opts...)` | `env.check(x, expected)` | `env.check(&x, &expected)` |
+| What the host expects of a result | `Expected` | `Expect(text)`, `ExpectSchema(...)`, `ExpectType(t)`, `ExpectEntry(name, text)`, `ExpectEntryType(name, t)`, `ExpectEntrySchema(name, schema, opts...)`, `Condition`, `NoCheck` | `expected: text \| {schema} \| {type} \| "condition"`, `entryExpected`, `check: false` | `Expected::text(..)`, `::schema(..)`, `::of(t)`, `::Condition`, `::None`, `CompileOptions{check, expected, entry_expected}` (`expect_entry`, `expect_entry_type`, `expect_entry_schema`) |
+| Check | `check` | `env.Check(x, opts...)` | `env.check(x, expected?, entryExpected?)` | `env.check(&x, &expected)`, `env.check_with(&x, &options)` |
 | The result of a check | `CheckResult` | `{Type, Sites, Entries}` | `{type, sites, entries}` | `{ty, sites, entries}` |
-| Compile | `compile` | `env.Compile(x, opts...)` | `env.compile(x, options)` | `env.compile(&x, options)` |
+| Compile | `compile` | `env.Compile(x, opts...)` | `env.compile(x, options?)` | `env.compile(&x, options)` |
 | A compiled program | `Program` | `*Program` | `Program` | `Program` |
 | Its check result | `checkResult` | `p.CheckResult()` | `p.checkResult` | `p.check_result()` |
-| Its entry points (F16 D2) | `entries` | `p.Entries()` | `p.entries` | `p.entries()` |
-| Whether it has a result expression (F16 D2) | `hasResult` | `p.HasResult()` | `p.hasResult` | `p.has_result()` |
-| Run | `run` | `p.Run(ctx, vars)` | `p.run(vars, {signal})` | `p.run(&vars)`, `p.run_with(&vars, opts)` |
-| Run and report usage | `measure` | `p.Measure(ctx, vars)` | `p.measure(vars, {signal})` | `p.measure(&vars)`, `p.measure_with(&vars, opts)` |
-| Call an entry point (F16 D2) | `call` | `p.Call(ctx, name, args, vars)` | `p.call(name, args, vars, {signal})` | `p.call(name, &args, &vars)`, `p.call_with(...)` |
-| Call and report usage (F16 D2) | `callMeasure` | `p.CallMeasure(ctx, name, args, vars)` | `p.callMeasure(name, args, vars, {signal})` | `p.call_measure(name, &args, &vars)`, `p.call_measure_with(...)` |
-| Call by record (F16 D2) | `callRecord` | `p.CallRecord(ctx, name, input, vars)` | `p.callRecord(name, input, vars, {signal})` | `p.call_record(name, &input, &vars)`, `p.call_record_with(...)` |
-| Call by record and report usage (F16 D2) | `callRecordMeasure` | `p.CallRecordMeasure(ctx, name, input, vars)` | `p.callRecordMeasure(name, input, vars, {signal})` | `p.call_record_measure(name, &input, &vars)`, `p.call_record_measure_with(...)` |
+| Its entry points (F16 D2) | `entries` | `p.Entries()` | `p.entries()` | `p.entries()` |
+| Whether it has a result expression (F16 D2) | `hasResult` | `p.HasResult()` | `p.hasResult` | `p.has_result()` (also `x.has_result()`) |
+| Run | `run` | `p.Run(ctx, vars)` | `p.run(vars?, {signal}?)` | `p.run(&vars)`, `p.run_with(&vars, opts)` |
+| Run and report usage | `measure` | `p.Measure(ctx, vars)` | `p.measure(vars?, {signal}?)` | `p.measure(&vars)`, `p.measure_with(&vars, opts)` |
+| Call an entry point (F16 D2) | `call` | `p.Call(ctx, name, args, vars)` | `p.call(name, args?, vars?, {signal}?)` | `p.call(name, &args, &vars)`, `p.call_with(...)` |
+| Call and report usage (F16 D2) | `callMeasure` | `p.CallMeasure(ctx, name, args, vars)` | `p.callMeasure(name, args?, vars?, {signal}?)` | `p.call_measure(name, &args, &vars)`, `p.call_measure_with(...)` |
+| Call by record (F16 D2) | `callRecord` | `p.CallRecord(ctx, name, input, vars)` | `p.callRecord(name, input, vars?, {signal}?)` | `p.call_record(name, &input, &vars)`, `p.call_record_with(...)` |
+| Call by record and report usage (F16 D2) | `callRecordMeasure` | `p.CallRecordMeasure(ctx, name, input, vars)` | `p.callRecordMeasure(name, input, vars?, {signal}?)` | `p.call_record_measure(name, &input, &vars)`, `p.call_record_measure_with(...)` |
 | What a run used | `Usage` | `{Steps, Allocated}` | `{steps, allocated}` | `{steps, allocated}` |
 | The variables of a run | `Vars` | `Vars`, `Map` | an object, a `Map` or a function | `Vars`, `NoVars` |
 
@@ -2647,28 +2662,31 @@ code for it.
 
 | Concept | Canonical name | Go | TypeScript | Rust |
 | --- | --- | --- | --- | --- |
-| Parse | `parseTemplate` | `ParseTemplate(text)` | `parseTemplate(text)` | `parse_template(text)` |
+| Parse | `parseTemplate` | `ParseTemplate(text, opts...)` | `parseTemplate(text, options?)` | `parse_template(text)`, `parse_template_with(text, opts)` |
 | A parsed template | `Template` | `*Template` | `Template` | `Template` |
-| The mode | `TemplateMode` | `TemplateMode` | `TemplateMode` | `TemplateMode` |
+| The mode | `TemplateMode` | `TemplateMode` (`ModeString`, `ModeValue`) | `TemplateMode` (`"string" \| "value"`) | `TemplateMode` (`String`, `Value`) |
 | Its segments | `segments` | `t.Segments()` | `t.segments` | `t.segments()` |
 | Exactly one part | `isSingle` | `t.IsSingle()` | `t.isSingle` | `t.is_single()` |
 | One part, as a program | `part` | `t.Part(i)` | `t.part(i)` | `t.part(i)` |
 | The whole, as a program | `program` | `t.Program(mode)` | `t.program(mode)` | `t.program(mode)` |
 | Analyze | `analyze` | `t.Analyze(mode)` | `t.analyze(mode)` | `t.analyze(mode)` |
-| Format | `formatTemplate` | `FormatTemplate(text)` | `formatTemplate(text)` | `format_template(text)` |
+| Format | `formatTemplate` | `FormatTemplate(text, opts...)` | `formatTemplate(text, options?)` | `format_template(text)`, `format_template_with(text, opts)` |
 
 `part(i)` counts the parts only, from 0, not the segments. It gives the part's
-expression as a program, or absent when there is no part `i`.
+expression as a program, or absent when there is no part `i`. (Open item in
+`23-host-api-freeze.md`: Go's `x.Text()` returns only the part's slice while
+TypeScript's `x.text` and Rust's `x.text()` return the whole template text.)
 
 ### E.6 Host functions and values
 
 | Concept | Canonical name | Go | TypeScript | Rust |
 | --- | --- | --- | --- | --- |
 | The call handle | `Call` | `*Call` | `Call` | `Call` |
+| Cancellation on the handle | (E.1 row 4) | `c.Context()` | `c.signal` | `c.cancelled()` |
 | Charge steps | `charge` | `c.Charge(n)` | `c.charge(n)` | `c.charge(n)` |
 | Charge allocation units | `allocate` | `c.Allocate(n)` | `c.allocate(n)` | `c.allocate(n)` |
-| What is left of the budget | `remaining` | `c.Remaining()` | `c.remaining()` | `c.remaining()` |
-| A host function's error | `HostError` | any `error` | `HostError` | `HostError` |
+| What is left of the budget (D67) | `remaining` | `c.Remaining()` | `c.remaining()` (`Remaining`) | `c.remaining()` (`Remaining`) |
+| A host function's error | `HostError` | any `error` | `HostError` (or any `Error`) | `HostError` (`Text`, `Risor`) |
 | Truthiness | `truthy` | `Truthy(v)` | `truthy(v)` | `truthy(&v)` |
 | A value as JSON text | `jsonText` | `JSONText(v)` | `jsonText(v)` | `json_text(&v)` |
 
@@ -2677,14 +2695,15 @@ expression as a program, or absent when there is no part `i`.
 | Concept | Canonical name | Go | TypeScript | Rust |
 | --- | --- | --- | --- | --- |
 | A type | `Type` | `Type` | `Type` | `Type` |
-| A type from JSON Schema | `typeFromSchema` | `TypeFromSchema(schema, opts...)` | `typeFromSchema(schema, options)` | `type_from_schema(schema, opts)` |
+| A type from JSON Schema | `typeFromSchema` | `TypeFromSchema(schema, opts...)` | `typeFromSchema(schema, options?)` | `type_from_schema(schema, opts)` |
+| A type's JSON Schema (F16 D3) | `schemaOf` | `SchemaOf(t)` (`json.RawMessage`) | `schemaOf(t)` (object), `schemaText(t)` (string) | `schema_of(&t)` (`String`) |
 | Building and reading a type (R179) | | constructors, accessors, `Join`, `Fits`, `Equal`, `String` | the same names | the same names |
-| Test a value against a type | `conform` | `Conform(v, t)` | `conform(v, t)` | `conform(&v, &t)` |
-| Every failure, up to a maximum | `conformAll` | `ConformAll(v, t, max)` | `conformAll(v, t, max)` | `conform_all(&v, &t, max)` |
+| Test a value against a type | `conform` | `Conform(v, t, opts...)` (`ConformSteps`) | `conform(v, t, options?)` (`ConformOptions`) | `conform(&v, &t)`, `conform_with(&v, &t, &opts)` (`ConformOptions`) |
+| Every failure, up to a maximum | `conformAll` | `ConformAll(v, t, max, opts...)` | `conformAll(v, t, max, options?)` | `conform_all(&v, &t, max)`, `conform_all_with(&v, &t, max, &opts)` |
 | Load a config file into a value | `loadValue` | `LoadValue(ctx, env, text, vars, opts...)` | `loadValue(env, text, options)` | `load_value(&env, text, &vars, opts)` |
-| Load into a host type | `load` | `Load[T](...)` | none (E.1 row 5) | `load::<T>(...)` |
+| Load into a host type | `load` | `Load[T](ctx, env, text, vars, dst, opts...)` | none (E.1 row 5) | `load::<T>(&env, text, &vars, max)`, `load_with::<T>(...)` |
 | Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)`, into plain data (F10 6.6) | `decode::<T>(&v)` |
-| A failed load | `LoadError` | `*LoadError` | `LoadError` | `LoadError` |
+| A failed load | `LoadError` | `*LoadError` (`StepDeclare`..`StepDecode`) | `LoadError` | `LoadError` |
 
 The structural type API of R179 is offered by all three. A `Type` is immutable
 and may be shared. "Absent" below is the binding's own form: Go a second
@@ -2770,11 +2789,12 @@ gives the TypeScript type of its values, in the types only (E.1 row 5).
 | One line | `renderLine` | `RenderLine(ds)` | `renderLine(ds)` | `render_line(&ds)` |
 | Detail, with source | `renderDetail` | `RenderDetail(ds, source)` | `renderDetail(ds, source)` | `render_detail(&ds, source)` |
 | JSON | `renderJSON` | `RenderJSON(ds)` | `renderJSON(ds)` | `render_json(&ds)` |
-| Format a program (F12) | `format` | `Format(text)` | `format(text)` | `format(text)` |
-| Completion (F12) | `complete` | `env.Complete(text, pos, opts...)` | `env.complete(text, pos, expected)` | `env.complete(text, pos, &expected)` |
-| Hover (F12) | `hover` | `env.Hover(text, pos, opts...)` | `env.hover(text, pos, expected)` | `env.hover(text, pos, &expected)` |
+| Format a program (F12) | `format` | `Format(text, opts...)` | `format(text, options?)` | `format(text)`, `format_with(text, opts)` |
+| Completion (F12) | `complete` | `env.Complete(text, pos, opts...)` | `env.complete(text, pos, expected?, options?)` | `env.complete(text, pos, &expected)`, `env.complete_with(text, pos, &expected, opts)` |
+| Hover (F12) | `hover` | `env.Hover(text, pos, opts...)` | `env.hover(text, pos, expected?, options?)` | `env.hover(text, pos, &expected)`, `env.hover_with(text, pos, &expected, opts)` |
 | A completion | `Completion`, `Candidate` | the same | the same | the same |
 | A hover | `Hover` | `Hover` | `Hover` | `Hover` |
+| Case-file testing (F9; separate entry point) | (E.2 item 2) | `risortest`: `Run`, `Load`, `Parse`, `File`, `Case`, `Verdict`, `Diff`, `Origin`, `Option` (`Base`, `Filter`, `Sources`, `Update`, `Vars`) | `@deepnoodle/risor/testing`: `loadCaseFile`, `caseFile`, `caseFileText`, `defineCases`, `CaseFile`, `Case`, `Verdict`, `Difference`, `CaseOptions` | `risor::testing`: `load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError` (plus internal suite helpers; see `23-host-api-freeze.md`) |
 
 A position `Pos` has two public fields, a line and a column
 (`spec/core/03-host.md` 3.7.7), in all three, and no offset. There is one

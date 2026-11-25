@@ -33,7 +33,9 @@ const (
 // diagnostics, and the usage of the run when step 3 was reached. It
 // unwraps to an *Error with the same diagnostics.
 type LoadError struct {
-	Step        int
+	// Step is the load step that failed: StepDeclare through StepDecode.
+	Step int
+	// Diagnostics are the diagnostics reported at Step.
 	Diagnostics []Diagnostic
 	// Usage is the usage of the run; HasUsage is false when the load
 	// stopped before step 3.

@@ -2,6 +2,7 @@
 
 import type { Span } from "./source.ts";
 
+/** The stage that reported a diagnostic (03 3.7.2). */
 export type Phase = "declare" | "parse" | "check" | "run";
 
 export interface Diagnostic {

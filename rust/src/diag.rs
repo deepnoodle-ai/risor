@@ -6,13 +6,18 @@ use std::fmt;
 /// The phase of a failure (`03-host.md` 3.7.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
+    /// Environment declaration or compile-option validation failure.
     Declare,
+    /// Lexing or parsing failure.
     Parse,
+    /// Static or type-checking failure.
     Check,
+    /// Runtime evaluation, conformance or decode failure.
     Run,
 }
 
 impl Phase {
+    /// The lowercase phase name as written in diagnostics and JSON.
     pub fn as_str(self) -> &'static str {
         match self {
             Phase::Declare => "declare",
@@ -103,15 +108,20 @@ pub mod code {
 /// specification compares.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
+    /// The stage that reported the diagnostic.
     pub phase: Phase,
+    /// The stable diagnostic code, such as `"no-field"` or `"steps-exceeded"`.
     pub code: &'static str,
+    /// Failure class for `run` diagnostics or rejected-class `check` diagnostics.
     pub class: Option<&'static str>,
     /// The span in code-point offsets, when `has_range`: read it with
     /// `range()`. Two fields and not an `Option` keep a diagnostic at 120
     /// bytes, so that a `Result` of one stays small.
     offsets: Range,
     has_range: bool,
+    /// Source span as 1-based lines and code-point columns, or `None` when none applies.
     pub span: Option<Span>,
+    /// One-sentence diagnostic message from the specification catalog.
     pub message: String,
     /// For `failed`: the second argument of `fail`, or null.
     pub data: Option<Box<crate::host::Data>>,
@@ -134,6 +144,7 @@ pub struct Diagnostic {
 pub struct TraceEntry {
     /// The span of the call, in code-point offsets and as lines and columns.
     pub(crate) range: Range,
+    /// Source span of the call or projection star.
     pub span: Span,
     /// The name of a `const`-bound lambda, or of a library entry as written.
     pub name: String,
@@ -144,7 +155,9 @@ pub struct TraceEntry {
 /// A step of a path (`03-host.md` 3.7.8): a key or an index.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PathStep {
+    /// A map key step.
     Key(String),
+    /// A 0-based list index step.
     Index(usize),
 }
 
@@ -223,11 +236,14 @@ impl fmt::Display for Diagnostic {
 /// A failure of a stage: one phase and one or more diagnostics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Error {
+    /// The phase shared by all diagnostics in this failure.
     pub phase: Phase,
+    /// One or more diagnostics reported by the failing stage.
     pub diagnostics: Vec<Diagnostic>,
 }
 
 impl Error {
+    /// Build an error holding a single diagnostic.
     pub fn one(d: Diagnostic) -> Error {
         Error {
             phase: d.phase,

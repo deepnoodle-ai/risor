@@ -16,6 +16,7 @@ import { compareText } from "../value/value.ts";
 import type { Alts, Field, Rec, Ref, Type } from "./type.ts";
 import { besideRef } from "./list.ts";
 
+/** An option controlling how a JSON Schema is mapped to a Risor type (package F1, f01 4). */
 export type SchemaOption = "closed" | "absent-is-null" | "defaults-applied";
 export const SCHEMA_OPTIONS: readonly SchemaOption[] = ["closed", "absent-is-null", "defaults-applied"];
 

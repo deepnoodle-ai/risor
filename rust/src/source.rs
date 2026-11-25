@@ -43,7 +43,9 @@ impl Range {
 /// order by line, then column.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
+    /// 1-based line number (lines end at U+000A only).
     pub line: u32,
+    /// 1-based column counted in Unicode code points.
     pub column: u32,
 }
 
@@ -51,7 +53,9 @@ pub struct Pos {
 /// each a line and a column. Every span a host sees is one.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
+    /// Inclusive start position.
     pub start: Pos,
+    /// Exclusive end position.
     pub end: Pos,
 }
 

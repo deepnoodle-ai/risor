@@ -10,6 +10,7 @@ import { sourceTooLarge } from "./messages.ts";
 import type { Span } from "./source.ts";
 import type { Token } from "./token.ts";
 
+/** How a host evaluates a template (package F2, f02 2.5): `"string"` always yields a string; `"value"` returns a single part's value directly. */
 export type TemplateMode = "string" | "value";
 
 /** A segment of a template (f02 2.4). */

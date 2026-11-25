@@ -37,10 +37,20 @@ impl TemplateMode {
 pub enum Segment {
     /// A text run: its value, with each `$${{` read as `${{`, and the span it
     /// was read from.
-    Text { value: String, span: Span },
+    Text {
+        /// The decoded literal text of the run.
+        value: String,
+        /// The source span of the text run.
+        span: Span,
+    },
     /// A part: the span of its expression, and of the whole part from the `$`
     /// of `${{` to the end of its closing delimiter.
-    Part { expr: Span, span: Span },
+    Part {
+        /// The source span of the expression inside `${{ ... }}`.
+        expr: Span,
+        /// The source span of the whole part, delimiters included.
+        span: Span,
+    },
 }
 
 /// A segment in code-point offsets, as the crate reads it.

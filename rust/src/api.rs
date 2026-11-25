@@ -135,8 +135,11 @@ pub struct EntryParam {
 /// Metadata for one `export const` entry point (`f16-entry-points.md` 12.6).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
+    /// The `const` name of the entry point.
     pub name: String,
+    /// The doc comment description attached to `export`, or `None`.
     pub doc: Option<String>,
+    /// The entry point's parameters, in written order.
     pub params: Vec<EntryParam>,
     /// The record type a call by record conforms its input to, or `None` when
     /// the entry point has no input record (12.5).
@@ -149,7 +152,9 @@ pub struct Entry {
 /// 18.3), for a class the environment does not reject.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Site {
+    /// The residual check class: `dynamic`, `index`, `divide`, `value` or `host`.
     pub class: &'static str,
+    /// The source span of the operation that may fail.
     pub span: Span,
 }
 
@@ -168,7 +173,9 @@ fn sites(src: &Source, sites: &[check::Site]) -> Vec<Site> {
 /// environment does not reject), and its `export const` entry points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CheckResult {
+    /// The result type (`never` when the program has no result expression).
     pub ty: Type,
+    /// Residual failure sites for check classes the environment does not reject.
     pub sites: Vec<Site>,
     /// F16 12.6: the program's `export const` entry points in text order.
     pub entries: Vec<Entry>,

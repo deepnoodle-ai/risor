@@ -40,7 +40,9 @@ pub const CANCELLED: &str = "cancelled";
 /// The steps and units a run charged (`03-host.md` 3.6.3).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Usage {
+    /// Total evaluation steps charged.
     pub steps: u64,
+    /// Total allocation units charged.
     pub allocated: u64,
 }
 
@@ -112,7 +114,9 @@ impl Meter {
 /// those of `Limits`, so a nested run takes them as they are.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Remaining {
+    /// Remaining evaluation steps, or `None` if the step limit is off.
     pub steps: Option<u64>,
+    /// Remaining allocation units, or `None` if the allocation limit is off.
     pub allocation: Option<u64>,
 }
 
@@ -138,6 +142,8 @@ impl Call<'_> {
         })
     }
 
+    /// Charge allocation units to the run. A charge the budget cannot cover
+    /// ends the run with `allocation-exceeded` when the function returns.
     pub fn allocate(&mut self, units: u64) -> Result<(), Stop> {
         if self.m.stop.is_some() {
             return Err(Stop);
@@ -162,6 +168,7 @@ impl Call<'_> {
         }
     }
 
+    /// Whether the host has signalled cancellation for this run.
     pub fn cancelled(&self) -> bool {
         self.m
             .cancel

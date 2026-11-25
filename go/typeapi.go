@@ -61,8 +61,11 @@ const invalidTypeText = "<invalid type>"
 // FieldType is a field of a record type: its key, its type, and whether
 // it may be absent.
 type FieldType struct {
-	Key      string
-	Type     Type
+	// Key is the field's map key.
+	Key string
+	// Type is the field's value type.
+	Type Type
+	// Optional reports whether the key may be absent from the record.
 	Optional bool
 }
 

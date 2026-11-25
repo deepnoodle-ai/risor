@@ -30,19 +30,27 @@ pub struct Type {
 /// The kind of a type of one alternative, as [`Type::kind`] gives it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TypeKind {
+    /// The bottom type `never`, which has no values.
     Never,
+    /// The top type `any`, which admits every value.
     Any,
+    /// The `null` type.
     Null,
+    /// The `bool` type.
     Bool,
+    /// The `int` type (whole numbers within `±(2^53 - 1)`).
     Int,
+    /// The `float` type (finite IEEE 754 binary64 numbers).
     Float,
     /// Every string, or a set of string literals.
     String,
+    /// A list type `T[]`.
     List,
     /// Any map type: a record or `map<T>`.
     Record,
     /// A tagged union of records.
     Union,
+    /// An opaque host type, identified by name.
     Opaque,
     /// A type variable of a signature.
     Var,
@@ -55,7 +63,9 @@ pub enum TypeKind {
 /// A field of a record type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldType {
+    /// The field's map key.
     pub key: String,
+    /// The field's value type.
     pub ty: Type,
     /// The field may be absent.
     pub optional: bool,
@@ -122,13 +132,19 @@ fn strong(ty: Ty) -> Type {
 }
 
 impl Type {
+    /// The bottom type `never`, which has no values.
     pub const NEVER: Type = prim(false, false, false, None, false);
+    /// The top type `any`, which admits every value.
     pub const ANY: Type = prim(true, false, false, None, false);
     /// The type of the language's null.
     pub const NULL: Type = prim(false, true, false, None, false);
+    /// The `bool` type.
     pub const BOOL: Type = prim(false, false, true, None, false);
+    /// The `int` type (whole numbers within `±(2^53 - 1)`).
     pub const INT: Type = prim(false, false, false, Some(Num::Int), false);
+    /// The `float` type (finite IEEE 754 binary64 numbers).
     pub const FLOAT: Type = prim(false, false, false, Some(Num::Float), false);
+    /// The `string` type.
     pub const STRING: Type = prim(false, false, false, None, true);
 
     pub(crate) fn from_ty(ty: Ty) -> Type {

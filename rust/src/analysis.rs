@@ -17,6 +17,7 @@ use std::collections::HashMap;
 /// A step of a path (3.5). Package F7 adds a star step beside the key.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
+    /// A static property key.
     Key(String),
     /// F7 9.1: a star.
     Star,
@@ -25,8 +26,11 @@ pub enum Step {
 /// A reference: one read of a free name, with its path (3.5).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ref {
+    /// The free identifier read.
     pub name: String,
+    /// The static property and projection steps after `name`.
     pub path: Vec<Step>,
+    /// The source span from the read to the end of the last static step.
     pub span: Span,
 }
 
@@ -112,6 +116,7 @@ pub struct CallSite {
     /// The receiver's name for a call of the form `n.m(...)`; `None` for a
     /// call by name.
     pub namespace: Option<String>,
+    /// The source span of the call expression.
     pub span: Span,
     /// Each argument as a program of its own text, with spans in the whole
     /// text (3.6 item 5); `None` for a lambda. An argument that reads a name

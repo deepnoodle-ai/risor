@@ -33,8 +33,11 @@ export type TypeKind = "never" | "any" | "null" | "bool" | "int" | "float" | "st
 
 /** A field of a record type (05 E.7). The parameters carry its key and TypeScript type to `Infer`. */
 export interface FieldType<K extends string = string, V = unknown, O extends boolean = boolean> {
+  /** The field's map key. */
   key: K;
+  /** The field's value type. */
   type: Type<V>;
+  /** Whether the key may be absent from the record. */
   optional: O;
 }
 
@@ -322,12 +325,19 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
 /** Internal: wrap a type of the checker; read one, throwing `bad-type` for an invalid type; its opaque tests. */
 export { wrap as typeOf, unwrap as innerType, classifierOf as typeClassifier };
 
+/** The bottom type `never`, which has no values. */
 export const typeNever: Type<never> = wrap(T.NEVER) as Type<never>;
+/** The top type `any`, which admits every value. */
 export const typeAny: Type<unknown> = wrap(T.ANY);
+/** The `null` type. */
 export const typeNull: Type<null> = wrap(T.NULL) as Type<null>;
+/** The `bool` type. */
 export const typeBool: Type<boolean> = wrap(T.BOOL) as Type<boolean>;
+/** The `int` type (whole numbers within `±(2^53 - 1)`). */
 export const typeInt: Type<number> = wrap(T.INT) as Type<number>;
+/** The `float` type (finite IEEE 754 binary64 numbers). */
 export const typeFloat: Type<number> = wrap(T.FLOAT) as Type<number>;
+/** The `string` type. */
 export const typeString: Type<string> = wrap(T.STRING) as Type<string>;
 
 /** The first invalid type, or null. */
