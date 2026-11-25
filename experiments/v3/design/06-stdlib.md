@@ -404,14 +404,16 @@ creates no value, then charges, then builds:
 Scratch space is not a value and is not charged. It is bounded by the units and
 steps already charged (`04:A.4`).
 
-D65 relaxes the order for an entry whose result is no larger than its input:
-`groupBy`, `countBy`, `unique`, `uniqueBy`, `indexBy` and `toMap` may build
-their result and then charge, with the same charges, failure and callback
-order (`02-evaluation.md` 6.2 item 3). `repeat`, `padStart`, `padEnd`, `range`
-and every entry whose result can outgrow its input still charge first.
+D65 relaxes the order: `groupBy`, `countBy`, `unique`, `uniqueBy`, `indexBy`
+and `toMap` may build their result and then charge, as `02-evaluation.md` 6.2
+item 3 allows, with the same charges, failure and callback order. `repeat`,
+`padStart`, `padEnd`, `range` and every entry whose result can outgrow its input
+still charge first.
 
 *Why this is enough.* Every entry's work is at most a constant times its steps,
-and every value it creates is covered by its units, before the memory is taken.
+and every value it creates is covered by its units. The units are charged
+before the memory is taken, except for an entry that 6.2 item 3 lets build
+first, whose early memory is bounded by its input.
 `range(1e9)` fails with `allocation-exceeded` and allocates nothing.
 
 *Note.* `04:A.3` charges an ordered walk of a map (rendering) 1 step per entry.

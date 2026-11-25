@@ -1497,12 +1497,15 @@ signature or in a method's text is `bad-signature`, and every error in a
 variable's type or in the expected result's type is `bad-type`, whatever is
 wrong. What is wrong is the message's business.
 
+**A declaration whose name is refused** is outside both tables below. Whether
+an implementation parses its type text, and reports an error of either table
+in it, is unspecified (`03-host.md` 3.3.4 item 4).
+
 **Every implementation** parses the type text of its environment by the grammar
 of 3.1 and the token rules of 3.2, whether or not it has a type checker. It
 needs the names of the variables and functions, and the count of parameters of
 each function (22.2). These errors need no type checker, and every
-implementation reports them, except in the type text of a declaration whose
-name is refused (`03-host.md` 3.3.4 item 4):
+implementation reports them:
 
 | Error | Code |
 | --- | --- |
@@ -1517,7 +1520,7 @@ name is refused (`03-host.md` 3.3.4 item 4):
 | A method whose `Recv` is not a declared opaque type (19.3). It needs names only. | `bad-signature` |
 
 **An implementation with a type checker** also reports these. They are rules
-beyond the grammar:
+beyond the grammar.
 
 | Error | In a variable's or the expected result's type | In a signature or a method's text |
 | --- | --- | --- |

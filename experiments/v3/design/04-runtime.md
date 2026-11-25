@@ -292,7 +292,7 @@ and its data and live memory depends on a collector (L3).
 | Rule | Detail |
 | --- | --- |
 | Containers and new text, not contents | A list is charged for its slots, not for the values in them. A string that already exists is not charged again when a list or map refers to it |
-| Before the memory is taken | An implementation charges a value before it creates it. When the size depends on the work (a filter, a split), it finds the size first. A library entry whose result creates no new text and is no larger than a constant times its receiver, such as `groupBy`, may build first, with the same charges, failure and callback order (D65, `02-evaluation.md` 6.2 item 3) |
+| Before the memory is taken | An implementation charges a value before it creates it. When the size depends on the work (a filter, a split), it finds the size first. A library entry may build first where `02-evaluation.md` 6.2 item 3 allows it, such as `groupBy`, with the same charges, failure and callback order (D65) |
 | Scratch space | Working memory that is not a value is not charged. It must be bounded by a constant times the values that exist or the units charged. The values of a projection that wait for its one charge are scratch space, bounded by the steps it charged, which the guarantee of A.6 allows for |
 | Host data | A value the host supplied is never charged (L4) |
 | As written | A constant collection costs its units each time it is evaluated, even if an implementation builds it once. An intermediate value costs its units even if an implementation never builds it |
