@@ -18,7 +18,7 @@ It adds no run code, no message template, no library entry, no reserved word
 and no `declare` code. It raises the run code `not-conforming`, which Core
 reserves (`01-language.md` 14.5 item 3), with the three templates Core's
 catalog already holds for it. It reports the `parse` code `bad-type-text`, one
-of Core's 15 (`01-language.md` 14.2), and the check codes `never-conforms` and
+of Core's 16 (`01-language.md` 14.2), and the check codes `never-conforms` and
 `untagged-union` (`05-types.md` 16.2).
 
 The chapters of Core are cited by file and section: `05-types.md` 3.9 is

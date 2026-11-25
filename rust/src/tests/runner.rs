@@ -192,14 +192,14 @@ fn invalid_files() {
 fn the_check_field() {
     let v = verdicts(
         r#"[{"name": "a", "check": false, "env": "{a: any}", "vars": {"a": 1},
-             "source": "a < 2 < 3",
+             "source": "(a < 2) < 3",
              "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "class": "dynamic"}]}}]"#,
     )
     .unwrap();
     assert_eq!(v, vec![Verdict::Pass]);
     // Checked, the same program is a check failure.
     let v = verdicts(
-        r#"[{"name": "a", "env": "{a: any}", "vars": {"a": 1}, "source": "a < 2 < 3",
+        r#"[{"name": "a", "env": "{a: any}", "vars": {"a": 1}, "source": "(a < 2) < 3",
              "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind"}]}}]"#,
     )
     .unwrap();

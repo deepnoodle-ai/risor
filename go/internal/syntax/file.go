@@ -11,7 +11,13 @@ import (
 type File struct {
 	src        []rune
 	lineStarts []int
+	deepest    int
 }
+
+// Deepest is the highest level of nesting (01-language.md 13.1) that the
+// last parse of the file reached. The formatter reads it (f12-tools.md 2.6
+// item 4).
+func (f *File) Deepest() int { return f.deepest }
 
 // NewFile builds a File from source text. Bytes that are not valid UTF-8
 // become U+FFFD, which begins no token. A U+FEFF at the start is removed and

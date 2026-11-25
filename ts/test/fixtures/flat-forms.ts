@@ -47,11 +47,10 @@ export interface FlatForm {
   units: (n: number) => number;
   /**
    * What the formatter does with the form at 10,000 links. `text`: the
-   * formatted text parses to the same tree. `nested`: the formatter writes a
-   * pair of parentheses for the reader around each left operand (f12 2.6), so
-   * its text nests deeper than 100 levels and does not parse again.
+   * formatted text parses to the same tree. A run of `*` and `/` is `text`
+   * too: a run longer than 3 operators is written flat (f12 2.6 item 3).
    */
-  format: "text" | "nested";
+  format: "text";
   /** The kind and the type of hover's record on the last word, where the form states them. */
   hover?: { kind: string; type: string };
 }
@@ -265,17 +264,6 @@ export const FORMS: FlatForm[] = [
     format: "text",
   },
   {
-    name: "equality",
-    env: "{c: any}",
-    vars: () => ({ c: true }),
-    source: (n) => "c" + rep(" == c", n),
-    gives: same(true),
-    type: "bool",
-    steps: (n) => n,
-    units: () => 0,
-    format: "nested",
-  },
-  {
     name: "product and quotient",
     env: "{}",
     vars: () => ({}),
@@ -285,7 +273,7 @@ export const FORMS: FlatForm[] = [
     type: "float",
     steps: (n) => 2 * n,
     units: () => 0,
-    format: "nested",
+    format: "text",
   },
   {
     name: "else branches of ? :",

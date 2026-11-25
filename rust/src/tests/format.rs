@@ -76,7 +76,8 @@ fn the_laws_hold_over_the_suite() {
                     bad.push(format!("{s:?}: the tree of {f:?} differs"));
                 }
                 match format(&f) {
-                    Ok(g) if g == f => {}
+                    // F12 2.2 item 4: not for a source deeper than 96 levels.
+                    Ok(g) if g == f || a.ast.deepest > 96 => {}
                     Ok(g) => bad.push(format!("{s:?}: not idempotent: {f:?} then {g:?}")),
                     Err(e) => bad.push(format!("{s:?}: {e:?}")),
                 }

@@ -1,0 +1,405 @@
+{
+ "cases": [
+  {
+   "name": "== after ==",
+   "source": "1 == 1 == true",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!= after !=",
+   "source": "1 != 2 != true",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "< after <",
+   "source": "a < b < c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "four operators: the second is reported",
+   "source": "1 < 2 < 3 < 4",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "< then ==: levels 6 and 5 do not mix",
+   "source": "1 < 2 == true",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "== then <: the < is the second operator",
+   "source": "true == 1 < 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in then ==",
+   "source": "1 in [1] == true",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       10,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "< then in",
+   "source": "1 < 2 in [true]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in then not in: the span is not in",
+   "source": "\"a\" in \"ab\" not in \"c\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       13,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "== then >= across an arithmetic operand",
+   "source": "1 == 1 + 1 >= 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       12,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "== then == across an arithmetic operand",
+   "source": "1 == 1 + 1 == 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       12,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "inside parentheses",
+   "source": "(1 < 2 < 3)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "inside a list",
+   "source": "[1 == 1 == 1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in the test of ? :",
+   "source": "1 < 2 < 3 ? 1 : 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in a lambda body",
+   "source": "[1].map(x => x == 1 == true)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       21,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "chained-comparison comes before nesting-exceeded at one operator",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 == 1 < 2)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "chained-comparison",
+      "span": [
+       1,
+       107,
+       1,
+       108
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the same place with + is nesting-exceeded",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 == 1 + 2)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       107,
+       1,
+       108
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an earlier error comes first",
+   "source": ") 1 == 1 == 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parentheses on the left",
+   "source": "(1 == 1) == true",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "parentheses on the right",
+   "source": "true == (1 == 1)",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "parentheses around both",
+   "source": "(1 < 2) == (3 < 4)",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "parentheses with in and not in",
+   "source": "(1 in [1]) not in [false]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "parentheses with < and in",
+   "source": "(1 < 2) in [true]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "&& joins two comparisons",
+   "source": "1 < 2 && 2 < 3",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "== beside &&",
+   "source": "1 == 1 && 2 == 2",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "arithmetic operands",
+   "source": "1 + 1 == 2",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a comparison in an argument of a call in a comparison",
+   "source": "len([1 < 2]) == 1",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a comparison in an index in a comparison",
+   "source": "[true][0 == 0 ? 0 : 1] == true",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "? : with a comparison in each place",
+   "source": "1 < 2 ? 3 == 3 : 4 != 4",
+   "expect": {
+    "value": true
+   }
+  }
+ ]
+}

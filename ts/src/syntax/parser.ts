@@ -47,7 +47,21 @@ export function parse(text: string | Source, limit: number = SOURCE_LIMIT): Pars
  * the closing brace or delimiter (f02 2.2). Throws ParseError.
  */
 export function parsePartTokens(tokens: Token[], source?: Source): A.Expr {
-  return new Parser(tokens, 1, source).part();
+  const p = new Parser(tokens, 1, source);
+  const e = p.part();
+  deepestLevels.set(e, p.deepest);
+  return e;
+}
+
+/**
+ * The highest level of nesting (01 13.1) that the parse of a program or a
+ * template part reached, kept for the formatter (f12 2.6 item 4).
+ */
+const deepestLevels = new WeakMap<object, number>();
+
+/** The highest level that the parse of a program or a template part reached. */
+export function deepestLevel(node: A.Program | A.Expr): number {
+  return deepestLevels.get(node) ?? 0;
 }
 
 /** Package F12: parse a program from tokens, as the repair makes them (f12 3.3). Throws ParseError. */
@@ -57,7 +71,10 @@ export function parseTokens(tokens: Token[], source: Source): A.Program {
 
 export function parseProgram(source: Source): A.Program {
   const tokens = lex(source);
-  return new Parser(tokens, 0, source).program();
+  const p = new Parser(tokens, 0, source);
+  const prog = p.program();
+  deepestLevels.set(prog, p.deepest);
+  return prog;
 }
 
 const OPENERS = new Set(["(", "[", "?.[", "{"]);
@@ -76,6 +93,8 @@ class Parser {
   private level = 0;
   /** The most levels open so far, for a lambda's maxLevel. */
   private maxLevel = 0;
+  /** The most levels open at once in the whole parse. */
+  deepest = 0;
   private prevEnd = 0;
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
@@ -365,6 +384,7 @@ class Parser {
     }
     this.level++;
     if (this.level > this.maxLevel) this.maxLevel = this.level;
+    if (this.level > this.deepest) this.deepest = this.level;
     this.labels.push({ kind, at: span as Token });
   }
 
@@ -698,14 +718,21 @@ class Parser {
     return e.kind === "Unary" && e.op === "!" && !this.parens.has(e);
   }
 
-  /** Precedence climbing over levels 3 to 8 (01 3.3). */
-  private climb(left: A.Expr, minPrec: number): A.Expr {
+  /**
+   * Precedence climbing over levels 3 to 8 (01 3.3). `inCmp` is true when the
+   * chain is the right operand of a comparison operator: a comparison operator
+   * in it is then `chained-comparison` (01 3.4 rule 13).
+   */
+  private climb(left: A.Expr, minPrec: number, inCmp = false): A.Expr {
+    // Whether `left` is a comparison written without parentheses.
+    let leftCmp = false;
     for (;;) {
       const p = this.prec();
       if (p === 0 || p < minPrec) return left;
       const t = this.cur;
       if (t.kind === "word" && (t.text === "as" || t.text === "is")) {
         left = this.test(left, t);
+        leftCmp = false;
         // f04 2.4: an operator of levels 7 to 10 cannot follow a program type.
         const n = this.cur;
         if (n.kind === "punct" && (n.text === "+" || n.text === "-" || n.text === "*" || n.text === "/" || n.text === "%")) this.unexpected(n);
@@ -728,12 +755,16 @@ class Parser {
         // 01 3.4 rule 2.
         this.fail("needs-parentheses", { start: left.span.start, end: left.span.start + 1 }, "in");
       }
+      // 01 3.4 rule 13: comparisons do not chain. Levels 5 and 6 are the comparison operators.
+      const cmp = p === 5 || p === 6;
+      if (cmp && (leftCmp || inCmp)) this.fail("chained-comparison", opSpan);
       this.advance();
       if (op === "not-in") this.advance();
       this.open(opSpan);
-      const right = this.climb(this.unary(null), p + 1);
+      const right = this.climb(this.unary(null), p + 1, cmp);
       this.close();
       left = this.binaryNode(op, left, right);
+      leftCmp = cmp;
     }
   }
 

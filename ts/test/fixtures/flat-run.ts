@@ -139,13 +139,7 @@ function everyEntryPoint(f: FlatForm): void {
   through("hover in the middle", () => env.hover(source, { line: last.line, column: Math.max(1, last.column >> 1) }));
 
   // The formatter.
-  if (f.format === "text") formatLaws(source, "format");
-  else {
-    // f12 2.6 writes parentheses for the reader around each left operand here: the text of
-    // more than 100 of them nests too deep to parse, so the laws are tested at 40 repeats.
-    assert.equal(typeof through("format", () => format(source)), "string");
-    formatLaws(f.source(40), "format, 40 repeats");
-  }
+  formatLaws(source, "format");
 
   // A template whose one part is the program. A part holds no `const` line and no type line.
   if (!/^(const|type) /.test(source)) {

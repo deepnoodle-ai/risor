@@ -622,7 +622,7 @@ codes.
 | Phase | Number | Codes |
 | --- | ---: | --- |
 | `declare` | 9 | `name-clash`, `reserved-namespace`, `bad-name`, `bad-signature`, `bad-type`, `bad-class`, `bad-limit`, `unsupported-version`, `no-implementation` |
-| `parse` | 15 | `source-too-large`, `unexpected-token`, `unexpected-character`, `unterminated-string`, `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number`, `literal-range`, `text-block-open`, `text-block-close`, `text-block-indent`, `nesting-exceeded`, `bad-type-text`, `reserved-word` |
+| `parse` | 16 | `source-too-large`, `unexpected-token`, `unexpected-character`, `unterminated-string`, `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number`, `literal-range`, `text-block-open`, `text-block-close`, `text-block-indent`, `nesting-exceeded`, `bad-type-text`, `reserved-word`, `chained-comparison` |
 | `check` | — | The codes of `05-types.md` |
 | `run` | 19 | 3.7.4 |
 

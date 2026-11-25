@@ -586,7 +586,7 @@ Every other value is **truthy**. The owner has confirmed this set (D30).
 | a predicate passed to a library method (`filter`, `find`, `some`, `every`, and the others `06` lists) | Its result is tested by truthiness. |
 | `a ?? b` | `a` if it is not null, else `b`, which is evaluated only then. It does not catch errors. |
 | `a == b`, `a != b` | Different kinds are unequal; nothing is converted, so `1 == true` and `"" == null` are false. Within a kind: numbers and booleans by value, strings by code points, lists by length and then element by element, maps by key set and then value by value. Two opaque values are equal only if they are the same host value, by the binding's identity test (overview S11). `==` never fails. `!=` is the negation. |
-| `a < b` and the other three | Two numbers, or two strings. Anything else is an error, so `1 < 2 < 3` does not check. |
+| `a < b` and the other three | Two numbers, or two strings. Anything else is an error, so `(1 < 2) < 3` does not check. Without the parentheses, `1 < 2 < 3` does not parse: comparisons do not chain (D61, `spec/core/01-language.md` 3.4 rule 13). |
 | `x in y` | `y` a list: some element `==` `x`. `y` a string: `x` is a string and occurs in `y` (the empty string always does). `y` a map: `x` is a string and a key of `y`. Any other `y`, including null, is an error. |
 | `x not in y` | `!(x in y)`. |
 | `x is T` | `true` if `x` conforms to the type `T`, else `false`. Always a `bool`. It never fails (2.17). |
@@ -1554,6 +1554,10 @@ Two departures in the first draft are withdrawn:
   JavaScript it means `a ?? (0 > 3)` (**ran**). Neither reading is safe to give
   silently, so mixing `??` with a comparison or a logical operator now needs
   parentheses, the rule JavaScript itself applies to `??` beside `||`.
+
+One rule was added after the first draft: **comparisons do not chain** (D61).
+`a == b == c`, `a < b < c` and `a < b == c` are the `parse` code
+`chained-comparison`. `spec/core/01-language.md` 3.4 rule 13 owns it.
 
 ### 3.2 Targeted errors, and every `parse` code
 

@@ -11,6 +11,10 @@ import (
 // Width is the line width of the formatter (2.1 item 4).
 const Width = 80
 
+// readerLevels is the most levels that the pairs for the reader add around
+// a token (2.6 item 3).
+const readerLevels = 2
+
 // Program formats a program text (2.1). It returns the formatted text, or
 // the first parse diagnostic.
 func Program(source string) (string, *syntax.Error, *syntax.File) {
@@ -23,17 +27,25 @@ func Program(source string) (string, *syntax.Error, *syntax.File) {
 	if lerr != nil { // cannot happen: the text parsed
 		return "", lerr, f
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds))
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds), tooDeep(f))
 	out = strings.TrimRight(out, " \n") + "\n"
 	return out, nil, f
 }
 
+// tooDeep reports whether the text f reaches a level at which the pairs for
+// the reader could pass the limit: then none is written (2.6 item 4).
+func tooDeep(f *syntax.File) bool {
+	return f.Deepest()+readerLevels > syntax.MaxLevels
+}
+
 // run builds the document twice: first to learn the kept tokens, then with
 // the comments attached (2.12), and lays it out. ends is the prefix count of
-// line ends of src, shared by every run over the same text.
-func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds) string {
+// line ends of src, shared by every run over the same text. plain turns off
+// the pairs for the reader (2.6 item 4).
+func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds, plain bool) string {
 	b := newBuilder(src, toks, from)
 	b.lineEnds = ends
+	b.plain = plain
 	build(b)
 	b.attach()
 	b.reset()
@@ -61,6 +73,12 @@ type builder struct {
 	kept     map[int]bool
 	slots    map[int]*slot
 	pass2    bool
+	// The pairs for the reader (2.6 items 3 and 4). rdepth counts those of
+	// other runs around the node being built, and own those of the run
+	// being built around its left operand. runs caches runLen.
+	rdepth, own int
+	runs        map[*syntax.Binary]int
+	plain       bool // no pairs for the reader in the whole text
 	// first and last are the first and last kept units emitted since the
 	// start of the element being built; elemStart marks the next unit as the
 	// first of an element other than the first.
@@ -72,7 +90,7 @@ type builder struct {
 
 func newBuilder(src []rune, toks []syntax.Token, from int) *builder {
 	b := &builder{src: src, toks: toks, byStart: map[int]int{}, byEnd: map[int]int{}, match: map[int]int{},
-		lead: map[int][]*comment{}, trail: map[int][]*comment{}, kept: map[int]bool{}, slots: map[int]*slot{}}
+		lead: map[int][]*comment{}, trail: map[int][]*comment{}, kept: map[int]bool{}, slots: map[int]*slot{}, runs: map[*syntax.Binary]int{}}
 	b.us = units(toks)
 	var open []int
 	for i, u := range b.us {
@@ -527,8 +545,26 @@ func (b *builder) program(p *syntax.Program) part {
 
 // sub is the document of x in its place: in parentheses when 2.6 says.
 func (b *builder) sub(parent syntax.Node, r role, x syntax.Node) part {
-	if needParens(parent, r, x) {
+	// The left operand of a * / % run that is itself of the run stays in
+	// the run. Anywhere else the run's own pairs enclose another run's.
+	inRun := r == rLeft && isMul(parent) && isMul(x)
+	if !inRun && b.own > 0 {
+		rdepth, own := b.rdepth, b.own
+		b.rdepth, b.own = rdepth+own, 0
+		defer func() { b.rdepth, b.own = rdepth, own }()
+	}
+	if r == rSubject && b.startsBrace(x) || r != rSubject && needParens(parent, r, x) {
 		return []part{txt("("), b.node(x), txt(")")}
+	}
+	if b.reader(parent, r, x) {
+		count := &b.rdepth
+		if inRun {
+			count = &b.own
+		}
+		*count++
+		d := b.node(x)
+		*count--
+		return []part{txt("("), d, txt(")")}
 	}
 	return b.node(x)
 }
@@ -662,6 +698,9 @@ func (b *builder) entry(x syntax.Node) part {
 
 // binary is a run of one level (2.8 items 3 and 4).
 func (b *builder) binary(n *syntax.Binary, unindented bool) part {
+	if isMul(n) || isBin(n, "||") {
+		b.runLen(n) // n is the top of its run, or of a part after a pair
+	}
 	var nodes []*syntax.Binary // innermost first
 	cur := n
 	for {
@@ -670,7 +709,7 @@ func (b *builder) binary(n *syntax.Binary, unindented bool) part {
 			break
 		}
 		l, ok := cur.X.(*syntax.Binary)
-		if !ok || l.Op == "**" || binLevel[l.Op] != binLevel[cur.Op] || needParens(cur, rLeft, l) {
+		if !ok || l.Op == "**" || binLevel[l.Op] != binLevel[cur.Op] || b.paren(cur, rLeft, l) {
 			break
 		}
 		cur = l

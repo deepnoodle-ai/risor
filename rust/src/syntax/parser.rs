@@ -182,7 +182,7 @@ fn parse_text(text: &str, core: bool) -> Result<Expr, Error> {
 }
 
 /// The `parse` codes of Core and of F3 and F4 (`01-language.md` 14.2).
-const CORE_CODES: [&str; 15] = [
+const CORE_CODES: [&str; 16] = [
     code::SOURCE_TOO_LARGE,
     code::UNEXPECTED_TOKEN,
     code::UNEXPECTED_CHARACTER,
@@ -198,6 +198,7 @@ const CORE_CODES: [&str; 15] = [
     code::TEXT_BLOCK_OPEN,
     code::TEXT_BLOCK_CLOSE,
     code::TEXT_BLOCK_INDENT,
+    code::CHAINED_COMPARISON,
 ];
 
 /// Parse the parts of a template (F2 2.2, 2.3). `toks` holds each part's
@@ -552,6 +553,7 @@ impl<'a> Parser<'a> {
         }
         self.level += 1;
         self.max_level = self.max_level.max(self.level);
+        self.ast.deepest = self.ast.deepest.max(self.level as u16);
         Ok(())
     }
 
@@ -913,13 +915,13 @@ impl<'a> Parser<'a> {
 
     /// `Binary = Or | Coal` (3.2 rule 4).
     fn binary(&mut self) -> R<NodeId> {
-        let left = self.bin(PREC_ADD)?;
+        let left = self.bin(PREC_ADD, false)?;
         if self.at_punct(P::QQ) {
             let mut acc = left;
             while self.at_punct(P::QQ) {
                 let op = self.bump();
                 self.open(op.span)?;
-                let right = self.bin(PREC_ADD)?;
+                let right = self.bin(PREC_ADD, false)?;
                 self.close();
                 acc = self.binary_node(BinaryOp::Coalesce, acc, right);
             }
@@ -930,7 +932,7 @@ impl<'a> Parser<'a> {
             }
             return Ok(acc);
         }
-        let e = self.bin_rest(left, PREC_OR)?;
+        let e = self.bin_rest(left, PREC_OR, false)?;
         if self.at_punct(P::QQ) {
             let e = self.unexpected(self.peek());
             return Err(self.tag(e, Rule::Coalesce));
@@ -972,16 +974,21 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn bin(&mut self, min: u8) -> R<NodeId> {
+    /// A chain of binary operators of level `min` or tighter. `in_cmp` is
+    /// true when it is the right operand of a comparison operator.
+    fn bin(&mut self, min: u8, in_cmp: bool) -> R<NodeId> {
         let lhs = self.unary()?;
-        self.bin_rest(lhs, min)
+        self.bin_rest(lhs, min, in_cmp)
     }
 
-    fn bin_rest(&mut self, mut lhs: NodeId, min: u8) -> R<NodeId> {
+    fn bin_rest(&mut self, mut lhs: NodeId, min: u8, in_cmp: bool) -> R<NodeId> {
+        // Whether `lhs` is a comparison written without parentheses.
+        let mut lhs_cmp = false;
         loop {
             // F4 2.4: `as` and `is` stand at level 6, left-associative.
             if min <= PREC_REL && (self.at_word("as") || self.at_word("is")) {
                 lhs = self.as_test(lhs)?;
+                lhs_cmp = false;
                 continue;
             }
             let Some((op, prec)) = self.binop() else {
@@ -1006,10 +1013,17 @@ impl<'a> Parser<'a> {
             } else {
                 self.bump().span
             };
+            // 3.4 rule 13: comparisons (levels 5 and 6) do not chain. Found
+            // at the second operator, before it opens a level (14.1 item 5).
+            let cmp = prec == 5 || prec == PREC_REL;
+            if cmp && (lhs_cmp || in_cmp) {
+                return Err(self.perr(code::CHAINED_COMPARISON, op_span, Rule::Final));
+            }
             self.open(op_span)?;
-            let rhs = self.bin(prec + 1)?;
+            let rhs = self.bin(prec + 1, cmp)?;
             self.close();
             lhs = self.binary_node(op, lhs, rhs);
+            lhs_cmp = cmp;
         }
         Ok(lhs)
     }

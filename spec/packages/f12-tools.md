@@ -155,6 +155,10 @@ each of them (7.1).
    is `source-too-large`, as for any text. A text that close to the limit is
    not a program an author writes by hand, so the formatter keeps no promise
    past it.
+4. **Idempotent near the nesting limit.** For a source that nests deeper than
+   96 levels (`01-language.md` 13.1), formatting the formatted text again may
+   add or drop pairs of the second table of 2.6 (2.6 item 4); the text still
+   parses and keeps its tree.
 
 ### 2.3 What the formatter keeps and what it writes
 
@@ -275,6 +279,7 @@ has level 6; a prefix operator 9; a chain and a primary 11.
 | The left operand of `**` | x has a level below 11 |
 | The right operand of `**` | x has a level below 9 |
 | The left operand of `in`, `not in`, `as` and `is` | By the rows above; and when x is a prefix `!` (`01-language.md` 3.4 rule 2, F4 2.5) |
+| An operand of a comparison operator: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` | By the rows above; and when x is a comparison (`01-language.md` 3.3, 3.4 rule 13). The right operand also when x is an `as` or `is` whose left operand is written without parentheses and is, by this test, one. So `(a < b) == c`, `a == (b < c)` and `x == (a < b as bool)` keep their pairs, and `a < b as bool == x` has none |
 | The operand of a prefix `!` or `-` | x has a level below 9, or x is `**` (`01-language.md` 3.4 rule 1) |
 | The receiver of a step of a chain | x has a level below 11; or x is a chain that holds a `?.`, `?.[` or `?.[*]` step, or a star (F7), since `(a?.b).c` and `a?.b.c` are different trees |
 | The test of `? :` | x has level 1 |
@@ -287,13 +292,22 @@ These parentheses are added for the reader. Each changes no tree.
 | --- | --- | --- |
 | `&&` | An operand of `\|\|` | `(a && b) \|\| c` |
 | `*`, `/` or `%` | The left operand of `*`, `/` or `%` with another operator, or of `%` with `%` | `(a % b) * c`, `(a * b) / c`, `(a % b) % c` |
-| `==` or `!=` | The left operand of `==` or `!=` | `(a == b) != c` |
 
 1. A chain written in parentheses as the receiver of a further step, which
    holds no optional step and no star, is the same tree as the chain without
    them: `(xs.map(f)).sum()` is written `xs.map(f).sum()`.
 2. So the formatted text has the parentheses of its tree, wherever the source
    put its own.
+3. **Short runs.** A run is a `Binary` of `*`, `/` or `%` with the `Binary`
+   nodes of those operators along its left operands, or the same for `||`. The
+   pairs of the second table are written only in a run of at most 3 operators
+   that no such pair of another run encloses, through any brackets:
+   `a * b / c % d` is written `((a * b) / c) % d`, and `a * b / c % d * e` flat.
+   So a token is inside at most 2 of these pairs.
+4. **The nesting limit.** When the source reaches a level above 98
+   (`01-language.md` 13.1), the formatter writes none of the pairs of the
+   second table. Otherwise it writes them by item 3. So the formatted text
+   always parses.
 
 ### 2.7 Literals and line ends
 
@@ -1115,7 +1129,8 @@ with its meaning unchanged.
    text that parses gives a format result: its `formatted` is compared with the
    expected one, code point for code point.
 4. **The laws.** For a text that parses, the runner also tests:
-   - **idempotent**: formatting the formatted text gives that text;
+   - **idempotent**: formatting the formatted text gives that text, unless
+     the source nests deeper than 96 levels (2.2 item 4);
    - **tree**: for `format`, the formatted text parses to a tree equal to the
      source's (2.2 item 1); for `formatTemplate`, the template parses, and its
      segments' values and its parts' trees are equal to the source's;

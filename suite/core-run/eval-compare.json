@@ -474,8 +474,8 @@
    }
   },
   {
-   "name": "comparisons do not chain",
-   "source": "a < b < c",
+   "name": "a comparison as the left operand of < fails at run time",
+   "source": "(a < b) < c",
    "env": "{a: any, b: any, c: any}",
    "vars": {
     "a": 1,
@@ -492,7 +492,7 @@
        1,
        1,
        1,
-       10
+       12
       ],
       "message": "cannot apply < to bool and number"
      }

@@ -43,6 +43,9 @@ pub mod code {
     pub const LITERAL_RANGE: &str = "literal-range";
     pub const NESTING_EXCEEDED: &str = "nesting-exceeded";
     pub const RESERVED_WORD: &str = "reserved-word";
+    /// A comparison as an operand of a comparison operator, without
+    /// parentheses (`01-language.md` 3.4 rule 13).
+    pub const CHAINED_COMPARISON: &str = "chained-comparison";
     /// Text where a program type is read that F4 2.1 to 2.3 do not accept.
     pub const BAD_TYPE_TEXT: &str = "bad-type-text";
     pub const TEXT_BLOCK_OPEN: &str = "text-block-open";

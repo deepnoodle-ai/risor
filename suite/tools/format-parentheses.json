@@ -92,16 +92,16 @@
  },
  {
   "name": "equality inside equality",
-  "format": "a == b != c",
+  "format": "(a == b) != c",
   "expect": {
    "formatted": "(a == b) != c\n"
   }
  },
  {
-  "name": "a comparison inside equality needs none",
-  "format": "a < b == c > d",
+  "name": "a comparison inside equality keeps its parentheses",
+  "format": "(a < b) == (c > d)",
   "expect": {
-   "formatted": "a < b == c > d\n"
+   "formatted": "(a < b) == (c > d)\n"
   }
  },
  {
@@ -389,6 +389,178 @@
   "format": "[...(xs)]",
   "expect": {
    "formatted": "[...xs]\n"
+  }
+ },
+ {
+  "name": "a chained comparison does not parse",
+  "format": "a == b == c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "chained-comparison",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a comparison on the right of a comparison keeps its parentheses",
+  "format": "a == (b < c)",
+  "expect": {
+   "formatted": "a == (b < c)\n"
+  }
+ },
+ {
+  "name": "a comparison as the left operand of as needs none: as is not a comparison",
+  "format": "a < b as bool",
+  "expect": {
+   "formatted": "a < b as bool\n"
+  }
+ },
+ {
+  "name": "is binds tighter than ==: a == b is bool is a == (b is bool), and needs no pair",
+  "format": "a == b is bool",
+  "expect": {
+   "formatted": "a == b is bool\n"
+  }
+ },
+ {
+  "name": "an as on the right of a comparison, over a comparison, keeps its pair",
+  "format": "x == (a < b as bool)",
+  "expect": {
+   "formatted": "x == (a < b as bool)\n"
+  }
+ },
+ {
+  "name": "an as on the left of a comparison, over a comparison, needs no pair: the as ends the comparison",
+  "format": "(a < b as bool) == x",
+  "expect": {
+   "formatted": "a < b as bool == x\n"
+  }
+ },
+ {
+  "name": "a comparison on the right of ==, holding an is, keeps its pair: x == (a == (b is bool))",
+  "format": "x == (a == b is bool)",
+  "expect": {
+   "formatted": "x == (a == b is bool)\n"
+  }
+ },
+ {
+  "name": "an is over a comparison of level 5 on the right of ==: the pair goes around the ==",
+  "format": "x == ((a == b) is bool)",
+  "expect": {
+   "formatted": "x == (a == b) is bool\n"
+  }
+ },
+ {
+  "name": "a run of 3 operators that mix * / and % has its pairs for the reader (2.6 item 3)",
+  "format": "a * b / c % d",
+  "expect": {
+   "formatted": "((a * b) / c) % d\n"
+  }
+ },
+ {
+  "name": "a run of 4 operators is written flat: the same tree, no pairs for the reader",
+  "format": "a * b / c % d * e",
+  "expect": {
+   "formatted": "a * b / c % d * e\n"
+  }
+ },
+ {
+  "name": "the pairs of a longer run that the source wrote are dropped",
+  "format": "(((a * b) / c) % d) * e",
+  "expect": {
+   "formatted": "a * b / c % d * e\n"
+  }
+ },
+ {
+  "name": "a long run of 150 operators that alternate * and / is written flat",
+  "format": "a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a * a / a",
+  "expect": {
+   "formatted": "a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a *\n  a /\n  a\n"
+  }
+ },
+ {
+  "name": "an || run of 3 operators has a pair around each && operand",
+  "format": "a && b || c && d || e && f || g",
+  "expect": {
+   "formatted": "(a && b) || (c && d) || (e && f) || g\n"
+  }
+ },
+ {
+  "name": "an || run of 4 operators is written flat",
+  "format": "a && b || c && d || e && f || g || h",
+  "expect": {
+   "formatted": "a && b || c && d || e && f || g || h\n"
+  }
+ },
+ {
+  "name": "no pair for the reader inside another run's pair: the * / run inside the && pair is flat (2.6 item 4)",
+  "format": "a * b / c > 0 && d || e",
+  "expect": {
+   "formatted": "(a * b / c > 0 && d) || e\n"
+  }
+ },
+ {
+  "name": "a run in a right operand of a run with pairs is inside them, and flat",
+  "format": "a * (b * c / d) / e",
+  "expect": {
+   "formatted": "(a * (b * c / d)) / e\n"
+  }
+ },
+ {
+  "name": "a run nested 99 levels deep is written without pairs for the reader, so the text parses (2.6 item 4)",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a *\n  b /\n  c)\n"
+  }
+ },
+ {
+  "name": "the same run, shallow, has its pairs for the reader",
+  "format": "!(a * b / c)",
+  "expect": {
+   "formatted": "!((a * b) / c)\n"
+  }
+ },
+ {
+  "name": "a match subject that is a run of 4 operators beginning with { keeps the pair around the whole subject",
+  "format": "match ({} * a / b * c * d) { _ => 0 }",
+  "expect": {
+   "formatted": "match ({} * a / b * c * d) { _ => 0 }\n"
+  }
+ },
+ {
+  "name": "a match subject that is a run of 3 operators beginning with { begins with a pair for the reader",
+  "format": "match ({} * a / b * c) { _ => 0 }",
+  "expect": {
+   "formatted": "match (({} * a) / b) * c { _ => 0 }\n"
+  }
+ },
+ {
+  "name": "a run nested 97 levels deep has its pairs, which take the text to 99 levels (2.2 item 4)",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
+  }
+ },
+ {
+  "name": "a run nested 98 levels deep has its pairs, which take the text to 100 levels (2.2 item 4)",
+  "format": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!(a * b / c)",
+  "expect": {
+   "formatted": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!((a *\n  b) /\n  c)\n"
+  }
+ },
+ {
+  "name": "a source 99 levels deep only by its own parentheses has no pairs for the reader (2.2 item 4)",
+  "format": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a * b / c))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+  "expect": {
+   "formatted": "a * b / c\n"
   }
  }
 ]

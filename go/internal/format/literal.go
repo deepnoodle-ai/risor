@@ -122,6 +122,7 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 	if err != nil {
 		return "", err, f
 	}
+	plain := tooDeep(f)
 	src := f.Runes()
 	ends := new(lineEnds) // one prefix count for the parts' runs
 	var sb strings.Builder
@@ -143,7 +144,7 @@ func Template(source string) (string, *syntax.Error, *syntax.File) {
 		out := run(src, toks, from, func(b *builder) part {
 			d := b.node(e)
 			return []part{d, b.closeLead(len(b.us)-1, true)}
-		}, 1<<30, ends)
+		}, 1<<30, ends, plain)
 		out = strings.TrimRight(out, " ")
 		if hasLine || strings.ContainsRune(out, '\n') {
 			sb.WriteString(whole)

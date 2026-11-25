@@ -473,6 +473,9 @@ pub struct Ast {
     /// For each `Lambda`, the greatest number of levels open at once inside
     /// its text, parameter list included (`05-types.md` 20.2).
     pub lambda_levels: std::collections::HashMap<u32, u16>,
+    /// The highest level of nesting (13.1) the parse reached, for the
+    /// formatter (F12 2.6 item 4).
+    pub(crate) deepest: u16,
 }
 
 impl Ast {

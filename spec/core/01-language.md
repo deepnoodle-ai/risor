@@ -400,8 +400,8 @@ From the loosest to the tightest.
 | 2 | `??` | left | Each operand is an `Add`. `??` does not mix with levels 3 to 6 (3.4) |
 | 3 | `\|\|` | left | |
 | 4 | `&&` | left | |
-| 5 | `==` `!=` | left | |
-| 6 | `<` `<=` `>` `>=` `in` `not in` | left | |
+| 5 | `==` `!=` | none: comparisons do not chain (3.4 rule 13) | |
+| 6 | `<` `<=` `>` `>=` `in` `not in` | none: comparisons do not chain (3.4 rule 13) | |
 | 7 | `+` `-` | left | |
 | 8 | `*` `/` `%` | left | |
 | 9 | prefix `!` `-` | right: `!!a`, `- -a` | |
@@ -410,10 +410,20 @@ From the loosest to the tightest.
 
 `&&` binds tighter than `||`: `a || b && c` is `a || (b && c)`.
 
+The operators of levels 5 and 6 are the **comparison operators**. A comparison
+is a `Binary` whose operator is one of them. A comparison is never an operand
+of another comparison unless it is written in parentheses, whether the two are
+at one level or at levels 5 and 6: `a == b == c`, `a < b < c`, `a < b == c` and
+`a == b in c` are each `chained-comparison` (3.4 rule 13). `(a == b) == c` and
+`a < b && b < c` are valid. So the two levels only decide which operand of
+another operator a comparison is: `a + b < c` is `(a + b) < c`, and `a == b &&
+c` is `(a == b) && c`.
+
 ### 3.4 Rules the productions do not show
 
 Each rule is part of the grammar. Text that breaks one is `unexpected-token` in
-Core, at the span in the third column.
+Core, at the span in the third column, except rule 13, which is
+`chained-comparison`.
 
 | # | Rule | Span of the error |
 | --- | --- | --- |
@@ -429,6 +439,7 @@ Core, at the span in the third column.
 | 10 | `try` followed by the token `(` is an error: `try(e, d)` | The `try` |
 | 11 | An `else` is required after the last branch of an `if`. The productions give this | The token that stands where `else` should, or the end of input |
 | 12 | A `catch` is required after the body of a `try`. Its parentheses hold one `Name`. With no name, the parentheses are left out. The productions give this | The token that does not fit |
+| 13 | A comparison (3.3) may not be an operand of a comparison operator unless it is written in parentheses: `a == b == c`, `1 == 1 == true`, `a < b < c`, `a < b == c`, `a == b < c`, `a in b == c` and `a in b not in c` are errors. `(a == b) == c`, `a == (b < c)` and `a < b && b < c` are valid. `as` and `is` (F4) are not comparison operators: `x as int > 3` is valid. And no comparison operator may stand in the right operand of a comparison operator outside parentheses, even under an `as` or an `is`: `x == a < b as bool` is an error, though `as` is the operand of `==` there. Write `x == (a < b as bool)`. On the left, an `as` or an `is` ends the comparison: `a < b as bool == x` is `((a < b) as bool) == x`, and valid | The second comparison operator in the text. For `not in`, from `not` to the end of `in` | The second comparison operator in the text. For `not in`, from `not` to the end of `in` |
 
 ### 3.5 Other text that does not parse
 
@@ -826,7 +837,8 @@ operand, whose node is one of these, with or without an `OptChain` around it
      position where they differ decides. If one is a proper prefix of the
      other, it is the smaller.
    - A null operand fails with `null-operand`. Any other pair fails with
-     `wrong-kind`, so `1 < 2 < 3` fails: its left operand is a bool.
+     `wrong-kind`, so `(1 < 2) < 3` fails: its left operand is a bool.
+     Without the parentheses, `1 < 2 < 3` does not parse (3.4 rule 13).
 5. **Key order.** Wherever the keys of a map are taken in order, the order is by
    code point, as rule 4 orders strings.
 
@@ -1346,10 +1358,14 @@ Nothing else opens a level. In particular these do not:
    the token where the parser finds it: rule 1 at the `**`, rule 2 at the `in`,
    rule 7 at the `:`, `,` or `...`, rule 8 at the `}`, rule 9 at the `=>`, rule
    10 at the `(`. The `!x as T` row of 14.3 is broken at the `as` or the `is`.
+5. Rule 13 of 3.4 is broken at the second comparison operator, before that
+   operator opens a level: in a text where the operator would also open level
+   101, the diagnostic is `chained-comparison`. When rule 2 and rule 13 are
+   broken at one `in`, as in `a == !b in c`, rule 2 comes first.
 
 ### 14.2 The `parse` codes in Core
 
-Core has 15 `parse` codes: the 14 general codes and `reserved-word`.
+Core has 16 `parse` codes: the 15 general codes and `reserved-word`.
 
 | Code | Reported when | Span |
 | --- | --- | --- |
@@ -1363,6 +1379,7 @@ Core has 15 `parse` codes: the 14 general codes and `reserved-word`.
 | `bad-number` | A number token that does not match `Number` (2.5) | The number token |
 | `literal-range` | A number literal that is not in range (2.5) | The number token |
 | `nesting-exceeded` | A token would open level 101 (13.2) | That token: `not in` from `not` to the end of `in`, a `${` its two code points |
+| `chained-comparison` | A comparison is an operand of a comparison operator without parentheses (3.4 rule 13) | The second comparison operator |
 | `text-block-open` | Not reported in Core | |
 | `text-block-close` | Not reported in Core | |
 | `text-block-indent` | Not reported in Core | |
@@ -1535,7 +1552,7 @@ and changes nothing else. Its chapter is the home of its rules.
 | F3, string forms | The raw string `r"..."` and `r'...'`, the text block `"""`, the raw text block `r"""`. It reports the codes `text-block-open`, `text-block-close` and `text-block-indent` (14.2). It replaces rows 7 and 9 of 2.3 for these forms | `spec/packages/f03-strings.md` |
 | F4, checked conversion | The tests `x as T` and `x is T`, at the level of comparison, with a type written in the program. Node 31, `As`. The code `bad-type-text`. It replaces the rows of 14.3 for `as` and `is` | `spec/packages/f04-conversion.md` |
 | F7, queries | The steps `[*]` and `?.[*]` of a chain, and the node `Each`. It replaces the rows of 14.3 for these texts | `spec/packages/f07-queries.md` |
-| F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 59 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
+| F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 60 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
 | F16, entry points, slice D1 | Type lines, `type Name = T;`, at the top level of a program, and annotations: on a `const` line, `const n: T = e;`; on a lambda's parameters, `(x: T = d) => e`; on its result, `(x): R => e`; and a function type on a parameter that is a name, `(f: (a: T) => R) => e`. The fields `types` of node 1, `Program`; `type` of node 2, `Const`, and of node 23, `Param`; `fn` of node 23; `result` of node 22, `Lambda`. No node kind is added. It changes 3.1, 3.2 rule 5 and 8.1, and replaces the rows of 14.3 for `(x: int) => x` in an argument, `const n: int = 1;` and `type Name = T` | `spec/packages/f16-entry-points.md` 2 and 3 |
 | F17, recursion and guards | A guard on a `match` arm, `"a" if (c) => e`: the field `guard` of node 25, `Arm`. It changes 9.3 items 3, 7 and 9, and replaces the row of 14.3 for a guard. A lambda whose every parameter and result carry a type may refer to its own name: it changes 5 rule 6, 7.3 item 2, 8.1 rule 3 and the row of 14.4 for `recursion-needs-types` | `spec/packages/f17-recursion.md` 2 to 4, 11 |
 

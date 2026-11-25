@@ -7,7 +7,7 @@
 import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { lex } from "../syntax/lexer.ts";
-import { parse } from "../syntax/parser.ts";
+import { deepestLevel, parse } from "../syntax/parser.ts";
 import { Source, SOURCE_LIMIT, withinSourceLimit } from "../syntax/source.ts";
 import { sourceTooLarge } from "../syntax/messages.ts";
 import type { Span } from "../syntax/source.ts";
@@ -27,9 +27,14 @@ export function formatProgram(text: string, limit: number = SOURCE_LIMIT): Forma
   const p = parse(source);
   if (!p.ok) return { ok: false, diagnostics: p.diagnostics };
   const tokens = lex(source).filter((t) => t.kind !== "eof");
-  const f = new Formatter(source, tokens, 0, source.length);
+  const f = new Formatter(source, tokens, 0, source.length, tooDeep(deepestLevel(p.program)));
   const doc = f.build((b) => b.program(p.program));
   return { ok: true, text: finish(layout(doc)) };
+}
+
+/** Whether a text reaching level `deepest` gets no pairs for the reader, which add up to 2 levels (f12 2.6 items 3 and 4). */
+function tooDeep(deepest: number): boolean {
+  return deepest + 2 > 100;
 }
 
 /** Format a template (f12 2.14). */
@@ -37,6 +42,9 @@ export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): Form
   const t = parseTemplateText(text, limit);
   if (!t.ok) return { ok: false, diagnostics: t.diagnostics };
   const src = t.template.source;
+  let deepest = 0;
+  for (const seg of t.template.segments) if (seg.kind !== "text") deepest = Math.max(deepest, deepestLevel(seg.expr));
+  const plain = tooDeep(deepest);
   let out = "";
   for (const seg of t.template.segments) {
     const raw = src.slice(seg.span.start, seg.span.end);
@@ -47,7 +55,7 @@ export function formatTemplate(text: string, limit: number = SOURCE_LIMIT): Form
     // The part's tokens, without the closing delimiter.
     const toks = lexPart(src, seg.span.start + 3, seg.span.start).filter((x) => x.kind !== "interpEnd" && x.kind !== "eof");
     const closeStart = raw.endsWith("}}") ? seg.span.end - 2 : seg.span.end - 1;
-    const f = new Formatter(src, toks, seg.span.start + 3, closeStart);
+    const f = new Formatter(src, toks, seg.span.start + 3, closeStart, plain);
     const body = layout(f.build((b) => b.expr(seg.expr)), Infinity);
     // `trim` takes off what `\s` matches: white space and line ends.
     const trimmed = body.trim();
@@ -114,6 +122,8 @@ class Formatter {
   /** Line ends in the blank space directly before each token. */
   readonly nlBefore: number[] = [];
   hasLineComment = false;
+  /** The pairs for the reader written around the node being built (f12 2.6 items 3 and 4). */
+  private rdepth = 0;
 
   // Pass state.
   private kept = new Set<number>();
@@ -128,7 +138,11 @@ class Formatter {
   /** Opening brackets of a sequence with elements. */
   private openWithElements = new Set<number>();
 
-  constructor(src: Source, toks: Token[], from: number, to: number) {
+  /** No pairs for the reader in the whole text (f12 2.6 item 4). */
+  private readonly plain: boolean;
+
+  constructor(src: Source, toks: Token[], from: number, to: number, plain = false) {
+    this.plain = plain;
     this.src = src;
     this.toks = toks;
     toks.forEach((t, i) => this.byStart.set(t.start, i));
@@ -740,11 +754,34 @@ class Formatter {
       spine.push(x);
       x = x.x;
     }
+    // The parentheses around the left operand of each node of the spine, and
+    // the pairs for the reader around each node, from the outermost in. A
+    // run has pairs for the reader only when it has at most 3 operators and
+    // no pair encloses its top (f12 2.6 items 3 and 4).
+    const outerDepth = this.rdepth;
+    const leftParen: boolean[] = new Array(spine.length);
+    const depthAt: number[] = new Array(spine.length);
+    const pairsOK: boolean[] = new Array(spine.length);
+    let r = outerDepth;
+    for (let k = 0; k < spine.length; k++) {
+      depthAt[k] = r;
+      const n = spine[k];
+      if (n.kind === "As") continue;
+      const prev = k > 0 ? spine[k - 1] : null;
+      const top = prev === null || prev.kind === "As" || !sameRun(prev, n);
+      pairsOK[k] = top ? !this.plain && r === 0 && runLen(n) <= 3 : pairsOK[k - 1];
+      const need = this.needLeft(n.x, n);
+      const rd = !need && pairsOK[k] && readerRow(n.x, n, "left");
+      leftParen[k] = need || rd;
+      if (rd) r++;
+    }
     // The document of the left operand of spine[i], without its parentheses.
+    this.rdepth = r;
     let d: Doc = this.expr(x);
     let i = spine.length - 1;
     while (i >= 0) {
       const n = spine[i];
+      this.rdepth = depthAt[i];
       if (n.kind === "As") {
         const left = n.x;
         const need = this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!");
@@ -755,19 +792,34 @@ class Formatter {
       }
       // A run of one level: from *n* outward, while the next operator is of the level and takes this one bare.
       const p = binLevel(n.op);
-      const head: Doc = [this.needLeft(n.x, n) ? ["(", d, ")"] : d, SP, this.opTok(n)];
-      const tail: Doc[] = [L, this.paren(n.y, this.needRight(n.y, n))];
+      const head: Doc = [leftParen[i] ? ["(", d, ")"] : d, SP, this.opTok(n)];
+      const tail: Doc[] = [L, this.right(n.y, n, pairsOK[i])];
       let j = i - 1;
       for (; j >= 0; j--) {
         const m = spine[j];
-        if (m.kind !== "Binary" || binLevel(m.op) !== p || this.needLeft(spine[j + 1], m)) break;
-        tail.push(SP, this.opTok(m), L, this.paren(m.y, this.needRight(m.y, m)));
+        if (m.kind !== "Binary" || binLevel(m.op) !== p || leftParen[j]) break;
+        this.rdepth = depthAt[j];
+        tail.push(SP, this.opTok(m), L, this.right(m.y, m, pairsOK[j]));
       }
       // The run of the whole expression is the one that `unindented` is about.
       d = group([head, unindented && j < 0 ? tail : indent(tail)]);
       i = j;
     }
+    this.rdepth = outerDepth;
     return d;
+  }
+
+  /**
+   * The right operand of a binary operator, in its parentheses (f12 2.6).
+   * `pairsOK` says whether the parent's run may have pairs for the reader.
+   */
+  private right(y: A.Expr, parent: A.Binary, pairsOK: boolean): Doc {
+    if (this.needRight(y, parent)) return this.paren(y, true);
+    if (!pairsOK || !readerRow(y, parent, "right")) return this.expr(y);
+    this.rdepth++;
+    const d = this.expr(y);
+    this.rdepth--;
+    return ["(", d, ")"];
   }
 
   private opTok(n: A.Binary): Doc {
@@ -786,12 +838,8 @@ class Formatter {
     if (parent.op === "**") return lx < 11;
     let need = lx < p || (x.kind === "Binary" && x.op === "??");
     if ((parent.op === "in" || parent.op === "not-in") && x.kind === "Unary" && x.op === "!") need = true;
-    // Parentheses for the reader.
-    if (x.kind === "Binary") {
-      if (x.op === "&&" && parent.op === "||") need = true;
-      if (["*", "/", "%"].includes(x.op) && ["*", "/", "%"].includes(parent.op) && (x.op !== parent.op || x.op === "%")) need = true;
-      if ((x.op === "==" || x.op === "!=") && (parent.op === "==" || parent.op === "!=")) need = true;
-    }
+    // A comparison inside a comparison (01 3.4 rule 13).
+    if (isComparison(parent) && isComparison(x)) need = true;
     return need;
   }
 
@@ -801,8 +849,24 @@ class Formatter {
     if (parent.op === "??") return ly < 7 || (y.kind === "Binary" && y.op === "??");
     if (parent.op === "**") return ly < 9;
     let need = ly <= p || (y.kind === "Binary" && y.op === "??");
-    if (y.kind === "Binary" && y.op === "&&" && parent.op === "||") need = true;
+    // On the right, also one under `as` or `is` (01 3.4 rule 13).
+    if (isComparison(parent) && this.comparisonUnder(y)) need = true;
     return need;
+  }
+
+  /**
+   * Whether e is a comparison, or an `as` or `is` whose left operand, written
+   * without parentheses, is one: its text holds a comparison operator outside
+   * parentheses (01 3.4 rule 13).
+   */
+  private comparisonUnder(e: A.Expr): boolean {
+    let x = e;
+    while (x.kind === "As") {
+      const left = x.x;
+      if (this.level(left) < 6 || (left.kind === "Binary" && left.op === "??") || (left.kind === "Unary" && left.op === "!")) return false;
+      x = left;
+    }
+    return isComparison(x);
   }
 
   /**
@@ -914,6 +978,9 @@ class Formatter {
   /** Whether the text of a match subject would begin with `{`, `if` or `try` (f12 2.6). */
   private subjectNeedsParens(s: A.Expr): boolean {
     let x: A.Expr = s;
+    // Whether the run of the Binary being read may have pairs for the reader.
+    let pairsOK = false;
+    let prev: A.Expr | null = null;
     for (;;) {
       if (x.kind === "Map" || x.kind === "Block" || x.kind === "Try" || (x.kind === "Cond" && x.form === "if")) return true;
       if (x.kind === "Cond" && x.form === "?:") {
@@ -922,7 +989,9 @@ class Formatter {
         continue;
       }
       if (x.kind === "Binary") {
-        if (this.needLeft(x.x, x)) return false;
+        if (prev === null || prev.kind !== "Binary" || !sameRun(prev, x)) pairsOK = !this.plain && this.rdepth === 0 && runLen(x) <= 3;
+        if (this.needLeft(x.x, x) || (pairsOK && readerRow(x.x, x, "left"))) return false;
+        prev = x;
         x = x.x;
         continue;
       }
@@ -1272,6 +1341,39 @@ function huggable(a: A.Arg): boolean {
 }
 
 /** The level of a binary operator (01 3.3). */
+/** Whether x has a place for a pair for the reader as an operand of parent (f12 2.6, the second table). */
+function readerRow(x: A.Expr, parent: A.Binary, side: "left" | "right"): boolean {
+  if (x.kind !== "Binary") return false;
+  if (x.op === "&&" && parent.op === "||") return true;
+  return side === "left" && isMul(x) && isMul(parent) && (x.op !== parent.op || x.op === "%");
+}
+
+function isMul(e: A.Expr | A.As): boolean {
+  return e.kind === "Binary" && (e.op === "*" || e.op === "/" || e.op === "%");
+}
+
+/** Whether child, the left operand of parent, is in parent's run: both of `*`, `/` and `%`, or both `||` (f12 2.6 item 3). */
+function sameRun(parent: A.Expr | A.As, child: A.Expr | A.As): boolean {
+  if (parent.kind !== "Binary" || child.kind !== "Binary") return false;
+  return (isMul(parent) && isMul(child)) || (parent.op === "||" && child.op === "||");
+}
+
+/** The number of operators of the run whose top is n: n and its left operands of the same run. */
+function runLen(n: A.Binary): number {
+  let k = 1;
+  let x: A.Expr = n;
+  while (x.kind === "Binary" && sameRun(x, x.x)) {
+    k++;
+    x = x.x;
+  }
+  return k;
+}
+
+/** Whether e is a comparison: a Binary of level 5 or 6 (01 3.3). */
+function isComparison(e: A.Expr): boolean {
+  return e.kind === "Binary" && (binLevel(e.op) === 5 || binLevel(e.op) === 6);
+}
+
 function binLevel(op: A.BinaryOp): number {
   switch (op) {
     case "??":
