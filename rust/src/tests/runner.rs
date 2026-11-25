@@ -309,3 +309,133 @@ fn static_codes_by_directory() {
     ));
     assert_eq!(run_case(&conversion[0]), Verdict::Pass);
 }
+
+#[test]
+fn truthiness_only_case_does_not_expand_shared_dag() {
+    // 30 levels of shared [prev, prev] would expand to 2^30 elements if converted to JSON/owned.
+    let mut src = String::from("const a0 = [1]; ");
+    for i in 1..=30 {
+        src.push_str(&format!("const a{i} = [a{}, a{}]; ", i - 1, i - 1));
+    }
+    src.push_str("a30");
+    let text = format!(
+        r#"[{{"name": "dag truthy", "source": {}, "expect": {{"truthy": true}}}}]"#,
+        json::to_text(&json::Json::Str(src))
+    );
+    let v = verdicts(&text).unwrap();
+    assert_eq!(v, vec![Verdict::Pass]);
+}
+
+#[test]
+fn update_mode_preserves_expect_entries() {
+    let text = r#"[
+  {"name": "entries mismatch", "source": "/** Add one. */\nexport const f = (/** Input. */ x: int) => x + 1;", "expect": {"entries": [{"name": "f", "doc": "Wrong", "params": [{"name": "x", "type": "int", "doc": "Wrong", "optional": false}], "result": "string"}]}},
+  {"name": "no entries field", "source": "export const f = () => 1;", "expect": {"type": "int"}}
+]"#;
+    let cases = crate::testing::load_doc_lax(&json::parse(text).unwrap(), Path::new(".")).unwrap();
+    let (results, new) = crate::testing::update::update_text(text, &cases);
+    assert_eq!(results[0].1, Verdict::Updated);
+    assert_eq!(results[1].1, Verdict::Updated);
+    let updated = new.expect("update_text should produce updated JSON");
+    assert!(
+        updated.contains(r#""result":"int""#) || updated.contains(r#""result": "int""#),
+        "updated expect should preserve entries with rewritten result: {updated}"
+    );
+    assert!(
+        updated.contains("Add one."),
+        "updated expect should rewrite doc: {updated}"
+    );
+    // Re-running the updated file must pass while still checking entries.
+    let v = verdicts(&updated).unwrap();
+    assert_eq!(v, vec![Verdict::Pass, Verdict::Pass]);
+    // Second case did not ask for `entries`, so its rewritten expect must omit `entries`.
+    let parsed = json::parse(&updated).unwrap();
+    let arr = parsed.as_arr().unwrap();
+    assert!(arr[0].get("expect").unwrap().get("entries").is_some());
+    assert!(arr[1].get("expect").unwrap().get("entries").is_none());
+}
+
+#[test]
+fn program_value_on_resultless_program_reports_no_result() {
+    let err = crate::testing::program::program_value("export const f = () => 1;").unwrap_err();
+    assert!(
+        err.contains("no-result"),
+        "expected no-result diagnostic, got: {err}"
+    );
+    assert!(
+        !err.contains("internal-error"),
+        "must not hit internal-error: {err}"
+    );
+}
+
+#[test]
+fn entry_span_null_allowed_only_for_run_phase() {
+    invalid(
+        r#"[{"name": "declare null span", "source": "export const f = (x: int) => x;", "entry": "missing",
+             "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name", "span": null}]}}]"#,
+    );
+    invalid(
+        r#"[{"name": "check null span", "source": "export const f = (x: int) => x;", "entry": "f", "entryReturns": {"f": "string"},
+             "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": null}]}}]"#,
+    );
+    let v = verdicts(
+        r#"[{"name": "run null span", "source": "export const f = (x: int) => x;", "entry": "f", "args": ["bad"],
+             "expect": {"phase": "run", "diagnostics": [{"code": "not-conforming", "span": null, "path": [0]}]}}]"#,
+    )
+    .unwrap();
+    assert_eq!(v, vec![Verdict::Pass]);
+}
+
+#[test]
+fn load_conformance_applies_to_entry_results() {
+    // Entry f returns "x", which fails load conformance against returns: "int".
+    let failing = r#"[{"name": "entry load fail", "source": "export const f = () => \"x\"; 1", "entry": "f", "load": true, "returns": "int",
+        "expect": {"value": "x"}}]"#;
+    let v = verdicts(failing).unwrap();
+    assert!(matches!(&v[0], Verdict::Fail(d) if d[0].name == "outcome"));
+
+    let expected_err = r#"[{"name": "entry load diag", "source": "export const f = () => \"x\"; 1", "entry": "f", "load": true, "returns": "int",
+        "expect": {"phase": "run", "diagnostics": [{"code": "not-conforming", "span": null, "path": []}], "steps": 1, "allocated": 0}}]"#;
+    let v = verdicts(expected_err).unwrap();
+    assert_eq!(v, vec![Verdict::Pass]);
+
+    // Outcome line also reports the load conformance failure with preserved usage.
+    let cases = load_doc(&json::parse(expected_err).unwrap(), Path::new(".")).unwrap();
+    let line = crate::testing::outcome_line(&cases[0]);
+    assert!(
+        line.contains(r#""code":"not-conforming""#) && line.contains(r#""steps":1"#),
+        "{line}"
+    );
+
+    // Update mode captures the load conformance failure on entry results too.
+    let (results, new) = crate::testing::update::update_text(
+        failing,
+        &crate::testing::load_doc_lax(&json::parse(failing).unwrap(), Path::new(".")).unwrap(),
+    );
+    assert_eq!(results[0].1, Verdict::Updated);
+    let updated = new.unwrap();
+    assert!(updated.contains("not-conforming"), "{updated}");
+}
+
+#[test]
+fn expect_value_does_not_match_nested_bad_num_to_null() {
+    use crate::host::Data;
+    use std::collections::BTreeMap;
+
+    let text =
+        r#"[{"name": "badnum", "env": "{xs: any}", "source": "xs", "expect": {"value": [null]}}]"#;
+    let cases = load_doc(&json::parse(text).unwrap(), Path::new(".")).unwrap();
+    let mut vars = BTreeMap::new();
+    vars.insert("xs".to_string(), Data::List(vec![Data::Float(f64::NAN)]));
+    let v = crate::testing::run::run_case_ctx(
+        &cases[0],
+        crate::testing::run::Ctx {
+            base: None,
+            vars: Some(&vars),
+        },
+    );
+    assert!(
+        matches!(&v, Verdict::Fail(ds) if ds.iter().any(|d| d.name == "value")),
+        "nested BadNum must not match expect.value [null], got: {v:?}"
+    );
+}

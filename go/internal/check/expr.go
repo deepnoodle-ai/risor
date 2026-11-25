@@ -809,7 +809,16 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 					if want, ok := c.entryExp[np.Name]; ok {
 						func() {
 							defer c.catchPairs(lam.Body)
-							c.fitForm(lam.Body, info.result, want, formResult)
+							if lam.Result == nil {
+								c.fitForm(lam.Body, info.result, want, formResult)
+							} else {
+								ok, used := types.Fits(info.result, want)
+								if !ok {
+									c.m("result", ty("expected", want), ty("found", info.result)).diag("result-mismatch", lam.Body.Span())
+								} else if used {
+									c.dyn(lam.Body.Span())
+								}
+							}
 						}()
 					}
 				}

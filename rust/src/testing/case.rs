@@ -1010,11 +1010,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             return Err("a load case with \"check\": false".into());
         }
     }
-    if !load && entry.is_none() {
-        if let Expect::Failure(f) = &expect {
-            if f.diagnostics.iter().any(|d| d.span_null) {
-                return Err("\"span\": null outside a load or entry case".into());
-            }
+    if let Expect::Failure(f) = &expect {
+        let allowed = load || (entry.is_some() && f.phase == Phase::Run);
+        if !allowed && f.diagnostics.iter().any(|d| d.span_null) {
+            return Err("\"span\": null outside a load or entry run case".into());
         }
     }
     // F2 4.2 item 3: an analysis case declares no environment.

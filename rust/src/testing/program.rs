@@ -15,10 +15,9 @@ pub fn program_value(text: &str) -> Result<Json, String> {
     let (program, _) = crate::check::compile_checked(&env, parsed, &crate::check::Want::Nothing)
         .map_err(|e| crate::render::render_line(&e.diagnostics))?;
     let vars = std::collections::BTreeMap::<String, crate::host::Data>::new();
-    let out = program.outcome(&vars);
-    let v = out
-        .result
-        .map_err(|f| crate::render::render_line(&[program.diagnostic(&f)]))?;
+    let v = program
+        .run(&vars)
+        .map_err(|e| crate::render::render_line(&e.diagnostics))?;
     let j = super::run::value_to_json(&v);
     if depth(&j) > crate::json::MAX_DEPTH {
         return Err("the value nests deeper than a case file may".into());

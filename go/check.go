@@ -312,7 +312,8 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 			checked = false
 		case expectOption:
 			if o.condition {
-				exp = check.Expect{Kind: check.ExpectCondition}
+				exp.Kind = check.ExpectCondition
+				exp.Type = nil
 				continue
 			}
 			tt, err := typetext.ParseType(o.text)
@@ -324,20 +325,23 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
 					Message: "the expected result: " + err.Error()}}}
 			}
-			exp = check.Expect{Kind: check.ExpectType, Type: t}
+			exp.Kind = check.ExpectType
+			exp.Type = t
 		case expectSchemaOption:
 			t, err := resultSchemaType(o.schema, o.opts)
 			if err != nil {
 				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
 					Message: "the expected result: " + err.Error()}}}
 			}
-			exp = check.Expect{Kind: check.ExpectType, Type: t}
+			exp.Kind = check.ExpectType
+			exp.Type = t
 		case expectTypeOption:
 			if p := o.t.problem(); p != "" {
 				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
 					Message: "the expected result: " + p}}}
 			}
-			exp = check.Expect{Kind: check.ExpectType, Type: o.t.t}
+			exp.Kind = check.ExpectType
+			exp.Type = o.t.t
 		case expectEntryOption:
 			tt, err := typetext.ParseType(o.text)
 			var t *types.Type

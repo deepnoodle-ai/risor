@@ -730,7 +730,7 @@ fn static_code(code: &str) -> &'static str {
 
 /// F16 11.8: SchemaOf of the checked type against the schema expected,
 /// as JSON data, `null` for a refusal; then the law of 11.5 item 6.
-fn schema_difference(want: &Json, got: &crate::check::ty::Ty) -> Option<Difference> {
+pub(super) fn schema_difference(want: &Json, got: &crate::check::ty::Ty) -> Option<Difference> {
     let found = crate::schema::schema_of(got).ok();
     let shown = found.clone().unwrap_or(Json::Null);
     let differ = |why: Option<String>| {
@@ -1558,11 +1558,93 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
         case: &vars,
         host: ctx.vars,
     };
-    let (run_res, usage) = if let Some(entry_name) = &case.entry {
+    let judge_run = |res: Result<Value<'_>, Error>,
+                     usage: crate::Usage,
+                     mut diffs: Vec<Difference>,
+                     interner: &mut Interner|
+     -> Verdict {
+        let res = match res {
+            Ok(v) => {
+                if let Some(d) = load_step(case, &env, &v) {
+                    Err(Error::one(d))
+                } else {
+                    Ok(v)
+                }
+            }
+            Err(e) => Err(e),
+        };
+        match res {
+            Err(e) => judge_failure(
+                case,
+                e.phase,
+                &e.diagnostics,
+                (e.phase == Phase::Run).then_some((usage.steps, usage.allocated)),
+                &unmatched,
+                all_class,
+            ),
+            Ok(v) => {
+                match &case.expect {
+                    Expect::Failure(_) => diffs.push(Difference {
+                        name: "outcome",
+                        expected: expected_text(case),
+                        found: form(&result_json(
+                            found_ty.as_deref(),
+                            Some((value_to_json(&v), usage.steps, usage.allocated)),
+                        )),
+                    }),
+                    Expect::Result(r) => {
+                        if let Some(want_json) = &r.value {
+                            let want = interner.data(want_json);
+                            if !eq_data(&v, &want) {
+                                diffs.push(Difference {
+                                    name: "value",
+                                    expected: form(r.value.as_ref().unwrap_or(&Json::Null)),
+                                    found: form(&value_to_json(&v)),
+                                });
+                            }
+                        }
+                        // F6 11.2: the binding's JSON text of the value.
+                        if let Some(want) = &r.json {
+                            let got = crate::eval::to_json(&v);
+                            if got.as_deref() != Ok(want.as_str()) {
+                                diffs.push(Difference {
+                                    name: "json",
+                                    expected: json_text(want),
+                                    found: match &got {
+                                        Ok(t) => json_text(t),
+                                        Err(e) => json_text(&format!("{e:?}")),
+                                    },
+                                });
+                            }
+                        }
+                        if let Some(t) = r.truthy {
+                            let got = v.truthy();
+                            if got != t {
+                                diffs.push(Difference {
+                                    name: "truthy",
+                                    expected: t.to_string(),
+                                    found: got.to_string(),
+                                });
+                            }
+                        }
+                        count_diffs(
+                            &mut diffs,
+                            r.steps,
+                            r.allocated,
+                            (usage.steps, usage.allocated),
+                        );
+                    }
+                }
+                functions_diff(&mut diffs, &unmatched);
+                verdict(diffs)
+            }
+        }
+    };
+    if let Some(entry_name) = &case.entry {
         if let Some(inp_json) = &case.input {
             let inp = interner.data(inp_json);
             let (res, u) = program.call_record_measure(entry_name, &inp, &layered);
-            (res.map(|v| value_to_owned_result(v)), u)
+            judge_run(res, u, diffs, &mut interner)
         } else {
             let arg_data: Vec<Data> = case
                 .args
@@ -1575,102 +1657,11 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                 .map(|d| d as &dyn crate::host::Host)
                 .collect();
             let (res, u) = program.call_measure(entry_name, &arg_refs, &layered);
-            (res.map(|v| value_to_owned_result(v)), u)
+            judge_run(res, u, diffs, &mut interner)
         }
     } else {
         let (res, u) = program.measure(&layered);
-        let res = match res {
-            Ok(v) => {
-                if let Some(d) = load_step(case, &env, &v) {
-                    Err(Error::one(d))
-                } else {
-                    Ok(value_to_owned_result(v))
-                }
-            }
-            Err(e) => Err(e),
-        };
-        (res, u)
-    };
-    match run_res {
-        Err(e) => judge_failure(
-            case,
-            e.phase,
-            &e.diagnostics,
-            (e.phase == Phase::Run).then_some((usage.steps, usage.allocated)),
-            &unmatched,
-            all_class,
-        ),
-        Ok(val) => {
-            let v = Value::from_data(&val.data);
-            match &case.expect {
-                Expect::Failure(_) => diffs.push(Difference {
-                    name: "outcome",
-                    expected: expected_text(case),
-                    found: form(&result_json(
-                        found_ty.as_deref(),
-                        Some((val.json.clone(), usage.steps, usage.allocated)),
-                    )),
-                }),
-                Expect::Result(r) => {
-                    if let Some(want_json) = &r.value {
-                        let want = interner.data(want_json);
-                        if !eq_data(&v, &want) {
-                            diffs.push(Difference {
-                                name: "value",
-                                expected: form(r.value.as_ref().unwrap_or(&Json::Null)),
-                                found: form(&val.json),
-                            });
-                        }
-                    }
-                    // F6 11.2: the binding's JSON text of the value.
-                    if let Some(want) = &r.json {
-                        if val.json_text.as_deref() != Ok(want.as_str()) {
-                            diffs.push(Difference {
-                                name: "json",
-                                expected: json_text(want),
-                                found: match &val.json_text {
-                                    Ok(t) => json_text(t),
-                                    Err(e) => json_text(&format!("{e:?}")),
-                                },
-                            });
-                        }
-                    }
-                    if let Some(t) = r.truthy {
-                        if val.truthy != t {
-                            diffs.push(Difference {
-                                name: "truthy",
-                                expected: t.to_string(),
-                                found: val.truthy.to_string(),
-                            });
-                        }
-                    }
-                    count_diffs(
-                        &mut diffs,
-                        r.steps,
-                        r.allocated,
-                        (usage.steps, usage.allocated),
-                    );
-                }
-            }
-            functions_diff(&mut diffs, &unmatched);
-            verdict(diffs)
-        }
-    }
-}
-
-struct OwnedVal {
-    data: Data,
-    json: Json,
-    json_text: Result<String, &'static str>,
-    truthy: bool,
-}
-
-fn value_to_owned_result(v: Value<'_>) -> OwnedVal {
-    OwnedVal {
-        json: value_to_json(&v),
-        json_text: crate::eval::to_json(&v),
-        truthy: v.truthy(),
-        data: v.owned(),
+        judge_run(res, u, diffs, &mut interner)
     }
 }
 
@@ -2736,17 +2727,23 @@ fn outcome_core(case: &Case) -> String {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
+    let finish_outcome = |res: Result<Value<'_>, Error>| -> Result<String, Error> {
+        res.and_then(|v| {
+            // F10 10.4: a load that fails at step 5a.
+            if let Some(d) = load_step(case, &env, &v) {
+                return Err(Error::one(d));
+            }
+            let mut t = String::new();
+            value_json(&v, &mut t, 0)
+                .map(|()| t)
+                .map_err(|c| Error::one(value_json_diag(c)))
+        })
+    };
     let (mut result, usage) = if let Some(entry_name) = &case.entry {
         if let Some(inp_json) = &case.input {
             let inp = interner.data(inp_json);
             let (res, u) = program.call_record_measure(entry_name, &inp, &vars);
-            let res = res.and_then(|v| {
-                let mut t = String::new();
-                value_json(&v, &mut t, 0)
-                    .map(|()| t)
-                    .map_err(|c| Error::one(value_json_diag(c)))
-            });
-            (res, u)
+            (finish_outcome(res), u)
         } else {
             let arg_data: Vec<Data> = case
                 .args
@@ -2759,27 +2756,11 @@ fn outcome_core(case: &Case) -> String {
                 .map(|d| d as &dyn crate::host::Host)
                 .collect();
             let (res, u) = program.call_measure(entry_name, &arg_refs, &vars);
-            let res = res.and_then(|v| {
-                let mut t = String::new();
-                value_json(&v, &mut t, 0)
-                    .map(|()| t)
-                    .map_err(|c| Error::one(value_json_diag(c)))
-            });
-            (res, u)
+            (finish_outcome(res), u)
         }
     } else {
         let (res, u) = program.measure(&vars);
-        let res = res.and_then(|v| {
-            // F10 10.4: a load that fails at step 5a.
-            if let Some(d) = load_step(case, &env, &v) {
-                return Err(Error::one(d));
-            }
-            let mut t = String::new();
-            value_json(&v, &mut t, 0)
-                .map(|()| t)
-                .map_err(|c| Error::one(value_json_diag(c)))
-        });
-        (res, u)
+        (finish_outcome(res), u)
     };
     // `suite/README.md` item 2: a failure of class `limit` has no span and no usage.
     let no_usage = match &mut result {
@@ -3092,6 +3073,8 @@ pub(super) enum Captured {
         /// F16 11.8 item 2: the schema found fails the law, so update mode
         /// does not write it.
         schema_lawless: bool,
+        /// F16 12.10: checked `export const` entries, for rewriting `expect.entries`.
+        entries: Option<Vec<crate::compile::CompiledEntry>>,
         ran: Option<Ran>,
     },
     Conform(Conformed),
@@ -3153,7 +3136,8 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         Ok(x) => x,
         Err(e) => return fail(e.phase, e.diagnostics),
     };
-    let (mut ty, mut sites, mut site_list, mut schema) = (None, None, None, None);
+    let (mut ty, mut sites, mut site_list, mut schema, mut entries) =
+        (None, None, None, None, None);
     let mut schema_lawless = false;
     if case.check {
         let r = crate::check::check_with_entries(&env, &parsed, &exp, &entry_wants);
@@ -3182,6 +3166,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
                 .collect(),
         ));
         site_list = Some(r.sites);
+        entries = Some(r.entries);
     }
     let mut program = match compile(&env, parsed) {
         Ok(p) => p,
@@ -3205,6 +3190,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             description,
             schema,
             schema_lawless,
+            entries,
             ran: None,
         };
     }
@@ -3214,11 +3200,23 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
+    let finish_capture = |r: Result<Value<'_>, Error>, u: crate::Usage| -> Result<Ran, Error> {
+        match r {
+            Ok(v) => {
+                if let Some(d) = load_step(case, &env, &v) {
+                    Err(Error::one(d))
+                } else {
+                    Ok(value_to_ran(&v, (u.steps, u.allocated)))
+                }
+            }
+            Err(e) => Err(e),
+        }
+    };
     let (res, usage) = if let Some(entry_name) = &case.entry {
         if let Some(inp_json) = &case.input {
             let inp = interner.data(inp_json);
             let (r, u) = program.call_record_measure(entry_name, &inp, &vars);
-            (r.map(|v| value_to_ran(&v, (u.steps, u.allocated))), u)
+            (finish_capture(r, u), u)
         } else {
             let arg_data: Vec<Data> = case
                 .args
@@ -3231,21 +3229,11 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
                 .map(|d| d as &dyn crate::host::Host)
                 .collect();
             let (r, u) = program.call_measure(entry_name, &arg_refs, &vars);
-            (r.map(|v| value_to_ran(&v, (u.steps, u.allocated))), u)
+            (finish_capture(r, u), u)
         }
     } else {
         let (r, u) = program.measure(&vars);
-        let r = match r {
-            Ok(v) => {
-                if let Some(d) = load_step(case, &env, &v) {
-                    Err(Error::one(d))
-                } else {
-                    Ok(value_to_ran(&v, (u.steps, u.allocated)))
-                }
-            }
-            Err(e) => Err(e),
-        };
-        (r, u)
+        (finish_capture(r, u), u)
     };
     match res {
         Err(e) => Captured::Failure {
@@ -3259,6 +3247,7 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
             description,
             schema,
             schema_lawless,
+            entries,
             ran: Some(ran),
         },
     }

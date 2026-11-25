@@ -1374,26 +1374,26 @@ export class Program<V = any> {
         usage: zero,
       };
     }
-    // f16 12.5 step 3: conform each argument in order, collecting at most 100 diagnostics across all arguments.
-    const diags: InnerDiagnostic[] = [];
-    let stopped = false;
-    for (let i = 0; i < args.length && diags.length < 100 && !stopped; i++) {
-      const param = meta.params[i];
-      const target = param.optional ? withNull(param.innerType) : param.innerType;
-      const fs = conformAllWalk(args[i], target, this.env.classifier, 100 - diags.length);
-      for (const f of fs) {
-        const d = conformDiagnostic(f, this.env.classifier);
-        if (f.template === "depth" || f.template === "steps") {
-          diags.push({ phase: "run", code: d.code, class: "limit", message: d.message, trace: [] });
-          stopped = true;
-          break;
-        }
-        diags.push({ phase: "run", code: "not-conforming", class: "value", path: [i, ...f.path], message: d.message, trace: [] });
-      }
-    }
-    if (diags.length > 0) return { ok: false, diagnostics: diags, usage: zero };
     let run: Run | undefined;
     try {
+      // f16 12.5 step 3: conform each argument in order, collecting at most 100 diagnostics across all arguments.
+      const diags: InnerDiagnostic[] = [];
+      let stopped = false;
+      for (let i = 0; i < args.length && diags.length < 100 && !stopped; i++) {
+        const param = meta.params[i];
+        const target = param.optional ? withNull(param.innerType) : param.innerType;
+        const fs = conformAllWalk(args[i], target, this.env.classifier, 100 - diags.length);
+        for (const f of fs) {
+          const d = conformDiagnostic(f, this.env.classifier);
+          if (f.template === "depth" || f.template === "steps") {
+            diags.push({ phase: "run", code: d.code, class: "limit", message: d.message, trace: [] });
+            stopped = true;
+            break;
+          }
+          diags.push({ phase: "run", code: "not-conforming", class: "value", path: [i, ...f.path], message: d.message, trace: [] });
+        }
+      }
+      if (diags.length > 0) return { ok: false, diagnostics: diags, usage: zero };
       run = this.newRun(vars, options.signal);
       const value = compiled.call(run, args as unknown[]);
       return { ok: true, value, usage: { steps: run.steps, allocated: run.units } };
@@ -1414,28 +1414,28 @@ export class Program<V = any> {
     if (meta.inputMode === "none" || meta.innerInputType === null) {
       return { ok: false, diagnostics: [{ phase: "declare", code: "no-input-record", message: `${name} has no input record` }], usage: zero };
     }
-    // f16 12.5 step 3: conform input against inputType with maximum 100.
-    const fs = conformAllWalk(input, meta.innerInputType, this.env.classifier, 100);
-    if (fs.length > 0) {
-      const diags: InnerDiagnostic[] = fs.map((f) => {
-        const d = conformDiagnostic(f, this.env.classifier);
-        if (f.template === "depth" || f.template === "steps") {
-          return { phase: "run", code: d.code, class: "limit", message: d.message, trace: [] };
-        }
-        return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: d.message, trace: [] };
-      });
-      return { ok: false, diagnostics: diags, usage: zero };
-    }
-    // f16 12.5 step 4: extract arguments.
-    const args: unknown[] =
-      meta.inputMode === "single"
-        ? [input]
-        : meta.params.map((p) => {
-            const v = mapGet(input as object, p.name!);
-            return v === ABSENT ? ABSENT : v;
-          });
     let run: Run | undefined;
     try {
+      // f16 12.5 step 3: conform input against inputType with maximum 100.
+      const fs = conformAllWalk(input, meta.innerInputType, this.env.classifier, 100);
+      if (fs.length > 0) {
+        const diags: InnerDiagnostic[] = fs.map((f) => {
+          const d = conformDiagnostic(f, this.env.classifier);
+          if (f.template === "depth" || f.template === "steps") {
+            return { phase: "run", code: d.code, class: "limit", message: d.message, trace: [] };
+          }
+          return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: d.message, trace: [] };
+        });
+        return { ok: false, diagnostics: diags, usage: zero };
+      }
+      // f16 12.5 step 4: extract arguments.
+      const args: unknown[] =
+        meta.inputMode === "single"
+          ? [input]
+          : meta.params.map((p) => {
+              const v = mapGet(input as object, p.name!);
+              return v === ABSENT ? ABSENT : v;
+            });
       run = this.newRun(vars, options.signal);
       const value = compiled.call(run, args);
       return { ok: true, value, usage: { steps: run.steps, allocated: run.units } };
