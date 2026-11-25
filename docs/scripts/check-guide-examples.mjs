@@ -34,6 +34,60 @@ export const DEFAULT_GUIDE_PATH = resolve(REPO_ROOT, "docs", "guide.md");
 
 const RISOR_LANGS = new Set(["js", "risor"]);
 
+const KNOWN_DIRECTIVE_KEYS = new Set([
+  "args",
+  "calls",
+  "check",
+  "checkError",
+  "entries",
+  "entry",
+  "env",
+  "expect",
+  "expected",
+  "functions",
+  "groups",
+  "input",
+  "limits",
+  "matchesPreviousDiagnostic",
+  "messageContains",
+  "namedTypes",
+  "parseError",
+  "reject",
+  "runError",
+  "template",
+  "type",
+  "vars",
+]);
+
+const KNOWN_CALL_KEYS = new Set([
+  "args",
+  "entry",
+  "expect",
+  "input",
+  "messageContains",
+  "runError",
+  "vars",
+]);
+
+const KNOWN_ENTRY_KEYS = new Set([
+  "doc",
+  "inputType",
+  "name",
+  "params",
+  "resultType",
+]);
+
+const KNOWN_PARAM_KEYS = new Set(["doc", "name", "optional", "type"]);
+
+const KNOWN_FUNCTION_KEYS = new Set(["doc", "error", "returns", "type"]);
+
+function assertKnownKeys(obj, known, label, loc) {
+  const unknown = Object.keys(obj).filter((k) => !known.has(k));
+  if (unknown.length > 0) {
+    throw new Error(`${loc}: unknown ${label} key(s): ${unknown.join(", ")}`);
+  }
+}
+
 /**
  * Parse all fenced code blocks from a Markdown document, attaching any
  * immediately preceding `<!-- risor { ... } -->` JSON directive.
@@ -148,7 +202,7 @@ function findPrecedingDirective(lines, endIdx) {
   }
 }
 
-function buildEnv(meta) {
+function buildEnv(meta, loc) {
   const opts = {};
   if (typeof meta.env === "string") {
     opts.varRecord = meta.env;
@@ -162,6 +216,7 @@ function buildEnv(meta) {
   if (meta.functions) {
     opts.functions = {};
     for (const [name, spec] of Object.entries(meta.functions)) {
+      assertKnownKeys(spec, KNOWN_FUNCTION_KEYS, `function "${name}"`, loc);
       opts.functions[name] = {
         type: spec.type,
         doc: spec.doc,
@@ -219,6 +274,7 @@ function assertEntries(program, expectedEntries, loc) {
   }
   for (let i = 0; i < expectedEntries.length; i++) {
     const exp = expectedEntries[i];
+    assertKnownKeys(exp, KNOWN_ENTRY_KEYS, `entry #${i + 1}`, loc);
     const act = actual[i];
     if (act.name !== exp.name) {
       throw new Error(`${loc}: entry ${i} expected name "${exp.name}", got "${act.name}"`);
@@ -252,6 +308,7 @@ function assertEntries(program, expectedEntries, loc) {
       }
       for (let j = 0; j < exp.params.length; j++) {
         const ep = exp.params[j];
+        assertKnownKeys(ep, KNOWN_PARAM_KEYS, `entry "${act.name}" param #${j + 1}`, loc);
         const ap = act.params[j];
         if ("name" in ep && ap.name !== ep.name) {
           throw new Error(
@@ -293,6 +350,9 @@ export function checkGuideMarkdown(markdown, fileLabel = "docs/guide.md") {
 
     try {
       const meta = block.meta;
+      if (meta) {
+        assertKnownKeys(meta, KNOWN_DIRECTIVE_KEYS, "directive", loc);
+      }
 
       // Verify diagnostic output blocks against the immediately preceding failing example.
       if (meta && meta.matchesPreviousDiagnostic) {
@@ -327,7 +387,7 @@ export function checkGuideMarkdown(markdown, fileLabel = "docs/guide.md") {
       }
 
       const cfg = meta ?? {};
-      const env = buildEnv(cfg);
+      const env = buildEnv(cfg, loc);
 
       // 1. Parse
       let expr;
@@ -384,9 +444,11 @@ export function checkGuideMarkdown(markdown, fileLabel = "docs/guide.md") {
 
       // 3. Run (program result, single entry call, or multiple entry calls)
       if (cfg.calls) {
+        let callDiagnostic = null;
         for (let c = 0; c < cfg.calls.length; c++) {
           const callSpec = cfg.calls[c];
           const callLoc = `${loc} [call #${c + 1} ${callSpec.entry}]`;
+          assertKnownKeys(callSpec, KNOWN_CALL_KEYS, "call", callLoc);
           const callVars = callSpec.vars ?? cfg.vars;
           let value;
           try {
@@ -398,7 +460,7 @@ export function checkGuideMarkdown(markdown, fileLabel = "docs/guide.md") {
           } catch (err) {
             if (callSpec.runError) {
               assertDiagnosticError(err, "run", callSpec.runError, callSpec, callLoc);
-              lastDiagnostic = { diagnostics: err.diagnostics, source: block.code };
+              callDiagnostic = { diagnostics: err.diagnostics, source: block.code };
               continue;
             }
             throw new Error(`${callLoc}: unexpected run error: ${err.message}`);
@@ -411,7 +473,9 @@ export function checkGuideMarkdown(markdown, fileLabel = "docs/guide.md") {
           if ("expect" in callSpec) {
             assertValueEquals(value, callSpec.expect, callLoc);
           }
+          callDiagnostic = null;
         }
+        lastDiagnostic = callDiagnostic;
         checked++;
         continue;
       }

@@ -99,3 +99,57 @@ test("checkGuideMarkdown verifies diagnostic output blocks against the previous 
   assert.equal(res.ok, true);
   assert.equal(res.checked, 2);
 });
+
+test("checkGuideMarkdown rejects unknown directive and call keys and continues checking", () => {
+  const md = [
+    '<!-- risor {"expcet": 3} -->',
+    "```js",
+    "1 + 2",
+    "```",
+    "",
+    '<!-- risor {"expect": 3} -->',
+    "```js",
+    "1 + 2",
+    "```",
+    "",
+    '<!-- risor {"calls": [{"entry": "double", "args": [2], "expcet": 4}]} -->',
+    "```js",
+    "export const double = (n: int): int => n * 2;",
+    "```",
+  ].join("\n");
+
+  const res = checkGuideMarkdown(md, "typo.md");
+  assert.equal(res.ok, false);
+  assert.equal(res.total, 3);
+  assert.equal(res.checked, 1);
+  assert.equal(res.errors.length, 2);
+  assert.match(res.errors[0], /unknown directive key\(s\): expcet/);
+  assert.match(res.errors[1], /unknown call key\(s\): expcet/);
+});
+
+test("checkGuideMarkdown clears lastDiagnostic after a passing calls block", () => {
+  const md = [
+    '<!-- risor {"env": "{xs: int[]}", "checkError": "kind"} -->',
+    "```js",
+    "xs.length",
+    "```",
+    "",
+    '<!-- risor {"calls": [{"entry": "double", "args": [3], "expect": 6}]} -->',
+    "```js",
+    "export const double = (n: int): int => n * 2;",
+    "```",
+    "",
+    '<!-- risor {"matchesPreviousDiagnostic": "detail"} -->',
+    "```text",
+    "error[kind] 1:1-1:3: a value of type int[] has no fields to read; use len(...)",
+    "    xs.length",
+    "    ^^",
+    "```",
+  ].join("\n");
+
+  const res = checkGuideMarkdown(md, "stale-diag.md");
+  assert.equal(res.ok, false);
+  assert.equal(res.checked, 2);
+  assert.equal(res.errors.length, 1);
+  assert.match(res.errors[0], /has no preceding failing example/);
+});
