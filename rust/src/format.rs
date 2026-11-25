@@ -1245,6 +1245,7 @@ impl<'a> B<'a> {
                 default,
                 ty,
                 fn_,
+                ..
             } => {
                 let mut v = vec![self.pattern(*pattern)];
                 // F16 7.1: `‹pattern› ":" sp type`, then the default.
@@ -1390,7 +1391,9 @@ impl<'a> B<'a> {
                 v.push(self.lead_doc(end));
                 self.list(v)
             }
-            NodeKind::Const { pattern, value, ty } => {
+            NodeKind::Const {
+                pattern, value, ty, ..
+            } => {
                 let c = self.tk_at(span.start);
                 let s1 = self.sp();
                 let p = self.pattern(*pattern);
@@ -1559,6 +1562,7 @@ impl<'a> B<'a> {
                             default: None,
                             ty: None,
                             fn_: None,
+                            ..
                         } if matches!(self.kind(*pattern), NodeKind::NamePat { .. })
                     );
                 let mut p = if bare {
@@ -2723,7 +2727,9 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 kids.extend(consts);
                 kids.push(*result);
             }
-            NodeKind::Const { pattern, value, ty } => {
+            NodeKind::Const {
+                pattern, value, ty, ..
+            } => {
                 if let Some(t) = ty {
                     let _ = write!(out, " :{}", ptype_canon(t));
                 }
@@ -2855,6 +2861,7 @@ pub fn canon(ast: &Ast, root: NodeId, ch: &[char]) -> String {
                 default,
                 ty,
                 fn_,
+                ..
             } => {
                 if let Some(t) = ty {
                     let _ = write!(out, " :{}", ptype_canon(t));

@@ -69,6 +69,8 @@ export type Expect =
   | {
       kind: "result";
       type?: string;
+      /** Package F16 slice D3: SchemaOf of the checked type, null for a refusal (f16 11.8). */
+      schema?: { value: Json };
       /** Package F1: the description of the case's environment (f01 7.2). */
       description?: { value: Json };
       /** Package F6: the JSON text of the run's value (f06 11.2). */
@@ -134,6 +136,8 @@ export interface Case {
   opaque?: string[];
   methods?: Record<string, Stub>;
   functions?: Record<string, Stub>;
+  /** Package F16 slice D3: the Doc of host declarations, by function name, `Type.method` or opaque name (f16 11.8). */
+  docs?: Record<string, string>;
   reject?: string[];
   returns?: string;
   /** Package F10: the expected result by schema (f10 10.1). */
@@ -216,13 +220,30 @@ const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
 const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
-const HEADER_FIELDS = new Set(["cases", ...SHARED]);
-const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "runner", "update", "program", "format", "formatTemplate", "complete", "hover"]);
+const HEADER_FIELDS = new Set(["cases", ...SHARED, "docs"]);
+const CASE_FIELDS = new Set(["name", ...SHARED, "docs", "skip", "expect", "render", "runner", "update", "program", "format", "formatTemplate", "complete", "hover"]);
 
 /** Package F12: the fields of a case of the tools (f12 7.1 to 7.3). */
 const TOOL_FIELDS = ["format", "formatTemplate", "complete", "hover"] as const;
 const FORMAT_ALLOWED = ["name", "format", "formatTemplate", "env", "vars", "limits", "skip", "expect"];
-const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "limits", "skip", "expect"];
+const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "docs", "removed", "groups", "types", "returns", "limits", "skip", "expect"];
+
+/** Package F16 slice D3: `docs` (f16 11.8): each key names a declaration of the case, each value a string. */
+function checkDocs(merged: JsonObject, where: string): Record<string, string> | undefined {
+  if (!("docs" in merged)) return undefined;
+  const d = merged.docs;
+  if (!isObject(d)) fail(`${where}: docs is not an object`);
+  const fns = isObject(merged.functions) ? Object.keys(merged.functions) : [];
+  const ms = isObject(merged.methods) ? Object.keys(merged.methods) : [];
+  const op = Array.isArray(merged.opaque) ? (merged.opaque as Json[]).filter((x): x is string => typeof x === "string") : [];
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(d)) {
+    if (typeof v !== "string") fail(`${where}: the doc of ${k} is not a string`);
+    if (!fns.includes(k) && !ms.includes(k) && !op.includes(k)) fail(`${where}: docs names ${k}, which the case does not declare`);
+    out[k] = v;
+  }
+  return out;
+}
 const CANDIDATE_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "key", "literal", "type"]);
 // f16 7.3: the hover kind `type`.
 const HOVER_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "type"]);
@@ -564,6 +585,8 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     }
   }
   if ("reject" in merged) c.reject = merged.reject as string[];
+  const docs = checkDocs(merged, where);
+  if (docs !== undefined) c.docs = docs;
   if ("returns" in merged) c.returns = merged.returns as string;
   if ("facts" in merged) c.facts = (merged.facts as JsonObject[]).map((x) => [...(x.someNotNull as string[])]);
   if ("returnsSchema" in merged) c.returnsSchema = merged.returnsSchema as Case["returnsSchema"];
@@ -610,6 +633,8 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
+      // f16 11.8 item 1.
+      if (ex.kind === "result" && ex.schema !== undefined) fail(`${where}: "check": false with schema`);
       const staticCodes = staticCodesOf(basename(dir)) ?? STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
@@ -912,6 +937,10 @@ function buildExpect(v: Json, where: string, render = false): Expect {
         if (typeof val !== "string") fail(`${where}: type is not a string`);
         out.type = val;
         break;
+      case "schema":
+        // f16 11.8: a JSON Schema, or null for a refusal.
+        out.schema = { value: val };
+        break;
       case "sites":
         if (!Array.isArray(val)) fail(`${where}: sites is not a list`);
         out.sites = val.map((s) => {
@@ -1022,6 +1051,8 @@ function toolCase(header: JsonObject, raw: JsonObject, tools: string[], where: s
   if ("groups" in merged) c.groups = merged.groups as string[];
   if ("types" in merged) c.types = merged.types as Case["types"];
   if ("returns" in merged) c.returns = merged.returns as string;
+  const docs = checkDocs(merged, where);
+  if (docs !== undefined) c.docs = docs;
   // f12 7.1, 7.2: of limits, a tool uses source alone.
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("skip" in raw) c.skip = raw.skip as string;

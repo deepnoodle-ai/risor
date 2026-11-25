@@ -126,7 +126,12 @@ export function close(t: Type, memo = new Map<Type, Type>()): Type {
     if (t.map) {
       const closeRec = (r: Rec): Rec => {
         const fields = new Map<string, Field>();
-        for (const [k, f] of r.fields) fields.set(k, { type: close(f.type, memo), optional: f.optional });
+        for (const [k, f] of r.fields) {
+          // f16 11.4: Close passes a field on, with its description.
+          const g: Field = { type: close(f.type, memo), optional: f.optional };
+          if (f.desc !== undefined) g.desc = f.desc;
+          fields.set(k, g);
+        }
         return { fields, rest: r.closable ? NEVER : close(r.rest, memo) };
       };
       // f05 8.2 item 2: Close closes each variant of a union.
@@ -508,8 +513,10 @@ class Mapper {
           } else if (this.opts.has("absent-is-null")) fill = NULL;
         }
         // f01 4.4: a filled field is required, with base t and its fill kept apart.
-        if (fill === undefined) fields.set(k, { type: t, optional: !required.has(k) });
-        else fields.set(k, { type: join(t, fill), optional: false, base: t, fill });
+        const f: Field = fill === undefined ? { type: t, optional: !required.has(k) } : { type: join(t, fill), optional: false, base: t, fill };
+        // f16 11.5 item 5: the description of the property's own schema object, a string that is not empty.
+        if (isObj(ps) && typeof ps.description === "string" && ps.description !== "") f.desc = ps.description;
+        fields.set(k, f);
       }
     }
     for (const k of required) if (!fields.has(k)) fields.set(k, { type: rest, optional: false });

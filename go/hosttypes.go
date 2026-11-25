@@ -165,6 +165,28 @@ func TypeFromSchema(schema any, opts ...SchemaOption) (Type, error) {
 	return Type{t: t}, nil
 }
 
+// SchemaOf gives the JSON Schema of a type (package F16, slice D3;
+// f16-entry-points.md 11.5), as its JSON text: no white space, the keys of
+// every object in code point order. Each field's description, from a doc
+// comment or a schema, is its "description"; each recursive type is
+// written once under "$defs". TypeFromSchema of the result gives the type
+// back. A type that holds an opaque type or a type variable has no schema:
+// the error is an *Error of phase declare with the code bad-type.
+func SchemaOf(t Type) (json.RawMessage, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
+	in := t.t
+	if in == nil {
+		in = types.Never
+	}
+	s, err := types.SchemaOf(in)
+	if err != nil {
+		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
+	}
+	return json.RawMessage(s), nil
+}
+
 // mapSchema maps a schema. rootName names a reference to the root (F17
 // 12.4): the named type's name, or the variable's with its first letter
 // upper-cased; "Root" when empty.

@@ -136,6 +136,16 @@ func (cr *caseRun) update() Result {
 		if e.Type != nil && o.cr != nil {
 			m["type"] = o.cr.Type.String()
 		}
+		if e.HasSchema && o.cr != nil { // F16 11.8
+			var want any
+			if text, err := risor.SchemaOf(o.cr.Type); err == nil {
+				want, _ = casefile.DecodeJSON(text)
+			}
+			if compareSchema(want, o.cr) != nil {
+				return notWritten() // the law fails: no expectation passes
+			}
+			m["schema"] = want
+		}
 		if e.HasSites && o.cr != nil {
 			m["sites"] = sitesData(o.cr.Sites)
 		}

@@ -51,6 +51,8 @@ export interface TypeLine {
   span: Span;
   /** Package F12 with F16: the repair supplied the type, so the line declares nothing (f16 7.3 item 5). */
   supplied?: true;
+  /** Package F16 slice D3: its description, when it has one (f16 11.3). */
+  doc?: string;
 }
 
 /** Package F16: a function type on a parameter, `(a: T) => R` (f16 2.1). Its words bind nothing. */
@@ -70,6 +72,8 @@ export interface Const extends Base {
   /** Package F16: the annotation, or null (f16 2.3). */
   type: TypeAnn | null;
   value: Expr | Lambda;
+  /** Package F16 slice D3: its description, when it has one (f16 11.3). No walker reads it. */
+  doc?: string;
 }
 
 export interface Block extends Base {
@@ -226,6 +230,8 @@ export interface Param extends Base {
   /** Package F16: the function type, or null. */
   fn: FnAnn | null;
   default: Expr | null;
+  /** Package F16 slice D3: its description, when it has one (f16 11.3). No walker reads it. */
+  doc?: string;
 }
 
 export type Literal = NumberLit | StringLit | Bool | Null;

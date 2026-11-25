@@ -106,6 +106,8 @@ type TypeLine struct {
 	Name     string
 	NameSpan Span
 	Type     *PType
+	// Doc is the line's description (F16 11.3), or "".
+	Doc string
 }
 
 // Const is "const pattern = value;". Value is a *Lambda for a const-bound
@@ -115,6 +117,8 @@ type Const struct {
 	Pattern Pattern
 	Type    *PType
 	Value   Node
+	// Doc is the line's description (F16 11.3), or "".
+	Doc string
 }
 
 // Block is "{ const ...; e }", or a branch that has const lines. It has at
@@ -296,6 +300,8 @@ type Param struct {
 	Type    *PType
 	Fn      *PFn
 	Default Node // nil when there is none
+	// Doc is the parameter's description (F16 11.3), or "".
+	Doc string
 }
 
 // Annotated reports whether the parameter carries an annotation.
@@ -567,6 +573,8 @@ type PField struct {
 	KeySpan  Span
 	Optional bool
 	Type     *PType
+	// Doc is the field's description (F16 11.2), or "".
+	Doc string
 }
 
 // Kind returns KindBad.

@@ -114,6 +114,7 @@ pub fn parse_template_with(text: &str, opts: ParseOptions) -> Result<Template, E
                     span: sp,
                     diag: sp,
                     code: None,
+                    doc: None,
                 });
                 brace + 2
             } else {
@@ -125,6 +126,7 @@ pub fn parse_template_with(text: &str, opts: ParseOptions) -> Result<Template, E
                     span: sp,
                     diag: sp,
                     code: None,
+                    doc: None,
                 });
                 let e = Range::at(brace + 1);
                 toks.push(Token {
@@ -132,6 +134,7 @@ pub fn parse_template_with(text: &str, opts: ParseOptions) -> Result<Template, E
                     span: e,
                     diag: e,
                     code: None,
+                    doc: None,
                 });
                 brace + 1
             };

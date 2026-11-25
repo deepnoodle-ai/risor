@@ -128,6 +128,20 @@ fn invalid_files() {
     let ok_case = r#""name": "a", "source": "1", "expect": {}"#;
     // Sanity: the base case is valid.
     assert!(verdicts(&format!("[{{{ok_case}}}]")).is_ok());
+    // F16 11.8: a header's `docs` holds strings, even where a case
+    // replaces it; a key must name a declaration of the case.
+    let f = r#""functions": {"f": "() => int"}"#;
+    assert!(verdicts(&format!(
+        r#"{{{f}, "docs": {{"f": "F."}}, "cases": [{{{ok_case}}}]}}"#
+    ))
+    .is_ok());
+    invalid(&format!(
+        r#"{{{f}, "docs": {{"f": 1}}, "cases": [{{{ok_case}, "docs": {{"f": "F."}}}}]}}"#
+    ));
+    invalid(&format!(r#"[{{{ok_case}, {f}, "docs": {{"g": "G."}}}}]"#));
+    invalid(&format!(
+        r#"[{{"name": "a", "format": "1", {f}, "docs": {{"f": "F."}}, "expect": {{}}}}]"#
+    ));
     invalid("[");
     invalid("5");
     invalid(r#"{"source": "1"}"#);

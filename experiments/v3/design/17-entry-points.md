@@ -18,8 +18,9 @@ starts:
 | D2 | `export const` entry points, a program with no result, and the Call stage | 3.3, 3.5 |
 | D3 | Doc comments as descriptions, `SchemaOf`, and `Doc` on host declarations | 3.6, 3.7, 3.8 |
 
-Slice D1 is built in all three implementations
-(`spec/packages/f16-entry-points.md`). Slices D2 and D3 are not built.
+Slices D1 and D3 are built in all three implementations
+(`spec/packages/f16-entry-points.md`; D3 in its section 11, before D2,
+`15-build-rulings.md` R371). Slice D2 is not built.
 
 Plan `18` (recursion, recursive types and function parameters) is built
 between D1 and D2: it needs D1 only. Plans `19` (host calls) and `20` (author

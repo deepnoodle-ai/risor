@@ -2460,6 +2460,8 @@ spelling:
 | The trace and the data of a run error | `Diagnostic.Trace`, `Diagnostic.Data` | `trace`, `data` | `trace`, `data`, the second an owned copy | fields of the diagnostic (A.6) |
 | A step of a static path | `Step{Key, Star}` | `string \| typeof star` | `RefStep::Key`, `RefStep::Star` | a key or a star (A.8) |
 | The JSON text of a result | `JSON(v)` | `toJSON(value)` | `out.to_json()` | the JSON form of `02` 2.13 (A.3) |
+| A type's JSON Schema (F16 11.5) | `SchemaOf(t)`, its JSON text | `schemaOf(t)`, an object; `schemaText(t)`, its text | `schema_of(&ty)`, its text | one text, keys in code point order; a refusal is `bad-type` |
+| A host declaration's documentation (F16 11.6) | `Doc` on `Function` and `OpaqueType` | `doc` on a host function and an opaque type | `function_doc`, `method_doc`, `opaque_doc` on the builder | shown by hover, not in the description |
 | The decode | `Decode(v, &dst)`, by the rules of `encoding/json` | none: the value is the host's plain data already, and `load` copies it | `out.to::<T>()`, by the rules of serde | the binding's, with unknown fields refused (A.14) |
 | A load | `Load(ctx, env, x, vars, &dst)` | `load<T>(env, x, expected, vars)` | `env.load::<T>(&x, &vars)` | steps 2 to 5 (A.14) |
 | A type from a host type | `TypeOf[T]`; `omitempty` and `omitzero` make a field optional | none: types are erased | the derive; `#[serde(default)]` makes a field optional | outside the model (A.14) |

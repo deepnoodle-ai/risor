@@ -75,6 +75,8 @@ type Field struct {
 	Key      string
 	Optional bool
 	Type     *Type
+	// Doc is the field's description (F16 11.2), or "".
+	Doc string
 }
 
 // Sig is a signature: "(params) => Type [!] [where V: B, ...]".
@@ -408,7 +410,7 @@ func (p *parser) record() *Record {
 				}
 				break
 			}
-			f := &Field{}
+			f := &Field{Doc: p.tok().Doc}
 			switch t := p.tok(); {
 			case t.Kind == syntax.Word:
 				f.Key = t.Text

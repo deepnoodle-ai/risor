@@ -444,7 +444,9 @@ slice; `17` 3.3, 3.5).
   `no-result` and `no-input-record`.
 
 **Track D3: doc comments and `SchemaOf`** (F16, third slice; `17` 3.6 to
-3.8).
+3.8). **Done (R371 to R384),** in all three implementations, before track D2
+(R371): `spec/packages/f16-entry-points.md` 11, and the cases
+`suite/entry-points/d3-*.json` and `tools-d3-hover.json`.
 
 - `SchemaOf(T)` in F1, with the law `TypeFromSchema(SchemaOf(T))` is T, and
   `$defs` and `$ref` for recursive types (E2). It reverses R114.

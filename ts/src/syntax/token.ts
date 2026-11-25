@@ -30,6 +30,8 @@ export interface Token {
   report?: Span;
   /** White space or a comment stands directly before this token. */
   gap: boolean;
+  /** Package F16 slice D3: the text of the doc comment that stands directly before this token, when it is not empty (f16 11.2). */
+  doc?: string;
   /** The form of a literal of package F3: r", r', a text block or a raw text block (f03 5.2). */
   form?: string;
   /** A code of a text block that the parser reports when it reaches the token (f03 6.2). */

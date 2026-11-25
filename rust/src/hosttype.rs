@@ -129,7 +129,14 @@ impl RecordType {
         let ty = ty.into_ty();
         if self
             .fields
-            .insert(key.to_string(), Field { ty, optional })
+            .insert(
+                key.to_string(),
+                Field {
+                    ty,
+                    optional,
+                    doc: Default::default(),
+                },
+            )
             .is_some()
         {
             return Err(TypeError(format!("two fields are presented as {key:?}")));

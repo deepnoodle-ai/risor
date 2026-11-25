@@ -13,7 +13,7 @@
 //! in one table for the schema, when it ends.
 
 use crate::check::ty::{
-    add_alts, beside_its_kind, fits_looking, join, join_all, Field, Kinds, Rec, Ref, Table, Ty,
+    add_alts, beside_its_kind, fits_looking, join, join_all, Doc, Field, Kinds, Rec, Ref, Table, Ty,
 };
 use crate::json::Json;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -694,10 +694,22 @@ impl<'a> Mapper<'a> {
                 } else {
                     None
                 };
+                // F16 11.5 item 5: a non-empty string `description` on the
+                // property's own schema object, beside a `$ref` too.
+                let doc = Doc(match x {
+                    Json::Obj(o) => o
+                        .iter()
+                        .find(|(n, _)| n == "description")
+                        .and_then(|(_, v)| v.as_str())
+                        .filter(|d| !d.is_empty())
+                        .map(Arc::from),
+                    _ => None,
+                });
                 let field = if req {
                     Field {
                         ty: t,
                         optional: false,
+                        doc,
                     }
                 } else if let Some(fl) = fill {
                     let ty = join(&t, &fl);
@@ -705,11 +717,13 @@ impl<'a> Mapper<'a> {
                     Field {
                         ty,
                         optional: false,
+                        doc,
                     }
                 } else {
                     Field {
                         ty: t,
                         optional: true,
+                        doc,
                     }
                 };
                 fields.insert(k.clone(), field);
@@ -722,6 +736,7 @@ impl<'a> Mapper<'a> {
                     Field {
                         ty: rest.clone(),
                         optional: false,
+                        doc: Default::default(),
                     },
                 );
             }
@@ -837,6 +852,7 @@ pub fn literal(v: &Json, level: usize) -> Option<Ty> {
                     Field {
                         ty: literal(x, level + 1)?,
                         optional: false,
+                        doc: Default::default(),
                     },
                 );
             }
@@ -1013,6 +1029,7 @@ fn try_meet(a: &Rec, b: &Rec) -> Option<Rec> {
             Field {
                 ty,
                 optional: !required,
+                doc: Default::default(),
             },
         );
     }
@@ -1056,6 +1073,7 @@ impl Closer {
                     Field {
                         ty: self.ty(&f.ty),
                         optional: f.optional,
+                        doc: f.doc.clone(),
                     },
                 )
             })
@@ -1190,6 +1208,168 @@ fn index(t: &str) -> Option<usize> {
     }
 }
 
+// ---- SchemaOf (F16 11.5) ----------------------------------------------------
+
+/// SchemaOf(T) (`f16-entry-points.md` 11.5): the JSON Schema of a type, or
+/// the message of the `bad-type` refusal. Its text is [`crate::json::to_text`]
+/// of the value. It reads the type and nothing else.
+pub fn schema_of(t: &Ty) -> Result<Json, String> {
+    let mut w = SchemaWriter {
+        defs: BTreeMap::new(),
+        pending: Vec::new(),
+    };
+    let root = w.ty(t)?;
+    // Each definition reached is written here, in a loop, so a long chain
+    // of definitions does not deepen the native stack.
+    while let Some((name, d)) = w.pending.pop() {
+        let j = w.ty(&d)?;
+        if let Some(e) = w.defs.get_mut(&name) {
+            e.1 = Some(j);
+        }
+    }
+    if w.defs.is_empty() {
+        return Ok(root);
+    }
+    let defs: Vec<(String, Json)> = w
+        .defs
+        .into_iter()
+        .map(|(n, (_, j))| (n, j.unwrap_or(Json::Bool(false))))
+        .collect();
+    // A type that reaches a reference has an object for its schema: `{}`
+    // and `false` reach none.
+    let mut o = match root {
+        Json::Obj(o) => o,
+        _ => Vec::new(),
+    };
+    o.push(("$defs".to_string(), Json::Obj(defs)));
+    Ok(Json::Obj(o))
+}
+
+struct SchemaWriter {
+    /// The recursive types reached, by name: which reference, and its
+    /// definition's schema once written (11.5 item 2).
+    defs: BTreeMap<String, ((u64, u32), Option<Json>)>,
+    /// The definitions reached and not yet written, by name.
+    pending: Vec<(String, Ty)>,
+}
+
+fn obj(pairs: Vec<(&str, Json)>) -> Json {
+    Json::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+}
+
+fn type_is(name: &str) -> (&'static str, Json) {
+    ("type", Json::Str(name.to_string()))
+}
+
+impl SchemaWriter {
+    fn ty(&mut self, t: &Ty) -> Result<Json, String> {
+        use crate::check::ty::{Num, Strs, VAR_MARK};
+        if t.any {
+            return Ok(Json::Obj(Vec::new()));
+        }
+        if let Some(o) = t.opaque.iter().next() {
+            return Err(if o.starts_with(VAR_MARK) {
+                "a type variable has no JSON Schema".into()
+            } else {
+                "an opaque type has no JSON Schema".into()
+            });
+        }
+        let mut alts: Vec<Json> = Vec::new();
+        if t.boolean {
+            alts.push(obj(vec![type_is("boolean")]));
+        }
+        match t.num {
+            Some(Num::Int) => alts.push(obj(vec![type_is("integer")])),
+            Some(Num::Float) => alts.push(obj(vec![type_is("number")])),
+            None => {}
+        }
+        match &t.str {
+            Some(Strs::All) => alts.push(obj(vec![type_is("string")])),
+            Some(Strs::Lits(l)) if l.len() == 1 => {
+                let s = l.iter().next().cloned().unwrap_or_default();
+                alts.push(obj(vec![("const", Json::Str(s)), type_is("string")]));
+            }
+            Some(Strs::Lits(l)) if !l.is_empty() => {
+                let e = Json::Arr(l.iter().map(|s| Json::Str(s.clone())).collect());
+                alts.push(obj(vec![("enum", e), type_is("string")]));
+            }
+            _ => {}
+        }
+        if let Some(e) = &t.list {
+            let items = self.ty(e)?;
+            alts.push(obj(vec![("items", items), type_is("array")]));
+        }
+        match (&t.variants, &t.map) {
+            (Some(vs), _) => {
+                for v in vs.iter() {
+                    alts.push(self.rec(v)?);
+                }
+            }
+            (None, Some(r)) => alts.push(self.rec(r)?),
+            _ => {}
+        }
+        for r in &t.refs {
+            let key = (r.table_id(), r.index());
+            let name = r.name().to_string();
+            match self.defs.get(&name) {
+                Some((k, _)) if *k != key => {
+                    return Err(format!(
+                        "two recursive types named {name} have no one JSON Schema"
+                    ))
+                }
+                Some(_) => {}
+                None => {
+                    self.defs.insert(name.clone(), (key, None));
+                    let Some(d) = r.definition() else {
+                        return Err(format!("the recursive type {name} has no definition"));
+                    };
+                    self.pending.push((name.clone(), d));
+                }
+            }
+            let target = format!("#/{}/{name}", "$defs");
+            alts.push(obj(vec![("$ref", Json::Str(target))]));
+        }
+        if t.null {
+            alts.push(obj(vec![type_is("null")]));
+        }
+        Ok(match alts.len() {
+            0 => Json::Bool(false),
+            1 => alts.pop().unwrap_or(Json::Bool(false)),
+            _ => obj(vec![("anyOf", Json::Arr(alts))]),
+        })
+    }
+
+    fn rec(&mut self, r: &Rec) -> Result<Json, String> {
+        let mut out = vec![("type".to_string(), Json::Str("object".into()))];
+        if !r.fields.is_empty() {
+            let mut props = Vec::new();
+            let mut required = Vec::new();
+            for (k, f) in &r.fields {
+                let mut s = self.ty(&f.ty)?;
+                // 11.5 item 1: a description beside the field's other keys;
+                // `false` has no keys.
+                if let (Json::Obj(o), Some(d)) = (&mut s, &f.doc.0) {
+                    o.push(("description".into(), Json::Str(d.to_string())));
+                }
+                props.push((k.clone(), s));
+                if !f.optional {
+                    required.push(Json::Str(k.clone()));
+                }
+            }
+            out.push(("properties".into(), Json::Obj(props)));
+            if !required.is_empty() {
+                out.push(("required".into(), Json::Arr(required)));
+            }
+        }
+        if r.rest.is_never() {
+            out.push(("additionalProperties".into(), Json::Bool(false)));
+        } else if !r.rest.any {
+            out.push(("additionalProperties".into(), self.ty(&r.rest)?));
+        }
+        Ok(Json::Obj(out))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1263,6 +1443,7 @@ mod tests {
                 Field {
                     ty: Ty::int(),
                     optional: true,
+                    doc: Default::default(),
                 },
             );
             Rec {
@@ -1284,6 +1465,7 @@ mod tests {
                 Field {
                     ty: Ty::rec(both),
                     optional: false,
+                    doc: Default::default(),
                 },
             )]
             .into(),

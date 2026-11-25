@@ -1,6 +1,7 @@
 package risor_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -130,6 +131,45 @@ func TestAssistPositions(t *testing.T) {
 	assert.NotNil(t, h)
 	assert.Equal(t, *h.Type, "{name: string}")
 	assert.Equal(t, h.Declaration.String(), "[1, 7, 1, 8]")
+}
+
+// TestHoverDoc: hover gives the Doc of a host function, of a method and of
+// an opaque type, and a child environment keeps them (F16 11.6, 11.7).
+func TestHoverDoc(t *testing.T) {
+	env, err := risor.NewEnv(
+		risor.Var("tok", "Token"),
+		risor.OpaqueType{Name: "Token", Doc: "A session token.", Methods: map[string]risor.Function{
+			"owner": {Type: "() => string", Doc: "Who holds it."},
+		}},
+		risor.Function{Name: "rate", Type: "(code: string) => float", Doc: "The rate of a code."},
+	)
+	assert.NoError(t, err)
+	child, err := env.With(risor.Var("n", "int"))
+	assert.NoError(t, err)
+	for _, e := range []*risor.Env{env, child} {
+		h := e.Hover(`rate("EUR")`, risor.Pos{Line: 1, Column: 1})
+		assert.Equal(t, *h.Doc, "The rate of a code.")
+		h = e.Hover(`tok.owner()`, risor.Pos{Line: 1, Column: 5})
+		assert.Equal(t, *h.Doc, "Who holds it.")
+		h = e.Hover(`const f = (t: Token) => 1; 1`, risor.Pos{Line: 1, Column: 15})
+		assert.Equal(t, *h.Doc, "A session token.")
+	}
+	// The description of an environment has no Doc.
+	d, err := env.Describe()
+	assert.NoError(t, err)
+	assert.False(t, strings.Contains(string(d), "session"))
+}
+
+// TestSchemaOfRefused: a type with an opaque type has no schema.
+func TestSchemaOfRefused(t *testing.T) {
+	env, err := risor.NewEnv(risor.OpaqueType{Name: "Token"})
+	assert.NoError(t, err)
+	ty, err := env.ParseType("{t: Token}")
+	assert.NoError(t, err)
+	_, err = risor.SchemaOf(ty)
+	var re *risor.Error
+	assert.True(t, errors.As(err, &re))
+	assert.Equal(t, re.Diagnostics[0].Code, "bad-type")
 }
 
 func TestFormatSmall(t *testing.T) {
