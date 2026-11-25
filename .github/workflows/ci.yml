@@ -15,6 +15,7 @@ on:
       - "fuzz/**"
       - "suite/**"
       - "docs/library/**"
+      - "docs/migrating.md"
       - "docs/scripts/**"
       - ".github/workflows/ci.yml"
   pull_request:
@@ -27,6 +28,7 @@ on:
       - "fuzz/**"
       - "suite/**"
       - "docs/library/**"
+      - "docs/migrating.md"
       - "docs/scripts/**"
       - ".github/workflows/ci.yml"
 
@@ -226,3 +228,6 @@ jobs:
 
       - name: Test library reference generator
         run: node --test docs/scripts/generate-library-docs.test.mjs
+
+      - name: Verify migration guide examples
+        run: node docs/scripts/check-migrating-examples.mjs
