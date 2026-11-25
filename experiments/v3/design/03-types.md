@@ -677,7 +677,7 @@ checked twice, and no type changes.
 
 | Matter | Rule |
 | --- | --- |
-| The code | At the program's result, `result-mismatch` at each place of failure. At an argument, at each place of failure: `maybe-null` if the type there has null and fits once null is removed, else `arg-mismatch`. |
+| The code | At the program's result, `result-mismatch` at each place of failure. At an argument, at each place of failure: `maybe-null` if the type there has null and something else, and fits once null is removed, else `arg-mismatch`. A type of exactly `null` is `arg-mismatch`, so `rate(null)` is `expected string, found null`. |
 | Several failures | Each is reported. The reports are a set, in the order of 2.13. |
 | A missing field | Reported on the whole map, not on its `{` (ruling 1 of round 8). |
 | A fit that used any | A `dynamic` site on the expression whose fit used it: e itself where the first test passed, or the part a row fitted. |

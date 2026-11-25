@@ -1120,6 +1120,16 @@ fn an_outcome_line_describes_a_case_with_types() {
     assert!(line.contains(r#""Order""#), "{line}");
 }
 
+/// An empty `types` is still the case's `types`: the line has the
+/// description (F4 9.1 item 5).
+#[test]
+fn an_outcome_line_describes_a_case_with_empty_types() {
+    let doc = crate::json::parse(r#"[{"name": "t", "source": "1", "types": []}]"#).unwrap();
+    let cases = crate::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let line = crate::testing::outcome_line(&cases[0]);
+    assert!(line.starts_with(r#"{"name":"t","description":{"#), "{line}");
+}
+
 /// `suite/README.md` item 1: the outcome command reads a format, completion
 /// or hover case with no `expect`.
 #[test]

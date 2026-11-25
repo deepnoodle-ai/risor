@@ -1971,6 +1971,96 @@
     "allocated": 0
    },
    "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "= after as and a type name",
+   "source": "1 as string = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "assignment",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "= after as and a list type",
+   "source": "1 as string[] = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "assignment",
+      "span": [
+       1,
+       15,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "= after as and a record type",
+   "source": "1 as {b: string} = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "assignment",
+      "span": [
+       1,
+       18,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "= after is and a type",
+   "source": "1 is string = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "assignment",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "= after as and a union",
+   "source": "1 as string | null = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "assignment",
+      "span": [
+       1,
+       20,
+       1,
+       21
+      ]
+     }
+    ]
+   }
   }
  ]
 }

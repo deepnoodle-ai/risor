@@ -1340,6 +1340,42 @@
      }
     ]
    }
+  },
+  {
+   "name": "a one-letter name is tested before its text: X = X[] is bad-name alone",
+   "source": "1",
+   "types": [
+    {
+     "name": "X",
+     "type": "X[]"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a one-letter name with text that does not parse is bad-name alone",
+   "source": "1",
+   "types": [
+    {
+     "name": "X",
+     "type": "{a:"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
   }
  ]
 }

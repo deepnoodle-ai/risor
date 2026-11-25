@@ -1,0 +1,22 @@
+[
+  {
+    "name": "an argument of exactly null is a plain mismatch",
+    "source": "rate(null)",
+    "functions": {"rate": "(code: string) => float !"},
+    "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 6, 1, 10], "message": "expected string, found null"}]}
+  },
+  {
+    "name": "a branch of exactly null is a plain mismatch",
+    "source": "rate(c ? null : \"a\")",
+    "env": "{c: bool}",
+    "functions": {"rate": "(code: string) => float !"},
+    "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 10, 1, 14], "message": "expected string, found null"}]}
+  },
+  {
+    "name": "an argument that may be null is maybe-null",
+    "source": "rate(ns)",
+    "env": "{ns: string | null}",
+    "functions": {"rate": "(code: string) => float !"},
+    "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 6, 1, 8], "message": "ns may be null; its type is string | null"}]}
+  }
+]

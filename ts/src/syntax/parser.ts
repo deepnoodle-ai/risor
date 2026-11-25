@@ -280,8 +280,9 @@ class Parser {
     const top = this.top();
     const next = this.peek(1);
     const isWord = (x: Token | undefined, ...ws: string[]) => x !== undefined && x.kind === "word" && ws.includes(x.text);
-    // A complete operand has been read (f08 2.2): an if or a try is one too.
-    const complete = t === this.afterOperand || t === this.afterBranch;
+    // A complete operand has been read (f08 2.2): an if or a try is one too,
+    // and so is an `as` or `is` test with its type.
+    const complete = t === this.afterOperand || t === this.afterBranch || t === this.afterType;
     // E3
     if (isWord(t, "finally")) this.fail("finally-clause", t);
     if (below <= 7) return;

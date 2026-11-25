@@ -30,6 +30,11 @@ type namedDecl struct {
 // may name the opaque types and the named types declared before it.
 func NamedType(name, text string) Decl {
 	return declFunc(func(e *Env) {
+		// The name is tested first: a bad name's text is not read (3.2).
+		if !syntax.IsTypeName(name) {
+			e.errf(diag.CodeBadName, fmt.Sprintf("%q is not a type name", name))
+			return
+		}
 		t, err := typetext.ParseType(text)
 		if err != nil {
 			e.errf(diag.CodeBadType, fmt.Sprintf("named type %s: %v", name, err))

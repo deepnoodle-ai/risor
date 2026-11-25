@@ -251,6 +251,8 @@ pub struct Case {
     pub schemas: Vec<(String, Json, SchemaOptions)>,
     /// F4: named types, in order (9.1).
     pub types: Vec<TypeDecl>,
+    /// F4 9.1 item 5: the case has the field `types`, perhaps empty.
+    pub has_types: bool,
     /// F6: the opt-in groups the case turns on (`f06-groups.md` 11.1).
     pub groups: Vec<String>,
     /// F4: a case of the second kind: a type text and a host value (9.2).
@@ -923,6 +925,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             .and_then(|v| v.as_str())
             .and_then(crate::template::TemplateMode::from_name),
         source,
+        has_types: get("types").is_some(),
         types,
         groups: strings(get("groups")),
         conform,
@@ -1691,6 +1694,7 @@ fn render_case(
         env: None,
         schemas: Vec::new(),
         types: Vec::new(),
+        has_types: false,
         groups: Vec::new(),
         conform: None,
         conform_max: None,
@@ -2154,6 +2158,7 @@ fn runner_case(
         env: None,
         schemas: Vec::new(),
         types: Vec::new(),
+        has_types: false,
         groups: Vec::new(),
         conform: None,
         conform_max: None,
