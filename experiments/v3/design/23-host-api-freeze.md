@@ -6,9 +6,9 @@ of the Go, TypeScript and Rust bindings, verifies option defaults against
 `spec/core/03-host.md`, and lists the concrete items proposed for owner
 approval before 3.0.0 freezes.
 
-**Provenance (measured).** Audited on branch `feat/v3-host-api-freeze` stacked
-on `fa905756` (which includes F16 slice D2: `Entries`, `Call`, `CallRecord`,
-`ExpectEntry`). Measured directly from:
+**Provenance (measured).** Audited on branch `feat/v3-host-api-freeze` based on
+`main` at `3dedfb3b` (which includes #722 F16 slice D2: `Entries`, `Call`,
+`CallRecord`, `ExpectEntry`, and #723 hardening). Measured directly from:
 
 - **Go**: `go list ./...`, `go doc -all .`, and `go doc -all ./risortest` with
   Go 1.26.2 (`darwin/arm64`).
@@ -25,13 +25,15 @@ on `fa905756` (which includes F16 slice D2: `Entries`, `Call`, `CallRecord`,
 1. **Naming and idiom.** Following ruling R201 (`05-host-api.md` Part E), the
    three bindings align closely on canonical names and concepts while staying
    idiomatic in case, environment construction, error delivery and cancellation.
-   Only a few minor spelling and method-vs-property mismatches remain (section
-   6, items P6 to P9).
+   Only minor idiomatic differences remain (for example, method vs. property
+   getters in section 3, and the stray-helper and constant parity gaps in
+   section 2, items P8 and P9).
 2. **Parity across the three bindings (C1).** All Core stages, F1 to F14, F16
-   slices D1–D3, F17 and F19 are present in all three bindings. Three genuine
+   slices D1–D3, F17 and F19 are present in all three bindings. Four genuine
    behavioural or capability divergences were found during this audit:
-   - `Type.isNullable()` on `any` returns `true` in Go and Rust, but `false` in
-     TypeScript (P1).
+   - `Type.isNullable()` on `any` returns `true` in Go and Rust (explicitly
+     documented as nullable), but `false` in TypeScript (explicitly documented
+     as not nullable by that test) (P1).
    - `Type.equal` on two invalid types returns `false` in Go and TypeScript,
      but `true` in Rust when the messages match (P2).
    - `Expr.Text()` on `Template.part(i)` or `CallSite.args[i]` returns only the
@@ -76,9 +78,9 @@ None of the changes below have been applied yet. Each awaits an owner decision.
 
 | ID | Binding | Finding | Proposed change | Effort |
 | --- | --- | --- | --- | --- |
-| P1 | TS | `typeAny.isNullable()` returns `false` (`ts/src/host/type.ts:244`), disagreeing with Go (`true`) and Rust (`true`). | Fix `Type.isNullable()` in TS to return `true` for `typeAny` (matching Go, Rust and `05-types.md`). | S |
-| P2 | Rust | `Type::equal` returns `true` for two invalid types with the same message (`rust/src/typ.rs:385`), disagreeing with Go (`false`) and TS (`false`). | Return `false` in `Type::equal` whenever either type is invalid (matching Go and TS). | S |
-| P3 | Go / TS / Rust | `Expr.Text()` on `Template.part(i)` and `CallSite.args[i]` returns the part's slice in Go (`go/risor.go:141`), but the whole source text in TS (`ts/src/host/api.ts:1625`) and Rust (`rust/src/syntax/parser.rs:34`). | Settle one rule across all three. Recommendation: keep Go's behaviour (return the part's own slice, matching `go/risor.go` doc) or align Go to whole text if spans-into-`text` matters more. | S |
+| P1 | Go / TS / Rust | `typeAny.isNullable()` returns `false` in TS (`ts/src/host/type.ts:247`, whose doc comment explicitly says "`any` is not nullable by this test"), while Go (`go/typeapi.go:323`) and Rust (`rust/src/typ.rs:354`) explicitly document and return `true`. Neither `spec/` nor `05-host-api.md` settles the rule for `any`. | Owner decision: settle one rule across all three bindings and document it in `05-host-api.md`. Recommendation: align TS to `true` (matching Go and Rust: `null` is a value of `any`), or align Go and Rust to `false` if `isNullable` means an explicit `null` alternative. | S |
+| P2 | Rust | `Type::equal` returns `true` for two invalid types with the same message (`rust/src/typ.rs:394`), disagreeing with Go (`false`) and TS (`false`). | Return `false` in `Type::equal` whenever either type is invalid (matching Go and TS). | S |
+| P3 | Go / TS / Rust | `Expr.Text()` on `Template.part(i)` and `CallSite.args[i]` returns the part's slice in Go (`go/risor.go:141`), but the whole source text in TS (`ts/src/host/api.ts:1673`) and Rust (`rust/src/syntax/parser.rs:34`). | Settle one rule across all three. Recommendation: keep Go's behaviour (return the part's own slice, matching `go/risor.go` doc) or align Go to whole text if spans-into-`text` matters more. | S |
 | P4 | Rust | `risor::testing` exports 6 `pub mod` submodules (`case`, `helper`, `program`, `run`, `tools`, `update`) and ~35 internal suite-runner functions/types. | Restrict `risor::testing` to the F9 helper surface (`load`, `from_text`, `CaseFile`, `Case`, `Report`, `Verdict`, `Difference`, `FileError`), moving suite-only items behind `#[doc(hidden)]` or `pub(crate)` (and matching Go `risortest` / TS `risor/testing`). | M |
 | P5 | Rust | `Value<'h>` is a `pub enum` exposing internal variants (`Str(Str<'h>)`, `List(Rc<ListVal<'h>>)`, `Map(Rc<MapVal<'h>>)`, `BadNum`) and internal methods (`owns`, `dup`, `str`, `list`) whose signatures name private types. | Make `Value<'h>` an opaque `pub struct` (keeping `to_data`, `from_data`, `is_null`, `as_str`, `len`, `is_empty`, `elem`, `field`, plus public scalar accessors `as_bool`, `as_f64`, `as_opaque`), or confirm keeping `pub enum Value` with `#[doc(hidden)]` internal variants. | M |
 | P6 | TS | `Env`, `Program`, `Expr` and `Template` expose 20+ public members marked `/** Internal */` (plus public constructors) that appear in `.d.ts` files and autocomplete. | Move internal state to a private `WeakMap` or module-internal symbol accessor (as `type.ts` already does with `static { ... }` closures for `#t` / `#cls`), leaving only the Part E surface in `.d.ts`. | M |
@@ -162,21 +164,21 @@ Every default was verified directly in source code against
 
 | Option | Spec default | Go (verified) | TypeScript (verified) | Rust (verified) | Match |
 | --- | --- | --- | --- | --- | --- |
-| `version` | `"3.0"` (newest) | `"3.0"` (`go/env.go:282`) | `"3.0"` (`ts/src/host/env.ts:23`) | `"3.0"` (`rust/src/env.rs:589`) | Yes |
-| `limits.steps` | `1,000,000` | `1_000_000` (`go/internal/eval/run.go:39`) | `1_000_000` (`ts/src/host/env.ts:38`) | `Some(1_000_000)` (`rust/src/env.rs:59`) | Yes |
-| `limits.allocation` | `1,000,000` | `1_000_000` (`go/internal/eval/run.go:39`) | `1_000_000` (`ts/src/host/env.ts:38`) | `Some(1_000_000)` (`rust/src/env.rs:60`) | Yes |
-| `limits.depth` | `200` (max `400`) | `200`, max `400` (`go/internal/eval/run.go:39`, `diag.go:176`) | `200`, max `400` (`ts/src/host/env.ts:38,41`) | `200`, max `400` (`rust/src/env.rs:61`) | Yes |
-| `limits.deadline` | Off | `0` / off (`go/internal/eval/run.go:39`) | `null` / off (`ts/src/host/api.ts:333`) | `None` / off (`rust/src/env.rs:62`) | Yes |
+| `version` | `"3.0"` (newest) | `"3.0"` (`go/env.go:301`) | `"3.0"` (`ts/src/host/env.ts:23`) | `"3.0"` (`rust/src/env.rs:607`) | Yes |
+| `limits.steps` | `1,000,000` | `1_000_000` (`go/internal/eval/run.go:39`) | `1_000_000` (`ts/src/host/env.ts:38`) | `Some(1_000_000)` (`rust/src/env.rs:62`) | Yes |
+| `limits.allocation` | `1,000,000` | `1_000_000` (`go/internal/eval/run.go:39`) | `1_000_000` (`ts/src/host/env.ts:38`) | `Some(1_000_000)` (`rust/src/env.rs:63`) | Yes |
+| `limits.depth` | `200` (max `400`) | `200`, max `400` (`go/internal/eval/run.go:39`, `go/internal/diag/diag.go:176`) | `200`, max `400` (`ts/src/host/env.ts:38,41`) | `200`, max `400` (`rust/src/env.rs:64,945`) | Yes |
+| `limits.deadline` | Off | `0` / off (`go/internal/eval/run.go:39`) | `null` / off (`ts/src/host/api.ts:351`) | `None` / off (`rust/src/env.rs:65`) | Yes |
 | `sourceLimit` | `1,048,576` (max same) | `1 << 20` (`go/source.go:13`) | `1_048_576` (`ts/src/syntax/source.ts:128`) | `1_048_576` (`rust/src/syntax/parser.rs:59`) | Yes |
-| `reject` | `["constant-condition"]` | `["constant-condition"]` (`go/env.go`) | `["constant-condition"]` (`ts/src/host/env.ts:158`) | `["constant-condition"]` (`rust/src/env.rs`) | Yes |
-| `compile` check | Checked (`true`) | Checked unless `NoCheck` (`go/check.go:306`) | `check !== false` (`ts/src/host/api.ts:1151`) | `check: true` (`rust/src/api.rs:194`) | Yes |
-| `conform` step limit | `1,000,000` | `eval.DefaultLimits.Steps` (`go/conversion.go:302`) | `CONFORM_STEPS = 1_000_000` (`ts/src/eval/conform.ts:33`) | `Some(FREE_STEPS)` (`rust/src/typ.rs:576`) | Yes |
-| `conform` depth limit | `200` | `DefaultLimits.Depth` (`go/internal/eval/conform.go:145`) | `CONFORM_DEPTH = 200` (`ts/src/eval/conform.ts:30`) | `200` (`rust/src/conform.rs`) | Yes |
-| `conformAll` `max < 1` | Read as `1` | Clamped to `1` (`go/conversion.go`) | `max >= 1 ? Math.floor(max) : 1` (`ts/src/host/api.ts:1547`) | `max.max(1)` (`rust/src/typ.rs:626`) | Yes |
-| `load` `max` failures | `1` | `1` (`go/config.go:143`) | `options.max ?? 1` (`ts/src/host/api.ts:1588`) | `max: 1` (`rust/src/config.rs:52`) | Yes |
-| `SchemaOptions` | All `false` | Empty `opts...` (`go/hosttypes.go`) | `options = []` (`ts/src/host/api.ts:370`) | All `false` (`rust/src/schema.rs:23`) | Yes |
-| `TypedLayer` (Go F11) | On (`true`) | `untyped: false` (`go/env.go`) | — | — | Yes |
-| `LoadOptions.decode` (TS) | `true` | — (separate `Load[T]` / `LoadValue`) | `options.decode !== false` (`ts/src/host/api.ts:1598`) | — (separate `load` / `load_value`) | Yes |
+| `reject` | `["constant-condition"]` | `["constant-condition"]` (`go/env.go:225`) | `["constant-condition"]` (`ts/src/host/env.ts:158`) | `["constant-condition"]` (`rust/src/env.rs:962`) | Yes |
+| `compile` check | Checked (`true`) | Checked unless `NoCheck` (`go/check.go:311`) | `check !== false` (`ts/src/host/api.ts:1195`) | `check: true` (`rust/src/api.rs:201`) | Yes |
+| `conform` step limit | `1,000,000` | `eval.DefaultLimits.Steps` (`go/conversion.go:302`) | `CONFORM_STEPS = 1_000_000` (`ts/src/eval/conform.ts:33`) | `Some(FREE_STEPS)` (`rust/src/typ.rs:592`) | Yes |
+| `conform` depth limit | `200` | `DefaultLimits.Depth` (`go/internal/eval/conform.go:145`) | `CONFORM_DEPTH = 200` (`ts/src/eval/conform.ts:27`) | `FREE_DEPTH = 200` (`rust/src/conform.rs:30`) | Yes |
+| `conformAll` `max < 1` | Read as `1` | Clamped to `1` (`go/conversion.go:352`) | `max >= 1 ? Math.floor(max) : 1` (`ts/src/host/api.ts:1595`) | `max.max(1)` (`rust/src/typ.rs:642`) | Yes |
+| `load` `max` failures | `1` | `1` (`go/config.go:145`) | `options.max ?? 1` (`ts/src/host/api.ts:1636`) | `max: 1` (`rust/src/config.rs:52`) | Yes |
+| `SchemaOptions` | All `false` | Empty `opts...` (`go/hosttypes.go:59`) | `options = []` (`ts/src/host/api.ts:388`) | All `false` (`rust/src/schema.rs:24`) | Yes |
+| `TypedLayer` (Go F11) | On (`true`) | `untyped: false` (`go/env.go:281`) | — | — | Yes |
+| `LoadOptions.decode` (TS) | `true` | — (separate `Load[T]` / `LoadValue`) | `options.decode !== false` (`ts/src/host/api.ts:1646`) | — (separate `load` / `load_value`) | Yes |
 
 ## 6. Full public API listing for owner approval
 
