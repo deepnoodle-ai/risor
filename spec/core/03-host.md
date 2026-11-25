@@ -518,7 +518,8 @@ host sets the limits as a declaration of the environment.
    limit uses the default. A source limit outside 0 to 1,048,576 is the error
    `bad-limit`, of phase `declare`; completion and hover, which never fail,
    give their empty result for it. An environment's description (package F1)
-   does not hold the source limit.
+   does not hold the source limit. Type text that a host declares takes no
+   source limit (`01-language.md` 2.1 item 6).
 6. `source-too-large` is not a run code. It has no class, and no program can
    catch it.
 

@@ -56,13 +56,21 @@ A word that starts with an upper-case letter is a production or a lexical class.
    3.6.1).
 5. A text with more code points than the limit is `source-too-large`, of phase
    `parse`, with no span. It is found before the text is divided into tokens,
-   and it is the only diagnostic of the parse. Nothing in the text is read for
-   it but its length, so `@` repeated past the limit is `source-too-large`, not
-   `unexpected-character`.
+   and it is the only diagnostic of the parse. No token is read for it: the
+   count of code points alone decides it, so `@` repeated past the limit is
+   `source-too-large`, not `unexpected-character`. A binding may decide a long
+   text by its length in its own units, and count the code points of a shorter
+   one: a text of more than four times the limit in UTF-8 bytes, or twice the
+   limit in UTF-16 units, is over it.
 6. Every part of an implementation that takes source text applies the limit
    first: the parser, and so compile and check, and the formatter, analysis,
    completion and hover of the packages. So the time and the memory that each
    part spends on one text have a bound that does not depend on the text.
+   Type text that a host declares, such as a variable's type, a signature or
+   an expected result, is not source text and takes no source limit. It comes
+   from the host, not from the author of a program, and the limits on the
+   depth and the size of a type (`05-types.md` 2.5 and 20.7) bound what it
+   holds. A type written in a program is part of its source text.
 
 ### 2.2 White space and comments
 
@@ -563,8 +571,8 @@ its last token, where its tokens are these:
    `a + b`, and the `Binary` `*` spans from `(` to `c`.
 2. The span of `Bad` is not specified.
 3. The span of each `parse` diagnostic is given in 2.5 to 2.10, 3.4, 3.5, 13.2,
-   14.2 and 14.3. `source-too-large` has no span (2.1). The span of each `run` diagnostic that the language raises is
-   given in 14.5.
+   14.2 and 14.3. `source-too-large` has no span (2.1). The span of each
+   `run` diagnostic that the language raises is given in 14.5.
 
 ## 5. Programs, blocks and scope
 
