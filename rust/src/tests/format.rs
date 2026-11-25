@@ -150,9 +150,24 @@ fn long_chains() {
     let f = format(&sum).unwrap();
     assert!(f.starts_with("a +\n  a +\n"));
     let cond = format!("{}0", "a ? 1 : ".repeat(n));
-    format(&cond).unwrap();
+    // A broken `? :` chain puts each link on a line (2.8 item 5).
+    let want = format!("a ? 1\n{}: 0\n", ": a ? 1\n".repeat(n - 1));
+    assert_eq!(format(&cond).unwrap(), want);
     let ifs = format!("{}{{ 0 }}", "if (a) { 1 } else ".repeat(n));
     format(&ifs).unwrap();
     let chain = format!("xs{}", ".f(1)".repeat(n));
     format(&chain).unwrap();
+}
+
+/// Comments after one token are attached in time linear in their number
+/// (#675). Counting the line ends from the token for each comment took
+/// time that grew with the square of the comments.
+#[test]
+fn many_comments_after_one_token() {
+    let src = format!("1 {}", "/* c */ ".repeat(80_000));
+    let start = std::time::Instant::now();
+    let f = format(&src).unwrap();
+    let took = start.elapsed();
+    assert!(f.starts_with("1 /* c */ /* c */"));
+    assert!(took < std::time::Duration::from_secs(3), "took {took:?}");
 }

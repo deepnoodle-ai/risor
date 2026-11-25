@@ -23,15 +23,17 @@ func Program(source string) (string, *syntax.Error, *syntax.File) {
 	if lerr != nil { // cannot happen: the text parsed
 		return "", lerr, f
 	}
-	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width)
+	out := run(f.Runes(), toks, 0, func(b *builder) part { return b.program(prog) }, Width, new(lineEnds))
 	out = strings.TrimRight(out, " \n") + "\n"
 	return out, nil, f
 }
 
 // run builds the document twice: first to learn the kept tokens, then with
-// the comments attached (2.12), and lays it out.
-func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int) string {
+// the comments attached (2.12), and lays it out. ends is the prefix count of
+// line ends of src, shared by every run over the same text.
+func run(src []rune, toks []syntax.Token, from int, build func(*builder) part, width int, ends *lineEnds) string {
 	b := newBuilder(src, toks, from)
+	b.lineEnds = ends
 	build(b)
 	b.attach()
 	b.reset()
@@ -64,6 +66,8 @@ type builder struct {
 	// first of an element other than the first.
 	first, last int
 	elemStart   bool
+	// lineEnds counts the line ends of src (lineEndsIn).
+	lineEnds *lineEnds
 }
 
 func newBuilder(src []rune, toks []syntax.Token, from int) *builder {
@@ -132,6 +136,36 @@ func (b *builder) reset() {
 	b.first, b.last, b.elemStart = -1, -1, false
 }
 
+// lineEnds is a prefix count of the line ends of a text: before[i] is the
+// number in src[:i]. It is made on first use, once for each text, so the runs
+// of a template's parts share it.
+type lineEnds struct{ before []int }
+
+// lineEndsIn counts the line ends in src[a:b], CR LF as one, in constant
+// time from the prefix count. Counting from a each time made attach take time
+// that grew with the square of the number of comments after one token.
+func (b *builder) lineEndsIn(a, c int) int {
+	if a >= c {
+		return 0
+	}
+	le := b.lineEnds
+	if le.before == nil {
+		le.before = make([]int, len(b.src)+1)
+		for i, r := range b.src {
+			n := le.before[i]
+			if r == '\r' || (r == '\n' && (i == 0 || b.src[i-1] != '\r')) {
+				n++
+			}
+			le.before[i+1] = n
+		}
+	}
+	n := le.before[c] - le.before[a]
+	if b.src[a] == '\n' && a > 0 && b.src[a-1] == '\r' {
+		n++ // the LF of a CR LF that the count gave to the CR before a
+	}
+	return n
+}
+
 // attach attaches each comment to a kept unit (2.12 items 2 and 3).
 func (b *builder) attach() {
 	var keptIdx []int
@@ -144,7 +178,7 @@ func (b *builder) attach() {
 	for _, c := range b.comments {
 		// The unit before the comment.
 		pi := sort.SearchInts(b.starts, c.start) - 1
-		if pi >= 0 && countLineEnds(b.src[b.us[pi].end:c.start]) == 0 {
+		if pi >= 0 && b.lineEndsIn(b.us[pi].end, c.start) == 0 {
 			// The last kept unit that ends before it: units are in order,
 			// and so are their ends.
 			k := sort.Search(len(keptIdx), func(k int) bool { return b.us[keptIdx[k]].end > c.start }) - 1
@@ -568,14 +602,7 @@ func (b *builder) node(n syntax.Node) part {
 		if n.Form == "if" {
 			return b.ifChain(n)
 		}
-		test := b.sub(n, rTest, n.Test)
-		q := b.next(n.Test.Span().End, syntax.Question)
-		qd := b.tok(q)
-		then := b.node(n.Then)
-		c := b.next(n.Then.Span().End, syntax.Colon)
-		cd := b.tok(c)
-		els := b.node(n.Else)
-		return grp(test, ind(pLine, qd, pSpace, then, pLine, cd, pSpace, els))
+		return b.condChain(n)
 	case *syntax.Try:
 		tt := b.at(n.Span().Start)
 		lb := tt + 1
@@ -693,6 +720,35 @@ func (b *builder) branch(content syntax.Node, lb, rb int) part {
 	cl := b.closeLead(rb, true)
 	inner := append(append([]part{pLine}, bd...), cl)
 	return []part{o, &indent{d: inner}, pLine, b.bare(rb)}
+}
+
+// condChain is a `? :` and the `? :` in its else branch, and in that one's,
+// as one chain (2.8 item 5). The chain is one group; each link, a test with
+// its `?` and branch, is a group of its own. A broken chain starts each link
+// on a line at the chain's indentation, so the output grows with the chain's
+// length, not with its square.
+func (b *builder) condChain(n *syntax.Cond) part {
+	var out []part
+	cur := n
+	for {
+		test := b.sub(cur, rTest, cur.Test)
+		q := b.next(cur.Test.Span().End, syntax.Question)
+		qd := b.tok(q)
+		then := b.node(cur.Then)
+		if c2, ok := cur.Then.(*syntax.Cond); ok && c2.Form == "?:" {
+			then = ind(then) // its `:` lines stand inside the `?`
+		}
+		out = append(out, grp(test, ind(pLine, qd, pSpace, then)))
+		c := b.next(cur.Then.Span().End, syntax.Colon)
+		out = append(out, pLine, b.tok(c), pSpace)
+		if c2, ok := cur.Else.(*syntax.Cond); ok && c2.Form == "?:" {
+			cur = c2
+			continue
+		}
+		out = append(out, b.node(cur.Else))
+		break
+	}
+	return grp(out...)
 }
 
 func (b *builder) ifChain(n *syntax.Cond) part {
