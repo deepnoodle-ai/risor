@@ -48,3 +48,26 @@ func TestSessionHeldInvariants(t *testing.T) {
 	assert.Equal(t, s.held, "")
 	assert.Equal(t, s.heldVals.Lines(), 0)
 }
+
+func TestStandaloneParseErrorsDoNotUsePriorShadowMap(t *testing.T) {
+	env, err := risor.NewEnv()
+	assert.NoError(t, err)
+	s := NewSession(env, risor.Map{})
+
+	// Shadowing `a` rewrites `const a = 2;` to `const a__1 = 2;`.
+	assert.Equal(t, s.Eval("const a = 2;"), EntryResult{})
+	assert.Equal(t, s.Eval("const a = 10;"), EntryResult{})
+
+	// EOFError parses the pending input standalone and must report coordinates
+	// in the pending input, not shifted by the previous entry's rename map.
+	ds, err := s.EOFError("12345 +")
+	assert.NoError(t, err)
+	assert.True(t, len(ds) > 0 && ds[0].Span != nil)
+	assert.Equal(t, ds[0].Span.Start, risor.Pos{Line: 1, Column: 8})
+
+	// Immediate standalone parse errors in Eval must also keep their own coordinates.
+	r := s.Eval("12345 + )")
+	assert.NoError(t, r.Err)
+	assert.True(t, len(r.Diagnostics) > 0 && r.Diagnostics[0].Span != nil)
+	assert.Equal(t, r.Diagnostics[0].Span.Start, risor.Pos{Line: 1, Column: 9})
+}
