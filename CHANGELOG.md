@@ -373,7 +373,7 @@ Risor v2 is a major release focused on the embedded scripting use case. It
 introduces an isolated-by-default sandbox, TypeScript-aligned syntax, and a
 streamlined Go API.
 
-See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
+See [v1 to v2 Migration Guide](https://github.com/deepnoodle-ai/risor/blob/v2/docs/guides/migration-v2.md) for upgrade details.
 
 ### Added
 
