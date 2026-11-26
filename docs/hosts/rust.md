@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-> **Thread stack sizing:** A run recurses on its calling thread up to `Limits::depth`. Give the thread at least **1 MiB** (optimized) / **2 MiB** (unoptimized) for the default depth limit of `200`, or **2 MiB** / **4 MiB** for the maximum depth limit of `400`. Standard `std::thread::spawn` threads have 2 MiB by default; use `std::thread::Builder::new().stack_size(...)` when running deeper or on constrained threads.
+> **Thread stack sizing:** A run recurses on its calling thread up to `Limits::depth`. Give the thread at least **1 MiB** (optimized) / **2 MiB** (unoptimized) for the default depth limit of `200`, or **2 MiB** / **4 MiB** for the maximum depth limit of `400` (see [`rust/DESIGN.md`](../../rust/DESIGN.md), verified in CI by `the_deepest_programs_run_within_the_stated_stack`). Standard `std::thread::spawn` threads have 2 MiB by default; use `std::thread::Builder::new().stack_size(...)` when running deeper or on constrained threads.
 
 ---
 

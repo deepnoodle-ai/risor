@@ -4,8 +4,9 @@
  * docs/hosts/{go,typescript,rust}.md by compiling AND executing them against
  * the local implementations (./go, ./ts, ./rust) with zero network access.
  *
- * Every ```go, ```ts, ```typescript, ```rust, or ```rs fenced block MUST carry
- * an immediately preceding `<!-- risor-verify: {...} -->` JSON directive.
+ * Every fenced block whose language tag is empty or outside NON_CODE_LANGS
+ * (`bash`, `text`, `toml`, `json`, `console`) MUST carry an immediately
+ * preceding `<!-- risor-verify: {...} -->` JSON directive.
  *
  * Usage:
  *   node docs/scripts/check-host-guides.mjs
@@ -33,7 +34,7 @@ export const DEFAULT_GUIDES = {
   rust: path.join(REPO_ROOT, "docs", "hosts", "rust.md"),
 };
 
-const CODE_LANGS = new Set(["go", "ts", "typescript", "rust", "rs"]);
+const NON_CODE_LANGS = new Set(["bash", "text", "toml", "json", "console"]);
 const KNOWN_MODES = new Set(["go", "go-test", "ts", "rust", "skip"]);
 
 /**
@@ -155,7 +156,8 @@ export function extractBlocks(markdown, fileLabel = "<input>") {
 
 /**
  * Validate directives on all code blocks in a guide for a given target language.
- * Fails if any code block in CODE_LANGS is missing a directive or has an invalid mode.
+ * Fails if any block with an empty language tag or a language outside
+ * NON_CODE_LANGS is missing a directive, or if any directive has an invalid mode.
  * @param {CodeBlock[]} blocks
  * @param {"go" | "ts" | "rust"} lang
  * @param {string} fileLabel
@@ -173,12 +175,13 @@ export function selectVerifiedBlocks(blocks, lang, fileLabel) {
   let skipped = 0;
 
   for (const block of blocks) {
-    const needsDirective = CODE_LANGS.has(block.lang) || block.directive !== null;
-    if (!needsDirective) continue;
+    const isNonCode = block.lang !== "" && NON_CODE_LANGS.has(block.lang);
+    if (isNonCode && block.directive === null) continue;
 
     if (!block.directive) {
+      const tag = block.lang === "" ? "(bare fence)" : `\`\`\`${block.lang}`;
       throw new Error(
-        `${fileLabel}:${block.line} ("${block.heading}"): \`\`\`${block.lang} block is missing a <!-- risor-verify: {...} --> directive`,
+        `${fileLabel}:${block.line} ("${block.heading}"): ${tag} block is missing a <!-- risor-verify: {...} --> directive`,
       );
     }
 

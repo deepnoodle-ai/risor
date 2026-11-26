@@ -381,8 +381,6 @@ Validate untrusted host values with `conform` and `conformAll`:
 
 In TypeScript, every `Type<T>` implements the [Standard Schema v1](https://standardschema.dev) interface (`~standard`, vendor `"risor"`), so form, router, and RPC libraries that accept a Standard Schema can validate directly against a Risor `Type` without an adapter.
 
-> **Alpha note:** Retaining the runtime `~standard` property on `Type` is currently tracked as an open alpha decision (R202); `conform` and `conformAll` are part of the core cross-language surface.
-
 ### Config files (`loadValue`, `decode`, `LoadError`)
 
 `loadValue(env, source, { expected, vars, signal, max, decode })` runs all config-loading steps in order—declare (`STEP_DECLARE = 0`), parse (`1`), check (`2`), run (`3`), conform (`4`), and decode into plain JS objects/arrays (`5`)—throwing `LoadError` with `.step`, `.diagnostics`, and `.usage`. Call `decode(value)` standalone to convert any Risor result (including `Map` values) into plain JSON-compatible objects without sharing memory with host inputs.

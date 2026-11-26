@@ -36,6 +36,17 @@ describe("extractBlocks and selectVerifiedBlocks", () => {
     }
   });
 
+  test("fails when a bare fence or unrecognized language tag is missing a directive", () => {
+    for (const fenceLang of ["", "golang", "js"]) {
+      const md = `# Example\n\n\`\`\`${fenceLang}\n// missing directive\n\`\`\`\n`;
+      const blocks = extractBlocks(md, "test.md");
+      assert.throws(
+        () => selectVerifiedBlocks(blocks, "go", "test.md"),
+        /missing a <!-- risor-verify:/,
+      );
+    }
+  });
+
   test("ignores non-code fences such as bash and toml without directives", () => {
     const md = [
       "# Install",
