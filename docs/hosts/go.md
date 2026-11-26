@@ -325,7 +325,11 @@ func main() {
 		if err := c.Charge(int64(len(s)/64 + 1)); err != nil {
 			return "", err
 		}
-		return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-")), nil
+		out := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
+		if err := c.Allocate(int64(len(out)/64 + 1)); err != nil {
+			return "", err
+		}
+		return out, nil
 	}, risor.Params("text"))
 
 	// Derived opaque type methods from *Session.

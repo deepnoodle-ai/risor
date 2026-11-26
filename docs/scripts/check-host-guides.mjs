@@ -101,17 +101,19 @@ export function extractBlocks(markdown, fileLabel = "<input>") {
       continue;
     }
 
-    const fenceMatch = /^(\s*)(`{3,})([^`]*)$/.exec(line);
-    if (fenceMatch) {
+    const fenceMatch = /^(\s*)(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fenceMatch && !(fenceMatch[2][0] === "`" && fenceMatch[3].includes("`"))) {
       const indent = fenceMatch[1];
       const fence = fenceMatch[2];
+      const fenceChar = fence[0];
       const lang = fenceMatch[3].trim().toLowerCase();
       const startLine = i + 1;
       const bodyLines = [];
       let closed = false;
       i++;
+      const closeRe = new RegExp(`^\\s*\\${fenceChar}{${fence.length},}\\s*$`);
       while (i < lines.length) {
-        if (new RegExp(`^\\s*\`{${fence.length},}\\s*$`).test(lines[i])) {
+        if (closeRe.test(lines[i])) {
           closed = true;
           break;
         }
@@ -584,13 +586,18 @@ export function verifyRustGuide(markdown, fileLabel = DEFAULT_GUIDES.rust) {
       "utf8",
     );
 
+    const manifestPath = path.join(tmpDir, "Cargo.toml");
     try {
-      execFileSync("cargo", ["test", "--offline", "--test", "host_guide"], {
-        cwd: tmpDir,
-        env: { ...process.env, CARGO_TARGET_DIR: targetDir },
-        encoding: "utf8",
-        stdio: "pipe",
-      });
+      execFileSync(
+        "cargo",
+        ["test", "--offline", "--manifest-path", manifestPath, "--test", "host_guide"],
+        {
+          cwd: rustDir,
+          env: { ...process.env, CARGO_TARGET_DIR: targetDir },
+          encoding: "utf8",
+          stdio: "pipe",
+        },
+      );
     } catch (err) {
       const details = [err.stdout, err.stderr].filter(Boolean).join("\n").trim();
       throw new Error(

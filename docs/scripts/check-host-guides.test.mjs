@@ -47,6 +47,28 @@ describe("extractBlocks and selectVerifiedBlocks", () => {
     }
   });
 
+  test("recognizes tilde fences and requires directives on them", () => {
+    const md = [
+      "# Two examples",
+      "",
+      '<!-- risor-verify: {"mode": "ts"} -->',
+      "```ts",
+      'const ok = "```not a close";',
+      "```",
+      "",
+      "~~~ts",
+      "this is unannotated and invalid",
+      "~~~",
+    ].join("\n");
+    const blocks = extractBlocks(md, "tilde.md");
+    assert.equal(blocks.length, 2);
+    assert.equal(blocks[1].lang, "ts");
+    assert.throws(
+      () => selectVerifiedBlocks(blocks, "ts", "tilde.md"),
+      /missing a <!-- risor-verify:/,
+    );
+  });
+
   test("ignores non-code fences such as bash and toml without directives", () => {
     const md = [
       "# Install",

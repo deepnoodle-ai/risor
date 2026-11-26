@@ -238,7 +238,9 @@ const env = createEnv({
       call(handle, rawText) {
         const text = String(rawText);
         handle.charge(Math.floor(text.length / 64) + 1);
-        return text.trim().toLowerCase().replaceAll(" ", "-");
+        const out = text.trim().toLowerCase().replaceAll(" ", "-");
+        handle.allocate(Math.floor(out.length / 64) + 1);
+        return out;
       },
     },
   },

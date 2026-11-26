@@ -295,7 +295,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .function("slug", "(text: string) => string", |call, args| {
             let text = args[0].as_str().unwrap_or("");
             call.charge((text.len() as u64) / 64 + 1).map_err(stop_err)?;
-            Ok(Data::Str(text.trim().to_lowercase().replace(' ', "-")))
+            let out = text.trim().to_lowercase().replace(' ', "-");
+            call.allocate((out.len() as u64) / 64 + 1)
+                .map_err(stop_err)?;
+            Ok(Data::Str(out))
         })
         .var("sess", "Session")
         .build()?;
@@ -662,13 +665,17 @@ Servers, workflow engines, and UI event loops follow [`spec/core/03-host.md`](..
 ### Poisoned runs and nested runs
 
 - **Poisoned run:** Keep a per-run `Arc<AtomicBool>` (`poisoned`) alongside your cancellation flag. When a host function must cut off the run, set both flags, immediately return `Err(HostError::from(...))` from any subsequent host calls while poisoned, and discard the run's outcome if `poisoned` is set.
-- **Nested run:** Inside a host function that runs another program, build a child env with `Limits { steps: left.steps, allocation: left.allocation, ..tool_env.limits() }` from `call.remaining()`, measure the nested run, charge back `used.steps` and `used.allocated`, and on `steps-exceeded` or `allocation-exceeded` overcharge (`call.charge(u64::MAX)` / `call.allocate(u64::MAX)`) so the caller ends with the same uncatchable limit code.
+- **Nested run:** Inside a host function that runs another program, build a child env with `Limits { steps: left.steps, allocation: left.allocation, ..tool_env.limits() }` from `call.remaining()`, pass the parent's host-owned `Arc<AtomicBool>` cancellation flag through `measure_with(&vars, RunOptions { cancel: Some(...) })`, charge back `used.steps` and `used.allocated`, and on `steps-exceeded` or `allocation-exceeded` overcharge (`call.charge(u64::MAX)` / `call.allocate(u64::MAX)`) so the caller ends with the same uncatchable limit code.
 
 <!-- risor-verify: {"mode": "rust"} -->
 ```rust
 use std::collections::BTreeMap;
+use std::sync::{
+    atomic::AtomicBool,
+    Arc,
+};
 use risor::{
-    parse, CompileOptions, Data, Env, Expected, HostError, Limits, NoVars, Stop,
+    parse, CompileOptions, Data, Env, Expected, HostError, Limits, NoVars, RunOptions, Stop,
 };
 
 fn stop_err(_: Stop) -> HostError {
@@ -733,9 +740,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     assert_eq!(counts, [2, 4, 6, 8]);
 
-    // 2. Nested run sharing the caller's remaining step & allocation budget.
+    // 2. Nested run sharing the caller's remaining budget and cancellation flag.
     let tool_env = Env::builder().var("xs", "int[]").build()?;
     let tool_expr = parse("xs.map(n => n * 2).reduce((a, b) => a + b, 0)")?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let child_cancel = Arc::clone(&cancel);
 
     let parent_env = Env::builder()
         .limits(Limits {
@@ -756,7 +765,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let p = child.compile(&tool_expr, CompileOptions::default())?;
             let mut vars = BTreeMap::new();
             vars.insert("xs".to_string(), args[0].to_data());
-            let (result, used) = p.measure(&vars);
+            let (result, used) = p.measure_with(
+                &vars,
+                RunOptions {
+                    cancel: Some(Arc::clone(&child_cancel)),
+                },
+            );
             call.charge(used.steps).map_err(stop_err)?;
             call.allocate(used.allocated).map_err(stop_err)?;
             match result {
@@ -774,7 +788,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let caller_expr = parse("runTool([1, 2, 3])")?;
     let caller_prog = parent_env.compile(&caller_expr, CompileOptions::default())?;
-    let (res, usage) = caller_prog.measure(&NoVars);
+    let (res, usage) = caller_prog.measure_with(
+        &NoVars,
+        RunOptions {
+            cancel: Some(Arc::clone(&cancel)),
+        },
+    );
     assert_eq!(res?.as_i64(), Some(12));
     assert!(usage.steps > 0);
 
