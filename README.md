@@ -233,6 +233,7 @@ the specification or an implementation.
 | The design and its decisions | [`experiments/v3/design/00-overview.md`](experiments/v3/design/00-overview.md) |
 | The conformance suite | [`suite/README.md`](suite/README.md) |
 | Migrating from `expr` and Risor v2 | [`docs/migrating.md`](docs/migrating.md) |
+| Stability promise and versioning | [`docs/versioning.md`](docs/versioning.md) |
 | Benchmarks against expr | [`docs/benchmarks.md`](docs/benchmarks.md) |
 
 ## License

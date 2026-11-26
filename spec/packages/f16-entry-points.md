@@ -98,16 +98,18 @@ version number and no version marker.
    this slice in the change that added it, so those files were deleted
    (3.11 item 5; section 10).
 
-### 1.5 Open points
+### 1.5 Settled points
 
-These are written to the recommendation, and wait for the owner.
+These four points were written to the recommendation and settled by the owner
+(point 2 on 2026-11-19, R261; points 1, 3 and 4 on 2026-11-25, #696, R232 and
+R238).
 
-| # | Point | Recommendation | Strongest alternative |
+| # | Point | Settled rule | Strongest alternative |
 | --- | --- | --- | --- |
-| 1 | Whether a narrowed `parse` code retires | None retires: `type-annotation` and `type-declaration` each still cover text that stays an error (2.5), so the count of `parse` codes does not change | Retire a code whose main text became a program |
-| 2 | The place of slice D1 in the order of 1.4 | Before F17 | After F17, beside the other slices of F16 |
-| 3 | The new texts of `type-annotation` and `type-declaration` | Changed in place in `suite/messages-parse.json`, so the count of templates does not change (9.2). A build with F8 and without F16 prints them too | New templates in this package's catalog file. That changes the message of two catalog cases of `messages-parse.json` in an implementation that offers F16, and 3.11 item 4 has no file named `until-` for a catalog |
-| 4 | A fit at an annotation that uses `any` (3.3) | It does not hold: the value must surely fit | It holds with a `dynamic` site, as at an argument of Core; then the name has the annotation's type while its value may be anything, and a later failure is at no site (`05-types.md` 18.4, promises 1 and 4) |
+| 1 | Whether a narrowed `parse` code retires | None retires: `type-annotation` and `type-declaration` each still cover text that stays an error (2.5), so the count of `parse` codes does not change (R238) | Retire a code whose main text became a program |
+| 2 | The place of slice D1 in the order of 1.4 | Before F17 (R261) | After F17, beside the other slices of F16 |
+| 3 | The new texts of `type-annotation` and `type-declaration` | Changed in place in `suite/messages-parse.json`, so the count of templates does not change (9.2, R238). A build with F8 and without F16 prints them too | New templates in this package's catalog file. That changes the message of two catalog cases of `messages-parse.json` in an implementation that offers F16, and 3.11 item 4 has no file named `until-` for a catalog |
+| 4 | A fit at an annotation that uses `any` (3.3) | It does not hold: the value must surely fit (R232) | It holds with a `dynamic` site, as at an argument of Core; then the name has the annotation's type while its value may be anything, and a later failure is at no site (`05-types.md` 18.4, promises 1 and 4) |
 
 ## 2. Syntax
 

@@ -1,13 +1,14 @@
 # Risor v3 design: scope, and what 3.0 still needs
 
-Status: revised on 2026-11-19, after the owner's adjustments of that day,
-which `00-overview.md` section 4 and `14-implementation-plan.md` 5.3 now
-hold. First drafted on 2026-11-15, from the discussion on PR #643.
+Status: revised on 2026-11-25 after owner ratification of D59 and D60 (#696,
+#697). Previously revised on 2026-11-19 after the owner's adjustments of that
+day, which `00-overview.md` section 4 and `14-implementation-plan.md` 5.3 hold.
+First drafted on 2026-11-15, from the discussion on PR #643.
 
 | Part | State |
 | --- | --- |
-| The scope statement and its two tests (section 1) | **Not settled.** A recommendation the owner has not confirmed (D59) |
-| Whether to keep the name "Risor v3" | **Open** (D60) |
+| The scope statement and its two tests (section 1) | **Settled** by the owner on 2026-11-25 (D59, #696); written into `AGENTS.md` and `00-overview.md` section 1 |
+| Whether to keep the name "Risor v3" | **Settled** by the owner on 2026-11-25 (D60, #697): keep the name "Risor v3" |
 | What #643 keeps and drops (section 3) | **Settled** by the owner on 2026-11-19, as `00` section 4 records it. Where this draft first said otherwise, the owner's choice stands |
 | Explaining a result (2.5) and `glob` (2.6) | **Settled** as the next wave, in track F of `14` 5.3. Their designs below are sketches; each needs a plan of its own |
 | A guide off expr (2.7) and a measurement against expr (2.8) | In track F. Not started |
@@ -73,8 +74,8 @@ order.coupon ?? "none"
 Only the last step is read this way. In `order.discount.code ?? "none"`, an
 `order` with no `discount` still fails at `order.discount`.
 
-It is a Core amendment in track B, and needs the owner to confirm the
-exception to `03-host.md` 3.4.8 item 2.
+Built as a Core amendment in track B; the exception to `03-host.md` 3.4.8
+item 2 stands (R260).
 
 ### 2.3 Recursion, `walk`, guards and function parameters
 
@@ -190,8 +191,8 @@ The three CodeRabbit threads that were open on #643 concerned prefetch,
 
 ## 4. Decisions for the owner
 
-| # | Decision | Recommendation |
+| # | Decision | Outcome |
 | --- | --- | --- |
-| D59 | Write the scope of section 1 into `AGENTS.md` and `00-overview.md` as a constraint | Yes. Not yet confirmed |
-| D60 | Keep the name "Risor v3", or rename v3 as expr's successor | Open. A rename has a case if the Risor name keeps bringing requests for scripting |
+| D59 | Write the scope of section 1 into `AGENTS.md` and `00-overview.md` as a constraint | **Settled (2026-11-25, #696).** Written into `AGENTS.md` and `00-overview.md` section 1 |
+| D60 | Keep the name "Risor v3", or rename v3 as expr's successor | **Settled (2026-11-25, #697).** Keep the name "Risor v3"; do not rename |
 | — | Plans for the explanation (2.5) and `glob` (2.6) | Write them in track F, the explanation first |
