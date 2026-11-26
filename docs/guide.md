@@ -1423,6 +1423,7 @@ user-authored or LLM-generated Risor programs with predictable cost.
 
 ## Further reading
 
+- Host embedding guides: [Go](hosts/go.md), [TypeScript](hosts/typescript.md), and [Rust](hosts/rust.md)
 - [Standard Library Reference](library/README.md) — every function, method, opt-in group, and cost formula
 - [Core language specification](../spec/core/01-language.md) — normative grammar and semantics
 - [Types and checker specification](../spec/core/05-types.md) — normative type rules and narrowing

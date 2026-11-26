@@ -15,6 +15,7 @@ on:
       - "fuzz/**"
       - "suite/**"
       - "docs/guide.md"
+      - "docs/hosts/**"
       - "docs/library/**"
       - "docs/migrating.md"
       - "docs/scripts/**"
@@ -29,6 +30,7 @@ on:
       - "fuzz/**"
       - "suite/**"
       - "docs/guide.md"
+      - "docs/hosts/**"
       - "docs/library/**"
       - "docs/migrating.md"
       - "docs/scripts/**"
@@ -131,6 +133,9 @@ jobs:
       - name: Pack the npm package
         run: npm pack --dry-run
 
+      - name: Verify TypeScript host guide (typecheck + execute)
+        run: node ../docs/scripts/check-host-guides.mjs --lang=ts --typecheck
+
   # The npm packages for Risor in the browser (docs/design/web-packages.md).
   # They build against ts/ through the npm workspace in web/.
   web:
@@ -222,6 +227,9 @@ jobs:
       - name: Dry-run publish
         run: cargo publish --workspace --dry-run --all-features
 
+      - name: Verify Rust host guide (compile + execute)
+        run: node ../docs/scripts/check-host-guides.mjs --lang=rust
+
   fuzz:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -284,3 +292,9 @@ jobs:
 
       - name: Test language guide example checker
         run: node --test docs/scripts/check-guide-examples.test.mjs
+
+      - name: Verify Go and TypeScript host guides
+        run: node docs/scripts/check-host-guides.mjs --lang=go,ts
+
+      - name: Test host guide checker
+        run: node --test docs/scripts/check-host-guides.test.mjs
