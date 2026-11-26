@@ -10,19 +10,19 @@ use crate::value::Kind;
 use std::sync::OnceLock;
 
 /// The library file, as built into the crate.
-pub const SOURCE: &str = include_str!("../../suite/library.json");
+pub const SOURCE: &str = include_str!("../data/library.json");
 
 /// Package F6: the records of the opt-in groups (`f06-groups.md` 3).
-pub const GROUPS_SOURCE: &str = include_str!("../../suite/library-groups.json");
+pub const GROUPS_SOURCE: &str = include_str!("../data/library-groups.json");
 
 /// Package F13: the records of the math functions (`f13-math.md` 5).
-pub const MATH_SOURCE: &str = include_str!("../../suite/library-math.json");
+pub const MATH_SOURCE: &str = include_str!("../data/library-math.json");
 
 /// Package F7: the records of the queries (`f07-queries.md` 6.1).
-pub const QUERIES_SOURCE: &str = include_str!("../../suite/library-queries.json");
+pub const QUERIES_SOURCE: &str = include_str!("../data/library-queries.json");
 
 /// Package F17: the record of `walk` (`f17-recursion.md` 5.1).
-pub const RECURSION_SOURCE: &str = include_str!("../../suite/library-recursion.json");
+pub const RECURSION_SOURCE: &str = include_str!("../data/library-recursion.json");
 
 /// The four opt-in groups (`f06-groups.md` 1.1).
 pub const GROUPS: [&str; 4] = ["json", "time", "math", "base64"];

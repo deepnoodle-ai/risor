@@ -1,0 +1,44 @@
+[
+  {
+    "name": "walk",
+    "signature": "(root: T, children: (node: T, depth: int) => T[] | null) => T[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The nodes of a tree in pre-order: the root, then the nodes under each of its children, in order.",
+    "calls": [
+      "children"
+    ],
+    "steps": "2*k",
+    "units": "1 + k",
+    "null": null,
+    "fails": [
+      {
+        "when": "a result of children is neither a list nor null",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "result"
+      },
+      {
+        "when": "a node is deeper than the depth limit allows",
+        "kind": "limit",
+        "code": "depth-exceeded"
+      }
+    ],
+    "wrong": [],
+    "cases": [
+      {"name": "walk lists the nodes in pre-order", "source": "walk(t, x => x.kids).map(x => x.n)", "env": "{t: any}", "vars": {"t": {"n": "a", "kids": [{"n": "b", "kids": []}, {"n": "c", "kids": [{"n": "d", "kids": []}]}]}}, "expect": {"value": ["a", "b", "c", "d"], "steps": 28, "allocated": 10}},
+      {"name": "walk charges 2 steps for each node, and 1 + k units", "source": "walk(t, x => x.kids)", "env": "{t: any}", "vars": {"t": {"n": "a", "kids": [{"n": "b", "kids": []}, {"n": "c", "kids": [{"n": "d", "kids": []}]}]}}, "expect": {"value": [{"kids": [{"kids": [], "n": "b"}, {"kids": [{"kids": [], "n": "d"}], "n": "c"}], "n": "a"}, {"kids": [], "n": "b"}, {"kids": [{"kids": [], "n": "d"}], "n": "c"}, {"kids": [], "n": "d"}], "steps": 14, "allocated": 5}},
+      {"name": "walk passes the depth of each node", "source": "walk(t, (x, d) => d < 1 ? x.kids : null).map(x => x.n)", "env": "{t: any}", "vars": {"t": {"n": "a", "kids": [{"n": "b", "kids": []}, {"n": "c", "kids": [{"n": "d", "kids": []}]}]}}, "expect": {"value": ["a", "b", "c"], "steps": 23, "allocated": 8}},
+      {"name": "walk of a node with no children", "source": "walk(1, x => null)", "expect": {"value": [1], "steps": 4, "allocated": 2}},
+      {"name": "walk of a node whose children are an empty list", "source": "walk(5, x => [])", "expect": {"value": [5], "steps": 4, "allocated": 3}},
+      {"name": "walk of a null root", "source": "walk(null, x => null)", "expect": {"value": [null], "steps": 4, "allocated": 2}},
+      {"name": "walk visits a list given twice twice", "source": "walk(0, (x, d) => d < 2 ? [d + 1, d + 1] : null)", "expect": {"value": [0, 1, 2, 2, 1, 2, 2], "steps": 29, "allocated": 17}},
+      {"name": "walk of a result that is neither a list nor null", "source": "walk(t, x => x.n)", "env": "{t: any}", "vars": {"t": {"n": "a", "kids": [{"n": "b", "kids": []}, {"n": "c", "kids": [{"n": "d", "kids": []}]}]}}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 18], "class": "dynamic", "message": "the callback of walk gave a value of kind string, which it cannot take"}], "steps": 5, "allocated": 0}},
+      {"name": "walk of a callback that never stops", "source": "walk(0, x => [x + 1])", "expect": {"phase": "run", "diagnostics": [{"code": "depth-exceeded", "class": "limit", "message": "calls and nested values went deeper than the depth limit of 200"}]}},
+      {"name": "walk at the depth limit", "source": "walk(0, (x, d) => d < 4 ? [x + 1] : null)", "limits": {"depth": 5}, "expect": {"value": [0, 1, 2, 3, 4], "steps": 21, "allocated": 14}},
+      {"name": "walk one level past the depth limit", "source": "walk(0, (x, d) => d < 5 ? [x + 1] : null)", "limits": {"depth": 5}, "expect": {"phase": "run", "diagnostics": [{"code": "depth-exceeded", "class": "limit", "message": "calls and nested values went deeper than the depth limit of 5"}]}},
+      {"name": "walk with a value at children, not checked", "source": "walk(t, 5)", "env": "{t: any}", "vars": {"t": 1}, "check": false, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 11], "class": "dynamic", "message": "walk cannot take a value of kind number"}], "steps": 0, "allocated": 0}}
+    ]
+  }
+]

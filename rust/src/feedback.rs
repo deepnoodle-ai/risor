@@ -13,7 +13,7 @@ use crate::value::Kind;
 use std::sync::OnceLock;
 
 /// The table of foreign names (3.3), as built into the crate.
-pub const FOREIGN_SOURCE: &str = include_str!("../../suite/foreign-names.json");
+pub const FOREIGN_SOURCE: &str = include_str!("../data/foreign-names.json");
 
 /// A row of `suite/foreign-names.json` (3.3).
 pub struct Foreign {

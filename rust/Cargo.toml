@@ -1,19 +1,38 @@
+[workspace]
+members = [".", "derive"]
+
+[workspace.package]
+version = "3.0.0-alpha.2"
+edition = "2021"
+rust-version = "1.100"
+license = "Apache-2.0"
+repository = "https://github.com/deepnoodle-ai/risor"
+homepage = "https://risor.io"
+
 [package]
 name = "risor"
-version = "0.1.0"
-edition = "2021"
-description = "Risor v3: an embedded expression language, written from its specification"
-license = "Apache-2.0"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/risor"
+readme = "README.md"
+description = "Risor v3: a small, statically checked, bounded expression language for embedding"
+keywords = ["expression", "embedded", "language", "sandbox", "scripting"]
+categories = ["compilers", "config", "template-engine", "parser-implementations"]
+include = [
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "data/*.json",
+    "src/**/*.rs",
+    "!src/bin/**",
+]
 
 [lib]
 path = "src/lib.rs"
-
-# The derive of F1 6.3 is a crate of its own, `derive/`, so that this crate
-# keeps no dependency. Build and test it with `-p risor-derive` or
-# `--workspace`.
-[workspace]
-members = [".", "derive"]
 
 # The library has no dependency from outside this repository, and neither do
 # the tests: the case-file runner reads JSON with the crate's own strict
@@ -21,9 +40,13 @@ members = [".", "derive"]
 # 3.10.10 requires. The one dependency is this repository's own derive crate,
 # behind the feature `derive`, off by default (ruling BB26).
 [dependencies]
-risor-derive = { path = "derive", optional = true }
+risor-derive = { version = "=3.0.0-alpha.2", path = "derive", optional = true }
 
 [features]
 derive = ["dep:risor-derive"]
 
 [dev-dependencies]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

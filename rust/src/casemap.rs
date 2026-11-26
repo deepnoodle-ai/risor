@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// The table file, as built into the crate.
-pub const SOURCE: &str = include_str!("../../suite/casemap.json");
+pub const SOURCE: &str = include_str!("../data/casemap.json");
 
 pub struct CaseMap {
     pub upper: HashMap<char, char>,

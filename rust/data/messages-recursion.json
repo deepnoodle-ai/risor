@@ -1,0 +1,283 @@
+[
+  {
+    "code": "circular-type",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "direct": "{name} refers to itself outside any list, map or record",
+      "union": "{name} shares a kind with another type of its union; give the union a type line of its own"
+    },
+    "when": {
+      "direct": "f17-recursion.md 12.2 item 3: a type line on a cycle of names at top places. name is the line's name",
+      "union": "f17-recursion.md 12.2 item 6: a reference of the line's component beside another alternative of one of its kinds. name is the reference"
+    },
+    "cases": [
+      {
+        "name": "circular-type: direct",
+        "source": "type Loop = Loop | null; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "circular-type",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "Loop refers to itself outside any list, map or record"
+            }
+          ]
+        }
+      },
+      {
+        "name": "circular-type: union",
+        "source": "type Node = {next: Node | {end: bool}}; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "circular-type",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "Node shares a kind with another type of its union; give the union a type line of its own"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "check-limit",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "pairs": "comparing the types here takes more than 4096 pairs of types"
+    },
+    "when": {
+      "pairs": "f17-recursion.md 12.5: one computation of a fit, a join, an equality or a disjointness enters more than 4096 pairs. The check ends there"
+    },
+    "cases": [
+      {
+        "name": "check-limit: pairs",
+        "types": [
+          {"name": "S1", "type": "{a: S2, b: S2}"},
+          {"name": "S2", "type": "{a: S3, b: S3}"},
+          {"name": "S3", "type": "{a: S4, b: S4}"},
+          {"name": "S4", "type": "{a: S5, b: S5}"},
+          {"name": "S5", "type": "{a: S6, b: S6}"},
+          {"name": "S6", "type": "{a: S7, b: S7}"},
+          {"name": "S7", "type": "{a: S8, b: S8}"},
+          {"name": "S8", "type": "{a: S9, b: S9}"},
+          {"name": "S9", "type": "{a: S10, b: S10}"},
+          {"name": "S10", "type": "{a: S11, b: S11}"},
+          {"name": "S11", "type": "{a: S12, b: S12}"},
+          {"name": "S12", "type": "{a: S1, b: S1}"},
+          {"name": "T1", "type": "{a: T2, b: T2}"},
+          {"name": "T2", "type": "{a: T3, b: T3}"},
+          {"name": "T3", "type": "{a: T4, b: T4}"},
+          {"name": "T4", "type": "{a: T5, b: T5}"},
+          {"name": "T5", "type": "{a: T6, b: T6}"},
+          {"name": "T6", "type": "{a: T7, b: T7}"},
+          {"name": "T7", "type": "{a: T8, b: T8}"},
+          {"name": "T8", "type": "{a: T9, b: T9}"},
+          {"name": "T9", "type": "{a: T10, b: T10}"},
+          {"name": "T10", "type": "{a: T11, b: T11}"},
+          {"name": "T11", "type": "{a: T12, b: T12}"},
+          {"name": "T12", "type": "{a: T1, b: T1}"},
+          {"name": "Pa", "type": "{p: Pa}"},
+          {"name": "Qa", "type": "{p: Qa}"}
+        ],
+        "env": "{s: {x: S1, y: Pa, z: Pa}}",
+        "source": "const t: {x: T1, y: Qa, z: Qa} = s; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                1,
+                34,
+                1,
+                35
+              ],
+              "message": "comparing the types here takes more than 4096 pairs of types"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "call-of-parameter",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "fn-hint": "{name} is a parameter; to call it, give it a function type, as {name}: (x: int) => int"
+    },
+    "when": {
+      "fn-hint": "A call of a parameter of a const-bound lambda written as a name with no function type and no default (f17-recursion.md 13.2 item 4). name is the parameter's name"
+    },
+    "cases": [
+      {
+        "name": "call-of-parameter, fn-hint",
+        "source": "const g = (xs, f) => f(xs); 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "call-of-parameter",
+              "span": [
+                1,
+                22,
+                1,
+                23
+              ],
+              "message": "f is a parameter; to call it, give it a function type, as f: (x: int) => int"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "arg-mismatch",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "parameter-at-fn": "{name} is a value; to pass it as a function, give it a function type"
+    },
+    "when": {
+      "parameter-at-fn": "A plain argument at an Fn parameter that is an identifier whose innermost binding is a parameter of a const-bound lambda written as a name with no function type and no default (f17-recursion.md 13.2 item 4). name is the parameter's name"
+    },
+    "cases": [
+      {
+        "name": "arg-mismatch, parameter-at-fn",
+        "source": "const apply = (f: (x: int) => int, x: int): int => f(x); const g = (h, n: int) => apply(h, n); 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                89,
+                1,
+                90
+              ],
+              "message": "h is a value; to pass it as a function, give it a function type"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "lambda-to-lambda",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "higher-order": "a function that takes a function cannot be passed to {name}",
+      "fn-hint": "{name} is a parameter; to pass a function to it, give it a function type, as {name}: (x: int) => int"
+    },
+    "when": {
+      "higher-order": "A lambda argument that is a lambda with a parameter of a function type, or the name of such a const-bound lambda, of any call (f17-recursion.md 13.2 rule 8). name is the callee as written: the function, the method or the lambda the argument is given to",
+      "fn-hint": "A lambda argument in a call of a const-bound lambda, at a parameter written as a name with no function type and no default (f17-recursion.md 13.2 rule 2). name is that parameter's name"
+    },
+    "cases": [
+      {
+        "name": "lambda-to-lambda, higher-order",
+        "source": "const k = (n: any, f: (x: int) => int): any[] => []; walk(1, k)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "lambda-to-lambda",
+              "span": [
+                1,
+                62,
+                1,
+                63
+              ],
+              "message": "a function that takes a function cannot be passed to walk"
+            }
+          ]
+        }
+      },
+      {
+        "name": "lambda-to-lambda, fn-hint",
+        "source": "const inc = n => n + 1; const ap = (v) => v; ap(inc)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "lambda-to-lambda",
+              "span": [
+                1,
+                49,
+                1,
+                52
+              ],
+              "message": "v is a parameter; to pass a function to it, give it a function type, as v: (x: int) => int"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "not-a-value",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "higher-order": "{name} is a const-bound lambda, not a value; it takes a function, so it can only be called"
+    },
+    "when": {
+      "higher-order": "An identifier whose innermost binding is a const-bound lambda with a parameter of a function type (f17-recursion.md 13.5). name is the identifier"
+    },
+    "cases": [
+      {
+        "name": "not-a-value, higher-order",
+        "source": "const apply = (f: (x: int) => int, x: int): int => f(x); const k = apply; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                68,
+                1,
+                73
+              ],
+              "message": "apply is a const-bound lambda, not a value; it takes a function, so it can only be called"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,18 +1,36 @@
 [package]
 name = "risor-derive"
-version = "0.1.0"
-edition = "2021"
-description = "The derive of Risor v3's host types (package F1, 6.3), with no dependency"
-license = "Apache-2.0"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/risor-derive"
+readme = "README.md"
+description = "Derive macro for Risor v3 host types (#[derive(risor::Host)]), with no dependencies"
+keywords = ["risor", "derive", "macro", "expression", "embedded"]
+categories = ["compilers", "config"]
+include = [
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "src/**/*.rs",
+]
 
 [lib]
 proc-macro = true
 path = "src/lib.rs"
 
 # No dependency: the macro reads the token stream itself. The tests use the
-# main crate, whose traits the generated code implements.
+# main crate, whose traits the generated code implements. Path-only
+# dev-dependencies are stripped by Cargo when packaging for crates.io so
+# `risor-derive` can publish ahead of `risor`.
 [dependencies]
 
 [dev-dependencies]
 risor = { path = ".." }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

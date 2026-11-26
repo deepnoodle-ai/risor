@@ -271,9 +271,16 @@ web/scripts/version.ts <version>`, merge that, then push the tag.
 `.github/workflows/release-npm.yml` stages them; each version goes live when
 a maintainer approves it with 2FA on npmjs.com (Staged Packages).
 
-The Rust crates (`risor` and `risor-derive`) publish to crates.io in lockstep
-at `3.0.0` and `3.x.y` on the tag `rust-v3.x.y`. See `docs/versioning.md` for
-the full 3.x stability promise, versioning policy, and v2 support window.
+The Rust crates (`risor` and `risor-derive`) release together to crates.io on
+the tag `rust-v<version>`: set the version with `./rust/scripts/version.sh
+<version>`, merge that, then push the tag. `.github/workflows/release-rust.yml`
+verifies the tag and workspace versions, runs fmt/clippy/test/doc, publishes
+`risor-derive` first, waits for crates.io index propagation, and publishes
+`risor` using the `CARGO_REGISTRY_TOKEN` secret. After changing any
+`suite/library*.json`, `suite/messages*.json`, `suite/casemap.json`,
+`suite/foreign-names.json`, or `LICENSE`, run `./rust/scripts/sync-data.sh` to
+update the bundled copies in `rust/data/`. See `docs/versioning.md` for the
+full 3.x stability promise, versioning policy, and v2 support window.
 
 v2 releases are cut from the `v2` branch; see `docs/guides/releasing.md`
 there.
