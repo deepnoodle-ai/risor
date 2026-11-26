@@ -227,6 +227,9 @@ the specification or an implementation.
 | To read | Start with |
 | --- | --- |
 | Language guide (by example) | [`docs/guide.md`](docs/guide.md) |
+| Host guide: Go | [`docs/hosts/go.md`](docs/hosts/go.md) |
+| Host guide: TypeScript | [`docs/hosts/typescript.md`](docs/hosts/typescript.md) |
+| Host guide: Rust | [`docs/hosts/rust.md`](docs/hosts/rust.md) |
 | The standard library | [`docs/library/README.md`](docs/library/README.md) |
 | The language specification | [`spec/core/01-language.md`](spec/core/01-language.md) |
 | How a host embeds it | [`spec/core/03-host.md`](spec/core/03-host.md) |
