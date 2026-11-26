@@ -640,3 +640,61 @@ fn tools_package() {
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
 }
+
+/// The bundled copies in `rust/data/` and crate `LICENSE` files must stay
+/// byte-for-byte identical to `suite/` and the root `LICENSE` so the
+/// published crates.io archives never drift from the repository sources.
+#[test]
+fn bundled_data_and_license_match_repo() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let suite = suite_dir();
+    let bundled: &[(&str, &str)] = &[
+        ("casemap.json", crate::casemap::SOURCE),
+        ("foreign-names.json", crate::feedback::FOREIGN_SOURCE),
+        ("library.json", crate::library::SOURCE),
+        ("library-groups.json", crate::library::GROUPS_SOURCE),
+        ("library-math.json", crate::library::MATH_SOURCE),
+        ("library-queries.json", crate::library::QUERIES_SOURCE),
+        ("library-recursion.json", crate::library::RECURSION_SOURCE),
+        ("messages.json", crate::messages::SOURCE),
+        ("messages-check.json", crate::messages::CHECK_SOURCE),
+        (
+            "messages-entry-points.json",
+            crate::messages::ENTRY_POINTS_SOURCE,
+        ),
+        ("messages-feedback.json", crate::messages::FEEDBACK_SOURCE),
+        ("messages-parse.json", crate::messages::PARSE_SOURCE),
+        ("messages-queries.json", crate::messages::QUERIES_SOURCE),
+        ("messages-recursion.json", crate::messages::RECURSION_SOURCE),
+    ];
+    for (name, embedded) in bundled {
+        let want = std::fs::read_to_string(suite.join(name))
+            .unwrap_or_else(|e| panic!("read suite/{name}: {e}"));
+        assert_eq!(
+            *embedded, want,
+            "rust/data/{name} differs from suite/{name}; run ./rust/scripts/sync-data.sh"
+        );
+    }
+    let mut data_files: Vec<String> = std::fs::read_dir(manifest_dir.join("data"))
+        .expect("read rust/data")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    data_files.sort();
+    let mut expected_files: Vec<String> = bundled.iter().map(|(n, _)| (*n).to_string()).collect();
+    expected_files.sort();
+    assert_eq!(
+        data_files, expected_files,
+        "rust/data/ must contain only the bundled suite tables"
+    );
+
+    let root_license =
+        std::fs::read_to_string(manifest_dir.join("../LICENSE")).expect("read root LICENSE");
+    for rel in ["LICENSE", "derive/LICENSE"] {
+        let got = std::fs::read_to_string(manifest_dir.join(rel))
+            .unwrap_or_else(|e| panic!("read rust/{rel}: {e}"));
+        assert_eq!(
+            got, root_license,
+            "rust/{rel} differs from LICENSE; run ./rust/scripts/sync-data.sh"
+        );
+    }
+}

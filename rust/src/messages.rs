@@ -9,7 +9,7 @@ use crate::json::{self, Json};
 use std::sync::OnceLock;
 
 /// The catalog file, as built into the crate.
-pub const SOURCE: &str = include_str!("../../suite/messages.json");
+pub const SOURCE: &str = include_str!("../data/messages.json");
 
 pub struct Entry {
     pub code: String,
@@ -43,8 +43,8 @@ pub struct Catalog {
 
 /// Package F8: the catalog files of the `parse` and `check` phases
 /// (`f08-errors.md` 3.1).
-pub const PARSE_SOURCE: &str = include_str!("../../suite/messages-parse.json");
-pub const CHECK_SOURCE: &str = include_str!("../../suite/messages-check.json");
+pub const PARSE_SOURCE: &str = include_str!("../data/messages-parse.json");
+pub const CHECK_SOURCE: &str = include_str!("../data/messages-check.json");
 
 fn read_entry(e: &Json) -> Entry {
     let s = |k: &str| {
@@ -73,21 +73,21 @@ fn read_entry(e: &Json) -> Entry {
 }
 
 /// Package F7: the catalog file of its three templates (`f07-queries.md` 11).
-pub const QUERIES_SOURCE: &str = include_str!("../../suite/messages-queries.json");
+pub const QUERIES_SOURCE: &str = include_str!("../data/messages-queries.json");
 
 /// Package F16: the catalog file of `name-clash` (`f16-entry-points.md`
 /// 9.1).
-pub const ENTRY_POINTS_SOURCE: &str = include_str!("../../suite/messages-entry-points.json");
+pub const ENTRY_POINTS_SOURCE: &str = include_str!("../data/messages-entry-points.json");
 
 /// Package F17: the catalog file of `circular-type`, a template of
 /// `check-limit`, and five templates of existing codes (`f17-recursion.md` 9
 /// and 13.5).
-pub const RECURSION_SOURCE: &str = include_str!("../../suite/messages-recursion.json");
+pub const RECURSION_SOURCE: &str = include_str!("../data/messages-recursion.json");
 
 /// Package F19: the catalog file of the hint templates, the template
 /// `pattern` of `maybe-absent`, and two `parse` codes
 /// (`f19-author-feedback.md` 7).
-pub const FEEDBACK_SOURCE: &str = include_str!("../../suite/messages-feedback.json");
+pub const FEEDBACK_SOURCE: &str = include_str!("../data/messages-feedback.json");
 
 pub fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();

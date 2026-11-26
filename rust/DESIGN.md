@@ -86,10 +86,12 @@ grouped by the sections E.3 to E.8.
 | `src/hosttype.rs` | F1 | `HostType`, `TypeCx`, `Opaque<T>`: types from host types, and `Host` for the standard types (6.3) |
 | `derive/` | F1 | The crate `risor-derive`: `#[derive(Host)]` for a struct, no dependency |
 
-The data files of `suite/` (`messages.json`, `library.json`, `casemap.json`) are compiled into
-the crate with `include_str!` and read once, at first use. Nothing in them is
-retyped, and the table cannot fall out of date: a change to a file is a change
-to the build.
+The data files of `suite/` (`messages*.json`, `library*.json`, `casemap.json`,
+`foreign-names.json`) are synced into `rust/data/` by `scripts/sync-data.sh`,
+compiled into the crate with `include_str!`, and read once at first use so the
+published crate builds standalone on crates.io. A unit test
+(`bundled_data_and_license_match_repo`) holds every bundled file equal to
+`suite/` byte-for-byte.
 
 ## The syntax tree
 

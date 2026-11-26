@@ -1,0 +1,139 @@
+[
+  {
+    "code": "name-clash",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a type of the environment, and a type line cannot declare it again"
+    },
+    "cases": [
+      {
+        "name": "name-clash",
+        "types": [
+          {
+            "name": "Order",
+            "type": "{id: string}"
+          }
+        ],
+        "source": "type Order = {id: int}; 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "name-clash",
+              "span": [
+                1,
+                6,
+                1,
+                11
+              ],
+              "message": "Order is a type of the environment, and a type line cannot declare it again"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "bad-export",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "not-lambda": "export marks a const-bound lambda; {name} is not one",
+      "unannotated": "parameter {param} of the entry point {name} needs a type",
+      "fn-parameter": "parameter {param} of the entry point {name} is a function, which a host cannot pass",
+      "binds-nothing": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+    },
+    "when": {
+      "not-lambda": "An export const line whose pattern is not a name or whose value is not a lambda. name is the bound name, or \"this line\" when the pattern is not a name",
+      "unannotated": "A parameter of an exported const-bound lambda has no annotation. name is the entry point's name; param is the parameter's name when its pattern is a name, else its 1-based position",
+      "fn-parameter": "A parameter of an exported const-bound lambda has a function type. name is the entry point's name; param is the parameter's name",
+      "binds-nothing": "A top-level const line that is not marked export and whose pattern binds no name, in a program that has an export const line"
+    },
+    "cases": [
+      {
+        "name": "bad-export: not-lambda",
+        "source": "export const a = 1;",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "bad-export",
+              "span": [
+                1,
+                1,
+                1,
+                20
+              ],
+              "message": "export marks a const-bound lambda; a is not one"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-export: unannotated",
+        "source": "export const f = (x) => x;",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "bad-export",
+              "span": [
+                1,
+                19,
+                1,
+                20
+              ],
+              "message": "parameter x of the entry point f needs a type"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-export: fn-parameter",
+        "source": "export const f = (g: (x: int) => int) => g(1);",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "bad-export",
+              "span": [
+                1,
+                19,
+                1,
+                37
+              ],
+              "message": "parameter g of the entry point f is a function, which a host cannot pass"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-export: binds-nothing",
+        "source": "const _ = 1; export const f = (x: int) => x;",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "bad-export",
+              "span": [
+                1,
+                1,
+                1,
+                13
+              ],
+              "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,154 @@
+[
+{
+  "code": "null-operand",
+  "phase": "run",
+  "since": "3.0",
+  "caught": true,
+  "params": {},
+  "templates": {
+    "star": "cannot apply [*] to null"
+  },
+  "when": {
+    "star": "The receiver of a star [*] is null. A null receiver of ?.[*] that is the first star makes the chain null; of a later ?.[*], it gives one null"
+  },
+  "cases": [
+    {
+      "name": "null-operand: star",
+      "source": "x[*]",
+      "env": "{x: any}",
+      "vars": {
+        "x": null
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "null-operand",
+            "message": "cannot apply [*] to null"
+          }
+        ]
+      }
+    },
+    {
+      "name": "null-operand: star, a later star",
+      "source": "x[*].b[*]",
+      "env": "{x: any}",
+      "vars": {
+        "x": [
+          {
+            "b": null
+          }
+        ]
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "null-operand",
+            "message": "cannot apply [*] to null"
+          }
+        ]
+      }
+    }
+  ]
+},
+{
+  "code": "wrong-kind",
+  "phase": "run",
+  "since": "3.0",
+  "caught": true,
+  "params": {
+    "kind": "kind",
+    "name": "word",
+    "found": "value"
+  },
+  "templates": {
+    "star": "cannot apply [*] to a value of kind {kind}",
+    "order": "{name} takes \"asc\" or \"desc\", found {found}"
+  },
+  "when": {
+    "star": "The receiver of a star, [*] or ?.[*], is not null and not a list. kind is the receiver's kind",
+    "order": "An argument at a parameter whose type is the literal set \"asc\" | \"desc\" (the order of sortBy) is not one of its two strings, null and every other kind included. name is the entry's name; found is the argument"
+  },
+  "cases": [
+    {
+      "name": "wrong-kind: star",
+      "source": "x[*]",
+      "env": "{x: any}",
+      "vars": {
+        "x": {
+          "a": 1
+        }
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "wrong-kind",
+            "message": "cannot apply [*] to a value of kind map"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-kind: star, ?.[*] on a string",
+      "source": "x?.[*]",
+      "env": "{x: any}",
+      "vars": {
+        "x": "ab"
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "wrong-kind",
+            "message": "cannot apply [*] to a value of kind string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-kind: order",
+      "source": "x.sortBy(v => v, d)",
+      "env": "{x: any, d: any}",
+      "vars": {
+        "x": [
+          2,
+          1
+        ],
+        "d": "up"
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "wrong-kind",
+            "message": "sortBy takes \"asc\" or \"desc\", found \"up\""
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong-kind: order, null",
+      "source": "x.sortBy(v => v, d)",
+      "env": "{x: any, d: any}",
+      "vars": {
+        "x": [
+          2,
+          1
+        ],
+        "d": null
+      },
+      "expect": {
+        "phase": "run",
+        "diagnostics": [
+          {
+            "code": "wrong-kind",
+            "message": "sortBy takes \"asc\" or \"desc\", found null"
+          }
+        ]
+      }
+    }
+  ]
+}
+]

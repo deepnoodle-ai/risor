@@ -191,6 +191,12 @@ jobs:
           rustup toolchain install --no-self-update
           rustup show active-toolchain
 
+      - name: Check bundled suite data and license
+        run: ./scripts/sync-data.sh --check
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
       # The workspace is the library and its derive crate, rust/derive. The
       # build uses the default features; the lint and the tests turn on every
       # feature, so the re-exported derive is tested.
@@ -200,6 +206,11 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps --all-features
+
       # The limits must hold in the build that uses the most stack, so the
       # suite runs unoptimized and optimized.
       - name: Test, unoptimized
@@ -207,6 +218,9 @@ jobs:
 
       - name: Test, optimized
         run: cargo test --workspace --all-features --release
+
+      - name: Dry-run publish
+        run: cargo publish --workspace --dry-run --all-features
 
   fuzz:
     runs-on: ubuntu-latest
