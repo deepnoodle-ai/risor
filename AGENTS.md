@@ -89,6 +89,18 @@ C1 has a consequence for all work: a rule that only Go can implement cheaply is
 a defect in the design. Do not define behavior by what a Go standard library
 function does.
 
+### Scope and name (D59, D60)
+
+The project keeps the name **Risor v3** (D60). Risor v3 is an embedded
+expression language (D59, `experiments/v3/design/21-scope.md` 1): a file may
+hold several named entry points, and a host calls one at a time. Nothing
+outlives a run: no closure kept by the host, no event loop, no mutation, no
+loops. Scripting stays on Risor v2. Every proposal must pass two tests:
+
+- Does it make writing, checking or running an expression over host data
+  better? If a host can do it, the host does it.
+- Can a TypeScript programmer read it without an explanation?
+
 ## Where the design is
 
 The design is in `experiments/v3/design/`. Read `00-overview.md` first.
@@ -106,7 +118,7 @@ The design is in `experiments/v3/design/`. Read `00-overview.md` first.
 | `14-implementation-plan.md` | Core and the follow-on packages, the milestones, the rules of the work |
 | `15-build-rulings.md` | Every ruling made while building: decisions taken, design rules changed, new rules |
 | `17` to `20` | One feature each, from the review of issues #640, #641 and #644: entry points and annotations; recursion, function parameters and `match` guards; host calls and opaque values; feedback to authors |
-| `21-scope.md` | The scope of v3 (a recommendation, D59), and sketches of the next expression features: explaining a result, `glob`, moving off expr |
+| `21-scope.md` | The scope of v3 (settled, D59) and name (settled, D60), and sketches of the next expression features: explaining a result, `glob`, moving off expr |
 
 A plan (`07` to `13`, `17` to `20`) is the authority for its feature. `02` to
 `06` carry its rules and cite it. There is no `16`: regular expressions were
@@ -258,6 +270,10 @@ together on the tag `npm-v<version>`: set the version with `node
 web/scripts/version.ts <version>`, merge that, then push the tag.
 `.github/workflows/release-npm.yml` stages them; each version goes live when
 a maintainer approves it with 2FA on npmjs.com (Staged Packages).
+
+The Rust crates (`risor` and `risor-derive`) publish to crates.io in lockstep
+at `3.0.0` and `3.x.y` on the tag `rust-v3.x.y`. See `docs/versioning.md` for
+the full 3.x stability promise, versioning policy, and v2 support window.
 
 v2 releases are cut from the `v2` branch; see `docs/guides/releasing.md`
 there.

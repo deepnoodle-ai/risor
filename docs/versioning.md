@@ -1,10 +1,8 @@
 # Risor Stability Promise and Versioning Policy
 
-> **Status: draft, pending owner approval (issue #713).**
->
-> Before 3.0.0 is tagged, Risor v3 is an alpha (`3.0.0-alpha.N`). The language,
-> specification, cost table, and host APIs may change between alphas without
-> notice. The promises below take effect at **3.0.0**.
+> Before **3.0.0** is tagged, Risor v3 is an alpha (`3.0.0-alpha.N`). The
+> language, specification, cost table, and host APIs may change between alphas
+> without notice. The stability promises below take effect at **3.0.0**.
 
 This document states what users and host embedders can rely on across Risor
 3.x releases: what may change, what is a breaking change, how the specification
@@ -82,13 +80,17 @@ Per `spec/core/03-host.md` 3.8.4:
 
 - **Host APIs** (Go, TypeScript, Rust) follow semantic versioning: minor
   releases may add functions, methods, options, or struct/object fields without
-  breaking existing callers.
+  breaking existing callers. In Go, the CLI-only companion package
+  `github.com/deepnoodle-ai/risor/go/v3/risorcli` exists solely to support the
+  separate `go/cmd/risor` CLI module and is outside the frozen host embedding
+  API promise (hosts embed `risor` and test with `risor/risortest`).
 - **Conformance suite and case format:** new case fields and result fields are
   additive; valid `3.0` case files remain valid across `3.x`.
-- **Formatter (`F12`):** formatted output for existing syntax stays stable
-  within `3.x` so CI format checks do not break on upgrades, except for bug
-  fixes where formatting violated `F12` 2.2's laws (idempotence, equal syntax
-  tree, equal counts). *(See Open Policy Choices below.)*
+- **Formatter (`F12`):** formatted output for existing syntax is frozen within
+  `3.x` so CI format checks (`risor fmt --check`) do not break on upgrades.
+  Output may change within `3.x` only for clear bug fixes (such as violations
+  of `F12` 2.2's laws: idempotence, equal syntax tree, equal counts) or for
+  new syntax introduced in a minor specification version.
 - **Assist (completion and hover):** additive improvements (new candidates
   introduced by a new minor specification version, richer documentation) are
   non-breaking.
@@ -96,37 +98,40 @@ Per `spec/core/03-host.md` 3.8.4:
 ## 2. Specification version vs. package versions
 
 Risor separates the **specification version** from the **package versions** of
-the three implementations and companion web packages.
+the three implementations, the Go CLI, and companion web packages.
 
 | Artifact | Identifier | Tag / registry |
 | --- | --- | --- |
 | Specification (`spec/`, `suite/`) | `major.minor` (e.g., `3.0`, `3.1`) | Recorded in `spec/` and `suite/` |
 | Go module | `github.com/deepnoodle-ai/risor/go/v3` | Git tag `go/v3.x.y` (never bare `v3.*`; see R200) |
-| Go CLI | `github.com/deepnoodle-ai/risor/go/cmd/risor` | Git tag `go/cmd/risor/vX.Y.Z` |
+| Go CLI | `github.com/deepnoodle-ai/risor/go/cmd/risor` | Git tag `go/cmd/risor/vX.Y.Z` (separate Go module so `go/v3` keeps zero external dependencies) |
 | TypeScript & web packages | `@deepnoodle/risor`, `@deepnoodle/risor-service`, `@deepnoodle/risor-codemirror`, `@deepnoodle/risor-react`, `@deepnoodle/risor-mantine` | Git tag `npm-v3.x.y`, staged in lockstep via `web/scripts/version.ts` and `.github/workflows/release-npm.yml` (a maintainer approves each staged package with 2FA on npmjs.com before publication) |
-| Rust crates | `risor`, `risor-derive` | crates.io `3.x.y` (currently `0.1.0`, `publish = false` until 3.0 GA) |
+| Rust crates | `risor`, `risor-derive` | Git tag `rust-v3.x.y`, published to crates.io at `3.0.0` and `3.x.y` |
 
 ### How the version numbers relate
 
 1. **Major versions match.** All `3.x.y` packages implement specification major
    version `3`. A breaking change to the specification increments every
    implementation to `4.0.0` (Go module path `/go/v4`).
-2. **Specification minor vs. package minor.** A new specification minor version
+2. **Host-API-only minor bumps are allowed.** A new specification minor version
    (e.g., `3.1`) always bumps the package minor version of each implementation
    that ships it. Implementation-only additive host API features may also bump
-   that implementation's minor version, so a package's minor version is always
-   **greater than or equal to** the newest specification minor version it
-   implements. *(Alternative: lock package minor strictly to spec minor — see
-   Open Policy Choices below.)*
-3. **Patch versions are independent.** Bug fixes, performance work, and
-   security patches increment `PATCH` (`3.x.y`) only for the affected
-   implementation(s). Go `go/v3.0.2`, npm `npm-v3.0.1`, and Rust `3.0.0` are
-   all valid `3.0` releases without empty cross-language bumps.
+   that implementation's minor version without bumping the specification
+   version, so a package's minor version is always **greater than or equal to**
+   the newest specification minor version it implements.
+3. **Patch versions are independent and target the latest `3.x` minor only.**
+   Bug fixes, performance work, and security patches increment `PATCH`
+   (`3.x.y`) only for the affected implementation(s). Go `go/v3.0.2`, npm
+   `npm-v3.0.1`, and Rust `rust-v3.0.0` are all valid `3.0` releases without
+   empty cross-language bumps. Because every `3.x` minor release is strictly
+   additive and safe to upgrade to, patches ship on the latest `3.x` minor
+   release line only; older `3.x` minor lines do not receive backports.
 4. **Companion npm packages move in lockstep.** `@deepnoodle/risor` and the
    four `@deepnoodle/risor-*` packages share one version number set by
    `node web/scripts/version.ts <version>`.
-5. **Rust workspace crates move in lockstep.** `risor` and `risor-derive` share
-   the same `3.x.y` version so `features = ["derive"]` resolves cleanly.
+5. **Rust workspace crates move in lockstep.** `risor` and `risor-derive`
+   publish to crates.io at `3.0.0` and share the same `3.x.y` version under tag
+   `rust-v3.x.y` so `features = ["derive"]` resolves cleanly.
 6. **Three-implementation parity for spec releases.** A specification minor
    version (`3.1`, `3.2`, ...) is considered released only when Go, TypeScript,
    and Rust all pass its conformance suite (decision D27).
@@ -212,18 +217,6 @@ branch. Existing Go imports of `/v2` continue to work without change.
 - **Maintenance scope:** v2 is in maintenance mode. It receives security fixes
   and critical bug fixes (no new language features). Fixes land via pull
   requests targeting `--base v2` and release as `v2.x.y` tags.
-- **Maintenance window:** *(Pending owner decision — see Open Policy Choices
-  below.)*
-
-## 6. Open policy choices for the owner
-
-Approve or adjust these five items before removing the draft banner and
-publishing this policy in the docs:
-
-| # | Policy choice | Draft recommendation | Alternatives |
-| --- | --- | --- | --- |
-| 1 | **Package minor vs. spec minor** | Allow implementation-only additive host API features to bump that package's minor version (`package minor >= spec minor`). | Lock every package's `MAJOR.MINOR` strictly to the specification `MAJOR.MINOR` (host API additions wait for a spec minor or go in patches, which bends SemVer). |
-| 2 | **Rust crates.io publishing & tags** | Publish `risor` and `risor-derive` at `3.0.0` on crates.io at 3.0 GA using tags `rust-v3.x.y` (mirroring `go/v3.x.y` and `npm-v3.x.y`). | Keep `publish = false` (git dependency only) past 3.0.0, or use a different tag prefix. |
-| 3 | **Formatter (`F12`) stability** | Freeze formatted output for existing syntax within `3.x` (only law-violating bug fixes may change output). | Allow layout refinements in `3.x` minor releases (may break `risor fmt --check` in user CI on minor upgrades). |
-| 4 | **Risor v2 maintenance window** | Security and critical bug fixes for **12 months after 3.0.0 GA**, then archive/best-effort. | (a) Indefinite maintenance while v2 scripting has no v3 replacement; (b) 6 months after 3.0.0 GA. |
-| 5 | **Patch backports on older `3.x`** | Patch releases ship on the latest `3.x` minor only (since minor releases are strictly additive and safe to upgrade). | Backport security fixes to the previous `3.(x-1)` minor branch as well. |
+- **Maintenance window:** Risor v2 receives security fixes and critical bug
+  fixes for **12 months after 3.0.0 ships**, after which the `v2` branch moves
+  to archive / best-effort status.

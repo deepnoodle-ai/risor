@@ -1,8 +1,13 @@
 # Risor v3 design: ratification brief for 3.0 (issue #696)
 
-Status: brief for the owner. Nothing in `00-overview.md`, `15-build-rulings.md`
-or `spec/` has been marked settled here. Every item below is built as
-recommended in all three implementations unless noted otherwise.
+Status: **ratified by the owner on 2026-11-25 (issues #696 and #697).** Every
+item in Part A and Part B is settled as built (with D23 settled as zero
+dependencies in `go/go.mod`, shipped in PR #729, and D60 settled as keeping
+"Risor v3"). All settled statuses have been applied across `00-overview.md`,
+`15-build-rulings.md`, `21-scope.md`, `23-host-api-freeze.md`, `05-host-api.md`,
+`14-implementation-plan.md`, `18-recursion.md`, `20-author-feedback.md`,
+`spec/packages/f16-entry-points.md`, and `AGENTS.md`. Part C (`18-18`) remains
+deferred, unbuilt, and not settled for 3.0.
 
 **How to use this brief.** Part A lists the 13 items genuinely worth a second
 look before 3.0 freezes the language and APIs. Part B batches every remaining
@@ -15,10 +20,10 @@ docs or spec outside the list in issue #696 so nothing slips past 3.0.
 
 | ID | Built behavior | Why it matters / strongest alternative | Recommendation |
 | --- | --- | --- | --- |
-| D59 (`00` 4.3, `21` 1) | *(Pending doc addition; not yet written into `AGENTS.md` or `00-overview.md`.)* Scope statement: v3 is an embedded expression language with named entry points; nothing outlives a run (no kept closures, no event loop, no mutation, no loops). Two tests for every proposal: improves expressions over host data, and readable by a TypeScript programmer without explanation. | Would add an explicit scope constraint to `AGENTS.md` and `00-overview.md` to turn away scripting requests. Alternative: keep scope informal. | Confirm, and add to `AGENTS.md` and `00-overview.md`. |
-| D60 *(added)* (`00` 4.3, `21` 4) | Project is named "Risor v3" (`go/v3`, `@deepnoodle/risor`, `risor` crate). | Renaming as expr's successor is practically impossible once 3.0 packages ship. Keeping "Risor v3" may keep drawing v2 scripting requests. | Owner's call (no recommendation in `00`). |
-| D27 (`00` 4.1) | 3.0 is final only when Go, TypeScript and Rust all pass the full suite (checker and library included). | All three already pass Core and built packages, but Rust is still `publish = false` at `0.1.0`. Alternative: ship Go and TypeScript 3.0 first and let Rust follow (prior art says a third implementation then drifts). | Confirm: require all three at 3.0.0. |
-| D23 (`00` 4.5, `15` 1) | `00` recommends dropping `wonton/assert` so the Go module has zero dependencies. **Actual state:** Go library code imports no `wonton` package, but `go/go.mod` still requires `wonton v0.14.0` (plus 4 indirect deps) for `wonton/assert` in tests **and** `wonton/cli`, `tui`, `color`, `env`, `tty` in `go/cmd/risor`. | Dropping `wonton/assert` alone does not make `go/go.mod` dependency-free unless `cmd/risor` splits into its own module or drops `wonton` too. Alternative: keep `wonton` in `go/go.mod` (zero deps in the library import graph, CLI/tests use `wonton`), or split `cmd/risor` into `go/cmd/risor/go.mod`. | Decide between (1) split `cmd/risor` + drop `wonton/assert` for a 0-dep `go.mod`, or (2) keep `wonton` and reverse D23. |
+| D59 (`00` 4.3, `21` 1) | Scope statement: v3 is an embedded expression language with named entry points; nothing outlives a run (no kept closures, no event loop, no mutation, no loops). Two tests for every proposal: improves expressions over host data, and readable by a TypeScript programmer without explanation. | Adds an explicit scope constraint to `AGENTS.md` and `00-overview.md` to turn away scripting requests. Alternative: keep scope informal. | **Settled (2026-11-25):** confirmed and added to `AGENTS.md` and `00-overview.md`. |
+| D60 *(added)* (`00` 4.3, `21` 4) | Project is named "Risor v3" (`go/v3`, `@deepnoodle/risor`, `risor` crate). | Renaming as expr's successor is practically impossible once 3.0 packages ship. Keeping "Risor v3" may keep drawing v2 scripting requests. | **Settled (2026-11-25, #697):** keep the name "Risor v3" (no rename). |
+| D27 (`00` 4.1) | 3.0 is final only when Go, TypeScript and Rust all pass the full suite (checker and library included). | All three already pass Core and built packages, and Rust is being prepared to publish at `3.0.0`. Alternative: ship Go and TypeScript 3.0 first and let Rust follow (prior art says a third implementation then drifts). | **Settled (2026-11-25):** require all three at 3.0.0. |
+| D23 (`00` 4.5, `15` 1) | `go/go.mod` has zero external dependencies (`go/cmd/risor` split into its own module, tests use stdlib + `internal/assert`; shipped in PR #729). | Keeps the Go library module dependency-free while letting the CLI keep its own `wonton` dependencies. | **Settled (2026-11-25, #708, PR #729):** zero dependencies in `go/go.mod`. |
 | D16 (`00` 4.4) | Step and allocation unit counts are fixed per specification version (`04-library.md` 1.2, `03-host.md` 3.6.3). | Prohibits optimizations that change counts and freezes any miscalibrated cost rate until 4.0 (or a new entry name). Directly governs the stability policy (#713). Alternative: leave counts implementation-defined or allow repricing in minor versions. | Confirm: deterministic metering is a headline v3 promise. |
 | D37 (`00` 4.3) | `if` requires an `else` branch in 3.0. | Requiring `else` now allows adding optional `else` (giving `null`) later without a break; the reverse is breaking. Alternative: allow `if (c) { a }` as `c ? a : null` in 3.0. | Confirm: keep `else` required in 3.0. |
 | D38 (`00` 4.3, `01` 4.1) | Subjectless `match` by conditions (`match { c => e }`) was **dropped** in Core (`01-language.md` 4.1 item 3), while `00` 4.3 still says "stays in the documents for now; I would drop it". `match` by subject cases (+ F17 guards) and `if`/`else if` both stay. | Reconciles `00-overview.md` with Core as built. Alternative: restore condition-form `match` before 3.0. | Confirm dropping it (and update `00` 4.3 to match Core). |
@@ -94,9 +99,12 @@ built for 3.0. Confirming Part B does not settle them.
 | --- | --- | --- |
 | `18-18` *(added)* (`18` 7.6, `18` 10) | Type variables in non-recursive lambda annotations (additive follow-up; `Fn` stays monomorphic in 3.0). | Recommendation, not settled; explicitly out of track E and not built. |
 
-## Next step once the owner replies
+## Outcome (2026-11-25)
 
-For each confirmed item, update `00-overview.md` section 4 (marking settled and
-aligning D10/D38 wording with Core), `15-build-rulings.md`, `F16` section 1.5,
-and `AGENTS.md` (for D59 and D23). Any item the owner reverses gets a targeted
-follow-up issue before 3.0.0 is tagged.
+The owner ratified all of Part A and Part B as built (with D23 already
+implemented in PR #729 and D60 settled as keeping "Risor v3"). All settled
+decisions and rulings have been recorded in `00-overview.md`,
+`15-build-rulings.md`, `21-scope.md`, `23-host-api-freeze.md`, `05-host-api.md`,
+`14-implementation-plan.md`, `18-recursion.md`, `20-author-feedback.md`,
+`spec/packages/f16-entry-points.md` 1.5, and `AGENTS.md`. Part C (`18-18`) stays
+deferred out of 3.0 and unbuilt.

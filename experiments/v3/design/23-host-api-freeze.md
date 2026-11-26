@@ -1,7 +1,8 @@
 # Risor v3 design 23: host API review and freeze (issue #706)
 
 Status: **P1–P9 approved by the owner and applied**; P10 kept as-is; P11
-(`~standard` on TypeScript `Type`) tracked with #696. This document records
+(`~standard` on TypeScript `Type`, R202) **ratified by the owner on
+2026-11-25 (#696)**. This document records
 the public surface of the Go, TypeScript and Rust bindings, verifies option
 defaults against `spec/core/03-host.md`, and tracks the pre-freeze cleanups
 for 3.0.0.
@@ -77,7 +78,8 @@ for 3.0.0.
 ## 2. Pre-freeze changes (owner decisions)
 
 The owner approved P1 through P9; all nine have been implemented across Go,
-TypeScript and Rust. P10 is kept as-is and P11 remains tracked with #696.
+TypeScript and Rust. P10 is kept as-is and P11 (R202) was ratified on
+2026-11-25 (#696).
 
 | ID | Binding | Finding | Resolution | Status |
 | --- | --- | --- | --- | --- |
@@ -91,7 +93,7 @@ TypeScript and Rust. P10 is kept as-is and P11 remains tracked with #696.
 | P8 | Rust | `SchemaOptions::from_names`, `Diagnostic::bare`, `Error::one` and `Expr::has_result` were public in Rust without Go/TS counterparts. | Made all four `pub(crate)` (`Program::has_result` stays public, matching Go and TS). | Done |
 | P9 | TS / Rust | Constant parity gaps: TS did not export `SOURCE_LIMIT`; TS and Rust did not export load-step constants (`StepDeclare`..`StepDecode`). | Exported `SOURCE_LIMIT` and `STEP_DECLARE`..`STEP_DECODE` from `@deepnoodle/risor`, and `STEP_DECLARE`..`STEP_DECODE` from `risor`. | Done |
 | P10 | TS | `LoadOptions.expected` is required in TS, whereas Go `LoadValue` and Rust `LoadOptions::default()` allow omitting it. | Kept as-is: F10 config loads normally specify an expected type. | Kept |
-| P11 | TS | Standard Schema `~standard` on `Type` (R202, already listed in `22-ratification-brief.md` Part A). | Tracked with #696. | Open (#696) |
+| P11 | TS | Standard Schema `~standard` on `Type` (R202, listed in `22-ratification-brief.md` Part A). | Ratified by the owner on 2026-11-25 (#696): keep `~standard` as a TS ecosystem convenience. | Kept (ratified) |
 
 ## 3. Side-by-side parity matrix
 

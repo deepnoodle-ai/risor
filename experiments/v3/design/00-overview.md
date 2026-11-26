@@ -1,8 +1,8 @@
 # Risor v3 design: overview and cross-cutting decisions
 
 Status: design proposal. It records the owner's constraints, the decisions that
-span more than one of the six aspect documents (`01` to `06`), the decisions
-still open for the owner, and the roadmap. The aspect documents have been
+span more than one of the six aspect documents (`01` to `06`), the settled
+decisions, and the roadmap. The aspect documents have been
 revised to agree with it. Where one still disagrees, this file wins. Seven
 plans, `07` to `13`, each hold one feature that was designed after the aspect
 documents. Four more, `17` to `20`, come from the review of issues #640 and
@@ -47,10 +47,16 @@ Eighth revision. Issues #640 and #641 were reviewed on 2026-11-14, and plans
 `16` to `20` were written from the review (D52 to D56). On 2026-11-19, after a
 further review and issue #644, the owner withdrew D52, trimmed D54 to D56, and
 settled D57 (passing functions to user-defined functions) and D58 (a lower
-largest depth). D59 and D60 are open. Section 4 has the rows and "Where the
-plans meet"; `14` section 5 orders the work as tracks A to F. `02` to `06`
-are not yet revised for D53 to D58: each track revises the specification
+largest depth). D59 and D60 were left open then. Section 4 has the rows and
+"Where the plans meet"; `14` section 5 orders the work as tracks A to F. `02`
+to `06` are not yet revised for D53 to D58: each track revises the specification
 when it lands, and the plans are the authority until then.
+
+Ninth revision. On 2026-11-25, the owner ratified all remaining 3.0 decisions
+in section 4 (`22-ratification-brief.md`, issues #696 and #697): D2 (build
+order historical), D8, D10 to D27, D31, D37, D38 (condition-form `match`
+dropped, matching Core), D59 (the scope statement and its two tests, added to
+section 1 and `AGENTS.md`), and D60 (keep the name "Risor v3").
 
 Each decision has a status:
 
@@ -74,6 +80,13 @@ These came after the first drafts of `01` to `06` and change several of them.
 | C5 | **Memory allocation and run duration can be controlled and limited.** | Owner |
 | C6 | **Lean toward TypeScript's syntax, all else equal,** without JavaScript's historical baggage. | Owner |
 | C7 | **Compatibility with expr and with Risor v1 and v2 carries little weight.** expr has no real outside users and Risor's user base is small. A more robust v3 is worth a break. | Owner |
+
+**Scope (D59, owner, 2026-11-25; `21` 1).** Risor v3 is an embedded expression
+language. A file may hold several named entry points, and a host calls one at a
+time. Nothing outlives a run: no closure kept by the host, no event loop, no
+mutation, no loops. Every proposal must pass two tests: does it make writing,
+checking or running an expression over host data better; and can a TypeScript
+programmer read it without an explanation.
 
 The eight decisions given to every aspect at the start still hold:
 expression-first; Risor's syntax on expr's semantics; host values read in place;
@@ -273,7 +286,7 @@ now decided X1 to X3.
 | Value and type | The value of the branch taken. No other branch is evaluated. The type is the join of the branch types. The test narrows names in its own branch, and its negation narrows them in every later branch, as for `? :`. |
 | Place in the grammar | An `if` is a whole expression, at the level of `? :`, not an operand. It may stand wherever an expression may: a `const` value, an argument, a lambda body, a branch, a list item, a map value, an interpolation. As an operand or a chain receiver it needs parentheses: `(if (c) { 1 } else { 2 }) + 3`. So no reader has to ask whether `+ 3` or `.map(f)` belongs to the last branch or to the whole. |
 | Cost and nesting | Steps as for `? :`. The parentheses and each branch's braces open a nesting level as brackets do (`02` 2.16). An `else if` opens none, so a long chain is handled by a loop in each implementation. |
-| `? :` and `match` | Both stay. `? :` is the short form inside a larger expression. `match` by cases checks that every case is covered. `match` by conditions now says what an `else if` chain says (D38). |
+| `? :` and `match` | Both stay. `? :` is the short form inside a larger expression. `match` by cases checks that every case is covered. `match` by conditions was dropped in Core (D38). |
 
 ### 2.11 Checked conversion of untyped data
 
@@ -314,7 +327,7 @@ Each line points at the document that owns the detail.
 | --- | --- | --- |
 | Shape | A language defined by a specification and a data conformance suite, with independent implementations in Go, Rust and TypeScript. One core compiled to WebAssembly was rejected for evaluation because no such design keeps "host values read in place". The Rust implementation is the base for hosts in other languages. | `01`, sections 2.1 and 2.8 |
 | Program | `const` bindings followed by one expression. The same thing in braces is a block expression, usable anywhere. A `when:` field, a script and a config file are the same language. 32 node kinds, against 43 in v2. | `02` |
-| Syntax | JavaScript's expression syntax: arrow functions, method calls, `?.`, `?.[`, `??`, `? :`, spread, template strings, destructuring, default parameters, `**`. Text blocks and raw strings. `if` and `try` as expressions. A projection step, `xs[*].f`. A `match` expression by literal cases or by conditions. Text valid in both languages means the same, with a short listed set of exceptions. | `02` |
+| Syntax | JavaScript's expression syntax: arrow functions, method calls, `?.`, `?.[`, `??`, `? :`, spread, template strings, destructuring, default parameters, `**`. Text blocks and raw strings. `if` and `try` as expressions. A projection step, `xs[*].f`. A `match` expression by literal cases (with guards in F17; condition-form `match` dropped, D38). Text valid in both languages means the same, with a short listed set of exceptions. | `02` |
 | Values | null, bool, number, string, list, map, and opaque host values. Nothing can be changed; spread builds the updated copy. | `02` |
 | Numbers | One kind, with double semantics. Whole numbers are exact to ±(2^53 − 1) and an out-of-range result is an error. `/` is true division. | `02`, section 2.2 |
 | Conditions | Truthiness: null, `false`, zero and anything empty are falsy. `&&` and `\|\|` return an operand. `\|\|` replaces a falsy value, `??` replaces null. | `02`, section 2.3 |
@@ -344,29 +357,26 @@ section 5 schedules, and the Counts table of section 4 lists what moves.
 Each is written to in the documents as recommended. Reversing one means a
 further revision of the documents named.
 
-**Settled by the owner since the second revision:** D1, D2 (which
-implementations), D3, D5, D6, D7 and D9 as recommended, and D4 against the
-recommendation. The owner was shown those and agreed with all but D4.
-D10 to D22 and D24 to D26 were not put to the owner one by one and are still recommendations.
-D28 to D34, except D31, were put one by one and are settled as recommended.
-D27 and D31 were not asked. D35 and D36 were put and are settled as recommended. D37 and D38 are
-new details of `if`, ruled here and not asked. D39 to D45 were put and are
-settled as recommended. D46 to D51 are six plans, each accepted with every
-decision as it recommends; within them the owner chose the form of `try`, the
-timing of imports, the message catalog and the direction for queries by name.
-D52 to D56 are five plans from the review of issues #640 and #641; the owner
-settled the direction of each on 2026-11-14, then withdrew D52 and trimmed D54
-to D56 on 2026-11-19. D57 and D58 were put and settled the same day. D59 is a
-recommendation the owner has not confirmed, and D60 is open. D62 and D63 were
-put and settled on 2026-11-24. D23 was settled on 2026-11-25.
+**Settled by the owner:** all 3.0 decisions in section 4 are settled. After the
+second revision, the owner settled D1, D2 (which implementations), D3, D5, D6,
+D7 and D9 as recommended, and D4 against the recommendation; then D28 to D30,
+D32 to D36, and D39 to D51 as recommended (choosing `try`, imports timing, the
+message catalog and queries directly). For plans `16` to `20`, the owner
+settled the direction of D52 to D56 on 2026-11-14, withdrew D52 and trimmed D54
+to D56 on 2026-11-19, and settled D57 and D58 the same day. D61 to D65 were
+settled on 2026-11-24, and D23, D66 and D67 on 2026-11-25. Also on 2026-11-25
+(`22-ratification-brief.md`, issues #696 and #697), the owner ratified every
+remaining 3.0 decision: D2 (build order historical), D8, D10 to D22, D24 to
+D27, D31, D37, D38 (condition-form `match` dropped), D59 (scope constraint) and
+D60 (keep the name "Risor v3").
 
 ### 4.1 Strategy
 
 | # | Decision | Recommendation | Touches |
 | --- | --- | --- | --- |
 | D1 | Is v3 the successor to expr, with the workflow engine moving to it, or a sibling? | **Settled: successor.** Users of expr and of v2 are expected to move (C7) | all |
-| D2 | Which implementations, and in what order? | **Settled: Go, Rust and TypeScript.** Order is still a recommendation: Go first, then a reference evaluator in TypeScript and one in Rust, all before the checker is built (section 5) | all |
-| D27 | Is 3.0 final only when all three implementations pass the whole suite, checker and library included? | Yes. The alternative is to ship Go and TypeScript and let Rust follow, which the prior art says is how a third implementation stays "mostly compliant" | all |
+| D2 | Which implementations, and in what order? | **Settled: Go, Rust and TypeScript.** Build order (Go first, then TypeScript and Rust reference evaluators, then the checker) is historical and ratified on 2026-11-25; all three implementations are built (section 5) | all |
+| D27 | Is 3.0 final only when all three implementations pass the whole suite, checker and library included? | **Settled by the owner, 2026-11-25:** yes. The alternative was to ship Go and TypeScript and let Rust follow, which the prior art says is how a third implementation stays "mostly compliant" | all |
 
 ### 4.2 Breaks with v2 and expr
 
@@ -381,22 +391,22 @@ put and settled on 2026-11-24. D23 was settled on 2026-11-25.
 | D34 | Close the hole in E6: a lambda is passed only to library functions, and a parameter cannot be called (E9) | **Settled:** yes. It is what makes "every program terminates" true, which is the reason for D6 | Helpers that take a function, such as `const twice = (f, x) => f(f(x))`, cannot be written. Revised by D57: a parameter typed with an `Fn` may be called, so `const twice = (f: (x: int) => int, x: int): int => f(f(x))` can |
 | D6 | No recursion or loops in 3.0 (E6) | **Settled: yes** | A v2 script that uses a loop, a statement or mutation has no direct v3 form. It is rewritten with `map`, `filter` and `reduce`, moved into a host function, or left on v2. This is the one break that C7 does not make cheap. Partly reversed by D54: self-recursion with types is in. Loops stay out. |
 | D7 | JavaScript's names for string and list methods (`toUpperCase`, `some`, `every`), expr's for functions (`len`, `int`, `round`) | **Settled: yes** (and C6) | Longer names than expr's. The other spellings give a compile error that names the fix |
-| D8 | `len`, `int` and `float` reject null | Yes | `len(x ?? [])` where expr accepts nil today (v3: null) |
+| D8 | `len`, `int` and `float` reject null | **Settled by the owner, 2026-11-25:** yes | `len(x ?? [])` where expr accepts nil today (v3: null) |
 | D9 | Regular expressions are out of 3.0 and reserved for a minor version | **Settled: yes** | Three engines would have to agree on one subset, the TypeScript implementation would need its own matcher of about 700 lines, and a released entry cannot change. D52 reversed it on 2026-11-14 and was withdrawn on 2026-11-19, so D9 stands. `regexp` is reserved in Core (PR #642). |
 
 ### 4.3 Language details
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| D10 | `match` ships with literal cases and conditions only: no binding, guards or structural patterns | Yes; they can be added later without a break |
-| D11 | `??` beside a comparison or logical operator needs parentheses | Yes; it is the only option with no silent misreading |
-| D12 | Two departures from JavaScript: `in` on a list means membership, and a default replaces null as well as "absent" | Keep both |
-| D13 | Literal sets are strings only, so a `match` on a numeric enum needs a default arm | Accept |
-| D14 | Template delimiters fixed at `${{ }}` (S14) | Fixed |
+| D10 | `match` ships with literal cases only (no binding or structural patterns in 3.0; guards added by D54/F17, conditions dropped by D38) | **Settled by the owner, 2026-11-25:** yes; binding and structural patterns can be added later without a break |
+| D11 | `??` beside a comparison or logical operator needs parentheses | **Settled by the owner, 2026-11-25:** yes; it is the only option with no silent misreading |
+| D12 | Two departures from JavaScript: `in` on a list means membership, and a default replaces null as well as "absent" | **Settled by the owner, 2026-11-25:** keep both |
+| D13 | Literal sets are strings only, so a `match` on a numeric enum needs a default arm | **Settled by the owner, 2026-11-25:** accept |
+| D14 | Template delimiters fixed at `${{ }}` (S14) | **Settled by the owner, 2026-11-25:** fixed |
 | D35 | `if` / `else if` / `else` as an expression (X1) | **Settled:** yes |
 | D36 | `const` in place of `let` for a constant binding (X2) | **Settled:** `const`, with `let` and `var` reserved. Loops, reassignment and early `return` are deferred (X3 to X5) |
-| D37 | Must an `if` have an `else`? (2.10) | Yes in 3.0. The other choice is that a missing `else` gives null. That can be allowed later without a break. The reverse cannot |
-| D38 | Does `match` by conditions stay, now that `else if` says the same thing? (2.10) | It stays in the documents for now. I would drop it: two spellings of one thing, and `if` is the one a TypeScript author knows. `match` by cases stays either way |
+| D37 | Must an `if` have an `else`? (2.10) | **Settled by the owner, 2026-11-25:** yes in 3.0. The other choice is that a missing `else` gives null. That can be allowed later without a break. The reverse cannot |
+| D38 | Does `match` by conditions stay, now that `else if` says the same thing? (2.10) | **Settled by the owner, 2026-11-25:** dropped. Condition-form `match` was removed in Core (`spec/core/01-language.md` 4.1 item 3); `if`/`else if` and `match` by cases (with F17 guards) both stay |
 | D28 | One spelling for the absent value: `null`, with `nil` a targeted error (Y3) | **Settled:** yes. It follows C6 and "one way to write each thing". The cost is that Risor has said `nil` since v1 |
 | D29 | Type text in TypeScript's spelling: `T[]`, `T \| null`, `=>`, `any` (Y4) | **Settled:** yes, where TypeScript has the same idea. `int`, `float` and `map<T>` stay |
 
@@ -444,8 +454,8 @@ tracks A to F.
 | D56 | Feedback to authors (`20-1` to `20-11`) | **Settled, and trimmed on 2026-11-19.** An absent key at the last step of a read gives null when the read is an operand of a `??` chain other than its last; a key a closed record cannot have stays `no-field`. Hints from tables in the message, the `wrong` lists made normative, a table of foreign names. Parse codes for `await` and `;` between expressions. A nested Risor error keeps its message. **Dropped:** the brief rendering and layouts for `time.format`. Built: absence under `??` and the nested message in track B, the rest as package F19 (`15` R351 to R359) |
 | D57 | Passing functions to user-defined functions (#644a, `18` 7) | **Settled by the owner, 2026-11-19.** A parameter typed with an `Fn` may be called, and a lambda may be passed to it. First-order only: an `Fn` takes no function. Revises D34, E9 and `01-language.md` 8.2 rules 2 and 4. A function still cannot be stored, returned or passed to a host function: R3 and S3 hold. Static rules keep an unchecked run safe (`18` 7.1). `Fn` types have no type variable yet; `18` 7.6 recommends an additive follow-up. Specified as step E3 of F17 (`spec/packages/f17-recursion.md` 13) and built in all three implementations (R280 to R297) |
 | D58 | The largest depth limit a host may set | **Settled by the owner, 2026-11-19:** 400, down from 1,000 (R20). The default stays 200. The fallback of 300 was not needed: after the stack work each binding runs its deepest forms at 400 with 1.5 times headroom, the TypeScript binding in a browser Web Worker among them (R214). With it goes a rule for `03-host.md` 3.9.1: each binding's stack test covers calls that a library entry makes of a lambda (`map`, `flatMap`), not only direct calls, and passes with 1.5 times headroom. The evidence is below |
-| D59 | Scope: what v3 is (`21` 1) | **A recommendation the owner has not confirmed.** Write it into `AGENTS.md` and this file as a constraint: v3 is an embedded expression language; a file may hold several named entry points; nothing outlives a run (no closure kept by the host, no event loop, no mutation, no loops). The two tests of `21` 1 come with it: does a proposal make writing, checking or running an expression over host data better; and does a TypeScript programmer read it without an explanation |
-| D60 | Keep the name "Risor v3", or rename v3 as expr's successor | **Open.** No recommendation. `21` 4 notes the case for a rename: if the Risor name keeps bringing requests for scripting |
+| D59 | Scope: what v3 is (`21` 1) | **Settled by the owner, 2026-11-25 (#696).** Written into `AGENTS.md` and section 1 of this file as a constraint: v3 is an embedded expression language; a file may hold several named entry points; nothing outlives a run (no closure kept by the host, no event loop, no mutation, no loops). The two tests of `21` 1 come with it: does a proposal make writing, checking or running an expression over host data better; and does a TypeScript programmer read it without an explanation |
+| D60 | Keep the name "Risor v3", or rename v3 as expr's successor | **Settled by the owner, 2026-11-25 (#697):** keep the name "Risor v3" (`go/v3`, `@deepnoodle/risor`, `risor` crate). Do not rename; no rename follow-up issues needed |
 | D61 | Comparisons do not chain | **Settled by the owner, 2026-11-24.** A comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in`) is not an operand of another comparison without parentheses: `a == b == c`, `a < b < c` and `a < b == c` are the new Core `parse` code `chained-comparison`, at the second operator (`01-language.md` 3.4 rule 13). The reason is least surprise (C2): `1 == 1 == true` compared a bool with `true`, and `1 < 2 < 3` read like a range test and failed at run time. Mixing levels 5 and 6 is refused too, and so is `in`, which stands at level 6. `as` and `is` are not comparisons: `x as int > 3` stays valid. Core has 16 `parse` codes, F8 60 with 99 templates. The formatter writes its parentheses for the reader only in a run of at most 3 operators that no other such pair encloses, so they add at most 2 levels, and leaves them out of a source that nests deeper than 98 levels, so its output always parses (F12 2.6 items 3 and 4), which fixes #666. Existing Core cases that chained comparisons changed |
 | D62 | How the formatter writes a broken `? :` chain (#665) | **Settled by the owner, 2026-11-24:** flat. A `? :` whose `else` branch is a `? :` is one chain. When it does not fit, each link starts a line at the chain's indentation: `test ? branch`, then `: test ? branch`, then `: branch`, as an `if` with `else if` parts stands. A link that does not fit breaks alone, with `? branch` on the next line one level in. Each `else` branch used to be indented two more than the one before, so the output grew with the square of the chain's length: 22 KB of source gave 8 MB. F12 2.8 item 5; R321 |
 | D64 | Host data that shares a list or map makes the conformance function take exponential time (#678) | **Settled by the owner, 2026-11-24:** meter the walk. The conformance function and `ConformAll` charge the steps a run's walk charges (F4 5.3), against the default step limit, 1,000,000, or one the host gives through an option of each binding; past it they fail with `steps-exceeded`, class `limit`, no path. Shared values are not remembered and no identity of a host value is defined. The count is exact, so a conform case pins it with the field `limit` (F4 7.3, 9.2; F8 6.4). The environment's step limit does not apply: the function takes no environment (R322). A host that walks very large data through `Conform` must raise or turn off the limit |
@@ -502,25 +512,25 @@ others' text:
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| D15 | The unit of text size is the UTF-16 length in blocks of 64 (L7, R10) | Yes, but it is closer than it was. JavaScript has it for free. Go and Rust scan strings of 64 bytes or more: in Go, comparing two equal 4 KB strings goes from 46 ns to 483 ns. UTF-8 bytes would be free in Go and Rust and would make JavaScript measure every string of 22 units or more, at 20 ns and up. Short strings are the common case, and weight is the unit that makes them free everywhere |
-| D16 | Step and unit counts are fixed per specification version (L6) | Yes. Optimizations that stop early are then forbidden, and a wrong rate stays until the next version |
-| D17 | Defaults: 1,000,000 steps, 1,000,000 allocation units, depth 200, no deadline | Yes. A deadline is the one limit that is not deterministic |
-| D31 | Source nesting is at most 100 levels, fixed by the specification and not settable by a host, and the depth limit counts a call as 1 plus its nesting (R5, `02` 2.16) | Yes. Without it a deep program is an error in one implementation, a crash in another and a success in the third. Settle the numbers after the Rust reference evaluator has run the limit cases in its least favorable build (`01`, question 7). D58 settles the largest depth a host may set: 400 |
+| D15 | The unit of text size is the UTF-16 length in blocks of 64 (L7, R10) | **Settled by the owner, 2026-11-25:** yes. JavaScript has it for free. Go and Rust scan strings of 64 bytes or more: in Go, comparing two equal 4 KB strings goes from 46 ns to 483 ns. UTF-8 bytes would be free in Go and Rust and would make JavaScript measure every string of 22 units or more, at 20 ns and up. Short strings are the common case, and weight is the unit that makes them free everywhere |
+| D16 | Step and unit counts are fixed per specification version (L6) | **Settled by the owner, 2026-11-25:** yes. Optimizations that stop early are then forbidden, and a wrong rate stays until the next version |
+| D17 | Defaults: 1,000,000 steps, 1,000,000 allocation units, depth 200, no deadline | **Settled by the owner, 2026-11-25:** yes. A deadline is the one limit that is not deterministic |
+| D31 | Source nesting is at most 100 levels, fixed by the specification and not settable by a host, and the depth limit counts a call as 1 plus its nesting (R5, `02` 2.16) | **Settled by the owner, 2026-11-25:** yes. Without it a deep program is an error in one implementation, a crash in another and a success in the third; verified across all three bindings in R214. D58 settles the largest depth a host may set: 400 |
 | D63 | A limit on the size of a program's source text | **Settled by the owner, 2026-11-24.** A source text has at most 1,048,576 code points, counted as positions are, in the decoded text. A host may set a lower source limit, from 0, on each call that takes source text (parse, a template's parse, the formatter, completion, hover, the load); it cannot raise it. A longer text is the `parse` code `source-too-large`, with no span, found before the text is lexed. Completion and hover give their empty result. The flat forms of `01-language.md` 13.2 item 6 are cut from 100,000 to 10,000 so that they fit, and the time and memory of every tool are bounded through the size of the text. The source limit is not a declaration of the environment, so a description does not change (R320) |
 
 ### 4.5 Hosts and the repository
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| D18 | No asynchronous run in the TypeScript implementation in 3.0; a host fetches what a program needs first, using the analysis API | Yes |
-| D19 | A host value is a record or opaque, never both | Accept for 3.0 |
-| D20 | A JSON Schema property outside `required` is an optional field unless the host says it fills absent properties | Yes |
-| D21 | The Go implementation returns errors and does not panic | Returns: never slower on the success path, 38 ns against 184 ns on failure, about 600 more lines |
-| D22 | The typed layer ships in 3.0 | Yes, built after the reference layer. Without it a host that passes Go structs pays one allocation per scalar field read |
+| D18 | No asynchronous run in the TypeScript implementation in 3.0; a host fetches what a program needs first, using the analysis API | **Settled by the owner, 2026-11-25:** yes |
+| D19 | A host value is a record or opaque, never both | **Settled by the owner, 2026-11-25:** accept for 3.0 |
+| D20 | A JSON Schema property outside `required` is an optional field unless the host says it fills absent properties | **Settled by the owner, 2026-11-25:** yes |
+| D21 | The Go implementation returns errors and does not panic | **Settled by the owner, 2026-11-25:** returns: never slower on the success path, 38 ns against 184 ns on failure, about 600 more lines |
+| D22 | The typed layer ships in 3.0 | **Settled by the owner, 2026-11-25:** yes, built after the reference layer. Without it a host that passes Go structs pays one allocation per scalar field read |
 | D23 | The core module's tests stop using wonton's `assert`, so the module has no dependencies | **Settled by the owner, 2026-11-25:** yes. `go/` tests drop `wonton/assert`, `go/cmd/risor` splits into its own module (`go/cmd/risor/go.mod`), `go/go.mod` has no dependencies, and `AGENTS.md` is updated (#708) |
-| D24 | The language server is dropped and the core gains completion, hover and describe calls | Yes |
-| D25 | Case mapping comes from a table the specification owns, pinned to one Unicode version | Yes. The alternative is ASCII only |
-| D26 | Times are seconds since the epoch as a number | Yes. Nanoseconds do not survive either way |
+| D24 | The language server is dropped and the core gains completion, hover and describe calls | **Settled by the owner, 2026-11-25:** yes |
+| D25 | Case mapping comes from a table the specification owns, pinned to one Unicode version | **Settled by the owner, 2026-11-25:** yes (pinned to Unicode 16.0.0 in `suite/casemap.json`). The alternative is ASCII only |
+| D26 | Times are seconds since the epoch as a number | **Settled by the owner, 2026-11-25:** yes. Nanoseconds do not survive either way |
 
 ## 5. Scope, migration and roadmap
 

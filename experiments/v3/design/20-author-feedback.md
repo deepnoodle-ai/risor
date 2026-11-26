@@ -3,15 +3,16 @@
 Status: built, D56 in `00-overview.md`. The owner settled its direction on
 2026-11-14, from the evidence of issues #640 and #641, and trimmed it on
 2026-11-19: the brief rendering (20-8) and layouts for `time.format` (20-10)
-are dropped (section 6). Decisions are numbered `20-1` to `20-11`. Each is
-marked **settled** where the owner chose it, and **recommended** where this
-plan chose a detail the owner has not seen. Built in all three
-implementations, in track B: 20-1 and 20-2 (`15` R212, R215, R216, R260), and
-the settled part of 20-9, the inner message with the inner diagnostic kept as
-the cause (`15` R217). The rest is built in all three implementations, as
-package F19, in track F: `spec/packages/f19-author-feedback.md`, with the
-recommended details of 20-4, 20-5, 20-9 and 20-11 as recommended (`15` R351
-to R359). Where the chapter differs from this plan, the chapter is right:
+are dropped (section 6). Decisions are numbered `20-1` to `20-11`; the four
+details originally marked recommended (`20-4`, `20-5`, `20-9` and `20-11`) were
+settled by the owner on 2026-11-25 (#696; `15` R352 to R354, R357). Built in
+all three implementations, in track B: 20-1 and 20-2 (`15` R212, R215, R216,
+R260), and the settled part of 20-9, the inner message with the inner
+diagnostic kept as the cause (`15` R217). The rest is built in all three
+implementations, as package F19, in track F:
+`spec/packages/f19-author-feedback.md`, with 20-4, 20-5, 20-9 and 20-11 as
+recommended (`15` R351 to R359). Where the chapter differs from this plan, the
+chapter is right:
 the row `indexOf` of 3.3 is left out (R355), and E28 also takes a `Branch`
 (R356). Counts marked *ran* were taken from the suite files at `main`
 `aeaaf1f` with a short script.
@@ -35,14 +36,14 @@ memory)" is not checked. `01:` to `05:` are the Core chapters in `spec/core/`,
 | 20-1 | Absence under `??` | **Settled.** In a chain `e1 ?? e2 ?? ... ?? d`, when the last step of an operand other than the last is a plain field read, an absent key at that step gives null. The checker types that read as `?.` types it, except that a key a closed record cannot have stays `no-field` | Change B2 everywhere, so a plain `.f` gives null for an absent key |
 | 20-2 | The reach of 20-1 | **Settled with 20-1 (2026-11-19).** Every operand of a `??` chain but the last. A `.f` step, and `["f"]` with a `String` node only. Not a computed key. Not `\|\|` | Include `m[k] ?? d` with any string key |
 | 20-3 | `maybe-absent` names its fixes | **Settled** (P1 of #640). The templates name `?.`, `??`, a test, and a pattern default | Keep the message; rely on 20-1 alone |
-| 20-4 | Where a hint lives | **Recommended.** In the message, through templates that carry a fixed fix taken from a table | A new `hint` field, written by every rendering |
-| 20-5 | The `wrong` lists | **Settled** that they become normative. **Recommended:** the lookup rules of 3.3 | Edit distance over the names in scope |
+| 20-4 | Where a hint lives | **Settled (2026-11-25, #696).** In the message, through templates that carry a fixed fix taken from a table (R352) | A new `hint` field, written by every rendering |
+| 20-5 | The `wrong` lists | **Settled.** They become normative, with the lookup rules of 3.3 settled on 2026-11-25 (#696, R353) | Edit distance over the names in scope |
 | 20-6 | Foreign names | **Settled.** A suite table of JavaScript and v2 habits with their Risor form | Fold them into the `wrong` lists |
 | 20-7 | `await`, `async`, and `;` between expressions | **Settled.** Two targeted parse codes. `await` and `async` are not reserved | Reserve `await` and `async` |
 | 20-8 | A rendering for a model | **Dropped, 2026-11-19** (section 6) | — |
-| 20-9 | A host error that is a Risor diagnostic | **Settled:** the `function-error` message is the inner message, and the inner diagnostic is the `cause`. **Recommended:** its `data` is carried, and JSON writes `cause` | Leave the message to the binding, as today |
+| 20-9 | A host error that is a Risor diagnostic | **Settled:** the `function-error` message is the inner message, and the inner diagnostic is the `cause`; carrying `data` and writing `cause` in JSON were settled on 2026-11-25 (#696, R357) | Leave the message to the binding, as today |
 | 20-10 | `time.format` with a layout | **Dropped, 2026-11-19** (section 6) | — |
-| 20-11 | No suggestion by search | **Recommended.** Hints come from tables only | "Did you mean" by edit distance |
+| 20-11 | No suggestion by search | **Settled (2026-11-25, #696).** Hints come from tables only (R354) | "Did you mean" by edit distance |
 
 ## 2. The problem
 

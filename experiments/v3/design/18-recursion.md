@@ -229,7 +229,8 @@ the product of the two types' sizes in distinct pairs (I). The fixed bound
 and the fixed order make the cut-off the same in every implementation (R5).
 
 **As built** (step E2, F17 12.5 and 12.6). Two rows above read
-differently in the chapter, and both are for the owner. The bound counts the
+differently in the chapter, and both were settled by the owner on 2026-11-25
+(#696). The bound counts the
 pairs a computation enters, not the pairs in progress at once (R268): a
 count of pairs in progress bounds nothing, since two families of twelve types
 take 4,095 entries to fit with twelve pairs in progress at most. And a
