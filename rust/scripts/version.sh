@@ -10,8 +10,9 @@
 set -eu
 
 VERSION="${1:-}"
-if [ -z "$VERSION" ] || ! printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-    echo "usage: $0 <version>, for example 3.0.0-alpha.2" >&2
+SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+if [ -z "$VERSION" ] || ! printf '%s\n' "$VERSION" | grep -Eq "$SEMVER_RE"; then
+    echo "usage: $0 <semver>, for example 3.0.0-alpha.2" >&2
     exit 2
 fi
 

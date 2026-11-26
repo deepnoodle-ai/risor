@@ -138,8 +138,8 @@ assert_eq!(err.first().code, "steps-exceeded");
 
 A source text has at most `SOURCE_LIMIT` (1,048,576) code points. Calls that
 accept source text (`parse_with`, `parse_template_with`, `format_with`,
-`Env::complete_with`, `Env::hover_with`, and `load_with`) accept a lower
-`ParseOptions::source_limit`.
+`Env::complete_with`, and `Env::hover_with`) accept a lower
+`ParseOptions::source_limit`, and `load_with` accepts `LoadOptions::source_limit`.
 
 Because evaluation recurses on the calling thread up to `Limits::depth`, see
 the `# Stack` section in the crate documentation on
