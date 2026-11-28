@@ -1,8 +1,9 @@
 # Risor Stability Promise and Versioning Policy
 
-> Before **3.0.0** is tagged, Risor v3 is an alpha (`3.0.0-alpha.N`). The
-> language, specification, cost table, and host APIs may change between alphas
-> without notice. The stability promises below take effect at **3.0.0**.
+> Before **3.0.0** is tagged, Risor v3 is a prerelease. Between alphas
+> (`3.0.0-alpha.N`) the language, specification, cost table, and host APIs may
+> change without notice. Release candidates (`3.0.0-rc.N`) take only fixes.
+> The stability promises below take effect at **3.0.0**.
 
 This document states what users and host embedders can rely on across Risor
 3.x releases: what may change, what is a breaking change, how the specification

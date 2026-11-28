@@ -1,7 +1,7 @@
 # risor
 
-> **Risor v3 is an alpha and a request for comment.** The language and host
-> API may change before `3.0.0`.
+> **Risor v3 is a release candidate.** Until `3.0.0`, only fixes change the
+> language and host API.
 
 Risor is a small expression language that a host program embeds. The host
 gives it data and gets a value back. Typical uses are a condition in a
