@@ -4,7 +4,7 @@ Check, complete, hover, format and run [Risor](https://github.com/deepnoodle-ai/
 off the page's main thread. Framework-free: `@deepnoodle/risor-codemirror` is built on it,
 and `@deepnoodle/risor-react` (#633) and `@deepnoodle/risor-mantine` (#634) follow.
 
-> Risor v3 is an alpha. This API will change before 3.0.
+> Risor v3 is a release candidate. Until 3.0, only fixes change this API.
 
 ```sh
 npm install @deepnoodle/risor-service

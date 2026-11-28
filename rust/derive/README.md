@@ -8,7 +8,7 @@ on `risor-derive` directly:
 
 ```toml
 [dependencies]
-risor = { version = "3.0.0-alpha.2", features = ["derive"] }
+risor = { version = "3.0.0-rc.1", features = ["derive"] }
 ```
 
 ## What `#[derive(Host)]` generates

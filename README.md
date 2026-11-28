@@ -8,8 +8,8 @@ memory.**
 [![Go Reference](https://pkg.go.dev/badge/github.com/deepnoodle-ai/risor/go/v3.svg)](https://pkg.go.dev/github.com/deepnoodle-ai/risor/go/v3)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Risor v3 is an alpha and a request for comment.** The language, the
-> specification and the APIs will change before 3.0.
+> **Risor v3 is a release candidate.** Until 3.0.0, only fixes change the
+> language, the specification and the APIs.
 > Looking for Risor v2? It is released and maintained on the
 > [`v2` branch](https://github.com/deepnoodle-ai/risor/tree/v2). Existing
 > imports of `github.com/deepnoodle-ai/risor/v2` keep working.

@@ -2,7 +2,7 @@
 members = [".", "derive"]
 
 [workspace.package]
-version = "3.0.0-alpha.2"
+version = "3.0.0-rc.1"
 edition = "2021"
 rust-version = "1.100"
 license = "Apache-2.0"
@@ -40,7 +40,7 @@ path = "src/lib.rs"
 # 3.10.10 requires. The one dependency is this repository's own derive crate,
 # behind the feature `derive`, off by default (ruling BB26).
 [dependencies]
-risor-derive = { version = "=3.0.0-alpha.2", path = "derive", optional = true }
+risor-derive = { version = "=3.0.0-rc.1", path = "derive", optional = true }
 
 [features]
 derive = ["dep:risor-derive"]

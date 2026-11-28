@@ -4,7 +4,7 @@
 expression input with a label, a description and an error, and a preview of
 the result against sample data. Mantine 7.17 or later.
 
-> Risor v3 is an alpha. This API will change before 3.0.
+> Risor v3 is a release candidate. Until 3.0, only fixes change this API.
 
 ```sh
 npm install @deepnoodle/risor-mantine

@@ -4,7 +4,7 @@ React components for [Risor](https://github.com/deepnoodle-ai/risor): an editor
 with errors as you type, completion and hover, and a view of a run's result.
 Unstyled except for one optional CSS file. A Mantine package, `@deepnoodle/risor-mantine`, is planned (#634).
 
-> Risor v3 is an alpha. This API will change before 3.0.
+> Risor v3 is a release candidate. Until 3.0, only fixes change this API.
 
 ```sh
 npm install @deepnoodle/risor-react

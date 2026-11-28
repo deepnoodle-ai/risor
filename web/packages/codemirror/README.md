@@ -4,7 +4,7 @@
 Risor's own lexer, errors as you type, completion, hover, format
 (Shift-Alt-F) and a run key (Mod-Enter). Works in any framework.
 
-> Risor v3 is an alpha. This API will change before 3.0.
+> Risor v3 is a release candidate. Until 3.0, only fixes change this API.
 
 ```sh
 npm install @deepnoodle/risor-codemirror @codemirror/state @codemirror/view @codemirror/autocomplete @codemirror/lint

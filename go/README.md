@@ -1,8 +1,8 @@
 # Risor v3 for Go
 
 The Go implementation of [Risor v3](https://github.com/deepnoodle-ai/risor),
-a small expression language that a host program embeds. This is an alpha and
-a request for comment: the language and this API will change before 3.0.
+a small expression language that a host program embeds. This is a release
+candidate: until 3.0.0, only fixes change the language and this API.
 
 ```bash
 go get github.com/deepnoodle-ai/risor/go/v3@latest
