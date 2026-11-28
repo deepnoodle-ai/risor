@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -303,4 +304,53 @@ func TestAnnotatedEntryResultFittedByAnnotation(t *testing.T) {
 		assert.Equal(t, re.Phase(), risor.PhaseCheck)
 		assert.Equal(t, re.Diagnostics[0].Code, "result-mismatch")
 	}
+}
+
+func TestLoadNoResultFailsStepDeclare(t *testing.T) {
+	ctx := context.Background()
+	src := `export const f = (x: int) => x + 1;`
+
+	var dst int
+	err := risor.Load(ctx, nil, src, nil, &dst)
+	var le *risor.LoadError
+	assert.True(t, errors.As(err, &le))
+	assert.Equal(t, le.Step, risor.StepDeclare)
+	assert.Equal(t, le.Diagnostics[0].Phase, risor.PhaseDeclare)
+	assert.Equal(t, le.Diagnostics[0].Code, "no-result")
+
+	_, _, err = risor.LoadValue(ctx, nil, src, nil)
+	assert.True(t, errors.As(err, &le))
+	assert.Equal(t, le.Step, risor.StepDeclare)
+	assert.Equal(t, le.Diagnostics[0].Phase, risor.PhaseDeclare)
+	assert.Equal(t, le.Diagnostics[0].Code, "no-result")
+}
+
+func TestEntryDepth64ParamHasNoInputRecord(t *testing.T) {
+	env, err := risor.NewEnv()
+	assert.NoError(t, err)
+
+	// Depth 64 parameter is valid, but wrapping it in Row 2 ({x: T}) would
+	// exceed depth 64, so InputType is nil and CallRecord fails no-input-record.
+	t64 := "int" + strings.Repeat("[]", 64)
+	expr, err := risor.Parse("export const f = (x: " + t64 + ") => len(x);")
+	assert.NoError(t, err)
+
+	cr, err := env.Check(expr)
+	assert.NoError(t, err)
+	assert.Equal(t, len(cr.Entries), 1)
+	assert.Nil(t, cr.Entries[0].InputType)
+
+	prog, err := env.Compile(expr)
+	assert.NoError(t, err)
+	assert.Nil(t, prog.Entries()[0].InputType)
+
+	_, err = prog.CallRecord(context.Background(), "f", map[string]any{"x": []any{}}, nil)
+	var re *risor.Error
+	assert.True(t, errors.As(err, &re))
+	assert.Equal(t, re.Phase(), risor.PhaseDeclare)
+	assert.Equal(t, re.Diagnostics[0].Code, "no-input-record")
+
+	v, err := prog.Call(context.Background(), "f", []any{[]any{}}, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, v, float64(0))
 }

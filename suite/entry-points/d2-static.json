@@ -354,5 +354,16 @@
         "message": "a const line that binds no name never runs in a program with an export; bind a name an entry point uses, or remove the line"
       }]
     }
+  },
+  {
+    "name": "binds-nothing and undefined-name inside its value are both reported in order",
+    "source": "const _ = nope; export const f = () => 1;",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {"code": "bad-export", "span": [1, 1, 1, 16]},
+        {"code": "undefined-name", "span": [1, 11, 1, 15]}
+      ]
+    }
   }
 ]

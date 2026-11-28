@@ -115,6 +115,12 @@ type Case struct {
 	Input        any
 	HasInput     bool
 	EntryReturns map[string]string
+	// Soundness-only metadata for D2 Call cases (not written to the case file):
+	// the expected return type of Entry, and the declared input/parameter types
+	// so the shrinker keeps generated call arguments conforming.
+	EntryWantType   string
+	EntryInputType  string
+	EntryParamTypes []string
 }
 
 // Text gives the program text: the printed tree, or the mangled source.
@@ -154,6 +160,19 @@ func (c *Case) Clone() *Case {
 		l := *c.Limits
 		d.Limits = &l
 	}
+	if c.Args != nil {
+		d.Args = cloneValue(c.Args).([]any)
+	}
+	if c.HasInput {
+		d.Input = cloneValue(c.Input)
+	}
+	if len(c.EntryReturns) > 0 {
+		d.EntryReturns = make(map[string]string, len(c.EntryReturns))
+		for k, v := range c.EntryReturns {
+			d.EntryReturns[k] = v
+		}
+	}
+	d.EntryParamTypes = append([]string(nil), c.EntryParamTypes...)
 	return &d
 }
 

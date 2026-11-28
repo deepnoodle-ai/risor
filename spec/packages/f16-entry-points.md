@@ -1016,7 +1016,9 @@ Export   = "export" Const .
    result (`Expect`, `ExpectType`, `ExpectSchema` or `Condition`; in a case
    file, `returns` or `returnsSchema`) fails with phase `declare`, code
    `no-result` and no span. Invalid type text or schema in the option is still
-   `declare` `bad-type`.
+   `declare` `bad-type`. In F10 `Load` (F10 5.2), a program with no result
+   expression likewise fails with phase `declare` and code `no-result` at
+   step 0 (`StepDeclare`).
 5. **Expected result of an entry point.** `Check` and `Compile` accept an
    expected result type for each named entry point (in type text, as a `Type`,
    or by JSON Schema with the options of F10 2.1; not `condition`).
@@ -1097,7 +1099,7 @@ list:
 | The entry point has | Its input type |
 | --- | --- |
 | Exactly one parameter, whose resolved type (unfolding recursive references) is a record with no other alternative (not a tagged union, not nullable, not mixed; `map<T>` and a recursive record type `Node` qualify) | That parameter's type (keeping a recursive reference `Node` as written so `SchemaOf` writes `$defs`/`$ref`). The single object passed to a record call is that parameter's argument, even when the parameter's pattern is a destructuring pattern or `_` |
-| Any other list of parameters (0 parameters, 2 or more parameters, or 1 parameter whose type is not a single record alternative), where every parameter's pattern is a name other than `_` | An exact record (`rest = never`) with one field per parameter, keyed by the parameter's name, with the parameter's type, marked optional when the parameter has a default, and carrying the parameter's description (11.2) as the field's description. For 0 parameters, `{}` |
+| Any other list of parameters (0 parameters, 2 or more parameters, or 1 parameter whose type is not a single record alternative), where every parameter's pattern is a name other than `_` | An exact record (`rest = never`) with one field per parameter, keyed by the parameter's name, with the parameter's type, marked optional when the parameter has a default, and carrying the parameter's description (11.2) as the field's description. For 0 parameters, `{}`. If constructing that record exceeds the type depth limit (64) or type size limit (100,000) of `spec/core/05-types.md` 20.4 and 20.7, None (no input record) |
 | Any other list of parameters where at least one parameter's pattern is not a name (a destructuring pattern or `_`) | None (no input record) |
 
 #### Positional call

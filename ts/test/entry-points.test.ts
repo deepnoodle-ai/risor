@@ -5,9 +5,12 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   createEnv,
+  LoadError,
+  loadValue,
   parse,
   RisorError,
   schemaOf,
+  STEP_DECLARE,
   typeInt,
   typeString,
 } from "../src/index.ts";
@@ -315,5 +318,45 @@ export const rec = (r: { a: int }) => r.a;
     assert.deepEqual([e1.phase, e1.diagnostics[0].code], ["check", "result-mismatch"]);
     const e2 = thrown(() => env.check(parse("export const f = (x: int): int | null => { x };"), undefined, { f: "int" }));
     assert.deepEqual([e2.phase, e2.diagnostics[0].code], ["check", "result-mismatch"]);
+  });
+
+  test("loadValue fails at step 0 with declare no-result on a no-result program", () => {
+    const env = createEnv({});
+    const src = "export const f = (x: int) => x + 1;";
+    let caught: unknown;
+    try {
+      loadValue(env, src, { expected: "any" });
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(caught instanceof LoadError, String(caught));
+    assert.equal(caught.step, STEP_DECLARE);
+    assert.equal(caught.phase, "declare");
+    assert.equal(caught.diagnostics[0].code, "no-result");
+  });
+
+  test("depth-64 parameter has no input record when Row 2 wrapping would exceed depth 64", () => {
+    const env = createEnv({});
+    const t64 = "int" + "[]".repeat(64);
+    const expr = parse(`export const f = (x: ${t64}) => len(x);`);
+    const cr = env.check(expr);
+    assert.equal(cr.entries.length, 1);
+    assert.equal(cr.entries[0].inputType, null);
+
+    const prog = env.compile(expr);
+    assert.equal(prog.entries()[0].inputType, null);
+
+    const err = thrown(() => prog.callRecord("f", { x: [] }));
+    assert.deepEqual([err.phase, err.diagnostics[0].code], ["declare", "no-input-record"]);
+    assert.equal(prog.call("f", [[]]), 0);
+  });
+
+  test("call and callMeasure reject non-array args with TypeError", () => {
+    const env = createEnv({});
+    const prog = env.compile(parse("export const f = (a: string, b: string) => a + b;"));
+    for (const bad of ["ab", null, 123, { 0: "a", 1: "b" }] as unknown[]) {
+      assert.throws(() => prog.call("f", bad as unknown[]), TypeError);
+      assert.throws(() => prog.callMeasure("f", bad as unknown[]), TypeError);
+    }
   });
 });

@@ -49,20 +49,30 @@ var promiseOf = map[string]int{
 // Judge decides whether one line keeps the promise. nodes are the spans of
 // the program's nodes, from ast.PrintSpans.
 func Judge(l *outcome.Line, nodes []ast.NodeSpan) Verdict {
+	return JudgeEntry(l, nodes, false, "")
+}
+
+// JudgeEntry is Judge for an entry-point Call when entryCall is true, using
+// wantType as the expected return type text instead of l.Type.
+func JudgeEntry(l *outcome.Line, nodes []ast.NodeSpan, entryCall bool, wantType string) Verdict {
 	if l.Phase == "check" || l.Phase == "parse" || l.Phase == "declare" || !l.HasType {
 		return Verdict{}
 	}
 	v := Verdict{Clean: true}
 	if l.Phase == "" {
 		v.Outcome = "value"
-		t, err := types.Parse(l.Type)
+		tyText := l.Type
+		if entryCall && wantType != "" {
+			tyText = wantType
+		}
+		t, err := types.Parse(tyText)
 		if err != nil {
 			v.Undecided = "type text: " + err.Error()
 			return v
 		}
 		if !types.Conforms(l.Value, t) {
 			v.Promise = 4
-			v.Violation = fmt.Sprintf("promise 4: the value does not conform to %s", l.Type)
+			v.Violation = fmt.Sprintf("promise 4: the value does not conform to %s", tyText)
 		}
 		return v
 	}
@@ -79,6 +89,11 @@ func Judge(l *outcome.Line, nodes []ast.NodeSpan) Verdict {
 	}
 	span, ok := toSpan(l.Diags[0]["span"])
 	if !ok {
+		if entryCall && code == "not-conforming" {
+			v.Outcome = "call-not-conforming"
+			v.Violation = "entry call with conforming arguments rejected with not-conforming"
+			return v
+		}
 		v.Undecided = "the failure has no span"
 		return v
 	}

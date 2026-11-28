@@ -540,5 +540,231 @@
     "entry": "onOrder",
     "input": {"id": "ord-1", "total": 750.0, "vip": false},
     "expect": {"value": {"queue": "fast", "notify": false}}
+  },
+  {
+    "name": "conformance: positional call caps total diagnostics at 100 across arguments",
+    "source": "export const f = (a: int[], b: int[]): int => len(a) + len(b);",
+    "entry": "f",
+    "args": [["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"], ["x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"]],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 0], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 1], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 2], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 3], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 4], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 5], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 6], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 7], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 8], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 9], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 10], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 11], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 12], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 13], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 14], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 15], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 16], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 17], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 18], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 19], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 20], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 21], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 22], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 23], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 24], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 25], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 26], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 27], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 28], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 29], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 30], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 31], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 32], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 33], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 34], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 35], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 36], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 37], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 38], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 39], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 40], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 41], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 42], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 43], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 44], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 45], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 46], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 47], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 48], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 49], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 50], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 51], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 52], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 53], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 54], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 55], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 56], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 57], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 58], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [0, 59], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 0], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 1], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 2], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 3], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 4], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 5], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 6], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 7], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 8], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 9], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 10], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 11], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 12], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 13], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 14], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 15], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 16], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 17], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 18], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 19], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 20], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 21], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 22], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 23], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 24], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 25], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 26], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 27], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 28], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 29], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 30], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 31], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 32], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 33], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 34], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 35], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 36], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 37], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 38], "message": "expected int, found \"x\""},
+        {"code": "not-conforming", "class": "value", "span": null, "path": [1, 39], "message": "expected int, found \"x\""}
+      ],
+      "steps": 0,
+      "allocated": 0
+    }
+  },
+  {
+    "name": "conformance: 201-deep recursive input hits depth-exceeded",
+    "source": "type Deep = int | Deep[];\nexport const f = (d: Deep): int => 1;",
+    "entry": "f",
+    "args": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],
+    "expect": {"phase": "run", "diagnostics": [{"code": "depth-exceeded", "class": "limit", "span": null}]}
+  },
+  {
+    "name": "declare: call by record on parameter of depth 64 fails no-input-record",
+    "source": "export const f = (a: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]): int => 1;",
+    "entry": "f",
+    "input": {"a": []},
+    "expect": {"phase": "declare", "diagnostics": [{"code": "no-input-record"}]}
+  },
+  {
+    "name": "positional call on parameter of depth 64 succeeds",
+    "source": "export const f = (a: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]): int => 1;",
+    "entry": "f",
+    "args": [[]],
+    "expect": {"value": 1, "steps": 1, "allocated": 0}
+  },
+  {
+    "name": "needs: parameter default sees shadowed top-level const",
+    "source": "const x = 10 + 5; export const f = (x: int = x): int => x + 1;",
+    "entry": "f",
+    "args": [],
+    "expect": {"value": 16, "steps": 3, "allocated": 0}
+  },
+  {
+    "name": "needs: untaken branch still evaluates referenced top-level const",
+    "source": "const z = 0; const boom = 1 / z; export const f = (flag: bool): float => flag ? 1 : boom;",
+    "entry": "f",
+    "args": [true],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [
+        {"code": "divide-by-zero", "class": "divide", "span": [1, 27, 1, 32]}
+      ]
+    }
+  },
+  {
+    "name": "needs: xs.map(helper) inside entry charges no lambda definition step",
+    "source": "const inc = (n: int): int => n + 1;\nexport const f = (xs: int[]): int[] => xs.map(inc);",
+    "entry": "f",
+    "args": [[1, 2]],
+    "expect": {"value": [2, 3], "steps": 8, "allocated": 3}
+  },
+  {
+    "name": "helper lambda dynamic site preserves dynamic class during entry call",
+    "source": "const getX = (m: any): any => m.x;\nexport const f = (m: any): any => getX(m);",
+    "entry": "f",
+    "args": [{}],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [
+        {"code": "missing-field", "class": "dynamic", "span": [1, 31, 1, 34]}
+      ]
+    }
+  },
+  {
+    "name": "trace: error in entry parameter default has empty trace",
+    "source": "const z = 0;\nexport const f = (x: float = 1 / z): float => x;",
+    "entry": "f",
+    "args": [],
+    "expect": {
+      "phase": "run",
+      "diagnostics": [
+        {"code": "divide-by-zero", "class": "divide", "span": [2, 30, 2, 35], "trace": []}
+      ]
+    }
+  },
+  {
+    "name": "default before required parameter: positional call with null runs default",
+    "source": "export const f = (a: int = 10, b: int): int => a + b;",
+    "entry": "f",
+    "args": [null, 5],
+    "expect": {"value": 15, "steps": 2, "allocated": 0}
+  },
+  {
+    "name": "default before required parameter: positional call with 1 arg fails arity",
+    "source": "export const f = (a: int = 10, b: int): int => a + b;",
+    "entry": "f",
+    "args": [5],
+    "expect": {"phase": "declare", "diagnostics": [{"code": "arity"}]}
+  },
+  {
+    "name": "default before required parameter: record call omitting optional field runs default",
+    "source": "export const f = (a: int = 10, b: int): int => a + b;",
+    "entry": "f",
+    "input": {"b": 5},
+    "expect": {"value": 15, "steps": 2, "allocated": 0}
+  },
+  {
+    "name": "entry calling another entry evaluates transitive needs and shares step budget",
+    "source": "const k = 1; export const helper = (n: int): int => n + k; export const main = (n: int): int => helper(n) * 2;",
+    "entry": "main",
+    "args": [5],
+    "expect": {"value": 12, "steps": 4, "allocated": 0}
+  },
+  {
+    "name": "record call fails no-input-record when Row 2 wrapped record exceeds type size 100000",
+    "source": "type T0 = {a: int, b: int};\ntype T1 = {a: T0, b: T0};\ntype T2 = {a: T1, b: T1};\ntype T3 = {a: T2, b: T2};\ntype T4 = {a: T3, b: T3};\ntype T5 = {a: T4, b: T4};\ntype T6 = {a: T5, b: T5};\ntype T7 = {a: T6, b: T6};\ntype T8 = {a: T7, b: T7};\ntype T9 = {a: T8, b: T8};\ntype T10 = {a: T9, b: T9};\ntype T11 = {a: T10, b: T10};\ntype T12 = {a: T11, b: T11};\ntype T13 = {a: T12, b: T12};\ntype T14 = {a: T13, b: T13};\nexport const f = (x: T14 | null, y: T14 | null): int => 1;",
+    "entry": "f",
+    "input": {"x": null, "y": null},
+    "expect": {"phase": "declare", "diagnostics": [{"code": "no-input-record"}]}
+  },
+  {
+    "name": "positional call succeeds when Row 2 wrapped record exceeds type size 100000",
+    "source": "type T0 = {a: int, b: int};\ntype T1 = {a: T0, b: T0};\ntype T2 = {a: T1, b: T1};\ntype T3 = {a: T2, b: T2};\ntype T4 = {a: T3, b: T3};\ntype T5 = {a: T4, b: T4};\ntype T6 = {a: T5, b: T5};\ntype T7 = {a: T6, b: T6};\ntype T8 = {a: T7, b: T7};\ntype T9 = {a: T8, b: T8};\ntype T10 = {a: T9, b: T9};\ntype T11 = {a: T10, b: T10};\ntype T12 = {a: T11, b: T11};\ntype T13 = {a: T12, b: T12};\ntype T14 = {a: T13, b: T13};\nexport const f = (x: T14 | null, y: T14 | null): int => 1;",
+    "entry": "f",
+    "args": [null, null],
+    "expect": {"value": 1, "steps": 1, "allocated": 0}
   }
 ]

@@ -82,3 +82,36 @@ func TestJudgePatternValueInParens(t *testing.T) {
 		t.Errorf("got %+v", v)
 	}
 }
+
+func TestJudgeEntryPoint(t *testing.T) {
+	p := &ast.Program{
+		Consts: []*ast.Const{{
+			Exported: true,
+			Pat:      &ast.NamePat{Name: "f"},
+			Value: &ast.Lambda{
+				Params: []ast.Param{{Pat: &ast.NamePat{Name: "x"}, Type: "int"}},
+				Result: "int",
+				Body:   &ast.Ident{Name: "x"},
+			},
+		}},
+	}
+	_, nodes := ast.PrintSpans(p)
+	// No-result program has type "never", while entry f returns int.
+	okLine := line(t, `{"name":"a","type":"never","sites":[],"phase":null,"value":42,"steps":0,"units":0}`)
+	if v := JudgeEntry(okLine, nodes, true, "int"); !v.Clean || v.Violation != "" || v.Undecided != "" {
+		t.Errorf("conforming entry return: got %+v", v)
+	}
+	badLine := line(t, `{"name":"a","type":"never","sites":[],"phase":null,"value":"oops","steps":0,"units":0}`)
+	if v := JudgeEntry(badLine, nodes, true, "int"); !v.Clean || v.Promise != 4 || v.Violation == "" {
+		t.Errorf("non-conforming entry return: got %+v", v)
+	}
+	// Spanless not-conforming on conforming generated entry call args is a violation (Promise 0, call-not-conforming).
+	rejLine := line(t, `{"name":"a","type":"never","sites":[],"phase":"run","diagnostics":[{"code":"not-conforming","span":null,"path":[0],"class":"value","message":"m"}],"steps":0,"units":0}`)
+	if v := JudgeEntry(rejLine, nodes, true, "int"); !v.Clean || v.Promise != 0 || v.Outcome != "call-not-conforming" || v.Violation == "" {
+		t.Errorf("spanless not-conforming on entry call: got %+v", v)
+	}
+	// Plain Judge (non-entry-call) still reports spanless not-conforming as Undecided.
+	if v := Judge(rejLine, nodes); !v.Clean || v.Violation != "" || v.Undecided == "" {
+		t.Errorf("spanless not-conforming on non-entry program: got %+v", v)
+	}
+}

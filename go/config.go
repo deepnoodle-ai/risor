@@ -166,6 +166,11 @@ func load(ctx context.Context, env *Env, source string, vars Vars, t *Type, opts
 	if err != nil {
 		return nil, Usage{}, &LoadError{Step: StepParse, Diagnostics: err.(*Error).Diagnostics}
 	}
+	if x.tree.Result == nil {
+		return nil, Usage{}, &LoadError{Step: StepDeclare, Diagnostics: []Diagnostic{{
+			Phase: PhaseDeclare, Code: diag.CodeNoResult, Message: "the program has no result expression",
+		}}}
+	}
 	var copts []CheckOption
 	if t != nil {
 		copts = append(copts, ExpectType(*t))
