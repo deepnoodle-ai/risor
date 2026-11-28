@@ -766,5 +766,12 @@
     "entry": "f",
     "args": [null, null],
     "expect": {"value": 1, "steps": 1, "allocated": 0}
+  },
+  {
+    "name": "load: a program with no result expression fails declare no-result",
+    "load": true,
+    "returns": "int",
+    "source": "export const f = (x: int): int => x + 1;",
+    "expect": {"phase": "declare", "diagnostics": [{"code": "no-result"}]}
   }
 ]
