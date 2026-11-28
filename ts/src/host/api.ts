@@ -529,13 +529,19 @@ function buildEntries(program: A.Program, res: Resolution, cls: Classifier, resu
       inputMode = "single";
       innerInputType = params[0].innerType;
     } else if (params.every((p) => p.name !== null)) {
-      inputMode = "fields";
       const fields: [string, InnerField][] = params.map((p) => {
         const f: InnerField = { type: p.innerType, optional: p.optional };
         if (p.doc !== null) f.desc = p.doc;
         return [p.name!, f];
       });
-      innerInputType = recordInner(fields, NEVER);
+      const rec = recordInner(fields, NEVER);
+      if (depth(rec) <= 64 && typeSize(rec) <= SIZE_LIMIT) {
+        inputMode = "fields";
+        innerInputType = rec;
+      } else {
+        inputMode = "none";
+        innerInputType = null;
+      }
     } else {
       inputMode = "none";
       innerInputType = null;
@@ -1415,6 +1421,9 @@ export class Program<V = any> {
   }
 
   #executeEntry(name: string, args: readonly unknown[], vars?: Vars, options: { signal?: AbortSignal } = {}): CallOutcome {
+    if (!Array.isArray(args)) {
+      throw new TypeError("args must be an array");
+    }
     const zero: Usage = { steps: 0, allocated: 0 };
     const meta = this.#entryMeta.get(name);
     const compiled = this.#compiledEntries.get(name);
@@ -1500,14 +1509,14 @@ export class Program<V = any> {
     }
   }
 
-  /** Call an entry point positionally (package F16 slice D2, f16 12.5). Throws RisorError on failure. */
+  /** Call an entry point positionally (package F16 slice D2, f16 12.5). Throws TypeError if args is not an array, or RisorError on call failure. */
   call(name: string, args: readonly unknown[] = [], vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): unknown {
     const o = this.#executeEntry(name, args, vars as Vars | undefined, options);
     if (!o.ok) throw failure(o.diagnostics, this.#source, o.usage);
     return o.value;
   }
 
-  /** Call an entry point positionally and report its usage (f16 12.5). Throws RisorError on failure. */
+  /** Call an entry point positionally and report its usage (f16 12.5). Throws TypeError if args is not an array, or RisorError on call failure. */
   callMeasure(name: string, args: readonly unknown[] = [], vars?: RunVars<V>, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
     const o = this.#executeEntry(name, args, vars as Vars | undefined, options);
     if (!o.ok) throw failure(o.diagnostics, this.#source, o.usage);

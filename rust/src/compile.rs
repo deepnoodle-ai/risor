@@ -343,7 +343,11 @@ fn compute_input_type(params: &[CompiledParam]) -> (Option<Ty>, bool) {
             );
         }
         let rec = crate::check::ty::Rec::new(fields, Ty::never());
-        return (Some(crate::check::ty::strengthen(&Ty::rec(rec))), false);
+        let raw = Ty::rec(rec);
+        if raw.depth() <= 64 && !raw.too_big() {
+            return (Some(crate::check::ty::strengthen(&raw)), false);
+        }
+        return (None, false);
     }
     // Row 3: at least one parameter's pattern is not a name.
     (None, false)

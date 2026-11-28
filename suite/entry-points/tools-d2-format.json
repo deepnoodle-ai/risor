@@ -33,5 +33,10 @@
     "name": "long export const parameter list wraps",
     "format": "export const weather = (city: string, units: \"metric\" | \"imperial\" = \"metric\", includeForecast: bool = false): string => city;",
     "expect": {"formatted": "export const weather = (\n  city: string,\n  units: \"metric\" | \"imperial\" = \"metric\",\n  includeForecast: bool = false,\n): string => city;\n"}
+  },
+  {
+    "name": "line comment between export and const",
+    "format": "export // c\nconst f = (x: int) => x;",
+    "expect": {"formatted": "export // c\nconst f = (x: int) => x;\n"}
   }
 ]

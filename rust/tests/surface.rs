@@ -679,3 +679,28 @@ fn annotated_entry_result_fitted_by_annotation() {
         assert_eq!(err.first().code, "result-mismatch");
     }
 }
+
+#[test]
+fn depth_64_entry_param_has_no_input_record() {
+    let t64 = format!("int{}", "[]".repeat(64));
+    let src = format!("export const f = (x: {t64}) => len(x);");
+    let parsed = parse(&src).unwrap();
+    let env = Env::default();
+
+    let cr = env.check(&parsed, &Expected::None).unwrap();
+    assert_eq!(cr.entries.len(), 1);
+    assert!(cr.entries[0].input_type.is_none());
+
+    let p = env.compile(&parsed, CompileOptions::default()).unwrap();
+    assert!(p.entries()[0].input_type.is_none());
+
+    let mut input = BTreeMap::new();
+    input.insert("x".to_string(), Data::List(vec![]));
+    let err = p.call_record("f", &Data::Map(input), &NoVars).unwrap_err();
+    assert_eq!(err.phase, Phase::Declare);
+    assert_eq!(err.first().code, "no-input-record");
+
+    let empty = Data::List(vec![]);
+    let out = p.call("f", &[&empty], &NoVars).unwrap();
+    assert_eq!(json_text(&out).unwrap(), "0");
+}

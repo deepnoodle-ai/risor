@@ -240,5 +240,15 @@
         }
       ]
     }
+  },
+  {
+    "name": "Row 1 alias of recursive record type resolves to recursive ref",
+    "source": "type Tree = {val: int, kids: Tree[]};\ntype Root = Tree;\nexport const f = (t: Root): int => t.val;",
+    "expect": {"type": "never", "entries": [{"name": "f", "params": [{"name": "t", "type": "Tree", "doc": null, "optional": false}], "input": "Tree", "result": "int"}]}
+  },
+  {
+    "name": "Row 2 parameter of depth 64 has null input and inputSchema when wrapped record exceeds depth 64",
+    "source": "export const f = (a: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]): int => 1;",
+    "expect": {"type": "never", "entries": [{"name": "f", "params": [{"name": "a", "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]", "doc": null, "optional": false}], "input": null, "inputSchema": null, "result": "int"}]}
   }
 ]

@@ -160,6 +160,17 @@ fn run_steps(
     // Step 1.
     let parsed = crate::syntax::parse_with(text, parse)
         .map_err(|e| fail(STEP_PARSE, e.diagnostics, None))?;
+    if !parsed.has_result() {
+        return Err(fail(
+            STEP_DECLARE,
+            vec![Diagnostic::bare(
+                crate::diag::Phase::Declare,
+                crate::diag::code::NO_RESULT,
+                "the program has no result expression",
+            )],
+            None,
+        ));
+    }
     // Step 2: always with the check.
     let (program, _) = compile_checked(env, parsed, &Want::Type(ty.clone()))
         .map_err(|e| fail(STEP_CHECK, e.diagnostics, None))?;
@@ -359,5 +370,20 @@ mod tests {
         assert_eq!(got.get("b"), Some(&2));
         let err = load::<BTreeMap<String, u8>>(&e, "{a: 300}", &vars(""), 1).unwrap_err();
         assert_eq!(err.step, 5);
+    }
+
+    #[test]
+    fn no_result_program_fails_step_declare() {
+        let e = Env::default();
+        let src = "export const f = (x: int) => x + 1;";
+        let err = load_value(&e, src, &crate::NoVars, LoadOptions::default()).unwrap_err();
+        assert_eq!(err.step, STEP_DECLARE);
+        assert_eq!(err.diagnostics[0].phase, crate::Phase::Declare);
+        assert_eq!(err.diagnostics[0].code, "no-result");
+
+        let err = load::<i64>(&e, src, &crate::NoVars, 1).unwrap_err();
+        assert_eq!(err.step, STEP_DECLARE);
+        assert_eq!(err.diagnostics[0].phase, crate::Phase::Declare);
+        assert_eq!(err.diagnostics[0].code, "no-result");
     }
 }

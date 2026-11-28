@@ -280,5 +280,11 @@
         }
       ]
     }
+  },
+  {
+    "name": "entryReturns resolves in environment scope only, not program type lines",
+    "entryReturns": {"f": "Local"},
+    "source": "type Local = int; export const f = (x: Local): Local => x;",
+    "expect": {"phase": "declare", "diagnostics": [{"code": "bad-type"}]}
   }
 ]

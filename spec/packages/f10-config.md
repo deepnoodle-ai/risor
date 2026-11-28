@@ -337,7 +337,7 @@ its diagnostics.
 | --- | --- | --- |
 | 0. Declare | The environment is built, and T is resolved or mapped | Phase `declare`: `bad-type` for T, and any error of `03-host.md` 3.3.4 |
 | 1. Parse | Parse (`03-host.md` 3.2.1) | Phase `parse` |
-| 2. Check and compile | Compile with the check, T as the expected result. A load never compiles without the check | Phase `check`: every diagnostic, `result-mismatch` among them at the places of 2.3 |
+| 2. Check and compile | Compile with the check, T as the expected result. A load never compiles without the check | Phase `check`: every diagnostic, `result-mismatch` among them at the places of 2.3. A `declare`-phase failure of step 2 (such as `no-result` of F16 12.3 item 4) reports step 0 |
 | 3. Run | Run, with the variables and the signal | Phase `run`: one diagnostic, with its span |
 | 4. Conform | The function that reports every failure (F8 6) on v and T, with a maximum the host gives | Phase `run`: one or more diagnostics, each with code `not-conforming`, class `value`, the path and message of F4 4.4, and no span; the list ends with `steps-exceeded` or `depth-exceeded` when the function reaches a limit (F8 6.4) |
 | 5. Decode | The decode of v into H (6), when H is given | Phase `run`: the codes of 6.1, each with a path and no span |

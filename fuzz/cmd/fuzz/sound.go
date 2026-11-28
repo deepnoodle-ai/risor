@@ -32,6 +32,7 @@ func soundness(cfg *config) int {
 		withF16                                int // clean programs with a form of package F16
 		withE1                                 int // clean programs with a recursive lambda (F17 step E1)
 		withE3                                 int // clean programs with a function parameter (F17 step E3)
+		withD2                                 int // clean programs with an entry point (F16 slice D2)
 	}
 	st := make([]stat, len(cfg.impls))
 	for i := range st {
@@ -67,7 +68,7 @@ func soundness(cfg *config) int {
 				if first.line == nil {
 					continue
 				}
-				if v := sound.Judge(first.line, nodes); v.Clean {
+				if v := sound.JudgeEntry(first.line, nodes, p.Cases[0].Entry != "", p.Cases[0].EntryWantType); v.Clean {
 					st[k].clean++
 					src := p.Cases[0].Text()
 					if strings.Contains(src, " as ") {
@@ -88,6 +89,9 @@ func soundness(cfg *config) int {
 					if p.Cases[0].E3 {
 						st[k].withE3++
 					}
+					if p.Cases[0].D2 {
+						st[k].withD2++
+					}
 					if p.Careful {
 						st[k].carefulClean++
 					}
@@ -107,7 +111,7 @@ func soundness(cfg *config) int {
 				if signature(cfg, row) != "" {
 					disagree++
 				}
-				sig, vs := soundSig(cfg, row, nodes)
+				sig, vs := soundSig(cfg, row, nodes, c.Entry != "", c.EntryWantType)
 				for k, v := range vs {
 					if v.Clean {
 						st[k].runs[v.Outcome]++
@@ -145,7 +149,7 @@ func soundness(cfg *config) int {
 							for x := range cfg.impls {
 								row[x] = rr[x][j]
 							}
-							out[j], _ = soundSig(cfg, row, kn)
+							out[j], _ = soundSig(cfg, row, kn, k.Entry != "", k.EntryWantType)
 						}
 						return out
 					}, shrink.Options{})
@@ -157,7 +161,7 @@ func soundness(cfg *config) int {
 					frow[k] = final[k][0]
 				}
 				_, sn := ast.PrintSpans(small.Prog)
-				_, svs := soundSig(cfg, frow, sn)
+				_, svs := soundSig(cfg, frow, sn, small.Entry != "", small.EntryWantType)
 				path := filepath.Join(cfg.out, fmt.Sprintf("sound-%d-%d.json", cfg.seed, findings))
 				writeSound(cfg, path, round, p, small, c, frow, svs, sig)
 				fmt.Printf("violation %s: %s: %s\n", path, oneLine(small.Text(), 60), key)
@@ -173,7 +177,7 @@ func soundness(cfg *config) int {
 		s := st[k]
 		fmt.Printf("  %s: %d programs, %d checked clean (%d of %d careful, %d of %d careless), %d undecided runs\n",
 			im.Name, s.programs, s.clean, s.carefulClean, s.careful, s.clean-s.carefulClean, s.programs-s.careful, s.undecided)
-		fmt.Printf("    clean programs with an as %d, with an is %d, with a literal set or union in a declared type %d, with a type line or an annotation %d, with a recursive lambda %d, with a function parameter %d\n", s.withAs, s.withIs, s.withUnion, s.withF16, s.withE1, s.withE3)
+		fmt.Printf("    clean programs with an as %d, with an is %d, with a literal set or union in a declared type %d, with a type line or an annotation %d, with a recursive lambda %d, with a function parameter %d, with an entry point %d\n", s.withAs, s.withIs, s.withUnion, s.withF16, s.withE1, s.withE3, s.withD2)
 		fmt.Printf("    sites in clean programs: %s\n", counts(s.sites))
 		fmt.Printf("    runs of clean programs: %s\n", counts(s.runs))
 	}
@@ -207,14 +211,14 @@ func counts(m map[string]int) string {
 // soundSig judges each implementation's line and names the violations: for
 // each implementation that broke a promise, its name, the promise and the
 // code. It is "" when every implementation kept the promise.
-func soundSig(cfg *config, row []res, nodes []ast.NodeSpan) (string, []sound.Verdict) {
+func soundSig(cfg *config, row []res, nodes []ast.NodeSpan, entryCall bool, wantType string) (string, []sound.Verdict) {
 	vs := make([]sound.Verdict, len(row))
 	var parts []string
 	for k, r := range row {
 		if r.line == nil {
 			continue
 		}
-		vs[k] = sound.Judge(r.line, nodes)
+		vs[k] = sound.JudgeEntry(r.line, nodes, entryCall, wantType)
 		if vs[k].Violation != "" {
 			parts = append(parts, fmt.Sprintf("%s:p%d:%s", cfg.impls[k].Name, vs[k].Promise, vs[k].Outcome))
 		}
@@ -243,13 +247,31 @@ func sigKey(sig string) string {
 	return "in " + strings.Join(impls, ",") + " only: " + strings.Join(rest, " ")
 }
 
-// conformsAll says whether each variable's value conforms to its declared
-// type, so that a shrunk case still meets the precondition.
+// conformsAll says whether each variable's value (and any D2 entry call
+// arguments or input record, should the shrinker ever simplify them) conforms
+// to its declared type, so that a shrunk case still meets the precondition.
 func conformsAll(c *gen.Case) bool {
 	for _, v := range c.Vars {
 		t, err := types.Parse(v.Type)
 		if err != nil || !types.Conforms(v.Value, t) {
 			return false
+		}
+	}
+	if c.Entry != "" && c.HasInput && c.EntryInputType != "" {
+		t, err := types.Parse(c.EntryInputType)
+		if err != nil || !types.Conforms(c.Input, t) {
+			return false
+		}
+	}
+	if c.Entry != "" && c.HasArgs && len(c.EntryParamTypes) > 0 {
+		if len(c.Args) > len(c.EntryParamTypes) {
+			return false
+		}
+		for i, a := range c.Args {
+			t, err := types.Parse(c.EntryParamTypes[i])
+			if err != nil || !types.Conforms(a, t) {
+				return false
+			}
 		}
 	}
 	return true

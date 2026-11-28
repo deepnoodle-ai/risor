@@ -1,7 +1,10 @@
 package gen
 
 import (
+	"fmt"
+
 	"github.com/deepnoodle-ai/risor/fuzz/internal/ast"
+	"github.com/deepnoodle-ai/risor/fuzz/internal/types"
 )
 
 // This file writes the forms of package F16, slice D2
@@ -168,4 +171,327 @@ func (g *Gen) applyD2(c *Case) {
 			c.Input = "not-a-record"
 		}
 	}
+}
+
+type soundD2Param struct {
+	name    string
+	t       *types.Type
+	ty      *Ty
+	opt     bool
+	pattern bool
+}
+
+type soundD2Entry struct {
+	name       string
+	params     []soundD2Param
+	resTy      *Ty
+	resText    string
+	hasInput   bool
+	inputType  *types.Type
+	paramTypes []*types.Type
+	cst        *ast.Const
+}
+
+// applySoundD2 adds F16 slice D2 forms to a soundness-mode program and returns
+// a callback that populates per-value-set Call args/input when Entry is used.
+func (g *Gen) applySoundD2(base *Case, prog *ast.Program, careful bool) func(c *Case, edge bool) {
+	r := g.r
+	g.f16 = true
+	g.d2 = true
+
+	ep := g.makeSoundEntry(careful, 2)
+	prog.Consts = append(prog.Consts, ep.cst)
+	// Optionally add a second exported entry point (checked even when not called).
+	if r.IntN(2) == 0 {
+		ep2 := g.makeSoundEntry(careful, 1)
+		prog.Consts = append(prog.Consts, ep2.cst)
+	}
+	prog.Types = g.types
+
+	// 50%: keep Result calling ep (normal Run with exported entry points).
+	if r.IntN(2) == 0 {
+		prog.Result = g.callSoundEntryExpr(ep)
+		if r.IntN(2) == 0 && ep.resText != "" {
+			base.EntryReturns = map[string]string{ep.name: ep.resText}
+		}
+		return nil
+	}
+
+	// Only add an unused failing const when invoking the Call stage so
+	// Result-running cases actually evaluate Program.Result.
+	if r.IntN(2) == 0 {
+		unused := &ast.Const{
+			Pat:   &ast.NamePat{Name: g.fresh("skip")},
+			Value: scall("fail", &ast.Str{Val: "unused", Quote: '"'}),
+		}
+		prog.Consts = append([]*ast.Const{unused}, prog.Consts...)
+	}
+
+	// 50%: Call stage on ep. Use the expanded concrete type text (never a local
+	// type line name) for wantType so soundness Judge can parse it directly and
+	// verify Promise 4 tightly.
+	lam := ep.cst.Value.(*ast.Lambda)
+	wantType := ep.resText
+	if wantType == "" && ep.resTy != nil && ep.resTy.K == KMap {
+		wantType = "map<any>"
+	}
+	if wantType == "" {
+		wantType = "any"
+	}
+	if r.IntN(3) > 0 {
+		prog.Result = nil
+		prog.Semi = false
+	}
+	base.Entry = ep.name
+	if lam.Result == "" || r.IntN(2) == 0 {
+		base.EntryReturns = map[string]string{ep.name: wantType}
+	}
+	base.EntryWantType = wantType
+
+	useInput := ep.hasInput && ep.inputType != nil && r.IntN(2) == 0
+	if useInput {
+		base.HasInput = true
+		base.EntryInputType = ep.inputType.String()
+		return func(c *Case, edge bool) {
+			c.Input = g.valueFor(ep.inputType, 2, edge)
+		}
+	}
+	base.HasArgs = true
+	for _, pt := range ep.paramTypes {
+		base.EntryParamTypes = append(base.EntryParamTypes, pt.String())
+	}
+	return func(c *Case, edge bool) {
+		c.Args = g.makeSoundArgs(ep, edge)
+	}
+}
+
+func (g *Gen) makeSoundEntry(careful bool, depth int) *soundD2Entry {
+	r := g.r
+	name := g.fresh("ep")
+	ep := &soundD2Entry{name: name}
+	lam := &ast.Lambda{}
+
+	// Self-recursive exported entry point (~15% when E1 enabled).
+	if !g.opts.NoE1 && r.IntN(7) == 0 {
+		g.e1 = true
+		pt := types.Prim("int")
+		pname := g.fresh("n")
+		ep.params = []soundD2Param{{name: pname, t: pt, ty: tyInt}}
+		ep.hasInput = true
+		ep.inputType = &types.Type{Rec: &types.Record{Fields: []types.Field{{Key: pname, T: pt}}}}
+		ep.paramTypes = []*types.Type{pt}
+		ep.resTy = tyInt
+		ep.resText = "int"
+		lam.Params = []ast.Param{{Pat: &ast.NamePat{Name: pname}, Type: "int"}}
+		lam.Result = "int"
+		lam.Body = scond(done(pname), snum(0), sbin("+", scall(name, less(pname)), snum(1)))
+		ep.cst = &ast.Const{Exported: true, Pat: &ast.NamePat{Name: name}, Value: lam}
+		g.bindLam(name, &lamSig{params: []*Ty{tyInt}, req: 1, result: tyInt})
+		return ep
+	}
+
+	shape := r.IntN(5)
+	g.push()
+	switch shape {
+	case 0:
+		// 0-param entry point (often unannotated result, exercising site retention).
+		ep.hasInput = true
+		ep.inputType = &types.Type{Rec: &types.Record{}}
+	case 1:
+		// Single record parameter (Row 1).
+		rec := g.soundEntryRecordType()
+		rt := &types.Type{Rec: rec}
+		typeText := rt.String()
+		if r.IntN(2) == 0 {
+			typeText = g.typeLine(typeText)
+		}
+		pname := g.fresh("req")
+		ty := g.tyForType(rt, careful)
+		lam.Params = append(lam.Params, ast.Param{
+			Pat:  &ast.NamePat{Name: pname},
+			Type: typeText,
+		})
+		g.bindName(pname, ty)
+		ep.params = []soundD2Param{{name: pname, t: rt, ty: ty}}
+		ep.hasInput = true
+		ep.inputType = rt
+		ep.paramTypes = []*types.Type{rt}
+	case 2:
+		// Destructured pattern parameter (Row 3, positional Call only).
+		if r.IntN(2) == 0 {
+			tA := types.Prim("int")
+			tB := types.Prim("string")
+			rec := &types.Record{Fields: []types.Field{
+				{Key: "a", T: tA},
+				{Key: "b", Opt: true, T: tB},
+			}}
+			rt := &types.Type{Rec: rec}
+			aName := g.fresh("a")
+			bName := g.fresh("b")
+			pat := &ast.MapPat{Fields: []ast.Field{
+				{Key: "a", Name: aName},
+				{Key: "b", Name: bName, Default: &ast.Str{Val: "d", Quote: '"'}},
+			}}
+			lam.Params = append(lam.Params, ast.Param{Pat: pat, Type: rt.String()})
+			g.bindName(aName, tyInt)
+			g.bindName(bName, tyStr)
+			ep.params = []soundD2Param{{t: rt, ty: g.tyForType(rt, careful), pattern: true}}
+			ep.hasInput = false
+			ep.paramTypes = []*types.Type{rt}
+		} else {
+			lt := types.ListOf(types.Prim("int"))
+			xName := g.fresh("x")
+			yName := g.fresh("y")
+			pat := &ast.ListPat{Elems: []ast.Elem{
+				{Name: xName, Default: snum(0)},
+				{Name: yName, Default: snum(1)},
+			}}
+			lam.Params = append(lam.Params, ast.Param{Pat: pat, Type: "int[]"})
+			g.bindName(xName, tyInt)
+			g.bindName(yName, tyInt)
+			ep.params = []soundD2Param{{t: lt, ty: listOf(tyInt, -1), pattern: true}}
+			ep.hasInput = false
+			ep.paramTypes = []*types.Type{lt}
+		}
+	default:
+		// 1 to 3 named parameters, optionally with defaults (Row 2).
+		np := 1 + r.IntN(3)
+		rec := &types.Record{}
+		for i := range np {
+			pname := fmt.Sprintf("p%d", i+1)
+			pt := g.soundEntryParamType()
+			ty := g.tyForType(pt, careful)
+			p := ast.Param{Pat: &ast.NamePat{Name: pname}, Type: pt.String()}
+			opt := false
+			if i == np-1 && r.IntN(2) == 0 || r.IntN(4) == 0 {
+				if def := g.soundDefaultFor(pt); def != nil {
+					p.Default = def
+					opt = true
+				}
+			}
+			lam.Params = append(lam.Params, p)
+			g.bindName(pname, ty)
+			ep.params = append(ep.params, soundD2Param{name: pname, t: pt, ty: ty, opt: opt})
+			rec.Fields = append(rec.Fields, types.Field{Key: pname, Opt: opt, T: pt})
+			callT := pt
+			if opt {
+				callT = pt.Copy()
+				callT.Null = true
+			}
+			ep.paramTypes = append(ep.paramTypes, callT)
+		}
+		ep.hasInput = true
+		ep.inputType = &types.Type{Rec: rec}
+	}
+
+	resTy := g.randTy(1)
+	lam.Body = g.expr(resTy, depth)
+	g.pop()
+
+	ep.resTy = resTy
+	rtText := annotText(resTy)
+	if rtText != "" {
+		ep.resText = rtText
+		if r.IntN(2) == 0 || shape != 0 {
+			lam.Result = rtText
+		}
+	}
+
+	ep.cst = &ast.Const{Exported: true, Pat: &ast.NamePat{Name: name}, Value: lam}
+
+	sig := &lamSig{result: resTy}
+	for i, p := range ep.params {
+		sig.params = append(sig.params, p.ty)
+		if !p.opt {
+			sig.req = i + 1
+		}
+	}
+	g.bindLam(name, sig)
+	return ep
+}
+
+func (g *Gen) soundEntryRecordType() *types.Record {
+	r := g.r
+	rec := &types.Record{}
+	keys := []string{"a", "b", "flag", "n", "s"}
+	n := 1 + r.IntN(3)
+	for i := range n {
+		rec.Fields = append(rec.Fields, types.Field{
+			Key: keys[i],
+			Opt: i > 0 && r.IntN(3) == 0,
+			T:   g.soundEntryParamType(),
+		})
+	}
+	if r.IntN(4) == 0 {
+		rec.Rest = types.Any
+	}
+	return rec
+}
+
+func (g *Gen) soundEntryParamType() *types.Type {
+	r := g.r
+	switch r.IntN(8) {
+	case 0, 1:
+		return types.Prim("int")
+	case 2:
+		return types.Prim("float")
+	case 3, 4:
+		return types.Prim("string")
+	case 5:
+		return types.Prim("bool")
+	case 6:
+		return types.ListOf(types.Prim("int"))
+	default:
+		if g.opaque != "" && r.IntN(2) == 0 {
+			return &types.Type{Opq: []string{g.opaque}}
+		}
+		return types.Any
+	}
+}
+
+func (g *Gen) soundDefaultFor(t *types.Type) ast.Expr {
+	switch {
+	case t.Any:
+		return snum(0)
+	case t.Num == 1:
+		return snum(g.r.IntN(10))
+	case t.Num == 2:
+		return &ast.Num{Text: "1.5"}
+	case t.Str:
+		return &ast.Str{Val: "def", Quote: '"'}
+	case t.Bool:
+		return &ast.Bool{V: false}
+	case t.List != nil:
+		return slist()
+	case t.Null:
+		return &ast.Null{}
+	}
+	return nil
+}
+
+func (g *Gen) callSoundEntryExpr(ep *soundD2Entry) ast.Expr {
+	args := make([]ast.Expr, len(ep.params))
+	for i, p := range ep.params {
+		args[i] = g.expr(p.ty, 1)
+	}
+	return scall(ep.name, args...)
+}
+
+func (g *Gen) makeSoundArgs(ep *soundD2Entry, edge bool) []any {
+	r := g.r
+	n := len(ep.params)
+	if edge && n > 0 {
+		for n > 0 && ep.params[n-1].opt && r.IntN(2) == 0 {
+			n--
+		}
+	}
+	out := make([]any, n)
+	for i := range n {
+		if ep.params[i].opt && edge && r.IntN(3) == 0 {
+			out[i] = nil
+			continue
+		}
+		out[i] = g.valueFor(ep.params[i].t, 2, edge)
+	}
+	return out
 }

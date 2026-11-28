@@ -134,9 +134,11 @@ func buildEntries(tree *syntax.Program, res *static.Result, cr *check.Result) ([
 					Doc:      ep.Doc,
 				}
 			}
-			meta.inputType = types.Rec(fields, types.Never)
-			t := Type{t: meta.inputType}
-			e.InputType = &t
+			if rec := types.Rec(fields, types.Never); types.Limit(rec) == nil {
+				meta.inputType = rec
+				t := Type{t: meta.inputType}
+				e.InputType = &t
+			}
 		}
 		if cr != nil {
 			if rt, ok := cr.EntryTypes[np.Name]; ok && rt != nil {

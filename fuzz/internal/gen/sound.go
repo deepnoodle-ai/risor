@@ -79,13 +79,21 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 		g.bindName(name, g.tyForType(t, sp.Careful))
 	}
 	prog := g.program()
+	var fillEntry func(c *Case, edge bool)
+	if !opts.NoF16 && !opts.NoD2 && r.IntN(5) == 0 {
+		fillEntry = g.applySoundD2(base, prog, sp.Careful)
+	}
 	base.F16 = g.f16
 	base.E1 = g.e1
 	base.E3 = g.e3
+	base.D2 = g.d2
 	for k := range ValueSets {
-		c := *base
+		c := base.Clone()
 		c.Name = fmt.Sprintf("%s-v%d", sp.Name, k)
 		c.Prog = prog
+		if fillEntry != nil {
+			fillEntry(c, k == 0)
+		}
 		for i, t := range decls {
 			v := g.valueFor(t, 3, k == 0)
 			if !types.Conforms(v, t) {
@@ -93,7 +101,7 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 			}
 			c.Vars = append(c.Vars, Var{Name: names[i], Type: t.String(), Value: v})
 		}
-		sp.Cases = append(sp.Cases, &c)
+		sp.Cases = append(sp.Cases, c)
 	}
 	return sp
 }
