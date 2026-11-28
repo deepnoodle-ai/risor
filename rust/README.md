@@ -18,14 +18,14 @@ Add `risor` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-risor = "3.0.0-alpha.2"
+risor = "3.0.0-rc.1"
 ```
 
 Enable the `derive` feature to use `#[derive(risor::Host)]` on Rust structs:
 
 ```toml
 [dependencies]
-risor = { version = "3.0.0-alpha.2", features = ["derive"] }
+risor = { version = "3.0.0-rc.1", features = ["derive"] }
 ```
 
 ## Run a program
